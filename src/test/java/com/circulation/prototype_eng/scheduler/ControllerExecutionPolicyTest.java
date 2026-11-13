@@ -18,10 +18,11 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegis
 import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
+import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
-import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
+import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
@@ -43,7 +44,6 @@ import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.container.MachineGuiSnapshot;
 import com.circulation.prototype_eng.energy.EnergyBuffer;
-import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.localization.RecipeText;
 import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
@@ -225,7 +225,9 @@ class ControllerExecutionPolicyTest {
             var second = new Fixture(scheduler, ControllerExecutionPolicy.FULL_ASYNC, true);
             var failure = new IllegalStateException("one discovery failed");
             var completed = new CountDownLatch(1);
-            first.onDiscovery = () -> { throw failure; };
+            first.onDiscovery = () -> {
+                throw failure;
+            };
             second.onDiscovery = completed::countDown;
             try {
                 assertSame(failure, assertThrows(IllegalStateException.class, scheduler::tick));
@@ -261,7 +263,8 @@ class ControllerExecutionPolicyTest {
         }
     }
 
-    private record Observation(String operation, Thread thread) { }
+    private record Observation(String operation, Thread thread) {
+    }
 
     private static final class Fixture {
         private final Thread owner = Thread.currentThread();
@@ -273,16 +276,19 @@ class ControllerExecutionPolicyTest {
         private final ConcurrentLinkedQueue<RecipeProcess> created = new ConcurrentLinkedQueue<>();
         private final AtomicInteger callbacks = new AtomicInteger();
         private final AtomicInteger ownerCapabilityReads = new AtomicInteger();
-        private Runnable onDiscovery = () -> { };
-        private int selectedParallelism = 1;
         private final Key raw = new Key(KEYS, "raw");
         private final Key product = new Key(KEYS, "product");
         private final BufferedResourceHatch resources = new BufferedResourceHatch(HatchMode.MIXED, 2,
-            Reference2LongMaps.singleton(KEYS, 100L), () -> { });
-        private final EnergyBuffer energy = new EnergyBuffer(20, () -> { });
+            Reference2LongMaps.singleton(KEYS, 100L), () -> {
+        });
+        private final EnergyBuffer energy = new EnergyBuffer(20, () -> {
+        });
         private final MachineController controller;
         private final MachineInstance machine;
         private final MachineRecipe definition;
+        private Runnable onDiscovery = () -> {
+        };
+        private int selectedParallelism = 1;
 
         private Fixture(TaskScheduler scheduler, ControllerExecutionPolicy policy, boolean cross) {
             this(scheduler, policy, cross, false);
@@ -293,7 +299,11 @@ class ControllerExecutionPolicyTest {
             this.policy = policy;
             this.ownerRequired = ownerRequired;
             var observer = new RecipeRequirementType<>(id("observe"), new RecipeRequirementSystem<String>() {
-                @Override public Object crossRecipeTickIo(String payload) { return null; }
+                @Override
+                public Object crossRecipeTickIo(String payload) {
+                    return null;
+                }
+
                 @Override
                 public boolean requiresOwnerThread() {
                     ownerCapabilityReads.incrementAndGet();
@@ -323,7 +333,8 @@ class ControllerExecutionPolicyTest {
                 process.attributes().setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, selectedParallelism);
             };
             RecipeRequirement<?> observed = observer.requirement(id("observed"), "state");
-            if (ownerRequired) observed = RecipeRequirements.SELECTIVE.requirement(id("nested"), new SelectiveRequirement(List.of(observed)));
+            if (ownerRequired)
+                observed = RecipeRequirements.SELECTIVE.requirement(id("nested"), new SelectiveRequirement(List.of(observed)));
             var recipe = new MachineRecipe(id("recipe"), 1, List.of(observed,
                 RecipeRequirements.RESOURCES.requirement(id("resource"), new ResourceRequirement(
                     List.of(new GenericStack(raw, 2)), List.of(new GenericStack(raw, 1)), List.of(), List.of(new GenericStack(product, 3)), false)),
@@ -338,8 +349,8 @@ class ControllerExecutionPolicyTest {
                 return process;
             };
             var scanning = RecipeScanning.component(id("scanner"), host -> cross
-                ? RecipeScanner.crossRecipe(host, catalog, factory, List.of(), List.of(), _ -> false, () -> 11, List.of())
-                : RecipeScanner.multithreaded(host, catalog, factory, List.of(), List.of(), _ -> false, () -> 11, List.of()),
+                    ? RecipeScanner.crossRecipe(host, catalog, factory, List.of(), List.of(), _ -> false, () -> 11, List.of())
+                    : RecipeScanner.multithreaded(host, catalog, factory, List.of(), List.of(), _ -> false, () -> 11, List.of()),
                 new ScanLimits(8, 8), _ -> true);
             var phases = new ComponentType<>(id("callbacks"), _ -> "state", List.of(new MachineSystem<>() {
                 @Override
@@ -368,11 +379,11 @@ class ControllerExecutionPolicyTest {
                 }
             }));
             var type = MachineType.builder(id(policy.name().toLowerCase(Locale.ROOT) + (cross ? "_cross" : "_thread")), RecipeText.Cancelled, id("shape"))
-                .executionPolicy(policy).recipePool(pool.id()).component(phases).component(MachineWorkSlots.TYPE).component(scanning)
-                .attribute(StandardMachineAttributes.PROCESS_PARALLELISM, 1).attribute(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 1).build();
+                                  .executionPolicy(policy).recipePool(pool.id()).component(phases).component(MachineWorkSlots.TYPE).component(scanning)
+                                  .attribute(StandardMachineAttributes.PROCESS_PARALLELISM, 1).attribute(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 1).build();
             var assembly = MachineAssembly.builder(type, "policy-v1").recreated(phases, scanning)
-                .workSlots(new MachineWorkSlotsNbt("slots-v1", List.of()))
-                .instanceFactory(cross ? CrossRecipeController::new : MultithreadController::new).build();
+                                          .workSlots(new MachineWorkSlotsNbt("slots-v1", List.of()))
+                                          .instanceFactory(cross ? CrossRecipeController::new : MultithreadController::new).build();
             controller = new MachineController(assembly, new Host(owner, type.id()), scheduler, new MachineLifecycleRegistry());
             controller.load(null);
             machine = Objects.requireNonNull(controller.machine());
@@ -412,7 +423,7 @@ class ControllerExecutionPolicyTest {
                 }
             }
             assertEquals(List.of("pre", "normal", "post"), observations.stream().map(Observation::operation)
-                .filter(operation -> Set.of("pre", "normal", "post").contains(operation)).toList());
+                                                                       .filter(operation -> Set.of("pre", "normal", "post").contains(operation)).toList());
             assertEquals(1, snapshots.size());
             assertEquals(policy, snapshots.element().details().policy());
             assertEquals(0, snapshots.element().details().running());

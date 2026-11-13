@@ -8,7 +8,8 @@ public interface FluidHatchSettings {
 
     long maxFluidOutputRate();
 
-    @SuppressWarnings("unused") // Addon automation settings may change the implemented input limit directly.
+    @SuppressWarnings("unused")
+        // Addon automation settings may change the implemented input limit directly.
     void setMaxFluidInputRate(long value);
 
     void setMaxFluidOutputRate(long value);

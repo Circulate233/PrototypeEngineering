@@ -10,9 +10,7 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
 import it.unimi.dsi.fastutil.objects.Reference2IntMap;
 import it.unimi.dsi.fastutil.objects.Reference2IntMaps;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
@@ -26,7 +24,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-/** Ordered union of independent pool providers; child strategies and their freshness proofs remain intact. */
+/**
+ * Ordered union of independent pool providers; child strategies and their freshness proofs remain intact.
+ */
 public final class CompositeRecipePool implements RecipePool {
     private final ResourceLocation id;
     private final String translationKey;
@@ -44,7 +44,8 @@ public final class CompositeRecipePool implements RecipePool {
     private CompositeRecipePool(ResourceLocation id, String translationKey, List<? extends RecipePool> pools,
                                 List<MachineType> machines) {
         this.id = Objects.requireNonNull(id);
-        if (translationKey == null || translationKey.isBlank()) throw new IllegalArgumentException("Pool title is required");
+        if (translationKey == null || translationKey.isBlank())
+            throw new IllegalArgumentException("Pool title is required");
         this.translationKey = translationKey;
         var providers = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>(pools.size());
         var definitions = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineRecipe>();
@@ -54,7 +55,8 @@ public final class CompositeRecipePool implements RecipePool {
             Objects.requireNonNull(pool);
             var previousPool = providers.putIfAbsent(Objects.requireNonNull(pool.id()), pool);
             if (previousPool != null) {
-                if (previousPool != pool) throw new IllegalArgumentException("Different child pools share ID: " + pool.id());
+                if (previousPool != pool)
+                    throw new IllegalArgumentException("Different child pools share ID: " + pool.id());
                 continue;
             }
             var childRecipes = new ObjectArrayList<MachineRecipe>(pool.recipes().size());
@@ -63,9 +65,11 @@ public final class CompositeRecipePool implements RecipePool {
             boolean monotonic = true;
             for (var recipe : Objects.requireNonNull(pool.recipes())) {
                 Objects.requireNonNull(recipe);
-                if (!identities.add(recipe)) throw new IllegalArgumentException("Repeated child recipe: " + recipe.id());
+                if (!identities.add(recipe))
+                    throw new IllegalArgumentException("Repeated child recipe: " + recipe.id());
                 var previous = definitions.putIfAbsent(recipe.id(), recipe);
-                if (previous != null && previous != recipe) throw new IllegalArgumentException("Different canonical recipes share ID: " + recipe.id());
+                if (previous != null && previous != recipe)
+                    throw new IllegalArgumentException("Different canonical recipes share ID: " + recipe.id());
                 if (previous == null) order.put(recipe, order.size());
                 int ordinal = order.getInt(recipe);
                 monotonic &= ordinal > previousOrder;
@@ -83,6 +87,13 @@ public final class CompositeRecipePool implements RecipePool {
         priority = Reference2IntMaps.unmodifiable(order);
     }
 
+    private static boolean sameInstances(List<?> expected, List<?> actual) {
+        if (actual == null || expected.size() != actual.size()) return false;
+        for (int index = 0; index < expected.size(); index++)
+            if (expected.get(index) != actual.get(index)) return false;
+        return true;
+    }
+
     @Override
     public ResourceLocation id() {
         return id;
@@ -93,7 +104,9 @@ public final class CompositeRecipePool implements RecipePool {
         return translationKey;
     }
 
-    /** Child order is stable; repeated references to the same provider are visited once. */
+    /**
+     * Child order is stable; repeated references to the same provider are visited once.
+     */
     public List<RecipePool> pools() {
         return pools;
     }
@@ -152,14 +165,15 @@ public final class CompositeRecipePool implements RecipePool {
                 Objects.requireNonNull(match);
                 var recipe = match.recipe();
                 requireMember(child, recipe);
-                if (match.maximumParallelism() > parallelism) throw new IllegalArgumentException("Child inventory ceiling exceeds requested parallelism");
+                if (match.maximumParallelism() > parallelism)
+                    throw new IllegalArgumentException("Child inventory ceiling exceeds requested parallelism");
                 chosen.put(priority.getInt(recipe), recipe);
                 bounds.put(recipe, Math.max(bounds.getInt(recipe), match.maximumParallelism()));
             }
         }
         var result = new ObjectArrayList<RecipeInventoryMatch>(chosen.size());
         for (var recipe : chosen.values()) result.add(new RecipeInventoryMatch(recipe, bounds.getInt(recipe)));
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     private void requireMember(Members child, MachineRecipe recipe) {
@@ -171,7 +185,8 @@ public final class CompositeRecipePool implements RecipePool {
     public CompositeRecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines) {
         Objects.requireNonNull(recipes);
         Objects.requireNonNull(machines);
-        if (recipes.size() != this.recipes.size()) throw new IllegalArgumentException("Composite recipes must belong to a child pool");
+        if (recipes.size() != this.recipes.size())
+            throw new IllegalArgumentException("Composite recipes must belong to a child pool");
         var replacements = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineRecipe>(recipes.size());
         for (int index = 0; index < recipes.size(); index++) {
             var recipe = Objects.requireNonNull(recipes.get(index));
@@ -180,25 +195,17 @@ public final class CompositeRecipePool implements RecipePool {
         }
         var frozen = new ObjectArrayList<RecipePool>(members.size());
         for (var child : members) {
-            var childRecipes = new ObjectArrayList<MachineRecipe>(child.recipes.size());
-            for (var recipe : child.recipes) childRecipes.add(Objects.requireNonNull(replacements.get(recipe.id())));
-            var definitions = ObjectLists.unmodifiable(childRecipes);
-            var users = ObjectLists.unmodifiable(new ObjectArrayList<>(machines));
-            var provider = Objects.requireNonNull(child.pool.freeze(definitions, users));
+            var definitions = new ObjectArrayList<MachineRecipe>(child.recipes.size());
+            for (var recipe : child.recipes) definitions.add(Objects.requireNonNull(replacements.get(recipe.id())));
+            var provider = Objects.requireNonNull(child.pool.freeze(definitions, machines));
             if (!child.pool.id().equals(provider.id()) || !child.pool.translationKey().equals(provider.translationKey())
                 || child.pool.hasExistingJeiPage() != provider.hasExistingJeiPage()
                 || !Objects.equals(child.pool.existingJeiPageId(), provider.existingJeiPageId())
-                || !sameInstances(definitions, provider.recipes()) || !sameInstances(users, provider.machines()))
+                || !sameInstances(definitions, provider.recipes()) || !sameInstances(machines, provider.machines()))
                 throw new IllegalArgumentException("Child freeze changed canonical definition: " + child.pool.id());
             frozen.add(provider);
         }
         return new CompositeRecipePool(id, translationKey, frozen, machines);
-    }
-
-    private static boolean sameInstances(List<?> expected, List<?> actual) {
-        if (actual == null || expected.size() != actual.size()) return false;
-        for (int index = 0; index < expected.size(); index++) if (expected.get(index) != actual.get(index)) return false;
-        return true;
     }
 
     @Override
@@ -217,17 +224,18 @@ public final class CompositeRecipePool implements RecipePool {
                            int minimumOrder, boolean monotonic) {
     }
 
+    /**
+     * Input groups are borrowed unchanged throughout this lookup and its validation.
+     */
     private final class Lookup implements RecipeCandidateIndex.Cursor {
         private final @Nullable MachineInstance machine;
         private final @Nullable AEKey2LongMap inventory;
         private final int parallelism;
-        private final Iterator<ResourceLocation> inputGroups;
-        private final ObjectLinkedOpenHashSet<ResourceLocation> groups = new ObjectLinkedOpenHashSet<>();
+        private final Set<ResourceLocation> groups;
         private final ObjectArrayList<RecipeCandidateIndex.Cursor> observed = new ObjectArrayList<>();
         private final Int2ObjectAVLTreeMap<MachineRecipe> chosen = new Int2ObjectAVLTreeMap<>();
         private final Reference2IntOpenHashMap<MachineRecipe> bounds = new Reference2IntOpenHashMap<>();
         private final ObjectArrayList<MachineRecipe> output = new ObjectArrayList<>();
-        private Set<ResourceLocation> frozenGroups;
         private int childIndex;
         private Members child;
         private RecipeCandidateIndex.Cursor cursor;
@@ -238,14 +246,14 @@ public final class CompositeRecipePool implements RecipePool {
         private boolean accepted;
         private Iterator<MachineRecipe> ordered;
         private RecipeCandidateIndex.Validation validation;
-        private int phase;
+        private int phase = 1;
         private boolean stale;
 
         private Lookup(MachineInstance machine, Set<ResourceLocation> groups) {
             this.machine = Objects.requireNonNull(machine);
             inventory = null;
             parallelism = Integer.MAX_VALUE;
-            inputGroups = Objects.requireNonNull(groups).iterator();
+            this.groups = groups;
         }
 
         private Lookup(AEKey2LongMap inventory, int parallelism, Set<ResourceLocation> groups) {
@@ -253,7 +261,7 @@ public final class CompositeRecipePool implements RecipePool {
             this.inventory = Objects.requireNonNull(inventory);
             if (parallelism < 1) throw new IllegalArgumentException("Nonpositive matching parallelism");
             this.parallelism = parallelism;
-            inputGroups = Objects.requireNonNull(groups).iterator();
+            this.groups = groups;
         }
 
         @Override
@@ -261,21 +269,13 @@ public final class CompositeRecipePool implements RecipePool {
             Objects.requireNonNull(budget);
             if (phase == 4) return true;
             if (stale) return false;
-            if (phase == 0) {
-                while (inputGroups.hasNext()) {
-                    if (!budget.take()) return false;
-                    groups.add(Objects.requireNonNull(inputGroups.next()));
-                }
-                frozenGroups = ObjectSets.unmodifiable(groups);
-                phase = 1;
-            }
             if (phase == 1) {
                 while (child != null || childIndex < members.size()) {
                     if (child == null) {
                         if (!budget.take()) return false;
                         child = members.get(childIndex++);
-                        cursor = inventory == null ? child.pool.beginCandidates(Objects.requireNonNull(machine), frozenGroups)
-                            : Objects.requireNonNull(child.pool.beginMatch(inventory, parallelism, frozenGroups));
+                        cursor = inventory == null ? child.pool.beginCandidates(Objects.requireNonNull(machine), groups)
+                            : Objects.requireNonNull(child.pool.beginMatch(inventory, parallelism, groups));
                         opinionKnown = false;
                         if (cursor == null) opinion = child.recipes.iterator();
                         else observed.add(cursor);
@@ -295,15 +295,16 @@ public final class CompositeRecipePool implements RecipePool {
                             pending = Objects.requireNonNull(opinion.next());
                             requireMember(child, pending);
                             pendingGroups = pending.recipeGroups().iterator();
-                            accepted = frozenGroups.isEmpty();
+                            accepted = groups.isEmpty();
                         }
                         while (!accepted && pendingGroups.hasNext()) {
                             if (!budget.take()) return false;
-                            accepted = frozenGroups.contains(pendingGroups.next());
+                            accepted = groups.contains(pendingGroups.next());
                         }
                         if (accepted) {
                             int bound = opinionKnown ? Objects.requireNonNull(cursor).inputParallelismLimit(pending) : Integer.MAX_VALUE;
-                            if (bound < 1 || bound > parallelism) throw new IllegalArgumentException("Invalid child input ceiling");
+                            if (bound < 1 || bound > parallelism)
+                                throw new IllegalArgumentException("Invalid child input ceiling");
                             chosen.put(priority.getInt(pending), pending);
                             bounds.put(pending, Math.max(bounds.getInt(pending), bound));
                         }
@@ -334,7 +335,7 @@ public final class CompositeRecipePool implements RecipePool {
         @Override
         public Collection<MachineRecipe> result() {
             requireComplete();
-            return ObjectLists.unmodifiable(output);
+            return output;
         }
 
         @Override

@@ -5,16 +5,19 @@ import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 
-/** Client registration bridge used once after every HEI plugin has supplied its categories. */
+/**
+ * Client registration bridge used once after every HEI plugin has supplied its categories.
+ */
 public final class ExternalRecipePoolPages {
     private static @Nullable Pending pending;
 
-    private ExternalRecipePoolPages() {}
+    private ExternalRecipePoolPages() {
+    }
 
     public static boolean requested(List<RecipePool> pools) {
         for (var pool : pools) {
@@ -40,5 +43,6 @@ public final class ExternalRecipePoolPages {
         work.registration.accept(ObjectSets.unmodifiable(new ObjectOpenHashSet<>(categories)));
     }
 
-    private record Pending(Object registry, Consumer<Set<String>> registration) {}
+    private record Pending(Object registry, Consumer<Set<String>> registration) {
+    }
 }

@@ -5,7 +5,6 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -19,6 +18,7 @@ import java.util.UUID;
  * PN completion propagation, shared by manual and station execution. Call at the owner's work commit
  * boundary with its captured members; this is not permission to skip research work or material costs.
  * Completion creates unclaimed reward eligibility. Only the reward claimer invokes delivery callbacks.
+ * Supplied member collections are borrowed read-only for the duration of preparation.
  */
 public final class TeamResearchCompletion {
     private final ResearchRegistry registry;
@@ -68,19 +68,18 @@ public final class TeamResearchCompletion {
         if (team.registry() != registry) {
             throw new IllegalArgumentException("Team research belongs to a different registry");
         }
-        var frozenMembers = new ObjectArrayList<>(members);
         var uniqueMembers = new ObjectOpenHashSet<UUID>();
-        if (frozenMembers.isEmpty()) {
+        if (members.isEmpty()) {
             throw new IllegalArgumentException("Research completion requires team members");
         }
         boolean teamOwned = definition.deliveryPolicy() == ResearchDownloadDeliveryPolicy.ITEM_ONLY;
         if (!teamOwned && team.completedLevel(id) != 0) {
             throw new IllegalArgumentException("Personal research also has a team-owned source");
         }
-        if (baselines != null && baselines.size() != frozenMembers.size()) {
+        if (baselines != null && baselines.size() != members.size()) {
             throw new IllegalArgumentException("Frozen completion membership differs");
         }
-        for (var member : frozenMembers) {
+        for (var member : members) {
             if (member == null || !uniqueMembers.add(member)) {
                 throw new IllegalArgumentException("Invalid or duplicate completion member");
             }
@@ -104,7 +103,7 @@ public final class TeamResearchCompletion {
         if (teamOwned && !team.canWriteResearch(id)) {
             return null;
         }
-        for (var member : frozenMembers) {
+        for (var member : members) {
             if (!players.get(member).canWriteResearch(id)) {
                 return null;
             }
@@ -122,7 +121,7 @@ public final class TeamResearchCompletion {
             if (teamMutation != null) {
                 transactions.add(teamMutation);
             }
-            for (var member : frozenMembers) {
+            for (var member : members) {
                 var player = players.get(member);
                 int baseline = baselines != null ? baselines.getInt(member)
                     : teamOwned ? teamBaseline : player.completedLevel(id);
@@ -165,11 +164,10 @@ public final class TeamResearchCompletion {
         return new Prepared(transactions, new Result(raisedPlayers, eligiblePlayers));
     }
 
+    /**
+     * Result lists are transferred as immutable data and must not be modified by consumers.
+     */
     public record Result(ObjectList<UUID> newlyCompletedPlayers, ObjectList<UUID> rewardEligiblePlayers) {
-        public Result {
-            newlyCompletedPlayers = ObjectLists.unmodifiable(new ObjectArrayList<>(newlyCompletedPlayers));
-            rewardEligiblePlayers = ObjectLists.unmodifiable(new ObjectArrayList<>(rewardEligiblePlayers));
-        }
     }
 
     /**

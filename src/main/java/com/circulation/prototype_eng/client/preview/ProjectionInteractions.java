@@ -12,22 +12,24 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.EnumFacing;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
-import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.client.event.MouseEvent;
+import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.fml.client.registry.ClientRegistry;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.InputEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
-import org.lwjgl.input.Keyboard;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.input.Keyboard;
 
 import java.util.Objects;
 
-/** Native world-only orientation controls and HUD; GUI/chat input never queues rotations. */
+/**
+ * Native world-only orientation controls and HUD; GUI/chat input never queues rotations.
+ */
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
 public final class ProjectionInteractions {
     public static final ProjectionInteractions INSTANCE = new ProjectionInteractions();
@@ -66,7 +68,9 @@ public final class ProjectionInteractions {
         following = true;
     }
 
-    /** A controller-bound builder projection expires after thirty seconds, independently of its GUI. */
+    /**
+     * A controller-bound builder projection expires after thirty seconds, independently of its GUI.
+     */
     public boolean projectBuilder(StructurePreviews service, ResourceLocation id, StructurePreviewSettings settings,
                                   BlockPos anchor, StructureProjectionOptions options, ItemStack tool, NBTTagCompound binding) {
         var mc = Minecraft.getMinecraft();
@@ -171,7 +175,8 @@ public final class ProjectionInteractions {
         var mc = Minecraft.getMinecraft();
         var builder = builderProjection;
         if (builder != null && (builder.service.closed() || builder.service.projection() != builder.intent || !builder.present(mc))) {
-            if (!builder.service.closed() && builder.service.projection() == builder.intent) builder.service.stopProjection();
+            if (!builder.service.closed() && builder.service.projection() == builder.intent)
+                builder.service.stopProjection();
             builderProjection = null;
         }
         if (mc.player == null || mc.world == null) {
@@ -247,12 +252,12 @@ public final class ProjectionInteractions {
 
     private static final class BuilderProjection {
         private final StructurePreviews service;
-        private StructurePreviews.Projection intent;
         private final Object player, world, connection;
         private final ItemStack initialTool;
         private final StructureToolItem item;
         private final BuilderBinding binding;
         private final @Nullable BuilderBinding initialBinding;
+        private StructurePreviews.Projection intent;
         private boolean confirmed;
 
         BuilderProjection(StructurePreviews service, StructurePreviews.Projection intent, Minecraft mc,

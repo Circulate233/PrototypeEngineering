@@ -1,9 +1,5 @@
 package com.circulation.prototype_eng.storage;
 
-import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
-
-import it.unimi.dsi.fastutil.objects.Reference2LongMap;
-
 import ae2.api.config.Actionable;
 import ae2.api.networking.security.IActionSource;
 import ae2.api.stacks.AEKey;
@@ -15,15 +11,17 @@ import ae2.api.storage.MEStorage;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.storage.HatchMode;
-import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
 import com.circulation.prototype_eng.api.storage.HatchReconfigurationStatus;
 import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
+import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
 import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.api.storage.StorageFence;
 import com.circulation.prototype_eng.localization.GuiText;
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.Reference2LongMap;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.util.text.ITextComponent;
@@ -32,19 +30,19 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Owns buffers independently of their block entity or GUI.
  */
 public final class BufferedResourceHatch implements SlottedResourceHatch {
     private static final ResourceKeyNbt KEYS = new ResourceKeyNbt();
-    private volatile ResourceInputGroup inputGroup = ResourceInputGroup.TRANSPARENT;
     private final SlottedResourceBuffer input;
     private final SlottedResourceBuffer output;
     private final MEStorage automation = new AutomationPort();
     private final List<StorageContext> contexts;
+    private volatile ResourceInputGroup inputGroup = ResourceInputGroup.TRANSPARENT;
 
     /**
      * Capacities are per slot and per key type, in that type's native units.
@@ -62,19 +60,6 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
         output = out == null ? null : new SlottedResourceBuffer(out.slots(), out.capacities(), onChanged);
         contexts = input != null && output != null ? List.of(input.context(), output.context())
             : input != null ? List.of(input.context()) : output != null ? List.of(output.context()) : List.of();
-    }
-
-    @Override
-    public ResourceInputGroup inputGroup() {
-        return inputGroup;
-    }
-
-    public void setInputGroup(ResourceInputGroup group) {
-        inputGroup = Objects.requireNonNull(group);
-    }
-
-    boolean hasTransferReservation() {
-        return input != null && input.hasTransferReservation() || output != null && output.hasTransferReservation();
     }
 
     private static @Nullable List<GenericStack> pack(List<GenericStack> contents, @Nullable ResourceHatchConfiguration.Side side) {
@@ -209,10 +194,24 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
         return result;
     }
 
-    /** Captures old ownership, prepares outside its access scope, then retires both sides together.
+    @Override
+    public ResourceInputGroup inputGroup() {
+        return inputGroup;
+    }
+
+    public void setInputGroup(ResourceInputGroup group) {
+        inputGroup = Objects.requireNonNull(group);
+    }
+
+    boolean hasTransferReservation() {
+        return input != null && input.hasTransferReservation() || output != null && output.hasTransferReservation();
+    }
+
+    /**
+     * Captures old ownership, prepares outside its access scope, then retires both sides together.
      * The publication factory prepares adapters before retirement; its returned action only assigns fields.
      */
-    public HatchReplacement replace(ResourceHatchConfiguration target, @Nullable String location,
+    public HatchReplacement replace(ResourceHatchConfiguration target,
                                     Runnable onChanged, BooleanSupplier current,
                                     Function<BufferedResourceHatch, Runnable> preparePublication) {
         if (target.mode().hasInput() == (input == null) || target.mode().hasOutput() == (output == null))
@@ -236,7 +235,6 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
             var changes = new HatchStorageChanges(onChanged);
             var candidate = new BufferedResourceHatch(target, changes);
             candidate.restoreContents(nextInput, nextOutput);
-            candidate.bindSourceIdentities(location);
             var publish = preparePublication.apply(candidate);
             return fence.access(() -> {
                 if (!current.getAsBoolean() || !HatchReplacement.current(captured.versions))
@@ -250,12 +248,6 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
         } finally {
             fence.release();
         }
-    }
-
-    public void bindSourceIdentities(@Nullable String location) {
-        if (location == null) return;
-        if (input != null) input.context().bindSourceIdentity(location + "/input");
-        if (output != null) output.context().bindSourceIdentity(location + "/output");
     }
 
     @Override
@@ -296,7 +288,9 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
         });
     }
 
-    /** Eject each independent side once; unresolved tokens deliver their final balance later. */
+    /**
+     * Eject each independent side once; unresolved tokens deliver their final balance later.
+     */
     public List<GenericStack> removeForDrops(Consumer<List<GenericStack>> deferredDrops) {
         Objects.requireNonNull(deferredDrops);
         var drops = new ObjectArrayList<GenericStack>(6);
@@ -304,7 +298,7 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
             if (input != null) drops.addAll(input.removeForDrops(deferredDrops));
             if (output != null) drops.addAll(output.removeForDrops(deferredDrops));
         });
-        return List.copyOf(drops);
+        return drops;
     }
 
     public void save(NBTTagCompound tag) {

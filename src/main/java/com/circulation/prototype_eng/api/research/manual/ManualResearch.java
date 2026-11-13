@@ -128,7 +128,9 @@ public final class ManualResearch {
         return ObjectLists.unmodifiable(new ObjectArrayList<>(sessions.values()));
     }
 
-    /** Frozen recipients retain their paid completion baseline until the original session settles. */
+    /**
+     * Frozen recipients retain their paid completion baseline until the original session settles.
+     */
     public boolean blocksSourceReduction(ResourceLocation researchId, @Nullable UUID player) {
         requireOwner();
         Objects.requireNonNull(researchId);
@@ -785,12 +787,12 @@ public final class ManualResearch {
 
     /**
      * Players are a merge set of affected sources, not a replacement for the world's player table.
+     * Lists are borrowed immutable snapshots and must remain unchanged until this checkpoint is
+     * discarded, including while a failed save retains it for retry. Consumers must not mutate them.
      */
     public record CheckpointState(ObjectList<ManualResearchSession> sessions, TeamResearchQueue.Snapshot queue,
                                   TeamOwnedResearch.Snapshot team, ObjectList<PlayerResearchState.Snapshot> players) {
         public CheckpointState {
-            sessions = ObjectLists.unmodifiable(new ObjectArrayList<>(sessions));
-            players = ObjectLists.unmodifiable(new ObjectArrayList<>(players));
             Objects.requireNonNull(queue);
             Objects.requireNonNull(team);
         }

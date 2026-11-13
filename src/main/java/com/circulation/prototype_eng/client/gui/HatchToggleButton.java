@@ -9,7 +9,9 @@ import java.awt.Rectangle;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
-/** Original 14×14 PM automatic IO artwork; a matching release commits the toggle. */
+/**
+ * Original 14×14 PM automatic IO artwork; a matching release commits the toggle.
+ */
 final class HatchToggleButton implements ICompositeWidget {
     private final boolean input;
     private final BooleanSupplier selected;

@@ -4,9 +4,12 @@ import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.structure.StructureBounds;
 import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
+
 import java.util.function.ToDoubleFunction;
 
-/** PM's 45 degree orbit, exponential smoothing and world-space panning, without native GL state. */
+/**
+ * PM's 45 degree orbit, exponential smoothing and world-space panning, without native GL state.
+ */
 public final class StructurePreviewCamera {
     private double yaw = -45, pitch = 25, zoom = 1;
     private double yawTarget = yaw, pitchTarget = pitch, zoomTarget = zoom;
@@ -57,7 +60,9 @@ public final class StructurePreviewCamera {
         pan = panTarget = Vec3d.ZERO;
     }
 
-    /** Retains the user's camera while the scanner replaces its detached selection model. */
+    /**
+     * Retains the user's camera while the scanner replaces its detached selection model.
+     */
     public void copyViewFrom(StructurePreviewCamera previous) {
         yaw = previous.yaw;
         pitch = previous.pitch;
@@ -186,7 +191,9 @@ public final class StructurePreviewCamera {
         return pick(view, cell -> intersect(ray, cell.position().getX(), cell.position().getY(), cell.position().getZ()));
     }
 
-    /** The scene supplies native block ray intersections; the pure camera retains box picking for unknown cells. */
+    /**
+     * The scene supplies native block ray intersections; the pure camera retains box picking for unknown cells.
+     */
     public @Nullable StructurePreviewView.Click pick(StructurePreviewView view, ToDoubleFunction<StructurePreviewModel.Cell> distanceTo) {
         var model = view.model();
         if (model == null) return null;

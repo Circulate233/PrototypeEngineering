@@ -1,14 +1,13 @@
 package com.circulation.prototype_eng.api.recipe.persistence;
 
+import ae2.api.util.AEColor;
 import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.component.TopologicalComponentMap;
-import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.CrossRecipeBatch;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
-import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
-import ae2.api.util.AEColor;
 import com.circulation.prototype_eng.api.persistence.AttributeModifierNbt;
 import com.circulation.prototype_eng.api.persistence.BuiltinOverlayCodecs;
 import com.circulation.prototype_eng.api.persistence.MachineAttributesNbt;
@@ -22,11 +21,12 @@ import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayTypes;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
-import com.circulation.prototype_eng.api.recipe.process.RequirementPath;
 import com.circulation.prototype_eng.api.recipe.process.RequirementAttributeState;
+import com.circulation.prototype_eng.api.recipe.process.RequirementPath;
 import com.circulation.prototype_eng.api.recipe.process.ResourceInputLocks;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.selective.SelectiveState;
+import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -132,6 +132,40 @@ public final class RecipeProcessNbt {
         }
     }
 
+    private static NBTTagCompound writeTiming(CrossRecipeBatch.Timing timing) {
+        var tag = new NBTTagCompound();
+        tag.setLong("Most", timing.batch().getMostSignificantBits());
+        tag.setLong("Least", timing.batch().getLeastSignificantBits());
+        tag.setInteger("Duration", timing.duration());
+        tag.setInteger("Parallelism", timing.parallelism());
+        tag.setInteger("MaterialOffset", timing.materialOffset());
+        var energy = new NBTTagList();
+        for (var entry : timing.energyOffsets().entrySet()) {
+            var item = new NBTTagCompound();
+            item.setTag("Path", RequirementPathNbt.encode(entry.getKey()));
+            item.setInteger("Input", entry.getValue().input());
+            item.setInteger("Output", entry.getValue().output());
+            energy.appendTag(item);
+        }
+        tag.setTag("Energy", energy);
+        return tag;
+    }
+
+    private static CrossRecipeBatch.Timing readTiming(NBTTagCompound tag) {
+        StrictNbt.requireKeys(tag, "Most", "Least", "Duration", "Parallelism", "MaterialOffset", "Energy");
+        var offsets = new Object2ObjectLinkedOpenHashMap<RequirementPath, CrossRecipeBatch.EnergyOffsets>(6);
+        var entries = StrictNbt.requireList(tag, "Energy", Constants.NBT.TAG_COMPOUND);
+        for (int index = 0; index < entries.tagCount(); index++) {
+            var entry = entries.getCompoundTagAt(index);
+            StrictNbt.requireKeys(entry, "Path", "Input", "Output");
+            if (offsets.putIfAbsent(RequirementPathNbt.read(entry), new CrossRecipeBatch.EnergyOffsets(
+                StrictNbt.requireInt(entry, "Input"), StrictNbt.requireInt(entry, "Output"))) != null)
+                throw new IllegalArgumentException("Duplicate batch energy path");
+        }
+        return new CrossRecipeBatch.Timing(new UUID(StrictNbt.requireLong(tag, "Most"), StrictNbt.requireLong(tag, "Least")),
+            StrictNbt.requireInt(tag, "Duration"), StrictNbt.requireInt(tag, "Parallelism"), StrictNbt.requireInt(tag, "MaterialOffset"), offsets);
+    }
+
     /**
      * Canonical recipe frozen into this codec, for explicit host persistence bindings.
      */
@@ -139,12 +173,16 @@ public final class RecipeProcessNbt {
         return recipe;
     }
 
-    /** Explicit behavior revision written into every process save. */
+    /**
+     * Explicit behavior revision written into every process save.
+     */
     public String revision() {
         return revision;
     }
 
-    /** A startup process decorator may only attach components explicitly supported by this codec. */
+    /**
+     * A startup process decorator may only attach components explicitly supported by this codec.
+     */
     public boolean supportsComponent(ComponentType<RecipeProcess, ?> type) {
         var binding = bindings.get(Objects.requireNonNull(type).id());
         return binding != null && binding.type() == type;
@@ -258,8 +296,10 @@ public final class RecipeProcessNbt {
         if (timing != null) {
             var definitions = new RecipeDefinitionIndex(process).requirements();
             var energyPaths = new ObjectLinkedOpenHashSet<RequirementPath>(6);
-            for (var definition : definitions.entrySet()) if (definition.getValue().type() == RecipeRequirements.ENERGY) energyPaths.add(definition.getKey());
-            if (!energyPaths.equals(timing.energyOffsets().keySet())) throw new IllegalArgumentException("Cross-recipe energy paths changed");
+            for (var definition : definitions.entrySet())
+                if (definition.getValue().type() == RecipeRequirements.ENERGY) energyPaths.add(definition.getKey());
+            if (!energyPaths.equals(timing.energyOffsets().keySet()))
+                throw new IllegalArgumentException("Cross-recipe energy paths changed");
         }
 
         if (tag.hasKey("InputGroup")) {
@@ -309,40 +349,6 @@ public final class RecipeProcessNbt {
         for (var validator : validators) {
             validator.accept(process);
         }
-    }
-
-    private static NBTTagCompound writeTiming(CrossRecipeBatch.Timing timing) {
-        var tag = new NBTTagCompound();
-        tag.setLong("Most", timing.batch().getMostSignificantBits());
-        tag.setLong("Least", timing.batch().getLeastSignificantBits());
-        tag.setInteger("Duration", timing.duration());
-        tag.setInteger("Parallelism", timing.parallelism());
-        tag.setInteger("MaterialOffset", timing.materialOffset());
-        var energy = new NBTTagList();
-        for (var entry : timing.energyOffsets().entrySet()) {
-            var item = new NBTTagCompound();
-            item.setTag("Path", RequirementPathNbt.encode(entry.getKey()));
-            item.setInteger("Input", entry.getValue().input());
-            item.setInteger("Output", entry.getValue().output());
-            energy.appendTag(item);
-        }
-        tag.setTag("Energy", energy);
-        return tag;
-    }
-
-    private static CrossRecipeBatch.Timing readTiming(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Most", "Least", "Duration", "Parallelism", "MaterialOffset", "Energy");
-        var offsets = new Object2ObjectLinkedOpenHashMap<RequirementPath, CrossRecipeBatch.EnergyOffsets>(6);
-        var entries = StrictNbt.requireList(tag, "Energy", Constants.NBT.TAG_COMPOUND);
-        for (int index = 0; index < entries.tagCount(); index++) {
-            var entry = entries.getCompoundTagAt(index);
-            StrictNbt.requireKeys(entry, "Path", "Input", "Output");
-            if (offsets.putIfAbsent(RequirementPathNbt.read(entry), new CrossRecipeBatch.EnergyOffsets(
-                StrictNbt.requireInt(entry, "Input"), StrictNbt.requireInt(entry, "Output"))) != null)
-                throw new IllegalArgumentException("Duplicate batch energy path");
-        }
-        return new CrossRecipeBatch.Timing(new UUID(StrictNbt.requireLong(tag, "Most"), StrictNbt.requireLong(tag, "Least")),
-            StrictNbt.requireInt(tag, "Duration"), StrictNbt.requireInt(tag, "Parallelism"), StrictNbt.requireInt(tag, "MaterialOffset"), offsets);
     }
 
     private Map<ComponentType<RecipeProcess, ?>, SavedComponent> readComponents(NBTTagList list) {

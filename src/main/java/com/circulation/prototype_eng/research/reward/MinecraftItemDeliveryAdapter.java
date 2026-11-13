@@ -263,9 +263,7 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
                     yield new Delivery(0, Optional.empty());
                 player.inventory.setInventorySlotContents(inventory.slot(), stack);
                 player.inventory.markDirty();
-                if (!exact(player.inventory.mainInventory.get(inventory.slot()), stack))
-                    throw new IllegalStateException("Reward insertion changed payload");
-                if (player.inventoryContainer != null) player.inventoryContainer.detectAndSendChanges();
+                player.inventoryContainer.detectAndSendChanges();
                 requireOwner();
                 yield new Delivery(fragment.count(), Optional.empty());
             }
@@ -280,7 +278,8 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
                 // not proof that a callback left it untouched or did not transfer its contents.
                 if (!world.spawnEntity(entity)) yield new Delivery(0, Optional.of(entity.getUniqueID()));
                 requireOwner();
-                if (!exact(deliveryStack(entity), stack)) throw new IllegalStateException("Reward spawn changed payload");
+                if (!exact(deliveryStack(entity), stack))
+                    throw new IllegalStateException("Reward spawn changed payload");
                 yield new Delivery(fragment.count(), Optional.of(entity.getUniqueID()));
             }
         };
@@ -307,7 +306,7 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         var entityId = delivery.entityUuid().orElseThrow();
         var world = loaded((ItemDeliveryFragment.WorldDrop) fragment.target());
         if (world == null || !(world.getEntityFromUuid(entityId) instanceof EntityItem entity) || entity.isDead
-            || !exact(deliveryStack(entity), expected) || world.getChunkProvider().getLoadedChunk(chunk(entity.posX), chunk(entity.posZ)) == null) {
+            || !exact(deliveryStack(entity), expected)) {
             throw new IllegalStateException("Reward drop persistence target is unavailable");
         }
         if (!(world.getChunkProvider().chunkLoader instanceof AnvilChunkLoader loader)) {
@@ -419,7 +418,7 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         }
         if (!slots.isEmpty() || cursor) {
             player.inventory.markDirty();
-            if (player.inventoryContainer != null) player.inventoryContainer.detectAndSendChanges();
+            player.inventoryContainer.detectAndSendChanges();
             if (cursor) player.sendContainerToPlayer(player.openContainer);
         }
         requireOwner();

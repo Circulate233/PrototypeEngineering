@@ -6,7 +6,9 @@ import net.minecraft.client.gui.Gui;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.util.ResourceLocation;
 
-/** Native drawing of the original PM GUI images, at their original pixel coordinates. */
+/**
+ * Native drawing of the original PM GUI images, at their original pixel coordinates.
+ */
 public final class GuiAtlas {
     public static final ResourceLocation STATES = texture("states");
 

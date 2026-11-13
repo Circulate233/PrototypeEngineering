@@ -1,23 +1,23 @@
 package com.circulation.prototype_eng.block;
 
 import ae2.api.orientation.BlockOrientation;
+import ae2.api.orientation.IOrientationStrategy;
+import ae2.api.orientation.OrientationStrategies;
 import ae2.api.orientation.RelativeSide;
 import ae2.block.AEBaseBlockItem;
 import ae2.block.AEBaseTileBlock;
-import ae2.api.orientation.IOrientationStrategy;
-import ae2.api.orientation.OrientationStrategies;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.machine.ParallelControllerType;
 import com.circulation.prototype_eng.item.PrototypeCreativeTab;
 import com.circulation.prototype_eng.localization.ParallelControllerText;
-import com.circulation.prototype_eng.parallel.ParallelControllerBlockEntity;
 import com.circulation.prototype_eng.machine.ControllerOrientation;
+import com.circulation.prototype_eng.parallel.ParallelControllerBlockEntity;
 import net.minecraft.block.SoundType;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.util.ITooltipFlag;
-import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
@@ -29,7 +29,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 
-/** AE physical block with an external definition and shared controller entity contract. */
+/**
+ * AE physical block with an external definition and shared controller entity contract.
+ */
 public class ParallelControllerBlock extends AEBaseTileBlock<ParallelControllerBlockEntity> {
     public static final int GUI_ID = 5;
     private final ParallelControllerType type;
@@ -96,7 +98,8 @@ public class ParallelControllerBlock extends AEBaseTileBlock<ParallelControllerB
     public boolean onBlockActivated(@NotNull World world, @NotNull BlockPos pos, @NotNull IBlockState state, @NotNull EntityPlayer player,
                                     @NotNull EnumHand hand, @NotNull EnumFacing side, float hitX, float hitY, float hitZ) {
         if (player.isSneaking()) return false;
-        if (!world.isRemote) player.openGui(PrototypeEngineering.instance, GUI_ID, world, pos.getX(), pos.getY(), pos.getZ());
+        if (!world.isRemote)
+            player.openGui(PrototypeEngineering.instance, GUI_ID, world, pos.getX(), pos.getY(), pos.getZ());
         return true;
     }
 }

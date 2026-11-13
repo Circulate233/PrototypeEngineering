@@ -20,9 +20,9 @@ import crafttweaker.api.data.IData;
 import crafttweaker.api.world.IBlockPos;
 import crafttweaker.api.world.IWorld;
 import crafttweaker.zenscript.expand.ExpandAnyDict;
+import crafttweaker.zenscript.expand.ExpandBool;
 import crafttweaker.zenscript.expand.ExpandDataStringDict;
 import crafttweaker.zenscript.expand.ExpandInt;
-import crafttweaker.zenscript.expand.ExpandBool;
 import crafttweaker.zenscript.expand.ExpandString;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.nbt.NBTTagInt;
@@ -49,7 +49,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class ZenCustomStructureBridgeTest {
     @Test
@@ -125,7 +130,8 @@ class ZenCustomStructureBridgeTest {
         var registry = new GenericRegistry(environment, new GenericErrorLogger(new PrintStream(output, true, StandardCharsets.UTF_8)));
         for (var type : List.of(ZenStructure.class, ZenStructurePattern.class, ZenStructurePredicate.class,
             ZenStructureValidator.class, ZenStructureFacts.class, ZenStructureCapture.class, ZenStructureQuery.class,
-            IData.class, IWorld.class, IBlockPos.class, Harness.class)) registry.registerNativeClass(type);
+            IData.class, IWorld.class, IBlockPos.class, Harness.class))
+            registry.registerNativeClass(type);
         for (var expansion : List.of(ExpandAnyDict.class, ExpandDataStringDict.class, ExpandInt.class, ExpandBool.class, ExpandString.class))
             registry.registerExpansion(expansion);
         var classes = new Object2ObjectOpenHashMap<String, byte[]>();
@@ -142,14 +148,26 @@ class ZenCustomStructureBridgeTest {
     @ZenClass("tests.prototype_eng.CustomStructureHarness")
     @SuppressWarnings("unused") // Compiled script fixture.
     public static final class Harness {
+        private static final AtomicInteger visits = new AtomicInteger();
         private static Thread owner;
         private static ZenStructure shape;
         private static ZenStructureQuery query;
-        private static final AtomicInteger visits = new AtomicInteger();
 
-        @ZenMethod public static void query(ZenStructureQuery value) { query = value; }
-        @ZenMethod public static void shape(ZenStructure value) { shape = value; }
-        @ZenMethod public static void visited() { assertNotSame(owner, Thread.currentThread()); visits.incrementAndGet(); }
+        @ZenMethod
+        public static void query(ZenStructureQuery value) {
+            query = value;
+        }
+
+        @ZenMethod
+        public static void shape(ZenStructure value) {
+            shape = value;
+        }
+
+        @ZenMethod
+        public static void visited() {
+            assertNotSame(owner, Thread.currentThread());
+            visits.incrementAndGet();
+        }
     }
 
     private static final class Source implements StructureReadSource {
@@ -157,9 +175,21 @@ class ZenCustomStructureBridgeTest {
         private final ZenStructureQuery custom;
         private int brightness = 17;
 
-        private Source(Thread owner, ZenStructureQuery custom) { this.owner = owner; this.custom = custom; }
-        @Override public void requireServerThread() { assertSame(owner, Thread.currentThread()); }
-        @Override public boolean isAreaLoaded(StructureBounds bounds) { requireServerThread(); return true; }
+        private Source(Thread owner, ZenStructureQuery custom) {
+            this.owner = owner;
+            this.custom = custom;
+        }
+
+        @Override
+        public void requireServerThread() {
+            assertSame(owner, Thread.currentThread());
+        }
+
+        @Override
+        public boolean isAreaLoaded(StructureBounds bounds) {
+            requireServerThread();
+            return true;
+        }
 
         @Override
         @SuppressWarnings("unchecked") // Exact query descriptor branches supply their declared type.
@@ -178,10 +208,29 @@ class ZenCustomStructureBridgeTest {
     }
 
     private static final class NoBlocks implements StructureBlockResolver {
-        @Override public StructurePredicate block(ResourceLocation id) { return fail("No block resolution expected"); }
-        @Override public StructurePredicate state(ResourceLocation id, int meta, Map<String, String> nbt) { return fail("No block resolution expected"); }
-        @Override public StructurePredicate regex(String expression) { return fail("No block resolution expected"); }
-        @Override public StructureDisplay.BlockOption displayState(ResourceLocation id, int meta, Map<String, String> nbt) { return fail("No display resolution expected"); }
-        @Override public List<StructureDisplay.BlockOption> displayRegex(String expression) { return fail("No display resolution expected"); }
+        @Override
+        public StructurePredicate block(ResourceLocation id) {
+            return fail("No block resolution expected");
+        }
+
+        @Override
+        public StructurePredicate state(ResourceLocation id, int meta, Map<String, String> nbt) {
+            return fail("No block resolution expected");
+        }
+
+        @Override
+        public StructurePredicate regex(String expression) {
+            return fail("No block resolution expected");
+        }
+
+        @Override
+        public StructureDisplay.BlockOption displayState(ResourceLocation id, int meta, Map<String, String> nbt) {
+            return fail("No display resolution expected");
+        }
+
+        @Override
+        public List<StructureDisplay.BlockOption> displayRegex(String expression) {
+            return fail("No display resolution expected");
+        }
     }
 }

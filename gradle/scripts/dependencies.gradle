@@ -20,7 +20,7 @@ dependencies {
     modImplementation 'software.bernie.geckolib:geckolib-forge-1.12.2:3.0.31'
     modImplementation 'curse.maven:component-model-hider-940949:4885858'
     modCompileOnly 'curse.maven:lumenized-1234162:6734060'
-    modRuntimeOnly 'curse.maven:lumenized-1234162:6734060'
+    //modRuntimeOnly 'curse.maven:lumenized-1234162:6734060'
     modCompileOnly 'curse.maven:ctm-267602:2915363'
     modRuntimeOnly 'curse.maven:ctm-267602:2915363'
     // Lumenized's Bloom shaders require CodeChickenLib's shader API at runtime.

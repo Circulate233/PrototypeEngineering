@@ -40,7 +40,9 @@ public record StructureFacts(StructureSnapshot snapshot, BlockPos position, Bloc
         return new StructureFacts(snapshot, absolutePosition, controller, rotation);
     }
 
-    /** Undeclared, unavailable and failed reads keep the snapshot's original error semantics. */
+    /**
+     * Undeclared, unavailable and failed reads keep the snapshot's original error semantics.
+     */
     @Nullable
     public <T> T read(StructureQuery<T> query) {
         return snapshot.read(query, position);

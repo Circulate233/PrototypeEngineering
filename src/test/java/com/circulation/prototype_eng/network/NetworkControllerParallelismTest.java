@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.network;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
-
 import ae2.api.config.Actionable;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.component.ComponentType;
@@ -62,6 +60,7 @@ import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
@@ -88,7 +87,9 @@ class NetworkControllerParallelismTest {
         return new ResourceLocation("network_controller_test", path);
     }
 
-    /** Executes actual source/kernel continuations directly; the scheduler regression separately proves worker dispatch. */
+    /**
+     * Executes actual source/kernel continuations directly; the scheduler regression separately proves worker dispatch.
+     */
     private static void step(RecipeScanner.ScanAttempt attempt) {
         var budget = new RecipeWorkBudget(1);
         for (var source : attempt.sources()) {
@@ -147,7 +148,9 @@ class NetworkControllerParallelismTest {
         }
     }
 
-    /** Uses the same real center/computer/identity setup as NetworkRecipeWorkTest, without research gates. */
+    /**
+     * Uses the same real center/computer/identity setup as NetworkRecipeWorkTest, without research gates.
+     */
     private static final class Fixture implements AutoCloseable {
         private final Thread ownerThread = Thread.currentThread();
         private final Object world = new Object();

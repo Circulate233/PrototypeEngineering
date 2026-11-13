@@ -64,7 +64,9 @@ public final class StructureSnapshot {
         this.trace = Objects.requireNonNull(trace);
     }
 
-    /** Only detached facts survive a slice; every borrowed read port is closed after actual exit. */
+    /**
+     * Only detached facts survive a slice; every borrowed read port is closed after actual exit.
+     */
     public static StructureOperation<StructureSnapshot> beginCapture(StructureReadPlan plan, StructureReadSource source,
                                                                      @Nullable JoinedWorker worker) {
         var capture = new Capture(plan, source, worker != null);
@@ -98,7 +100,9 @@ public final class StructureSnapshot {
         };
     }
 
-    /** Owner preparation and cleanup bracket exactly one externally joined read batch. */
+    /**
+     * Owner preparation and cleanup bracket exactly one externally joined read batch.
+     */
     public static Capture beginParallelCapture(StructureReadPlan plan, StructureReadSource source) {
         return new Capture(plan, source, true);
     }
@@ -129,7 +133,9 @@ public final class StructureSnapshot {
         return new StructureSnapshot(plan, source);
     }
 
-    /** Full synchronous facade runs the same counted capture cursor. */
+    /**
+     * Full synchronous facade runs the same counted capture cursor.
+     */
     @Nullable
     public static StructureSnapshot capture(StructureReadPlan plan, StructureReadSource source, RecipeWorkBudget work) {
         var operation = beginCapture(plan, source, null);
@@ -155,13 +161,16 @@ public final class StructureSnapshot {
         return Objects.requireNonNull(fact.value());
     }
 
-    /** Observations by this one matcher, used only for conservative external callback outcomes. */
+    /**
+     * Observations by this one matcher, used only for conservative external callback outcomes.
+     */
     long unavailableVisits() {
         return unavailableVisits;
     }
 
     /**
      * Null is an explicitly captured absent value, never an undeclared or unloaded read.
+     * Returned facts are borrowed read-only from this snapshot; predicates must not mutate them.
      */
     @Nullable
     @SuppressWarnings("unchecked") // Read identity binds query<T> to the Fact<T> written by capture.
@@ -180,7 +189,7 @@ public final class StructureSnapshot {
         if (fact.failure() != null) {
             throw new IllegalStateException("Structure capture failed: " + query.id() + " at " + position, fact.failure());
         }
-        return query.copy(fact.value());
+        return fact.value();
     }
 
     /**
@@ -197,7 +206,9 @@ public final class StructureSnapshot {
         return Boolean.TRUE.equals(equivalent(other, used, new RecipeWorkBudget(Long.MAX_VALUE)));
     }
 
-    /** This complete proof occupies one owner window; an incomplete prefix grants no authority. */
+    /**
+     * This complete proof occupies one owner window; an incomplete prefix grants no authority.
+     */
     @Nullable
     Boolean equivalent(StructureSnapshot other, StructureReadPlan used, RecipeWorkBudget work) {
         for (var bounds : used.areas()) {
@@ -235,7 +246,9 @@ public final class StructureSnapshot {
         }
     }
 
-    /** The runner physically joins its action before returning; false means dispatch was stopped. */
+    /**
+     * The runner physically joins its action before returning; false means dispatch was stopped.
+     */
     @FunctionalInterface
     public interface JoinedWorker {
         boolean run(Runnable action);
@@ -276,7 +289,9 @@ public final class StructureSnapshot {
             return result;
         }
 
-        /** A non-null action must be physically joined, then finished, before any further advance. */
+        /**
+         * A non-null action must be physically joined, then finished, before any further advance.
+         */
         @Nullable
         public Runnable prepareWorker(RecipeWorkBudget work) {
             source.requireServerThread();
@@ -361,7 +376,9 @@ public final class StructureSnapshot {
             }
         }
 
-        /** Must be called after all accepted actions physically exit, including failed dispatch. */
+        /**
+         * Must be called after all accepted actions physically exit, including failed dispatch.
+         */
         public void finishWorker(boolean accepted, @Nullable Throwable primary) {
             source.requireServerThread();
             var work = Objects.requireNonNull(borrowedWork, "No borrowed structure read batch");

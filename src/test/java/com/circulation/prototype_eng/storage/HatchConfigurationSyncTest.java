@@ -1,9 +1,5 @@
 package com.circulation.prototype_eng.storage;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
-
-import com.circulation.prototype_eng.network.clientbound.HatchConfigurationPacket;
-
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.AEKeyTypes;
 import com.circulation.prototype_eng.HatchConfig;
@@ -13,10 +9,12 @@ import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.HatchTier;
 import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
 import com.circulation.prototype_eng.client.gui.ClientHatchConfigurations;
+import com.circulation.prototype_eng.network.clientbound.HatchConfigurationPacket;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.nbt.NBTTagCompound;
 import org.junit.jupiter.api.Test;
 

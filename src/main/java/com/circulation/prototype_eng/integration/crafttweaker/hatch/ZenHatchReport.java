@@ -25,7 +25,9 @@ public record ZenHatchReport(HatchConfigurationUpdates.Report value) {
         return value.status().name();
     }
 
-    /** One outcome for each real loaded host visited by the original propagation scan. */
+    /**
+     * One outcome for each real loaded host visited by the original propagation scan.
+     */
     @ZenGetter("hostStatuses")
     public String[] hostStatuses() {
         var statuses = new String[value.hosts().size()];

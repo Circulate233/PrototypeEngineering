@@ -9,8 +9,6 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -22,6 +20,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
+ * Published collections are read-only by contract; consumers must not modify them.
  * Owner bridge for real planned machines; ordinary concurrent admission is provided by the caller.
  */
 final class MachineRecipeExecutionFactory implements TaskScheduler.PlannedFactory {
@@ -81,7 +80,7 @@ final class MachineRecipeExecutionFactory implements TaskScheduler.PlannedFactor
                     && machine.lifecycle() == lifecycle && machine.executionMode() == machineMode
                     && machine.executionPolicy() == policy, policy,
                 policy != null && policy.workAsync()
-                    ? ObjectSets.unmodifiable(new ObjectOpenHashSet<>(candidate.task().affinityKeys())) : Set.of()));
+                    ? candidate.task().affinityKeys() : Set.of()));
         }
         if (captured.isEmpty()) {
             return null;

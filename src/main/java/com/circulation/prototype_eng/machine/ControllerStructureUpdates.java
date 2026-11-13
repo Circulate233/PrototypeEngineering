@@ -106,13 +106,17 @@ public class ControllerStructureUpdates {
         scheduler.runAtBoundary(() -> checkAtBoundary(now));
     }
 
-    /** Native periodic ticks gather adjacent checks; the first real tick remains synchronous. */
+    /**
+     * Native periodic ticks gather adjacent checks; the first real tick remains synchronous.
+     */
     public void enqueueTick(long now) {
         enqueueTick(now, () -> {
         });
     }
 
-    /** The exact host's owner observation follows the completed slice, including a no-check tick. */
+    /**
+     * The exact host's owner observation follows the completed slice, including a no-check tick.
+     */
     public void enqueueTick(long now, Runnable observed) {
         host.requireServerThread();
         Objects.requireNonNull(observed);
@@ -128,7 +132,9 @@ public class ControllerStructureUpdates {
         }, observed);
     }
 
-    /** The native load continuation belongs to the first real update and already holds the boundary. */
+    /**
+     * The native load continuation belongs to the first real update and already holds the boundary.
+     */
     public void firstTickAtBoundary(long now) {
         host.requireServerThread();
         lastTick = now;
@@ -245,7 +251,9 @@ public class ControllerStructureUpdates {
         nextCheckAt = lastTick;
     }
 
-    /** Local policy changes grant a new allowance, without restoring any candidate execution right. */
+    /**
+     * Local policy changes grant a new allowance, without restoring any candidate execution right.
+     */
     public void checkPolicy(StructureCheckPolicy policy) {
         host.requireServerThread();
         this.policy = Objects.requireNonNull(policy);
@@ -278,7 +286,9 @@ public class ControllerStructureUpdates {
         return lastElapsedNanos;
     }
 
-    /** Minimum indivisible live operation observed when the policy explicitly cannot progress. */
+    /**
+     * Minimum indivisible live operation observed when the policy explicitly cannot progress.
+     */
     public long requiredAtomicUnits() {
         return requiredAtomicUnits;
     }
@@ -395,7 +405,9 @@ public class ControllerStructureUpdates {
         }
     }
 
-    /** One owner's allowance and detached steps; no shared mutable work budget crosses hosts. */
+    /**
+     * One owner's allowance and detached steps; no shared mutable work budget crosses hosts.
+     */
     private final class Check {
         private final Attempt attempt;
         private final boolean first;

@@ -1,7 +1,7 @@
 package com.circulation.prototype_eng.client.render.gecko;
 
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.client.resources.IResourceManager;
 import net.minecraft.util.ResourceLocation;
 import software.bernie.geckolib3.core.IAnimatable;
@@ -24,7 +24,9 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 
-/** Mutable parser/controller/processor belong to one serially borrowed owner/part model instance. */
+/**
+ * Mutable parser/controller/processor belong to one serially borrowed owner/part model instance.
+ */
 public class GeckoAnimationDriver implements IAnimatable {
     private static boolean initialized;
     private final MolangParser parser = new MolangParser();
@@ -45,7 +47,9 @@ public class GeckoAnimationDriver implements IAnimatable {
         registerControllers(data);
     }
 
-    /** Register the precise type fetcher before submitting workers; no global mutable model or parser. */
+    /**
+     * Register the precise type fetcher before submitting workers; no global mutable model or parser.
+     */
     public static synchronized void initialize() {
         if (initialized) return;
         AnimationController.ModelFetcher<GeckoAnimationDriver> fetcher = animatable ->
@@ -101,7 +105,9 @@ public class GeckoAnimationDriver implements IAnimatable {
         for (var child : bone.childBones) register(child);
     }
 
-    /** The dependency's ABI returns HashMap. LinkedHashMap preserves the required later-layer override. */
+    /**
+     * The dependency's ABI returns HashMap. LinkedHashMap preserves the required later-layer override.
+     */
     @SuppressWarnings("rawtypes")
     // The actual dependency overrides return HashMap<String, raw AnimationController>; changing its invariant value type breaks the override ABI.
     private static final class OrderedData extends AnimationData {

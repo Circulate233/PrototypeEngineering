@@ -1,14 +1,13 @@
 package com.circulation.prototype_eng.client.render;
 
-import it.unimi.dsi.fastutil.ints.IntList;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
-
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.render.GeckoModelBinding;
 import com.circulation.prototype_eng.api.client.render.MachineRenderPass;
 import com.circulation.prototype_eng.client.render.gecko.GeckoModelBaker;
 import com.circulation.prototype_eng.client.render.gecko.GeckoRenderRequest;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.client.resources.IResource;
 import net.minecraft.client.resources.IResourceManager;
@@ -182,7 +181,9 @@ public final class BModelFixtures {
         }
     }
 
-    /** Native policy fixture: it models maps/slots only and never calls a GL function. */
+    /**
+     * Native policy fixture: it models maps/slots only and never calls a GL function.
+     */
     public static class CpuUploader extends ReusableModelVboUploader {
         public final Int2IntOpenHashMap deletes = new Int2IntOpenHashMap(), unmaps = new Int2IntOpenHashMap();
         public final IntList draws = new IntArrayList();

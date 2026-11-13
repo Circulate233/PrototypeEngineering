@@ -1,8 +1,8 @@
 package com.circulation.prototype_eng.machine;
 
 import com.circulation.prototype_eng.Tags;
-import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineSystem;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import net.minecraft.util.ResourceLocation;

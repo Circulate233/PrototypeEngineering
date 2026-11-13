@@ -52,7 +52,9 @@ class StaticJeiFallbackTest {
         builder.information(JeiRecipeDisplay.Text.of(JeiText.CustomRequirement, recipe.durationTicks()));
     };
 
-    private static ResourceLocation id(String name) { return new ResourceLocation("static_jei_fallback", name); }
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("static_jei_fallback", name);
+    }
 
     private static MachineRecipe recipe(String name, long amount) {
         return new MachineRecipe(id(name), 20, List.of(RecipeRequirements.RESOURCES.requirement(id(name + "_io"),
@@ -215,7 +217,9 @@ class StaticJeiFallbackTest {
         assertThrows(NullPointerException.class, () -> defaultPage.createRecipe(renderer.defaultRecipe, foreign, StaticJeiTestViews.ingredients(foreign)));
     }
 
-    /** Native calls are omitted; all display, default Data, legacy cache, wrapper and token work is real. */
+    /**
+     * Native calls are omitted; all display, default Data, legacy cache, wrapper and token work is real.
+     */
     private static final class PageRenderer implements ClientRecipeDefinitions.Renderer {
         private final boolean legacy;
         private final MachineRecipe defaultRecipe = recipe("default_recipe", 1);
@@ -247,17 +251,19 @@ class StaticJeiFallbackTest {
             }
             pages.freeze(selected.snapshot().orderedPools(), pool -> StaticJeiTestViews.page(pool, measured), measured);
             var initial = new ObjectArrayList<RecipePoolJeiRecipe>();
-            for (var page : pages.pages()) for (var recipe : page.pool().recipes()) {
-                var display = measured.describe(recipe);
-                assertSame(source.describe(recipe), display);
-                initial.add(page.createRecipe(recipe, display, StaticJeiTestViews.ingredients(display)));
-            }
+            for (var page : pages.pages())
+                for (var recipe : page.pool().recipes()) {
+                    var display = measured.describe(recipe);
+                    assertSame(source.describe(recipe), display);
+                    initial.add(page.createRecipe(recipe, display, StaticJeiTestViews.ingredients(display)));
+                }
             baseline = new PrototypeJeiPlugin.Definitions(baseline.snapshot(), source.frozenCopy());
             previousProviders = source.frozenCopy();
             publish(initial);
         }
 
-        @Override public ClientRecipeDefinitions.ApplyResult showLocalStatic() {
+        @Override
+        public ClientRecipeDefinitions.ApplyResult showLocalStatic() {
             var recipes = pages.ownedRecipes(baseline.snapshot().orderedPools());
             var descriptions = baseline.displays().snapshot(recipes, previousProviders, measured);
             var updates = PrototypeJeiPlugin.prepareStaticPages(pages.pages(), baseline.snapshot(), descriptions, measured,
@@ -265,7 +271,8 @@ class StaticJeiFallbackTest {
             return install(baseline, descriptions, updates);
         }
 
-        @Override public ClientRecipeDefinitions.ApplyResult apply(ClientRecipeDeclarations.Declaration declaration) {
+        @Override
+        public ClientRecipeDefinitions.ApplyResult apply(ClientRecipeDeclarations.Declaration declaration) {
             var recipes = pages.ownedRecipes(declaration.snapshot().orderedPools());
             var descriptions = declaration.displays().snapshot(recipes);
             return install(new PrototypeJeiPlugin.Definitions(declaration.snapshot(), declaration.displays()), descriptions,
@@ -273,13 +280,14 @@ class StaticJeiFallbackTest {
         }
 
         private ClientRecipeDefinitions.ApplyResult install(PrototypeJeiPlugin.Definitions definitions,
-                RecipeJeiDisplays.Snapshot descriptions, @Nullable List<RecipePoolJeiPage.PreparedUpdate> updates) {
+                                                            RecipeJeiDisplays.Snapshot descriptions, @Nullable List<RecipePoolJeiPage.PreparedUpdate> updates) {
             if (updates == null) return new ClientRecipeDefinitions.ApplyResult(false, "Page refused update");
             var next = new ObjectArrayList<RecipePoolJeiRecipe>();
-            for (var update : updates) for (var recipe : update.pool().recipes()) {
-                var display = descriptions.describe(recipe);
-                next.add(update.createRecipe(recipe, display, StaticJeiTestViews.ingredients(display)));
-            }
+            for (var update : updates)
+                for (var recipe : update.pool().recipes()) {
+                    var display = descriptions.describe(recipe);
+                    next.add(update.createRecipe(recipe, display, StaticJeiTestViews.ingredients(display)));
+                }
             pageDataCurrent = false;
             for (var update : updates) update.apply();
             measured = descriptions;
@@ -297,7 +305,8 @@ class StaticJeiFallbackTest {
             pageDataCurrent = true;
         }
 
-        @Override public void withdraw(String ignoredReason) {
+        @Override
+        public void withdraw(String ignoredReason) {
             Objects.requireNonNull(token).revoke();
         }
     }

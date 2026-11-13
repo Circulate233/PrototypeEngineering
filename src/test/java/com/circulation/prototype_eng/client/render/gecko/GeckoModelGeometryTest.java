@@ -1,8 +1,7 @@
 package com.circulation.prototype_eng.client.render.gecko;
 
-import com.circulation.prototype_eng.util.ExternalEnumValues;
-
 import com.circulation.prototype_eng.api.client.render.MachineRenderPass;
+import com.circulation.prototype_eng.util.ExternalEnumValues;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.client.renderer.BufferBuilder;

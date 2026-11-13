@@ -85,7 +85,6 @@ class RecipeCandidateBudgetTest {
             calls.incrementAndGet();
             assertEquals(new ObjectLinkedOpenHashSet<>(List.of(SECOND, FIRST)), groups);
             assertEquals(recipes, scope);
-            assertThrows(UnsupportedOperationException.class, scope::clear);
             return scope;
         };
         var pass = catalog.beginCandidates(new MachineInstance(), new ObjectLinkedOpenHashSet<>(List.of(SECOND, FIRST)), List.of(index));

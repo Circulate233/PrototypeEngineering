@@ -8,7 +8,7 @@
 
 普通物品与管道仍遵守原方向：手动普通物品放入输入、从输出取出；资源包允许在输出侧解包，自动化不能借此向输出写入。显示用 GenericStack 包装栈不属于可插入的 AE 资源包。
 
-2026-11-10 容器操作tooltip按AE2S原生文案及效果统一：ResourceHatchGui直接复用GuiMEStorage的Tooltips.getEmptyingTooltip(StoreAction)，左右键分别显示存入手持物品、存入所含资源，两行使用AE深灰操作/灰色对象及内嵌物品图标。可装填容器使用FillAction配合Tooltips.muted/of、TextComponentItemStack；操作提示优先，沿原生drawTooltipWithHeader绘制，不追加原自有“倒入材料仓；Shift处理全部容器”单行。空光标的资源信息和真实点击/Shift传输行为保持。仅1Java，未改语言文件，源码提交 `cf27716`；验证与真实渲染边界见[实施进度](implementation-status.md)。
+2026-11-10 容器操作tooltip按AE2S原生文案及效果统一：GuiResourceHatch直接复用GuiMEStorage的Tooltips.getEmptyingTooltip(StoreAction)，左右键分别显示存入手持物品、存入所含资源，两行使用AE深灰操作/灰色对象及内嵌物品图标。可装填容器使用FillAction配合Tooltips.muted/of、TextComponentItemStack；操作提示优先，沿原生drawTooltipWithHeader绘制，不追加原自有“倒入材料仓；Shift处理全部容器”单行。空光标的资源信息和真实点击/Shift传输行为保持。仅1Java，未改语言文件，源码提交 `cf27716`；验证与真实渲染边界见[实施进度](implementation-status.md)。
 
 2026-11-10 破坏掉落按用户新要求改为AE原生路径：资源仓的 `addAdditionalDrops` 接住输入/输出/交互三种方向的全部材料，经AEKey掉落；大数量物品及流体等非物品资源沿AE资源包，原long数量不裁剪。仓室物品的BlockEntityTag只保存profile、槽位/容量、自动IO和限额等配置，两侧库存列表为空，重新放置不会再恢复已掉出的材料。普通世界存档仍保存真实库存，独立FE仓原有保存行为保持。
 
@@ -76,7 +76,7 @@ AE 的 final `createNewTileEntity` 通过真实 `Class<T>` 的 public 无参构�
 
 资源仓掉落以BlockEntityTag携带方向、槽位、容量及配置，缓存材料由AE附加掉落入口独立掉出；挖掘路径保留实体至捕获配置和交付掉落之后，再移除方块。重新放置使用AEBaseBlockItem标准NBT恢复配置，库存为空；丝触沿同一材料掉落规则。独立FE仓仍按原方块物品数据保存电量。
 
-PM `FluidHatchBlockEntity` 与混合 `FluidIOHatchBlockEntity` 的真实每次 fill/drain 限额已恢复到可选 `FluidHatchSettings`：输入/输出分别为非负 long，0 不限，正数限制每次操作的 mB 数量。`HatchFluidHandler` 对整个模拟或实际请求先裁剪，混合两侧仍分别访问；`ResourceHatchContainer` 的手持容器填充/倒入也仅对 AEFluidKey 应用对应限额，失败填充的完整补偿不受限额裁剪。配方直接访问 ResourceStorage 不受自动化限额影响，物品及其它 key 保持原转移语义；没有把每次操作限额改成累计 tick 预算。设置保存为 `MaxFluidInRate/MaxFluidOutRate`，GUI 使用 GuiSync 同步，不为每次设置替换客户端正在使用的存储视图。
+PM `FluidHatchBlockEntity` 与混合 `FluidIOHatchBlockEntity` 的真实每次 fill/drain 限额已恢复到可选 `FluidHatchSettings`：输入/输出分别为非负 long，0 不限，正数限制每次操作的 mB 数量。`HatchFluidHandler` 对整个模拟或实际请求先裁剪，混合两侧仍分别访问；`ContainerResourceHatch` 的手持容器填充/倒入也仅对 AEFluidKey 应用对应限额，失败填充的完整补偿不受限额裁剪。配方直接访问 ResourceStorage 不受自动化限额影响，物品及其它 key 保持原转移语义；没有把每次操作限额改成累计 tick 预算。设置保存为 `MaxFluidInRate/MaxFluidOutRate`，GUI 使用 GuiSync 同步，不为每次设置替换客户端正在使用的存储视图。
 
 PM 单侧/混合流体 GUI 原有清空效果已恢复为资源 GUI 的“清空流体”：服务器检查原玩家、openContainer、准确有效实体、当前存储身份、距离、服务器线程和方块操作权限后，分别在两侧 context 锁内按 AEKeyType.fluids() 抽取可用数量。物品、其它 key、设置、槽位布局不清除，也不产生退款物品。被输入预留或待结算输出持有的数量保留，已应用输入的退款容量和输出的补偿权不受破坏；没有复制旧 storage.clear() 绕过当前事务合同。公开 `HatchSlotActions.clearAvailable(storage, type)` 提供同一受预留保护的存储行为，调用方仍须授权其 owner/玩家动作。
 
@@ -84,7 +84,7 @@ PM 单侧/混合流体 GUI 原有清空效果已恢复为资源 GUI 的“清空
 
 ## Java 界面
 
-ResourceHatchGui 和 EnergyHatchGui 直接继承 AEBaseGui，复用 AE2 背景生成、资源图标/数量显示、物品容器转移策略及服务器同步，没有另造 GUI 基类或编辑器。Mouse Tweaks API 仅作为 AEBaseGui 声明的可选父接口加入编译依赖，不作为新运行时必需依赖。
+GuiResourceHatch 和 GuiEnergyHatch 直接继承 AEBaseGui，复用 AE2 背景生成、资源图标/数量显示、物品容器转移策略及服务器同步，没有另造 GUI 基类或编辑器。Mouse Tweaks API 仅作为 AEBaseGui 声明的可选父接口加入编译依赖，不作为新运行时必需依赖。
 
 `localization.GuiText` 实现 AE2S 的 `LocalizationEnum`，客户端标签调用 `getLocal()`，容器标题使用 `text(...)` 组件。GUI 不拼接翻译键，也不直接传裸翻译键调用翻译函数。
 
@@ -94,7 +94,7 @@ AE2S 的 ConfigGuiInventory 构造参数和 delegate 固定为 GenericStackInv�
 
 资源容器及 `HatchSlotActions` 在真实 SlottedResourceStorage 上处理物品转移。普通物品可以放入输入侧并手动取回，输出侧普通物品只可取出；AE资源包允许在两侧手动解包，混合仓界面分组显示两侧。支持普通点击、右键拆分/单个放入、Shift 转移、数字键和丢弃；大缓存按原生物品堆叠上限取入玩家库存。点击及交换使用共享锁和 tryReplaceSlot，Shift 的抽取、背包合并及余量回退处于同一侧锁范围，防止并行操作抢走回退容量。收集物品时依次访问两侧，不持有输入锁再进入输出。资源槽不参与原版拖拽分配，防止显示包装栈进入玩家物品栏；玩家库存仍保留原版拖拽。
 
-手持可被 AE2 策略识别的流体等资源容器：右键输入槽倒入，左键资源槽装出，配合 Shift 请求整容器操作。ResourceHatchContainer 自行路由四种装入/倒出动作，复用 AEBaseContainer 的 held-item 转移策略；模拟、实际转移和失败回退处于同一侧 context 锁内。服务端仍禁止向输出槽发送 EMPTY_ITEM/EMPTY_ENTIRE_ITEM 写入，禁止 AE2 通用 SwapSlotsPacket 直接移动资源显示包装栈；数字键交换走实际数量路径。客户端限制不作为库存权限依据。
+手持可被 AE2 策略识别的流体等资源容器：右键输入槽倒入，左键资源槽装出，配合 Shift 请求整容器操作。ContainerResourceHatch 自行路由四种装入/倒出动作，复用 AEBaseContainer 的 held-item 转移策略；模拟、实际转移和失败回退处于同一侧 context 锁内。服务端仍禁止向输出槽发送 EMPTY_ITEM/EMPTY_ENTIRE_ITEM 写入，禁止 AE2 通用 SwapSlotsPacket 直接移动资源显示包装栈；数字键交换走实际数量路径。客户端限制不作为库存权限依据。
 
 打开界面前向该玩家发送实体布局和容量，再由容器同步资源槽/能源数值。转移时不重复发送整份 TileEntity NBT，以免替换正被其他玩家界面使用的缓存。GUI 与模型类只由客户端代理引用。
 

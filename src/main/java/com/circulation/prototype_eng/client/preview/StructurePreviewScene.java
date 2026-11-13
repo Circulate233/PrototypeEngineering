@@ -1,36 +1,33 @@
 package com.circulation.prototype_eng.client.preview;
 
-import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
-
-import com.circulation.prototype_eng.util.ExternalEnumValues;
-
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import ae2.api.stacks.AEFluidKey;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
-import com.circulation.prototype_eng.structure.StructurePickWorld;
-import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import net.minecraft.item.ItemStack;
-import net.minecraft.init.Blocks;
 import com.circulation.prototype_eng.block.MachineControllerBlock;
 import com.circulation.prototype_eng.block.MachineControllerBlocks;
+import com.circulation.prototype_eng.client.render.GuiItemLighting;
 import com.circulation.prototype_eng.localization.StructurePreviewText;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
+import com.circulation.prototype_eng.structure.StructureMaterials;
+import com.circulation.prototype_eng.structure.StructurePickWorld;
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
+import com.circulation.prototype_eng.util.ExternalEnumValues;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import net.minecraft.block.state.IBlockState;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.block.material.Material;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
-import com.circulation.prototype_eng.client.render.GuiItemLighting;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.RenderGlobal;
 import net.minecraft.client.renderer.Tessellator;
@@ -38,6 +35,8 @@ import net.minecraft.client.renderer.WorldVertexBufferUploader;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.client.renderer.tileentity.TileEntityRendererDispatcher;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import net.minecraft.init.Blocks;
+import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.BlockRenderLayer;
@@ -47,7 +46,6 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.client.ForgeHooksClient;
 import net.minecraftforge.client.MinecraftForgeClient;
-import com.circulation.prototype_eng.structure.StructureMaterials;
 import net.minecraftforge.fluids.Fluid;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.BufferUtils;
@@ -61,7 +59,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** Public concrete preview control for AEBaseGui and independent custom RecipePoolJeiPage composition. */
+/**
+ * Public concrete preview control for AEBaseGui and independent custom RecipePoolJeiPage composition.
+ */
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
 public final class StructurePreviewScene implements AutoCloseable {
     private final StructurePreviewView view;
@@ -79,10 +79,10 @@ public final class StructurePreviewScene implements AutoCloseable {
     private final IntBuffer nativeViewport = BufferUtils.createIntBuffer(4);
     private final IntBuffer oldScissor = BufferUtils.createIntBuffer(4);
     private final WorldVertexBufferUploader controllerUploader = new WorldVertexBufferUploader();
-    private PreviewBlockAccess access;
-    private StructurePickWorld pickWorld;
     private final Map<ItemChoice, ItemStack> itemChoices = new Object2ObjectOpenHashMap<>();
     private final Map<StructureDisplay, BlockPos> representativePositions = new Object2ObjectOpenHashMap<>();
+    private PreviewBlockAccess access;
+    private StructurePickWorld pickWorld;
     private boolean materialsPrepared;
     private @Nullable List<GenericStack> materialStacks;
     private double pointerX, pointerY;
@@ -189,7 +189,7 @@ public final class StructurePreviewScene implements AutoCloseable {
         viewport = screenViewport;
         var mc = Minecraft.getMinecraft();
         view.advance(2048);
-        view.scan(mc.world, (cell, pos) -> PreviewDisplayObservation.observe(mc.world, view.model(), cell, pos), 2048);
+        view.scan(mc.world, (model, cell, pos) -> PreviewDisplayObservation.observe(mc.world, model, cell, pos), 2048);
         var model = view.model();
         if (world != mc.world || token != view.token()) {
             invalidate();
@@ -317,7 +317,9 @@ public final class StructurePreviewScene implements AutoCloseable {
         }
     }
 
-    /** Resolve the actual host transform (including JEI recipe-origin translation) before changing GL matrices. */
+    /**
+     * Resolve the actual host transform (including JEI recipe-origin translation) before changing GL matrices.
+     */
     public void drawAtCurrentOrigin(int x, int y, int width, int height, float partialTicks) {
         var mc = Minecraft.getMinecraft();
         modelview.clear();
@@ -436,7 +438,8 @@ public final class StructurePreviewScene implements AutoCloseable {
     private @Nullable StructurePreviewView.Click pick(double x, double y) {
         var bounds = view.sceneBounds();
         var model = view.model();
-        if (bounds == null || model == null || boundaryCursor != model.cells().size() || pickWorld == null || access == null || !access.ready()) return null;
+        if (bounds == null || model == null || boundaryCursor != model.cells().size() || pickWorld == null || access == null || !access.ready())
+            return null;
         var ray = camera.ray(viewport, x, y, bounds);
         if (ray == null) return null;
         var end = ray.origin().add(ray.direction().scale(Math.max(2000, camera.distance(bounds) * 30)));
@@ -459,11 +462,14 @@ public final class StructurePreviewScene implements AutoCloseable {
             : state.getSelectedBoundingBox(pickWorld, cell.position());
     }
 
-    /** The actual creative middle-pick item, cached only for this represented generation. */
+    /**
+     * The actual creative middle-pick item, cached only for this represented generation.
+     */
     public ItemStack item(StructureDisplay display, int option) {
         var mc = Minecraft.getMinecraft();
         var model = view.model();
-        if (model == null || pickWorld == null || access == null || !access.ready() || mc.player == null) return ItemStack.EMPTY;
+        if (model == null || pickWorld == null || access == null || !access.ready() || mc.player == null)
+            return ItemStack.EMPTY;
         var picked = view.picked();
         var position = picked != null && display.equals(picked.display()) ? picked.position()
             : representativePositions.get(display);
@@ -480,9 +486,9 @@ public final class StructurePreviewScene implements AutoCloseable {
         return result.copy();
     }
 
-    private record ItemChoice(StructureDisplay display, int option, BlockPos position) { }
-
-    /** Complete selected construction resources; the layer, scan and visibility filters are presentation only. */
+    /**
+     * Complete selected construction resources; the layer, scan and visibility filters are presentation only.
+     */
     public @Nullable List<GenericStack> materials() {
         var mc = Minecraft.getMinecraft();
         var model = view.model();
@@ -503,7 +509,7 @@ public final class StructurePreviewScene implements AutoCloseable {
                 var represented = currentAccess.represented(cell.position());
                 option = -1;
                 for (int index = 0; index < display.options().size(); index++) {
-                    var candidate = PreviewBlockStates.selected(model, cell, index);
+                    var candidate = PreviewBlockStates.selected(model, display, index);
                     if (candidate != null && candidate.equals(represented)) {
                         option = index;
                         break;
@@ -542,26 +548,30 @@ public final class StructurePreviewScene implements AutoCloseable {
                     key = AEItemKey.of(stack);
                     if (key == null) return null;
                 }
-                if (totals.getLong(key) > Long.MAX_VALUE - amount) throw new ArithmeticException("Structure material amount overflow");
+                if (totals.getLong(key) > Long.MAX_VALUE - amount)
+                    throw new ArithmeticException("Structure material amount overflow");
                 totals.addTo(key, amount);
             }
         }
-        if (closed || view.model() != model || view.token() != expected || access != currentAccess || world != mc.world) return null;
+        if (closed || view.model() != model || view.token() != expected || access != currentAccess || world != mc.world)
+            return null;
         var result = new ObjectArrayList<GenericStack>(totals.size());
         totals.forEachEntry((key, amount) -> result.add(new GenericStack(key, amount)));
         materialStacks = ObjectLists.unmodifiable(result);
         return materialStacks;
     }
 
-    /** A transfer snapshot is revoked by choices, catalog/world changes, resource reload or panel closure. */
+    /**
+     * A transfer snapshot is revoked by choices, catalog/world changes, resource reload or panel closure.
+     */
     public boolean materialsCurrent(List<GenericStack> expected) {
         return !closed && expected == materialStacks && token == view.token() && view.model() != null
             && world == Minecraft.getMinecraft().world;
     }
 
-    private record MaterialChoice(StructureDisplay display, int option) { }
-
-    /** Finish a read-only scanner drag without choosing a block. */
+    /**
+     * Finish a read-only scanner drag without choosing a block.
+     */
     public void releaseWithoutPicking(int button) {
         camera.release(button);
     }
@@ -667,6 +677,12 @@ public final class StructurePreviewScene implements AutoCloseable {
             GlStateManager.popMatrix();
             before.restore();
         }
+    }
+
+    private record ItemChoice(StructureDisplay display, int option, BlockPos position) {
+    }
+
+    private record MaterialChoice(StructureDisplay display, int option) {
     }
 
     private final class NativeTiles implements PreviewTileEntities.Owner<TileEntity> {

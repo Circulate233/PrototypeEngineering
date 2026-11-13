@@ -101,7 +101,6 @@ class MachineRecipePoolsTest {
         assertEquals(List.of(first, second), late.machines());
         assertEquals(List.of(second), unused.machines());
         assertEquals(List.of(late, unused), recipes.catalog().poolsFor(second));
-        assertThrows(UnsupportedOperationException.class, () -> late.machines().clear());
     }
 
     @Test

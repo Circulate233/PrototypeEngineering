@@ -25,20 +25,16 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
     private final ComponentType<MachineInstance, MachineOwnership> ownershipType;
     private final BiFunction<MachineInstance, MachineIdentityRegistry.Registration, NetworkRuntime.Capture> source;
     private final Function<MachineLifecycleHost, NetworkRuntime> runtime;
-    @Nullable
-    private ComponentType<MachineInstance, ?> boundType;
-    @Nullable
-    private NetworkRuntime attachedRuntime;
+    private final ComponentType<MachineInstance, MachineNetworkDevice> boundType;
     @Nullable
     private NetworkRuntime.Registration registration;
-    @Nullable
-    private MachineIdentityRegistry.Registration identity;
-    private boolean loadAttempted;
 
-    private MachineNetworkDevice(MachineInstance owner, ComponentType<MachineInstance, MachineOwnership> ownership,
+    private MachineNetworkDevice(MachineInstance owner, ComponentType<MachineInstance, MachineNetworkDevice> boundType,
+                                 ComponentType<MachineInstance, MachineOwnership> ownership,
                                  BiFunction<MachineInstance, MachineIdentityRegistry.Registration, NetworkRuntime.Capture> source,
                                  Function<MachineLifecycleHost, NetworkRuntime> runtime) {
         this.owner = owner;
+        this.boundType = boundType;
         this.ownershipType = ownership;
         this.source = source;
         this.runtime = runtime;
@@ -86,11 +82,11 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
         Objects.requireNonNull(ownership);
         Objects.requireNonNull(source);
         Objects.requireNonNull(runtime);
-        return new ComponentType<>(id, owner -> new MachineNetworkDevice(owner, ownership, source, runtime), List.of(), List.of(ownership));
+        return new ComponentType<>(id, (owner, type) -> new MachineNetworkDevice(owner, type, ownership, source, runtime), List.of(), List.of(ownership));
     }
 
     public boolean allowsNetworkWork() {
-        return registration != null && boundType != null && owner.components().get(boundType) == this && registration.allowsNetworkWork();
+        return registration != null && owner.components().get(boundType) == this && registration.allowsNetworkWork();
     }
 
     @Nullable
@@ -109,38 +105,19 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
     }
 
     @Override
+    @SuppressWarnings("resource") // The runtime belongs to the server owner; this component owns only its registration.
     public void onLoaded(MachineLifecycleEvent.Loaded event) {
-        requireOwner(event);
-        if (loadAttempted) {
-            throw new IllegalStateException("A network device cannot load twice");
-        }
-        loadAttempted = true;
-        for (var binding : owner.components().assemblyBindings()) {
-            if (binding.component() == this) {
-                if (boundType != null) {
-                    throw new IllegalStateException("Network component has multiple bindings");
-                }
-                boundType = binding.type();
-            }
-        }
-        if (boundType == null) {
-            throw new IllegalStateException("Network component is not installed on its owner");
-        }
         var ownership = Objects.requireNonNull(owner.components().get(ownershipType), "Network role requires declared ownership");
-        identity = Objects.requireNonNull(ownership.registration(), "Ownership must load before its network role");
-        if (identity.runtimeIdentity() != owner) {
-            throw new IllegalArgumentException("Network role has foreign ownership");
-        }
-        attachedRuntime = Objects.requireNonNull(runtime.apply(event.context().host()));
-        registration = attachedRuntime.register(identity, this::capture);
+        var identity = Objects.requireNonNull(ownership.registration(), "Ownership must load before its network role");
+        registration = runtime.apply(event.context().host()).register(identity, this::capture);
     }
 
     @Nullable
-    private NetworkRuntime.Capture capture() {
+    private NetworkRuntime.Capture capture(MachineIdentityRegistry.Registration identity) {
         var lifecycle = Objects.requireNonNull(owner.lifecycle());
         var host = lifecycle.host();
         host.requireServerThread();
-        if (!lifecycle.schedulingAllowed() || owner.components().get(Objects.requireNonNull(boundType)) != this) {
+        if (!lifecycle.schedulingAllowed() || owner.components().get(boundType) != this) {
             return null;
         }
         var structureHost = host instanceof MachineStructureHost structure ? structure : null;
@@ -149,7 +126,7 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
             return null;
         }
         boolean formed = lifecycle.formed();
-        var captured = Objects.requireNonNull(source.apply(owner, Objects.requireNonNull(identity)), "Network role capture");
+        var captured = Objects.requireNonNull(source.apply(owner, identity), "Network role capture");
         var snapshot = captured.snapshot();
         if (snapshot.formed() != formed) {
             throw new IllegalArgumentException("Network source changed physical formation state");
@@ -161,24 +138,15 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
 
     @Override
     public void onFormedChanged(MachineLifecycleEvent.FormedChanged event) {
-        requireOwner(event);
-        if (attachedRuntime != null) {
-            attachedRuntime.revoke();
+        if (registration != null) {
+            registration.revoke();
         }
     }
 
     @Override
     public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
-        requireOwner(event);
         if (registration != null) {
             registration.close();
         }
-    }
-
-    private void requireOwner(MachineLifecycleEvent event) {
-        if (event.context().machine() != owner) {
-            throw new IllegalArgumentException("Network role belongs to another machine");
-        }
-        event.context().host().requireServerThread();
     }
 }

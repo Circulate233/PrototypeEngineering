@@ -2,8 +2,8 @@ package com.circulation.prototype_eng.api.recipe.scanning;
 
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
-import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.CompositeRecipePool;
+import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.ints.Int2ObjectAVLTreeMap;
@@ -14,10 +14,9 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -30,7 +29,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 
-/** Canonical pool/recipe identities and priority are frozen once. Each pool owns its discovery strategy. */
+/**
+ * Canonical pool/recipe identities and priority are frozen once. Each pool owns its discovery strategy.
+ */
 public final class RecipeCatalog {
     private static final int COMBINATION_CACHE_SIZE = 16;
     private static final int RETRY_INDEX_CACHE_SIZE = 64;
@@ -97,16 +98,21 @@ public final class RecipeCatalog {
         return orderedRecipes;
     }
 
-    /** Resolves transient retry hints against this catalog's exact canonical definition. */
+    /**
+     * Resolves transient retry hints against this catalog's exact canonical definition.
+     */
     public @Nullable MachineRecipe recipe(ResourceLocation id) {
         return recipes.get(Objects.requireNonNull(id));
     }
 
-    /** Owner capture for a retry whose caller guarantees stable canonical fixed inputs. */
+    /**
+     * Owner capture for a retry whose caller guarantees stable canonical fixed inputs.
+     */
     @SuppressWarnings("ReturnOfInnerClass") // The keyed capture retains this exact owner's quantity and revision proof.
     public synchronized RecipeCandidateIndex.Cursor beginFixedInputCandidates(MachineRecipe recipe, MachineInstance machine,
                                                                               Set<ResourceLocation> groups) {
-        if (recipes.get(Objects.requireNonNull(recipe).id()) != recipe) throw new IllegalArgumentException("Foreign retry recipe");
+        if (recipes.get(Objects.requireNonNull(recipe).id()) != recipe)
+            throw new IllegalArgumentException("Foreign retry recipe");
         var index = retryIndexes.getAndMoveToLast(recipe);
         if (index == null) {
             index = ResourceRecipeIndex.forFixedInputs(ObjectLists.singleton(recipe), _ -> true);
@@ -116,7 +122,9 @@ public final class RecipeCatalog {
         return index.beginLookup(machine, groups, ObjectLists.singleton(recipe));
     }
 
-    /** Candidates are in canonical order; rotate by a stable ID without copying their list. */
+    /**
+     * Candidates are in canonical order; rotate by a stable ID without copying their list.
+     */
     int candidateOffset(List<MachineRecipe> candidates, @Nullable ResourceLocation previous) {
         if (previous == null || candidates.size() < 2) return 0;
         var recipe = recipes.get(previous);
@@ -131,12 +139,16 @@ public final class RecipeCatalog {
         return low == candidates.size() ? 0 : low;
     }
 
-    /** Shared immutable summary; scanners combine it with their own factory/preparation guarantee. */
+    /**
+     * Shared immutable summary; scanners combine it with their own factory/preparation guarantee.
+     */
     public boolean supportsStableFixedInputLowerBounds() {
         return stableFixedInputLowerBounds;
     }
 
-    /** Lazy immutable static-ID view, visited by the original work budget. */
+    /**
+     * Lazy immutable static-ID view, visited by the original work budget.
+     */
     public List<RecipePool> poolsFor(MachineType type) {
         var ids = Objects.requireNonNull(type).recipePoolIds();
         return ObjectLists.unmodifiable(new AbstractObjectList<>() {
@@ -188,7 +200,8 @@ public final class RecipeCatalog {
         return beginCandidates(selection, groups, indexes, () -> true);
     }
 
-    @SuppressWarnings("ReturnOfInnerClass") // The scanner captures the exact source generation for this pass.
+    @SuppressWarnings("ReturnOfInnerClass")
+        // The scanner captures the exact source generation for this pass.
     CandidatePass beginCandidates(Selection selection, Set<ResourceLocation> groups, List<RecipeCandidateIndex> indexes,
                                   BooleanSupplier definitionCurrent) {
         if (Objects.requireNonNull(selection).catalog != this)
@@ -196,11 +209,9 @@ public final class RecipeCatalog {
         return new CandidatePass(selection.machine, groups, indexes, selection, definitionCurrent);
     }
 
-    private record PoolMembers(List<MachineRecipe> recipes, ReferenceOpenHashSet<MachineRecipe> identities,
-                               Map<ResourceLocation, List<MachineRecipe>> groups) {
-    }
-
-    /** Compiled on first discovery demand and shared through a bounded identity cache. */
+    /**
+     * Compiled on first discovery demand and shared through a bounded identity cache.
+     */
     private synchronized @Nullable RecipePool combined(List<RecipePool> selectedPools) {
         if (selectedPools.isEmpty()) return null;
         if (selectedPools.size() == 1) return selectedPools.getFirst();
@@ -220,15 +231,22 @@ public final class RecipeCatalog {
         return pool;
     }
 
+    private record PoolMembers(List<MachineRecipe> recipes, ReferenceOpenHashSet<MachineRecipe> identities,
+                               Map<ResourceLocation, List<MachineRecipe>> groups) {
+    }
+
     private record Combination(List<RecipePool> providers, CompositeRecipePool pool) {
         private boolean matches(List<RecipePool> selected) {
             if (providers.size() != selected.size()) return false;
-            for (int index = 0; index < providers.size(); index++) if (providers.get(index) != selected.get(index)) return false;
+            for (int index = 0; index < providers.size(); index++)
+                if (providers.get(index) != selected.get(index)) return false;
             return true;
         }
     }
 
-    /** Frozen selected pools identify membership; selection does not enumerate every recipe each pass. */
+    /**
+     * Frozen selected pools identify membership; selection does not enumerate every recipe each pass.
+     */
     public final class Selection {
         private final RecipeCatalog catalog = RecipeCatalog.this;
         private final MachineInstance machine;
@@ -300,18 +318,18 @@ public final class RecipeCatalog {
         }
     }
 
-    /** Pool opinions union first; existing external index opinions intersect that same ordered scope. */
+    /**
+     * Pool opinions union first; existing external index opinions intersect that same ordered scope.
+     * Group and index inputs are borrowed until the pass finishes; callbacks must not modify them.
+     */
     public final class CandidatePass {
         private final MachineInstance machine;
         private final BooleanSupplier definitionCurrent;
-        private final Iterator<ResourceLocation> inputGroups;
-        private final Iterator<RecipeCandidateIndex> inputIndexes;
-        private final ObjectLinkedOpenHashSet<ResourceLocation> groupCopy = new ObjectLinkedOpenHashSet<>();
-        private final ObjectArrayList<RecipeCandidateIndex> indexCopy = new ObjectArrayList<>();
+        private final Set<ResourceLocation> groups;
+        private final List<RecipeCandidateIndex> indexes;
         private Selection selection;
         private SelectionCapture selectionCapture;
-        private Set<ResourceLocation> frozenGroups;
-        private int phase;
+        private int phase = 1;
         private int poolIndex;
         private RecipePool pool;
         private PoolMembers poolMembers;
@@ -349,8 +367,8 @@ public final class RecipeCatalog {
                               @Nullable Selection selection, BooleanSupplier definitionCurrent) {
             this.machine = Objects.requireNonNull(machine);
             this.definitionCurrent = Objects.requireNonNull(definitionCurrent);
-            inputGroups = Objects.requireNonNull(groups).iterator();
-            inputIndexes = Objects.requireNonNull(indexes).iterator();
+            this.groups = groups;
+            this.indexes = indexes;
             this.selection = selection;
         }
 
@@ -360,18 +378,6 @@ public final class RecipeCatalog {
             if (phase == 7) return true;
             if (stale) return false;
             while (true) {
-                if (phase == 0) {
-                    while (inputGroups.hasNext()) {
-                        if (!budget.take()) return false;
-                        groupCopy.add(Objects.requireNonNull(inputGroups.next()));
-                    }
-                    while (inputIndexes.hasNext()) {
-                        if (!budget.take()) return false;
-                        indexCopy.add(Objects.requireNonNull(inputIndexes.next()));
-                    }
-                    frozenGroups = ObjectSets.unmodifiable(groupCopy);
-                    phase = 1;
-                }
                 if (phase == 1) {
                     if (selection == null) {
                         if (selectionCapture == null) {
@@ -391,7 +397,7 @@ public final class RecipeCatalog {
                             pool = Objects.requireNonNull(selection.combinedPool());
                             poolIndex = 1;
                             poolMembers = members.get(pool);
-                            poolLookup = pool.beginCandidates(machine, frozenGroups);
+                            poolLookup = pool.beginCandidates(machine, groups);
                             poolReady = poolLookup == null;
                             if (poolLookup != null) poolObserved.add(poolLookup);
                             else fallback();
@@ -426,11 +432,11 @@ public final class RecipeCatalog {
                                     ? !selection.accepts(machine, pendingRecipe) : !poolMembers.identities.contains(pendingRecipe)))
                                     throw new IllegalArgumentException("Pool candidate is foreign or outside its pool: " + pendingRecipe.id());
                                 pendingGroups = pendingRecipe.recipeGroups().iterator();
-                                groupAccepted = frozenGroups.isEmpty();
+                                groupAccepted = groups.isEmpty();
                             }
                             while (!groupAccepted && pendingGroups.hasNext()) {
                                 if (!budget.take()) return false;
-                                groupAccepted = frozenGroups.contains(pendingGroups.next());
+                                groupAccepted = groups.contains(pendingGroups.next());
                             }
                             if (groupAccepted) {
                                 chosen.put(priority.getInt(pendingRecipe), pendingRecipe);
@@ -456,11 +462,11 @@ public final class RecipeCatalog {
                     phase = scope.isEmpty() ? 6 : 4;
                 }
                 if (phase == 4) {
-                    while (indexCursor < indexCopy.size()) {
+                    while (indexCursor < indexes.size()) {
                         if (!definitionCurrent.getAsBoolean()) return false;
                         if (lookup == null) {
                             if (!budget.take()) return false;
-                            lookup = Objects.requireNonNull(indexCopy.get(indexCursor).beginLookup(machine, frozenGroups, scope));
+                            lookup = Objects.requireNonNull(indexes.get(indexCursor).beginLookup(machine, groups, scope));
                             observed.add(lookup);
                         }
                         if (!definitionCurrent.getAsBoolean()) return false;
@@ -510,16 +516,19 @@ public final class RecipeCatalog {
         }
 
         private void fallback() {
-            if (poolMembers == null) throw new IllegalStateException("Composite pool must preserve its own child fallbacks");
-            if (frozenGroups.isEmpty()) poolOpinion = poolMembers.recipes.iterator();
-            else fallbackGroups = frozenGroups.iterator();
+            if (poolMembers == null)
+                throw new IllegalStateException("Composite pool must preserve its own child fallbacks");
+            if (groups.isEmpty()) poolOpinion = poolMembers.recipes.iterator();
+            else fallbackGroups = groups.iterator();
         }
 
         public boolean current() {
             return !stale && definitionCurrent.getAsBoolean();
         }
 
-        /** Rechecks every observed live opinion, preserving partial discovery while proofs stay current. */
+        /**
+         * Rechecks every observed live opinion, preserving partial discovery while proofs stay current.
+         */
         @SuppressWarnings("ReturnOfInnerClass") // Validation retains the observations of this exact pass.
         public RecipeCandidateIndex.Validation beginValidation() {
             return new RecipeCandidateIndex.Validation() {
@@ -568,7 +577,9 @@ public final class RecipeCatalog {
             };
         }
 
-        /** Keep selected pools/groups, but recapture both pool strategies and external live indexes. */
+        /**
+         * Keep selected pools/groups, but recapture both pool strategies and external live indexes.
+         */
         public void restartLiveIndexes() {
             inventoryBounds = new Reference2IntOpenHashMap<>();
             if (phase < 2) return;
@@ -602,10 +613,12 @@ public final class RecipeCatalog {
 
         public List<MachineRecipe> result() {
             if (phase != 7 || !current()) throw new IllegalStateException("Candidate pass is incomplete or stale");
-            return ObjectLists.unmodifiable(result);
+            return result;
         }
 
-        /** A union takes the least restrictive pool ceiling; observations still require fresh validation. */
+        /**
+         * A union takes the least restrictive pool ceiling; observations still require fresh validation.
+         */
         public int inputParallelismLimit(MachineRecipe recipe) {
             if (phase != 7 || !current()) throw new IllegalStateException("Candidate pass is incomplete or stale");
             return inventoryBounds.getOrDefault(recipe, Integer.MAX_VALUE);

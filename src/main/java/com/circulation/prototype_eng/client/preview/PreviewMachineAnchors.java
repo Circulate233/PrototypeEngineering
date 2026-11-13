@@ -10,11 +10,11 @@ import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.client.render.StructureRenderAnchors;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.ints.IntLists;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
@@ -23,7 +23,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 
-/** Bounded declaration-only preview selection; occurrence origins already carry the C root rotation. */
+/**
+ * Bounded declaration-only preview selection; occurrence origins already carry the C root rotation.
+ */
 public final class PreviewMachineAnchors {
     private static final int MAX_ANCHORS = 1_048_576;
     private final StructurePreviewModel model;
@@ -68,7 +70,9 @@ public final class PreviewMachineAnchors {
             binding.offsetX() * east.getZOffset() + binding.offsetY() * up.getZOffset() + binding.offsetZ() * south.getZOffset());
     }
 
-    /** Each declaration, path edge and emitted slice spends one visit, including absent/zero-slice bindings. */
+    /**
+     * Each declaration, path edge and emitted slice spends one visit, including absent/zero-slice bindings.
+     */
     public int advance(int visits) {
         if (visits < 0) throw new IllegalArgumentException("Negative model anchor visits");
         int spent = 0;

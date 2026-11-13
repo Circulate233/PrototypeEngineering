@@ -20,18 +20,22 @@ public final class ResearchDiskImport {
     }
 
     public static Result precheck(ResearchDiskData data, DataCenterResearchSnapshot target, TeamResearchView cloud) {
+        return evaluate(data, target, cloud).result();
+    }
+
+    private static Candidate evaluate(ResearchDiskData data, DataCenterResearchSnapshot target, TeamResearchView cloud) {
         Objects.requireNonNull(data, "Research disk data");
         Objects.requireNonNull(target, "Target database snapshot");
         data.requireRegistry(Objects.requireNonNull(cloud, "Research cloud").registry());
         if (data.tier() > target.level()) {
-            return new Result(Status.DISK_TIER_TOO_HIGH, null);
+            return new Candidate(new Result(Status.DISK_TIER_TOO_HIGH, null), target);
         }
         // Reuse the actual backend's whole-batch capacity and mutex rules without publishing to it.
         var candidate = ResearchDataCenter.restore(target, cloud.registry(), () -> {
         }, () -> {
         });
         var result = candidate.storeFromDisk(data.entries(), cloud);
-        return new Result(result.accepted() ? Status.ACCEPTED : Status.DATA_CENTER_REJECTED, result);
+        return new Candidate(new Result(result.accepted() ? Status.ACCEPTED : Status.DATA_CENTER_REJECTED, result), candidate.snapshot());
     }
 
     /**
@@ -39,20 +43,18 @@ public final class ResearchDiskImport {
      */
     public static Preparation prepare(UUID operationId, UUID actor, String teamId, ResearchDiskData data,
                                       DataCenterResearchSnapshot target, TeamResearchView cloud) {
-        var result = precheck(data, target, cloud);
+        var candidate = evaluate(data, target, cloud);
+        var result = candidate.result();
         if (!result.accepted()) return new Preparation(result, null);
         if (!Objects.requireNonNull(teamId).equals(cloud.teamId()))
             throw new IllegalArgumentException("Disk import belongs to another team");
-        var candidate = ResearchDataCenter.restore(target, cloud.registry(), () -> {
-        }, () -> {
-        });
-        var checked = candidate.storeFromDisk(data.entries(), cloud);
-        if (!checked.accepted())
-            throw new IllegalStateException("Disk import candidate changed during pure preparation");
-        return new Preparation(result, new ResearchDiskCommit(operationId, actor, teamId, data.tier(), data.entries(), target, candidate.snapshot()));
+        return new Preparation(result, new ResearchDiskCommit(operationId, actor, teamId, data.tier(), data.entries(), target, candidate.contents()));
     }
 
     public enum Status {ACCEPTED, DISK_TIER_TOO_HIGH, DATA_CENTER_REJECTED}
+
+    private record Candidate(Result result, DataCenterResearchSnapshot contents) {
+    }
 
     public record Preparation(Result result, @Nullable ResearchDiskCommit commit) {
         public Preparation {

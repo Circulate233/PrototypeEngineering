@@ -8,7 +8,9 @@ import software.bernie.geckolib3.geo.render.built.GeoModel;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 
-/** An instance is held by one exact cache slot; retirement cannot insert it into a successor slot. */
+/**
+ * An instance is held by one exact cache slot; retirement cannot insert it into a successor slot.
+ */
 public final class GeckoGeoModelInstances {
     private GeckoGeoModelInstances() {
     }
@@ -32,7 +34,9 @@ public final class GeckoGeoModelInstances {
             this.baker = baker;
         }
 
-        /** Serial entry also protects the per-instance primitive cube and estimate caches. */
+        /**
+         * Serial entry also protects the per-instance primitive cube and estimate caches.
+         */
         public synchronized <T> T bake(GeckoRenderRequest request, ModelOperation<T> operation) throws Exception {
             if (!base.sameBase(request)) throw new IllegalArgumentException("Foreign model instance base");
             if (model == null) model = new GeoModelLoader().loadModel(resources, request.binding().geo());

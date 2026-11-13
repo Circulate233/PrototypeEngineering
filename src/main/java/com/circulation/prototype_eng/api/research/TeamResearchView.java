@@ -64,7 +64,7 @@ public final class TeamResearchView {
             }
             targets.put(id, target);
         }
-        this.startableResearchTargets = ResearchSnapshots.levels(targets);
+        this.startableResearchTargets = targets;
     }
 
     public ResearchRegistry registry() {
@@ -117,6 +117,6 @@ public final class TeamResearchView {
                 copy.put(id, level);
             }
         }
-        return ResearchSnapshots.levels(copy);
+        return copy;
     }
 }

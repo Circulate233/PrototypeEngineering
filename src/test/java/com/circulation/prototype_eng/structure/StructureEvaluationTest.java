@@ -12,6 +12,7 @@ import com.circulation.prototype_eng.api.structure.StructureQuery;
 import com.circulation.prototype_eng.api.structure.StructureReadPlan;
 import com.circulation.prototype_eng.api.structure.StructureReadSource;
 import com.circulation.prototype_eng.api.structure.StructureSnapshot;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
@@ -45,7 +46,7 @@ class StructureEvaluationTest {
     private static StructurePlan plan(String name, StructurePredicate predicate) {
         var structure = new TemplateStructure(id(name), BlockOrientation.NORTH_UP,
             new BlockPos(1, 0, 0), false,
-            new StructurePattern(Map.of(BlockPos.ORIGIN, predicate)), List.of(), List.of());
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(BlockPos.ORIGIN, predicate))), List.of(), List.of());
         return new StructurePlan(structure, BlockPos.ORIGIN, BlockOrientation.NORTH_UP);
     }
 
@@ -103,7 +104,7 @@ class StructureEvaluationTest {
         StructureQuery<String> query = stringQuery("slices");
         var structure = new SliceStructure(id("slices"), BlockOrientation.NORTH_UP,
             new BlockPos(1, 0, 0), false,
-            new StructurePattern(Map.of(BlockPos.ORIGIN, marker(query, "body"))),
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(BlockPos.ORIGIN, marker(query, "body")))),
             1, 3, new BlockPos(1, 0, 0), List.of(), List.of());
         var plan = new StructurePlan(structure, BlockPos.ORIGIN, BlockOrientation.NORTH_UP);
         BlockPos first = new BlockPos(1, 0, 0);
@@ -163,7 +164,7 @@ class StructureEvaluationTest {
     }
 
     @Test
-    void mutableFactsUseTheirExplicitEquivalenceAndBothCaptureAndDeliveryStayDetached() {
+    void mutableWorldFactsUseDetachedCapturesAndExplicitEquivalence() {
         StructureQuery<MutableFact> query = new StructureQuery<>(id("mutable_fact"),
             (_, _) -> fail("A logical fake must never invoke a World reader"),
             fact -> new MutableFact(fact.amount, fact.slots.clone()),
@@ -188,8 +189,6 @@ class StructureEvaluationTest {
         MutableFact delivered = snapshot.read(query, position);
         assertNotNull(delivered);
         assertNotSame(replacement, delivered);
-        delivered.amount = 123;
-        delivered.slots[0] = 456;
         assertTrue(evaluation.isCurrent(source));
 
         replacement.slots[0] = 8;

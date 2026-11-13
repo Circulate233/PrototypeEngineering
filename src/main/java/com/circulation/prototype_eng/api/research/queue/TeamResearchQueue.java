@@ -174,6 +174,7 @@ public final class TeamResearchQueue {
     /**
      * Each station contributes one segment limit: min(available, limit * stationCount, remaining).
      * Callers must acquire the stations' logical leases independently. No tokens are acquired here.
+     * Available quantities are borrowed read-only for this synchronous planning call.
      */
     public Optional<SegmentPlan> planSegment(Key expectedHead, Collection<UUID> stationIds,
                                              Object2LongMap<NetworkResourceType> availableResources, long worldTime) {
@@ -191,8 +192,8 @@ public final class TeamResearchQueue {
             }
         }
         var stations = stations(stationIds);
-        var available = NetworkResourceModifier.copyResources(availableResources);
-        for (var type : available.keySet()) {
+        NetworkResourceModifier.validateResources(availableResources);
+        for (var type : availableResources.keySet()) {
             resources.canonical(type);
         }
         var stage = registry.require(head.key().researchId()).stageForLevel(head.key().targetLevel());
@@ -211,7 +212,7 @@ public final class TeamResearchQueue {
                 continue;
             }
             long cap = Math.multiplyExact(stage.segmentGrantLimits().getLong(type), (long) stations.size());
-            long grant = Math.min(remaining, Math.min(available.getLong(type), cap));
+            long grant = Math.min(remaining, Math.min(availableResources.getOrDefault(type, 0L), cap));
             if (grant > 0) {
                 grants.put(type, grant);
                 ceiling.addTo(type, grant);
@@ -224,7 +225,7 @@ public final class TeamResearchQueue {
             return Optional.empty();
         }
         return Optional.of(new SegmentPlan(this, head, stations, epoch, worldTime, resourceProgressSnapshot(),
-            NetworkResourceModifier.copyResources(ceiling), NetworkResourceModifier.copyResources(grants),
+            ceiling, grants,
             stage.materialRequirements(), complete));
     }
 
@@ -511,13 +512,16 @@ public final class TeamResearchQueue {
         }
     }
 
+    /**
+     * Grant amounts are borrowed immutable data from the completed segment plan.
+     */
     public record GrantResult(Entry entry, ObjectSet<UUID> stationIds,
                               Object2LongMap<NetworkResourceType> grantedResources,
                               boolean completedResearch) {
         public GrantResult {
             Objects.requireNonNull(entry);
             stationIds = stations(stationIds);
-            grantedResources = NetworkResourceModifier.copyResources(grantedResources);
+            NetworkResourceModifier.validateResources(grantedResources);
         }
     }
 

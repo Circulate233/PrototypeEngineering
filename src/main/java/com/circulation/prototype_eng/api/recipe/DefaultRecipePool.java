@@ -1,10 +1,10 @@
 package com.circulation.prototype_eng.api.recipe;
 
-import com.circulation.prototype_eng.api.machine.MachineType;
-import com.circulation.prototype_eng.api.machine.MachineInstance;
-import com.circulation.prototype_eng.api.recipe.scanning.ResourceRecipeIndex;
-import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
 import ae2.api.stacks.AEKey2LongMap;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
+import com.circulation.prototype_eng.api.recipe.scanning.ResourceRecipeIndex;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
@@ -15,7 +15,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-/** General immutable pool; stable input paths share a cached inventory index, others retain ordered fallback. */
+/**
+ * General immutable pool; stable input paths share a cached inventory index, others retain ordered fallback.
+ */
 public final class DefaultRecipePool implements RecipePool {
     private final ResourceLocation id;
     private final String translationKey;
@@ -93,7 +95,9 @@ public final class DefaultRecipePool implements RecipePool {
         return existingJeiPageId;
     }
 
-    /** Immutable addon binding; the external category is resolved when HEI registration is complete. */
+    /**
+     * Immutable addon binding; the external category is resolved when HEI registration is complete.
+     */
     public DefaultRecipePool withExistingJeiPage(@Nullable String categoryUid) {
         return new DefaultRecipePool(id, translationKey, recipes, machines, categoryUid);
     }

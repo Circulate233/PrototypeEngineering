@@ -18,22 +18,6 @@ import java.util.List;
  * PN research gating and parallel numeric occupancy share the real stage's commit and compensation.
  */
 public final class NetworkRecipeWorkSystem implements RecipeRequirementSystem<NetworkRecipeWork.Binding> {
-    @Override
-    public boolean requiresOwnerThread() {
-        return true;
-    }
-
-    @Override
-    public Object crossRecipeTickIo(NetworkRecipeWork.Binding payload) {
-        // Combined declarations are recreated per process; numeric equality, not binding identity, defines tick IO.
-        return payload.requirements().resources();
-    }
-
-    @Override
-    public boolean crossRecipeRetimesTickIo(NetworkRecipeWork.Binding payload) {
-        return true;
-    }
-
     private static RequirementTransaction acquire(RecipeProcess process, NetworkRecipeWork.Binding binding,
                                                   boolean occupying, boolean checkCapacity) {
         var device = process.owner().components().get(binding.device());
@@ -67,7 +51,23 @@ public final class NetworkRecipeWorkSystem implements RecipeRequirementSystem<Ne
     }
 
     private static RequirementTransaction rejected(ProcessResult result) {
-        return ReservedRequirement.frozen(result, List.of());
+        return new ReservedRequirement(result, List.of());
+    }
+
+    @Override
+    public boolean requiresOwnerThread() {
+        return true;
+    }
+
+    @Override
+    public Object crossRecipeTickIo(NetworkRecipeWork.Binding payload) {
+        // Combined declarations are recreated per process; numeric equality, not binding identity, defines tick IO.
+        return payload.requirements().resources();
+    }
+
+    @Override
+    public boolean crossRecipeRetimesTickIo(NetworkRecipeWork.Binding payload) {
+        return true;
     }
 
     @Override

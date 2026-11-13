@@ -1,6 +1,8 @@
 package com.circulation.prototype_eng.container;
 
-/** Input identities come from a completed frame, never directly from a newly received mapping. */
+/**
+ * Input identities come from a completed frame, never directly from a newly received mapping.
+ */
 public final class ResourceHatchPresentation {
     private long layoutRevision;
     private long presentedRevision;

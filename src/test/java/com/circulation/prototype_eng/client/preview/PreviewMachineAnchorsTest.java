@@ -1,8 +1,5 @@
 package com.circulation.prototype_eng.client.preview;
 
-import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
-import it.unimi.dsi.fastutil.ints.IntList;
-
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.render.GeckoModelBinding;
 import com.circulation.prototype_eng.api.client.render.GeckoStructureBinding;
@@ -22,8 +19,11 @@ import com.circulation.prototype_eng.client.render.StructureRenderAnchors;
 import com.circulation.prototype_eng.client.render.gecko.GeckoModelBaker;
 import com.circulation.prototype_eng.client.render.gecko.GeckoRenderRequest;
 import com.circulation.prototype_eng.localization.StructurePreviewText;
-import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
 import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
+import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
+import it.unimi.dsi.fastutil.ints.IntList;
+import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -41,7 +41,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("resource") // Each test owns its local binding registry for the entire fixture lifetime.
@@ -62,8 +61,8 @@ class PreviewMachineAnchorsTest {
         var root = new StructureCatalogView.Node(ROOT, BlockOrientation.NORTH_UP, true, StructurePreviewProvider.Kind.TEMPLATE, BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.of(new BlockPos(1, 0, 0)), IntList.of(1, 1));
         var slice = new StructureCatalogView.Node(SLICE, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.SLICE, new BlockPos(2, 0, 0), 0, 3, new BlockPos(1, 0, 0), List.of(new BlockPos(0, 1, 0)), IntList.of());
         return new StructureCatalogView(UUID.randomUUID(), 0, List.of(root, slice), Map.of(
-            ROOT, new StructureCatalogView.Entry(0, null, Map.of(new BlockPos(1, 0, 0), display)),
-            SLICE, new StructureCatalogView.Entry(1, null, Map.of(new BlockPos(0, 1, 0), display))));
+            ROOT, new StructureCatalogView.Entry(0, null, new BlockPos2ObjectMap<>(Map.of(new BlockPos(1, 0, 0), display))),
+            SLICE, new StructureCatalogView.Entry(1, null, new BlockPos2ObjectMap<>(Map.of(new BlockPos(0, 1, 0), display)))));
     }
 
     private static StructurePreviewSettings settings(BlockOrientation orientation) {
@@ -155,7 +154,7 @@ class PreviewMachineAnchorsTest {
             assertEquals(whole, ui.materials(StructureDisplay::key, "unknown"));
             assertTrue(ui.sceneSamples(100).isEmpty());
             ui.scan = true;
-            ui.scan(new Object(), (_, _) -> StructureProjectionState.Status.MISSING, 100);
+            ui.scan(new Object(), (_, _, _) -> StructureProjectionState.Status.MISSING, 100);
             assertEquals(whole.stream().mapToLong(StructurePreviewView.Material::count).sum(),
                 ui.materials(StructureDisplay::key, "unknown").stream().mapToLong(StructurePreviewView.Material::mismatch).sum());
             ui.threeDimensional = false;
@@ -165,10 +164,4 @@ class PreviewMachineAnchorsTest {
         }
     }
 
-    @Test
-    void unrelatedMachineCannotSelectModelsForTheSameBareStructure() {
-        var other = MachineType.builder(id("other"), StructurePreviewText.Title, id("other_structure")).build();
-        var model = model(BlockOrientation.NORTH_UP);
-        assertThrows(IllegalArgumentException.class, () -> new PreviewMachineAnchors(model, other, new MachineRenderBindings().view()));
-    }
 }

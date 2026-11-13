@@ -2,10 +2,10 @@ package com.circulation.prototype_eng.api.registration;
 
 import com.circulation.prototype_eng.api.machine.MachineRuntimeRegistrationEvent;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistrationEvent;
+import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistrationEvent;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarationRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistrationEvent;
-import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistrationEvent;
 import com.circulation.prototype_eng.api.research.ResearchRegistrationEvent;
 import com.circulation.prototype_eng.api.research.ResearchServerConfigurationEvent;
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistrationEvent;
@@ -66,29 +66,53 @@ public final class DefinitionRegistrations {
         DECLARATIONS.deliver(event);
     }
 
-    public static void resources(Consumer<NetworkResourceRegistrationEvent> declaration) { RESOURCES.add(declaration); }
+    public static void resources(Consumer<NetworkResourceRegistrationEvent> declaration) {
+        RESOURCES.add(declaration);
+    }
 
-    public static void computerComponents(Consumer<NetworkComputerComponentRegistrationEvent> declaration) { COMPUTER_COMPONENTS.add(declaration); }
+    public static void computerComponents(Consumer<NetworkComputerComponentRegistrationEvent> declaration) {
+        COMPUTER_COMPONENTS.add(declaration);
+    }
 
-    public static void research(Consumer<ResearchRegistrationEvent> declaration) { RESEARCH.add(declaration); }
+    public static void research(Consumer<ResearchRegistrationEvent> declaration) {
+        RESEARCH.add(declaration);
+    }
 
-    public static void downloads(Consumer<ResearchItemDownloadRegistrationEvent> declaration) { DOWNLOADS.add(declaration); }
+    public static void downloads(Consumer<ResearchItemDownloadRegistrationEvent> declaration) {
+        DOWNLOADS.add(declaration);
+    }
 
-    public static void structurePredicates(Consumer<StructurePredicateRegistrationEvent> declaration) { STRUCTURE_PREDICATES.add(declaration); }
+    public static void structurePredicates(Consumer<StructurePredicateRegistrationEvent> declaration) {
+        STRUCTURE_PREDICATES.add(declaration);
+    }
 
-    public static void dispatch(NetworkResourceRegistrationEvent event) { RESOURCES.deliver(event); }
+    public static void dispatch(NetworkResourceRegistrationEvent event) {
+        RESOURCES.deliver(event);
+    }
 
-    public static void dispatch(NetworkComputerComponentRegistrationEvent event) { COMPUTER_COMPONENTS.deliver(event); }
+    public static void dispatch(NetworkComputerComponentRegistrationEvent event) {
+        COMPUTER_COMPONENTS.deliver(event);
+    }
 
-    public static void dispatch(ResearchRegistrationEvent event) { RESEARCH.deliver(event); }
+    public static void dispatch(ResearchRegistrationEvent event) {
+        RESEARCH.deliver(event);
+    }
 
-    public static void dispatch(ResearchItemDownloadRegistrationEvent event) { DOWNLOADS.deliver(event); }
+    public static void dispatch(ResearchItemDownloadRegistrationEvent event) {
+        DOWNLOADS.deliver(event);
+    }
 
-    public static void dispatch(StructurePredicateRegistrationEvent event) { STRUCTURE_PREDICATES.deliver(event); }
+    public static void dispatch(StructurePredicateRegistrationEvent event) {
+        STRUCTURE_PREDICATES.deliver(event);
+    }
 
-    public static void researchServer(Consumer<ResearchServerConfigurationEvent> declaration) { RESEARCH_SERVER.add(declaration); }
+    public static void researchServer(Consumer<ResearchServerConfigurationEvent> declaration) {
+        RESEARCH_SERVER.add(declaration);
+    }
 
-    public static void dispatch(ResearchServerConfigurationEvent event) { RESEARCH_SERVER.deliver(event); }
+    public static void dispatch(ResearchServerConfigurationEvent event) {
+        RESEARCH_SERVER.deliver(event);
+    }
 
     static final class Phase<E> {
         private final String name;
@@ -108,7 +132,8 @@ public final class DefinitionRegistrations {
             Objects.requireNonNull(event);
             ObjectArrayList<Consumer<E>> callbacks;
             synchronized (this) {
-                if (sealed) throw new IllegalStateException("Definition registration was already delivered for " + name);
+                if (sealed)
+                    throw new IllegalStateException("Definition registration was already delivered for " + name);
                 sealed = true;
                 callbacks = new ObjectArrayList<>(declarations);
                 declarations.clear();

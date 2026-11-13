@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ComponentDataTest {
     @Test
-    void mutableNbtCannotBypassRevisionsOrChangeCapturedSnapshots() {
+    void ownedValuesAndLaterWritesLeaveCapturedSnapshotsStable() {
         var data = new ComponentData();
         var nested = new NBTTagCompound();
         nested.setInteger("Count", 3);
@@ -31,7 +31,6 @@ class ComponentDataTest {
         var captured = data.snapshot();
         nested.setInteger("Count", 8);
         ((NBTTagCompound) Objects.requireNonNull(data.get("Nested"))).setInteger("Count", 9);
-        captured.data().getCompoundTag("Nested").setInteger("Count", 10);
         assertEquals(3, ((NBTTagCompound) Objects.requireNonNull(data.get("Nested"))).getInteger("Count"));
         assertEquals(3, captured.data().getCompoundTag("Nested").getInteger("Count"));
         assertEquals(1, data.revision());
@@ -39,8 +38,21 @@ class ComponentDataTest {
         data.merge(captured.data());
         data.remove("Absent");
         assertEquals(1, data.revision());
-        data.clear();
+        var changed = new NBTTagCompound();
+        var replacement = new NBTTagCompound();
+        replacement.setInteger("Other", 4);
+        changed.setTag("Nested", replacement);
+        changed.setInteger("Added", 5);
+        data.merge(changed);
+        replacement.setInteger("Other", 99);
+        var merged = (NBTTagCompound) Objects.requireNonNull(data.get("Nested"));
+        assertEquals(4, merged.getInteger("Other"));
+        assertFalse(merged.hasKey("Count"));
+        assertEquals(new NBTTagInt(5), data.get("Added"));
         assertEquals(2, data.revision());
+        assertEquals(3, captured.data().getCompoundTag("Nested").getInteger("Count"));
+        data.clear();
+        assertEquals(3, data.revision());
         assertEquals(3, captured.data().getCompoundTag("Nested").getInteger("Count"));
     }
 
@@ -48,7 +60,7 @@ class ComponentDataTest {
     void savedProcessDataRestoresIntoAnIndependentActualProcess() {
         var recipe = new MachineRecipe(new ResourceLocation("data_test", "recipe"), 4, List.of());
         var process = DataComponents.withProcessData(RecipeProcessFactory.STANDARD)
-            .create(new MachineInstance(), recipe, 42, ProbabilityTuning.defaultTuning());
+                                    .create(new MachineInstance(), recipe, 42, ProbabilityTuning.defaultTuning());
         var data = Objects.requireNonNull(process.components().get(DataComponents.PROCESS));
         data.set("Count", new NBTTagInt(7));
         var codec = RecipeProcessNbt.builder(recipe, "v1").component(DataComponents.PROCESS, DataComponents.PROCESS_CODEC).build();

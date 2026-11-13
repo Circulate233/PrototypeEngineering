@@ -1,5 +1,6 @@
 package pe.visual.examples;
 
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import ae2.api.crafting.PatternDetailsHelper;
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.stacks.AEFluidKey;
@@ -27,10 +28,9 @@ import com.circulation.prototype_eng.api.structure.StructureDefinition;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.structure.tool.StructureBuildPlan;
 import com.circulation.prototype_eng.block.DecorativeBlocks;
-import com.circulation.prototype_eng.block.MeAssemblyBlocks;
-import com.circulation.prototype_eng.storage.MePatternAssemblyBlockEntity;
-import com.circulation.prototype_eng.storage.MeResourceHatchBlockEntity;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
+import com.circulation.prototype_eng.block.MEAssemblyBlocks;
+import com.circulation.prototype_eng.storage.MEPatternAssemblyBlockEntity;
+import com.circulation.prototype_eng.storage.MEResourceHatchBlockEntity;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.block.Block;
 import net.minecraft.command.CommandBase;
@@ -60,27 +60,39 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
 
-/** Native run helpers. ME inputs are never seeded through a recipe-side storage shortcut. */
+/**
+ * Native run helpers. ME inputs are never seeded through a recipe-side storage shortcut.
+ */
 @Mod.EventBusSubscriber(modid = VisualExamples.MOD_ID)
-public final class MeAssemblyExamples {
+public final class MEAssemblyExamples {
     public static final List<String> NAMES = List.of("me_assemblies", "me_interface", "me_pattern", "me_colors", "me_parallel", "me_wide");
 
     public enum Text implements LocalizationEnum {
         JavaParallel, Kit, Patterns, Invalid, Edited, MeOnly, Resources, Pattern, Parallel, Groups, Group, Process,
         Check, GalleryEntry, GalleryReady;
-        @Override public String getTranslationKey() { return "pe_run_tests.me." + name().toLowerCase(Locale.ROOT); }
+
+        @Override
+        public String getTranslationKey() {
+            return "pe_run_tests.me." + name().toLowerCase(Locale.ROOT);
+        }
     }
 
-    private MeAssemblyExamples() {}
-    public static ResourceLocation id(String path) { return new ResourceLocation("pe_run_tests", path); }
+    private MEAssemblyExamples() {
+    }
+
+    public static ResourceLocation id(String path) {
+        return new ResourceLocation("pe_run_tests", path);
+    }
 
     @SubscribeEvent
     public static void parallelType(ParallelControllerRegistrationEvent event) {
         event.registry().register(new ParallelControllerType(VisualExamples.id("parallel_java"), Text.JavaParallel, 24, null));
     }
 
-    /** Geometry and admissible materials come from the actual script-registered structure. */
-    public static @Nullable Map<BlockPos, Block> placement(String requested) {
+    /**
+     * Geometry and admissible materials come from the actual script-registered structure.
+     */
+    public static @Nullable BlockPos2ObjectMap<Block> placement(String requested) {
         var id = new ResourceLocation(requested.contains(":") ? requested : "pe_run_tests:" + requested);
         if (!id.getNamespace().equals("pe_run_tests") || !NAMES.contains(id.getPath())) return null;
         var type = Objects.requireNonNull(MachineTypeRegistry.INSTANCE.get(id), "13 ME preinit script has not loaded");
@@ -88,7 +100,7 @@ public final class MeAssemblyExamples {
         var view = StructureCatalogView.capture(new StructureCatalog(List.of(new StructureDefinition(shape))), new UUID(0, 24), 0);
         var plan = StructureBuildPlan.expand(view, type.structureId(), BlockOrientation.NORTH_UP,
             it.unimi.dsi.fastutil.objects.Object2IntMaps.emptyMap());
-        var blocks = new Object2ObjectLinkedOpenHashMap<BlockPos, Block>(plan.cells().size() + 1);
+        var blocks = new BlockPos2ObjectMap<Block>(plan.cells().size() + 1);
         for (var cell : plan.cells()) {
             var display = Objects.requireNonNull(cell.display(), "ME example has unknown material");
             if (!display.complete()) throw new IllegalStateException("ME example has partial material choices");
@@ -97,7 +109,8 @@ public final class MeAssemblyExamples {
                 if (option.blockId().equals(new ResourceLocation("prototype_eng:parallel_controller_normal"))
                     || option.blockId().equals(new ResourceLocation("prototype_eng:block_casing_plain"))
                     || option.blockId().equals(new ResourceLocation("prototype_eng:me_input_assembly"))
-                    || option.blockId().equals(new ResourceLocation("prototype_eng:me_output_assembly"))) selected = option.blockId();
+                    || option.blockId().equals(new ResourceLocation("prototype_eng:me_output_assembly")))
+                    selected = option.blockId();
             }
             blocks.put(cell.position(), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(selected), "Missing ME example block " + selected));
         }
@@ -109,13 +122,14 @@ public final class MeAssemblyExamples {
         for (var name : NAMES) give(player, new ItemStack(VisualExamples.block(id(name) + "_controller")));
         give(player, new ItemStack(VisualExamples.block(CtmGalleryExamples.TYPE + "_controller")));
         for (var block : DecorativeBlocks.all()) give(player, new ItemStack(block));
-        for (var block : MeAssemblyBlocks.resources()) give(player, new ItemStack(block, 3));
-        give(player, new ItemStack(MeAssemblyBlocks.pattern(), 2));
+        for (var block : MEAssemblyBlocks.resources()) give(player, new ItemStack(block, 3));
+        give(player, new ItemStack(MEAssemblyBlocks.pattern(), 2));
         for (var tier : List.of("normal", "reinforced", "elite", "super", "ultimate"))
             give(player, new ItemStack(VisualExamples.block("prototype_eng:parallel_controller_" + tier)));
         give(player, new ItemStack(VisualExamples.block(VisualExamples.id("parallel_java").toString())));
         give(player, new ItemStack(VisualExamples.block(id("parallel_zs").toString())));
-        for (var name : List.of("input_hatch_4", "output_hatch_4")) give(player, new ItemStack(VisualExamples.block("prototype_eng:" + name), 4));
+        for (var name : List.of("input_hatch_4", "output_hatch_4"))
+            give(player, new ItemStack(VisualExamples.block("prototype_eng:" + name), 4));
         give(player, AEBlocks.CONTROLLER.stack());
         give(player, AEBlocks.CREATIVE_ENERGY_CELL.stack());
         give(player, AEBlocks.DRIVE.stack());
@@ -147,7 +161,8 @@ public final class MeAssemblyExamples {
             var outputs = new ObjectArrayList<GenericStack>();
             var redstone = Objects.requireNonNull(AEItemKey.of(Items.REDSTONE));
             for (var requirement : recipe.orderedRequirements()) {
-                if (!(requirement.payload() instanceof ResourceRequirement resource)) throw new IllegalStateException("Unexpected ME example requirement");
+                if (!(requirement.payload() instanceof ResourceRequirement resource))
+                    throw new IllegalStateException("Unexpected ME example requirement");
                 for (var input : resource.inputs()) if (!input.what().equals(redstone)) inputs.add(input);
                 outputs.addAll(resource.outputs());
             }
@@ -158,7 +173,7 @@ public final class MeAssemblyExamples {
     }
 
     private static void inspect(ICommandSender sender, TileEntity tile) {
-        if (tile instanceof MeResourceHatchBlockEntity resource) {
+        if (tile instanceof MEResourceHatchBlockEntity resource) {
             var storage = resource.storage();
             var output = storage.outputView();
             var node = resource.getActionableNode();
@@ -166,7 +181,7 @@ public final class MeAssemblyExamples {
                 node != null && node.isActive()));
             sender.sendMessage(Text.MeOnly.text(!tile.hasCapability(CapabilityItemHandler.ITEM_HANDLER_CAPABILITY, null)
                 && !tile.hasCapability(CapabilityFluidHandler.FLUID_HANDLER_CAPABILITY, null)));
-        } else if (tile instanceof MePatternAssemblyBlockEntity pattern) {
+        } else if (tile instanceof MEPatternAssemblyBlockEntity pattern) {
             var node = pattern.getActionableNode();
             sender.sendMessage(Text.Pattern.text(pattern.mode(), pattern.resourceColor(), pattern.patternPages(), pattern.patterns().size(),
                 pattern.getAvailablePatterns().size(), pattern.inputView().stacks().size(), pattern.catalystView().stacks().size(),
@@ -182,8 +197,9 @@ public final class MeAssemblyExamples {
                     var group = capture.groups().get(index);
                     sender.sendMessage(Text.Group.text(group.id().color(), group.id().partition(), group.hatches().resources().size()));
                 }
-                for (var work : machine.recipeHosts()) for (var process : work.activeProcesses())
-                    sender.sendMessage(Text.Process.text(process.recipe().id(), process.identity(), process.selectedInputGroup(), process.state()));
+                for (var work : machine.recipeHosts())
+                    for (var process : work.activeProcesses())
+                        sender.sendMessage(Text.Process.text(process.recipe().id(), process.identity(), process.selectedInputGroup(), process.state()));
             });
         } else sender.sendMessage(Text.Invalid.text());
     }
@@ -191,7 +207,10 @@ public final class MeAssemblyExamples {
     private static void boundary(MachineControllerHost host, ICommandSender sender, Consumer<MachineInstance> action) {
         host.readGuiAtBoundary(() -> {
             var machine = host.machine();
-            if (!host.formed() || machine == null) { sender.sendMessage(Text.Invalid.text()); return; }
+            if (!host.formed() || machine == null) {
+                sender.sendMessage(Text.Invalid.text());
+                return;
+            }
             action.accept(machine);
         });
     }
@@ -204,23 +223,42 @@ public final class MeAssemblyExamples {
     }
 
     public static final class Command extends CommandBase {
-        @Override public String getName() { return "pe_me_examples"; }
-        @Override public int getRequiredPermissionLevel() { return 2; }
-        @Override public String getUsage(ICommandSender sender) {
+        @Override
+        public String getName() {
+            return "pe_me_examples";
+        }
+
+        @Override
+        public int getRequiredPermissionLevel() {
+            return 2;
+        }
+
+        @Override
+        public String getUsage(ICommandSender sender) {
             return "/pe_me_examples kit|patterns | inspect x y z | color x y z TRANSPARENT|RED|BLUE | mark x y z slot key|clear amount | "
                 + "assert-parallel/assert-groups x y z expected | gallery-list/gallery-check x y z";
         }
 
-        @Override public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
-            if (args.length == 1 && args[0].equals("kit")) { giveKit(getCommandSenderAsPlayer(sender)); return; }
-            if (args.length == 1 && args[0].equals("patterns")) { patterns(getCommandSenderAsPlayer(sender)); return; }
+        @Override
+        public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
+            if (args.length == 1 && args[0].equals("kit")) {
+                giveKit(getCommandSenderAsPlayer(sender));
+                return;
+            }
+            if (args.length == 1 && args[0].equals("patterns")) {
+                patterns(getCommandSenderAsPlayer(sender));
+                return;
+            }
             if (args.length < 4) throw new WrongUsageException(getUsage(sender));
             var world = sender.getEntityWorld();
             var position = parseBlockPos(sender, args, 1, false);
             if (!world.isBlockLoaded(position, false)) throw new CommandException("Example target chunk is not loaded");
             var tile = world.getTileEntity(position);
             if (tile == null) throw new CommandException("No example tile at %s", position);
-            if (args[0].equals("inspect") && args.length == 4) { inspect(sender, tile); return; }
+            if (args[0].equals("inspect") && args.length == 4) {
+                inspect(sender, tile);
+                return;
+            }
             if (args[0].equals("gallery-list") || args[0].equals("gallery-check")) {
                 if (args.length != 4 || !(tile instanceof MachineControllerHost host) || !host.type().id().equals(CtmGalleryExamples.TYPE))
                     throw new CommandException("Expected the CTM gallery controller");
@@ -230,8 +268,9 @@ public final class MeAssemblyExamples {
                         sender.sendMessage(Text.GalleryEntry.text(panel.block(), position.add(rotation.apply(panel.origin()))));
                 } else {
                     var expected = Objects.requireNonNull(CtmGalleryExamples.placement(CtmGalleryExamples.NAME));
-                    for (var entry : expected.entrySet()) {
-                        var target = position.add(rotation.apply(entry.getKey()));
+                    for (var entries = expected.fastIterator(); entries.hasNext(); ) {
+                        var entry = entries.next();
+                        var target = position.add(rotation.apply(entry.getLongKey()));
                         if (!world.isBlockLoaded(target, false) || world.getBlockState(target).getBlock() != entry.getValue())
                             throw new CommandException("Gallery block is missing or unloaded at %s", target);
                     }
@@ -241,17 +280,19 @@ public final class MeAssemblyExamples {
             }
             if (args[0].equals("color") && args.length == 5) {
                 var player = getCommandSenderAsPlayer(sender);
-                if (!world.isBlockModifiable(player, position) || !(tile instanceof ResourceHatchGrouping grouped)) throw new CommandException("Target is not an editable resource chamber");
+                if (!world.isBlockModifiable(player, position) || !(tile instanceof ResourceHatchGrouping grouped))
+                    throw new CommandException("Target is not an editable resource chamber");
                 AEColor color = null;
                 for (var candidate : AEColor.VALUES) if (candidate.name().equalsIgnoreCase(args[4])) color = candidate;
-                if (color == null) throw new CommandException("Expected TRANSPARENT or one of the 16 resource group colors");
+                if (color == null)
+                    throw new CommandException("Expected TRANSPARENT or one of the 16 resource group colors");
                 grouped.setResourceColor(color);
                 sender.sendMessage(Text.Edited.text(grouped.resourceColor()));
                 return;
             }
             if (args[0].equals("mark") && args.length == 7) {
                 var player = getCommandSenderAsPlayer(sender);
-                if (!world.isBlockModifiable(player, position) || !(tile instanceof MeResourceHatchBlockEntity resource))
+                if (!world.isBlockModifiable(player, position) || !(tile instanceof MEResourceHatchBlockEntity resource))
                     throw new CommandException("Expected an editable ME input assembly/interface");
                 var storage = resource.storage();
                 if (storage.inputSlots() == 0) throw new CommandException("ME output assembly has no markers");
@@ -273,8 +314,10 @@ public final class MeAssemblyExamples {
             throw new WrongUsageException(getUsage(sender));
         }
 
-        @Override public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] args, @Nullable BlockPos target) {
-            if (args.length == 1) return getListOfStringsMatchingLastWord(args, "kit", "patterns", "inspect", "color", "mark", "assert-parallel", "assert-groups", "gallery-list", "gallery-check");
+        @Override
+        public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] args, @Nullable BlockPos target) {
+            if (args.length == 1)
+                return getListOfStringsMatchingLastWord(args, "kit", "patterns", "inspect", "color", "mark", "assert-parallel", "assert-groups", "gallery-list", "gallery-check");
             if (args.length == 5 && args[0].equals("color")) {
                 var colors = new ObjectArrayList<String>(AEColor.VALUES.length);
                 for (var color : AEColor.VALUES) colors.add(color.name());

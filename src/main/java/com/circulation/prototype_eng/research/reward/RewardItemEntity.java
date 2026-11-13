@@ -8,7 +8,9 @@ import net.minecraft.util.DamageSource;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.NotNull;
 
-/** A reward owns its stack until its delivery record is confirmed. */
+/**
+ * A reward owns its stack until its delivery record is confirmed.
+ */
 public final class RewardItemEntity extends EntityItem {
     public static final String PENDING_TAG = "DeliveryPending";
     private boolean pending;

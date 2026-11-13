@@ -18,6 +18,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import java.util.function.LongFunction;
 import java.util.function.Supplier;
 
@@ -55,7 +56,9 @@ public final class NetworkRuntime implements AutoCloseable {
         participants = new NetworkParticipants(this, resources, teams, ownerCheck);
     }
 
-    /** External devices attach to this same runtime and share its actual tick budgets. */
+    /**
+     * External devices attach to this same runtime and share its actual tick budgets.
+     */
     public NetworkParticipants participants() {
         return participants;
     }
@@ -91,6 +94,15 @@ public final class NetworkRuntime implements AutoCloseable {
      * The source and validation proof run only on the owner thread, never on a recipe worker.
      */
     public Registration register(MachineIdentityRegistry.Registration identity, Supplier<@Nullable Capture> source) {
+        Objects.requireNonNull(source);
+        return register(identity, _ -> source.get());
+    }
+
+    /**
+     * Supplies the identity already owned by this registration to the capture callback.
+     */
+    public Registration register(MachineIdentityRegistry.Registration identity,
+                                 Function<MachineIdentityRegistry.Registration, @Nullable Capture> source) {
         requireMutation();
         Objects.requireNonNull(identity);
         Objects.requireNonNull(source);
@@ -136,7 +148,7 @@ public final class NetworkRuntime implements AutoCloseable {
                 if (!registration.identity.unique()) {
                     continue;
                 }
-                var capture = registration.source.get();
+                var capture = registration.source.apply(registration.identity);
                 if (capture == null) {
                     continue;
                 }
@@ -253,7 +265,9 @@ public final class NetworkRuntime implements AutoCloseable {
         return Objects.requireNonNull(budgets.get(teamId));
     }
 
-    /** Includes the external suppliers on which ordinary machine budgets also depend. */
+    /**
+     * Includes the external suppliers on which ordinary machine budgets also depend.
+     */
     boolean authorized(Publication publication) {
         ownerCheck.run();
         if (published != publication || publication.revision != identities.revision()) return false;
@@ -292,11 +306,12 @@ public final class NetworkRuntime implements AutoCloseable {
     public static final class Registration implements AutoCloseable {
         private final NetworkRuntime runtime;
         private final MachineIdentityRegistry.Registration identity;
-        private final Supplier<@Nullable Capture> source;
+        private final Function<MachineIdentityRegistry.Registration, @Nullable Capture> source;
         private long nextWorkSequence;
         private volatile boolean active = true;
 
-        private Registration(NetworkRuntime runtime, MachineIdentityRegistry.Registration identity, Supplier<@Nullable Capture> source) {
+        private Registration(NetworkRuntime runtime, MachineIdentityRegistry.Registration identity,
+                             Function<MachineIdentityRegistry.Registration, @Nullable Capture> source) {
             this.runtime = runtime;
             this.identity = identity;
             this.source = source;
@@ -315,6 +330,10 @@ public final class NetworkRuntime implements AutoCloseable {
         public boolean allowsNetworkWork() {
             var state = state();
             return state == NetworkWorkState.ACTIVE_CENTER || state == NetworkWorkState.ACTIVE_DATA_CENTER || state == NetworkWorkState.ACTIVE_DEVICE;
+        }
+
+        void revoke() {
+            runtime.revoke();
         }
 
         /**

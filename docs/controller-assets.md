@@ -28,7 +28,7 @@ PNG 原样复制，JSON 仅将资源命名空间改为 `prototype_eng`，默认 
 
 ## 工位 GUI 素材
 
-`textures/gui/gui_controller_states.png` 原样迁入 PM 同名文件，默认 `MachineGui` 使用其中 (0,0) 的 89×33 工位背景与 (0,34) 的进度覆盖，按真实百分比裁剪覆盖宽度。背景和滚动条使用 AE2 控件/绘制能力；当前没有复制 PM 的 `gui_controller_a/b.png`、tab 或旧 ModularUI 滚动条素材。原固定 Idle、临时 4×4 库存、空扩展页的来源与 Java GUI 替代入口见[机器 GUI](machine-gui.md)。
+`textures/gui/gui_controller_states.png` 原样迁入 PM 同名文件，默认 `GuiMachine` 使用其中 (0,0) 的 89×33 工位背景与 (0,34) 的进度覆盖，按真实百分比裁剪覆盖宽度。背景和滚动条使用 AE2 控件/绘制能力；当前没有复制 PM 的 `gui_controller_a/b.png`、tab 或旧 ModularUI 滚动条素材。原固定 Idle、临时 4×4 库存、空扩展页的来源与 Java GUI 替代入口见[机器 GUI](machine-gui.md)。
 
 ## 方向工具模型、纹理与成就
 

@@ -12,7 +12,9 @@ import net.minecraftforge.registries.IForgeRegistryEntry;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/** Consumes one builder and one tool; even a tool's normal crafting container is consumed. */
+/**
+ * Consumes one builder and one tool; even a tool's normal crafting container is consumed.
+ */
 public final class BuilderToolFusionRecipe extends IForgeRegistryEntry.Impl<IRecipe> implements IRecipe {
     public BuilderToolFusionRecipe() {
         setRegistryName(new ResourceLocation(Tags.MOD_ID, "builder_tool_fusion"));
@@ -23,7 +25,8 @@ public final class BuilderToolFusionRecipe extends IForgeRegistryEntry.Impl<IRec
         for (int slot = 0; slot < inventory.getSizeInventory(); slot++) {
             var stack = inventory.getStackInSlot(slot);
             if (stack.isEmpty()) continue;
-            if (stack.getItem() instanceof StructureToolItem item && item.builder() && builder.isEmpty()) builder = stack;
+            if (stack.getItem() instanceof StructureToolItem item && item.builder() && builder.isEmpty())
+                builder = stack;
             else if (BuilderMiningTool.accepts(stack) && tool.isEmpty()) tool = stack;
             else return null;
         }
@@ -61,5 +64,6 @@ public final class BuilderToolFusionRecipe extends IForgeRegistryEntry.Impl<IRec
         return true;
     }
 
-    private record Inputs(ItemStack builder, ItemStack tool) { }
+    private record Inputs(ItemStack builder, ItemStack tool) {
+    }
 }

@@ -1,151 +1,56 @@
 package com.circulation.prototype_eng.api.storage;
 
-import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
-
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
-import it.unimi.dsi.fastutil.objects.AbstractObject2LongMap;
-import it.unimi.dsi.fastutil.objects.AbstractObjectSet;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
-import it.unimi.dsi.fastutil.objects.ObjectIterator;
-import it.unimi.dsi.fastutil.objects.ObjectSet;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
 
-import java.util.Map;
-import java.util.Objects;
-import java.util.function.ObjLongConsumer;
+/**
+ * Builds detached resource quantities. Completed maps are immutable by contract: producers stop
+ * writing after handing them off, and consumers must not modify their contents or entry views.
+ */
+public final class ImmutableResourceAmounts {
+    private static final AEKey2LongMap EMPTY = new AEKey2LongMap.OpenHashMap(0);
 
-/** Owned AEKey quantities whose entry views cannot mutate the captured values. */
-public final class ImmutableResourceAmounts extends Object2LongMaps.UnmodifiableMap<AEKey> implements AEKey2LongMap {
-    private static final ImmutableResourceAmounts EMPTY = new ImmutableResourceAmounts(new AEKeyLinkedOpenHashMap(0));
-    private final AEKey2LongMap owned;
-    private final ObjectSet<Object2LongMap.Entry<AEKey>> immutableEntries;
-
-    private ImmutableResourceAmounts(AEKey2LongMap owned) {
-        super(owned);
-        this.owned = owned;
-        immutableEntries = ObjectSets.unmodifiable(new EntryView(owned));
+    private ImmutableResourceAmounts() {
     }
 
-    public static ImmutableResourceAmounts empty() {
+    public static AEKey2LongMap empty() {
         return EMPTY;
     }
 
-    /** One-key planning does not need a hash table or a temporary mutable builder. */
-    public static ImmutableResourceAmounts single(AEKey key, long amount) {
-        Objects.requireNonNull(key);
+    public static AEKey2LongMap single(AEKey key, long amount) {
         if (amount < 0) throw new IllegalArgumentException("Negative resource snapshot amount");
-        return amount == 0 ? EMPTY : new ImmutableResourceAmounts(new SingleAmount(key, amount));
-    }
-
-    @SuppressWarnings("CloneableClassInSecureContext") // Singleton cloning retains the same immutable key/amount and exposes no backing storage.
-    private static final class SingleAmount extends Object2LongMaps.Singleton<AEKey> implements AEKey2LongMap {
-        private SingleAmount(AEKey key, long amount) { super(key, amount); }
-
-        @Override public long addTo(AEKey key, long increment) { throw new UnsupportedOperationException("Immutable resource quantities"); }
-        @Override public void forEachEntry(ObjLongConsumer<? super AEKey> action) { action.accept(key, value); }
-    }
-
-    /** Copies arbitrary external views; only this final owning type can safely be reused. */
-    public static ImmutableResourceAmounts copyOf(AEKey2LongMap source) {
-        Objects.requireNonNull(source);
-        if (source instanceof ImmutableResourceAmounts immutable) return immutable;
-        var builder = builder();
-        source.forEachEntry(builder::addTo);
-        return builder.build();
+        if (amount == 0) return EMPTY;
+        var result = new AEKey2LongMap.OpenHashMap(1);
+        result.put(key, amount);
+        return result;
     }
 
     public static Builder builder() {
         return new Builder();
     }
 
-    @Override
-    public long addTo(AEKey key, long increment) {
-        throw new UnsupportedOperationException("Immutable resource quantities");
-    }
-
-    @Override
-    public ObjectSet<Object2LongMap.Entry<AEKey>> object2LongEntrySet() {
-        return immutableEntries;
-    }
-
-    @Override
-    @Deprecated
-    @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
-    // Override the legacy boxed view too, so it cannot leak mutable entries.
-    public @NotNull ObjectSet<Map.Entry<AEKey, Long>> entrySet() {
-        return (ObjectSet) immutableEntries;
-    }
-
-    @Override
-    public void forEachEntry(ObjLongConsumer<? super AEKey> action) {
-        owned.forEachEntry(action);
-    }
-
-    /** Incremental owner-side copying; build transfers ownership in O(1) and closes this builder. */
+    /**
+     * The owner may add quantities until build(), then transfers the map without copying.
+     */
     public static final class Builder {
-        @Nullable
-        private AEKey2LongMap values = new AEKeyLinkedOpenHashMap(6);
+        private final AEKey2LongMap values = new AEKeyLinkedOpenHashMap(6);
 
         private Builder() {
         }
 
         public void addTo(AEKey key, long amount) {
-            var target = Objects.requireNonNull(values, "Resource snapshot builder is closed");
-            Objects.requireNonNull(key);
-            long previous = target.getLong(key);
+            long previous = values.getLong(key);
             if (amount > 0 && previous > Long.MAX_VALUE - amount || amount < 0 && previous < Long.MIN_VALUE - amount)
                 throw new ArithmeticException("Resource snapshot amount overflow");
-            target.addTo(key, amount);
+            values.addTo(key, amount);
         }
 
-        public ImmutableResourceAmounts build() {
-            var captured = Objects.requireNonNull(values, "Resource snapshot builder is closed");
-            values = null;
-            return captured.isEmpty() ? EMPTY : new ImmutableResourceAmounts(captured);
-        }
-    }
-
-    @SuppressWarnings("CloneableClassInSecureContext") // A cloned view still exposes only immutable detached entries.
-    private static final class EntryView extends AbstractObjectSet<Object2LongMap.Entry<AEKey>> {
-        private final AEKey2LongMap values;
-
-        private EntryView(AEKey2LongMap values) {
-            this.values = values;
-        }
-
-        @Override
-        public int size() {
-            return values.size();
-        }
-
-        @Override
-        public boolean contains(Object value) {
-            return values.object2LongEntrySet().contains(value);
-        }
-
-        @Override
-        @SuppressWarnings("ReturnOfInnerClass")
-        // The iterator exposes detached immutable entries, never the backing iterator.
-        public @NotNull ObjectIterator<Object2LongMap.Entry<AEKey>> iterator() {
-            var iterator = values.object2LongEntrySet().iterator();
-            return new ObjectIterator<>() {
-                @Override
-                public boolean hasNext() {
-                    return iterator.hasNext();
-                }
-
-                @Override
-                public Object2LongMap.Entry<AEKey> next() {
-                    var entry = iterator.next();
-                    // BasicEntry rejects both primitive and boxed setValue. Never expose the
-                    // backing map entry, including through arrays, streams or fastIterator.
-                    return new AbstractObject2LongMap.BasicEntry<>(entry.getKey(), entry.getLongValue());
-                }
-            };
+        /**
+         * Neither this builder nor the returned map may be modified after this handoff.
+         */
+        public AEKey2LongMap build() {
+            return values.isEmpty() ? EMPTY : values;
         }
     }
 }

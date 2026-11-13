@@ -7,7 +7,9 @@ import com.circulation.prototype_eng.api.storage.HatchTier;
 
 import java.util.Locale;
 
-/** Hatch screens use their original tier-specific block title, as PM's IKey.lang did. */
+/**
+ * Hatch screens use their original tier-specific block title, as PM's IKey.lang did.
+ */
 public record HatchGuiTitle(String translationKey) implements LocalizationEnum {
     public static HatchGuiTitle of(boolean energy, HatchMode mode, HatchTier tier) {
         return new HatchGuiTitle("tile." + Tags.MOD_ID + "." + (energy ? "energy_" : "")

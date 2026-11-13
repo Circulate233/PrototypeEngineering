@@ -28,7 +28,9 @@ public final class StructurePlan {
         this.reads = reads;
     }
 
-    /** Transform, maximal declaration and freeze each resume through the actual selected hooks. */
+    /**
+     * Transform, maximal declaration and freeze each resume through the actual selected hooks.
+     */
     public static StructureOperation<StructurePlan> beginCreate(MachineStructure definition, BlockPos controller, BlockOrientation orientation) {
         Objects.requireNonNull(definition);
         Objects.requireNonNull(orientation);
@@ -37,7 +39,9 @@ public final class StructurePlan {
         return beginCreate(actual, definition.beginTransform(rotation));
     }
 
-    /** Configured hosts may share completed canonical transforms; standalone calls keep their virtual path. */
+    /**
+     * Configured hosts may share completed canonical transforms; standalone calls keep their virtual path.
+     */
     public static StructureOperation<StructurePlan> beginCreate(StructureConfiguration configuration, BlockPos controller) {
         Objects.requireNonNull(configuration);
         Objects.requireNonNull(controller);
@@ -45,9 +49,6 @@ public final class StructurePlan {
         var orientation = configuration.orientation();
         var catalog = configuration.catalog();
         if (catalog == null || !definition.planReusable()) return beginCreate(definition, controller, orientation);
-        var canonical = catalog.get(definition.id());
-        if (canonical == null || canonical.shape() != definition)
-            throw new IllegalArgumentException("Plan definition is not canonical in its catalog generation");
         var rotation = StructureTransform.between(definition.orientation(), orientation);
         var transform = new StructureOperation<MachineStructure>() {
             @Nullable
@@ -110,7 +111,9 @@ public final class StructurePlan {
         return reads;
     }
 
-    /** Whether the actual transformed definition is safe to retain across independent attempts. */
+    /**
+     * Whether the actual transformed definition is safe to retain across independent attempts.
+     */
     public boolean planReusable() {
         return structure.planReusable();
     }

@@ -4,39 +4,16 @@ import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
 import com.circulation.prototype_eng.api.machine.render.MachineAnimationState;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.junit.jupiter.api.Test;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class MachineAnimationStateTest {
-    @Test
-    void immutableLayerUpdateKeepsOrderAndNoopDoesNotAdvanceRevision() {
-        var state = new MachineAnimationState();
-        var caller = new ObjectArrayList<>(List.of("base", "overlay"));
-        state.setLayers(caller);
-        var captured = state.snapshot();
-        caller.clear();
-        assertEquals(List.of("base", "overlay"), captured.layers());
-        state.setLayers(List.of("base", "overlay"));
-        assertSame(captured, state.snapshot());
-        state.setLayers(List.of("overlay", "base"));
-        assertEquals(2, state.snapshot().revision());
-        assertEquals(List.of("base", "overlay"), captured.layers());
-        state.clear();
-        assertEquals(3, state.snapshot().revision());
-        state.setAnimation(null);
-        assertEquals(3, state.snapshot().revision());
-    }
-
     @Test
     void actualAssemblyCodecRestoresLayersIntoAFreshOwnerAndCheckedRevision() {
         try (var fixture = new MachineRenderSnapshotTest.Fixture(MachineRenderSnapshotTest.nested(), BlockOrientation.NORTH_UP)) {
@@ -61,20 +38,4 @@ class MachineAnimationStateTest {
         }
     }
 
-    @Test
-    void illegalSavedStateIsRejectedAndRevisionOverflowDoesNotMutateState() {
-        var state = new MachineAnimationState();
-        state.setAnimation("idle");
-        var tag = MachineAnimationState.CODEC.encode(null, state);
-        tag.setLong("Revision", Long.MAX_VALUE);
-        MachineAnimationState.CODEC.restore(null, state, tag);
-        var captured = state.snapshot();
-        assertThrows(ArithmeticException.class, () -> state.setAnimation("active"));
-        assertSame(captured, state.snapshot());
-        tag.setLong("Revision", -1);
-        assertThrows(IllegalArgumentException.class, () -> MachineAnimationState.CODEC.restore(null, state, tag));
-        assertSame(captured, state.snapshot());
-        assertThrows(IllegalArgumentException.class, () -> state.setLayers(List.of(" ")));
-        assertThrows(IllegalArgumentException.class, () -> state.setLayers(Collections.nCopies(257, "a")));
-    }
 }

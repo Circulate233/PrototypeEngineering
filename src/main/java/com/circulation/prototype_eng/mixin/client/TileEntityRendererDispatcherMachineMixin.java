@@ -12,7 +12,9 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** Run before CMH's default-priority HEAD hook and protect only our registered replacement TESR. */
+/**
+ * Run before CMH's default-priority HEAD hook and protect only our registered replacement TESR.
+ */
 @Mixin(value = TileEntityRendererDispatcher.class, priority = 1100)
 public abstract class TileEntityRendererDispatcherMachineMixin {
     @Redirect(method = "render(Lnet/minecraft/tileentity/TileEntity;FI)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/tileentity/TileEntity;getMaxRenderDistanceSquared()D"))

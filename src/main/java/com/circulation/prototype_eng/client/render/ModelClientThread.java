@@ -8,7 +8,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/** The only bridge used by CPU writers for map/finish; GL operations execute on the captured client owner. */
+/**
+ * The only bridge used by CPU writers for map/finish; GL operations execute on the captured client owner.
+ */
 public final class ModelClientThread {
     private final Thread owner;
     private final Consumer<Runnable> dispatch;

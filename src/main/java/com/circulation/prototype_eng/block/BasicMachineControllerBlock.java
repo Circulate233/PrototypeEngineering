@@ -20,6 +20,6 @@ public class BasicMachineControllerBlock extends MachineControllerBlock<MachineC
 
     @Override
     protected MachineControllerBlockEntity createController(World world, IBlockState state) {
-        return new MachineControllerBlockEntity(type().id(), getOrientation(state));
+        return new MachineControllerBlockEntity(type(), getOrientation(state));
     }
 }

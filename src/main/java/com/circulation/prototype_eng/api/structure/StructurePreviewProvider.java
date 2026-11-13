@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.api.structure;
 
-import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.List;
@@ -18,10 +16,15 @@ public interface StructurePreviewProvider {
     enum Kind {
         OPAQUE, TEMPLATE, SLICE;
 
-        /** Shared declaration order; callers must not modify this array. */
+        /**
+         * Shared declaration order; callers must not modify this array.
+         */
         public static final Kind[] VALUES = values();
     }
 
+    /**
+     * Lists are borrowed read-only for the geometry lifetime and cell positions must be immutable.
+     */
     record Geometry(Kind kind, BlockPos offset, int minCount, int maxCount, BlockPos sliceOffset,
                     List<BlockPos> cells, List<MachineStructure> children) {
         public Geometry {
@@ -29,10 +32,6 @@ public interface StructurePreviewProvider {
             offset = Objects.requireNonNull(offset).toImmutable();
             sliceOffset = Objects.requireNonNull(sliceOffset).toImmutable();
             if (minCount < 0 || maxCount < minCount) throw new IllegalArgumentException("Invalid preview slice counts");
-            var positions = new ObjectArrayList<BlockPos>(cells.size());
-            for (var position : cells) positions.add(Objects.requireNonNull(position).toImmutable());
-            cells = ObjectLists.unmodifiable(positions);
-            children = List.copyOf(children);
         }
     }
 }

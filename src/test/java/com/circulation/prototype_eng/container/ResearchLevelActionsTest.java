@@ -35,18 +35,18 @@ class ResearchLevelActionsTest {
             buffer.writeLong(91723);
             var decoded = new ResearchGuiSnapshot(buffer);
             assertEquals(view, decoded);
-            assertTrue(ResearchContainer.allowed(decoded, ROW, ResearchContainer.Kind.FORGET));
-            assertFalse(ResearchContainer.allowed(decoded, ROW, ResearchContainer.Kind.ADMIN_PLAYER));
+            assertTrue(ContainerResearch.allowed(decoded, ROW, ContainerResearch.Kind.FORGET));
+            assertFalse(ContainerResearch.allowed(decoded, ROW, ContainerResearch.Kind.ADMIN_PLAYER));
             assertEquals(91723, buffer.readLong());
             assertFalse(buffer.isReadable());
         } finally {
             buffer.release();
         }
         var adminOnly = snapshot(Decision.TARGET_PLAYER_MISMATCH, Decision.ALLOWED);
-        assertFalse(ResearchContainer.allowed(adminOnly, ROW, ResearchContainer.Kind.FORGET));
-        assertTrue(ResearchContainer.allowed(adminOnly, ROW, ResearchContainer.Kind.ADMIN_TEAM));
-        assertFalse(ResearchContainer.matchesDisplayedTeam(ResearchContainer.Kind.FORGET, "old", "new"));
-        assertFalse(ResearchContainer.matchesDisplayedTeam(ResearchContainer.Kind.ADMIN_TEAM, "old", "new"));
+        assertFalse(ContainerResearch.allowed(adminOnly, ROW, ContainerResearch.Kind.FORGET));
+        assertTrue(ContainerResearch.allowed(adminOnly, ROW, ContainerResearch.Kind.ADMIN_TEAM));
+        assertFalse(ContainerResearch.matchesDisplayedTeam(ContainerResearch.Kind.FORGET, "old", "new"));
+        assertFalse(ContainerResearch.matchesDisplayedTeam(ContainerResearch.Kind.ADMIN_TEAM, "old", "new"));
     }
 
     @Test

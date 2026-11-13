@@ -12,11 +12,12 @@ import net.minecraftforge.fml.common.registry.EntityEntryBuilder;
 public final class RewardEntities {
     public static final ResourceLocation ID = new ResourceLocation(Tags.MOD_ID, "reward_item");
 
-    private RewardEntities() {}
+    private RewardEntities() {
+    }
 
     @SubscribeEvent
     public static void register(RegistryEvent.Register<EntityEntry> event) {
         event.getRegistry().register(EntityEntryBuilder.create()
-            .entity(RewardItemEntity.class).id(ID, 0).name("reward_item").tracker(64, 20, true).build());
+                                                       .entity(RewardItemEntity.class).id(ID, 0).name("reward_item").tracker(64, 20, true).build());
     }
 }

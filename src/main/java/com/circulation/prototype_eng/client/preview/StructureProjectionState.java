@@ -26,8 +26,6 @@ public final class StructureProjectionState {
     private int scanCursor;
     private boolean sweepMatched = true;
     private int renderCursor;
-    @Nullable
-    private Object round;
 
     public StructureProjectionState(StructurePreviews previews) {
         this.previews = Objects.requireNonNull(previews);
@@ -44,18 +42,15 @@ public final class StructureProjectionState {
             return;
         }
         var nextIntent = previews.projection();
-        var activeRound = new Object();
-        round = activeRound;
         try {
-            tickRound(activeRound, currentWorld, nextIntent, observer);
+            advance(currentWorld, nextIntent, observer);
         } catch (RuntimeException failure) {
-            cancelFailedRound(nextIntent, activeRound);
+            cancelFailedProjection(nextIntent);
             throw failure;
         }
     }
 
-    private void tickRound(Object activeRound, @Nullable Object currentWorld,
-                           @Nullable StructurePreviews.Projection nextIntent, Observer observer) {
+    private void advance(@Nullable Object currentWorld, @Nullable StructurePreviews.Projection nextIntent, Observer observer) {
         if (world != null && world != currentWorld) {
             previews.stopProjection();
             clear();
@@ -93,7 +88,6 @@ public final class StructureProjectionState {
             sweepMatched = true;
             renderCursor = 0;
         }
-        var observations = statuses;
         if (completed.cells().isEmpty() && nextIntent.options().hideDisplayedMatches()) {
             previews.stopProjection();
             clear();
@@ -101,14 +95,11 @@ public final class StructureProjectionState {
         }
         int visits = Math.min(nextIntent.options().scanChecksPerTick(), completed.cells().size());
         for (int i = 0; i < visits; i++) {
-            int observedCursor = scanCursor;
-            var cell = completed.cells().get(observedCursor);
-            var observed = observer.observe(cell, add(nextIntent.anchor(), cell.position()));
-            if (!currentRound(activeRound, currentWorld, nextIntent, nextRequest, completed, observations)
-                || scanCursor != observedCursor) return;
-            observations[observedCursor] = Objects.requireNonNull(observed);
+            var cell = completed.cells().get(scanCursor);
+            var observed = observer.observe(completed, cell, add(nextIntent.anchor(), cell.position()));
+            statuses[scanCursor] = observed;
             sweepMatched &= cell.position().equals(BlockPos.ORIGIN) || observed == Status.DISPLAY_MATCH;
-            scanCursor = observedCursor + 1 == completed.cells().size() ? 0 : observedCursor + 1;
+            scanCursor = scanCursor + 1 == completed.cells().size() ? 0 : scanCursor + 1;
             if (scanCursor == 0) {
                 if (sweepMatched && nextIntent.options().hideDisplayedMatches()) {
                     previews.stopProjection();
@@ -120,26 +111,8 @@ public final class StructureProjectionState {
         }
     }
 
-    private boolean currentRound(Object activeRound, Object expectedWorld, StructurePreviews.Projection expectedIntent,
-                                 StructurePreviews.Request expectedRequest, StructurePreviewModel expectedModel,
-                                 Status[] expectedObservations) {
-        return round == activeRound && world == expectedWorld && intent == expectedIntent && request == expectedRequest
-            && model == expectedModel && statuses == expectedObservations && !previews.closed()
-            && previews.projection() == expectedIntent && previews.current(expectedModel);
-    }
-
-    /**
-     * Native render failure captures the same private round identity before invoking GL callbacks.
-     */
-    @Nullable Object roundToken() {
-        return round;
-    }
-
-    void cancelFailedRound(@Nullable StructurePreviews.Projection expectedIntent, @Nullable Object expectedRound) {
-        if (expectedIntent == null || expectedRound == null || round != expectedRound || intent != expectedIntent
-            || previews.closed() || previews.projection() != expectedIntent || request == null
-            || request.state() == StructurePreviews.State.STALE || (model != null && !previews.current(model)))
-            return;
+    void cancelFailedProjection(@Nullable StructurePreviews.Projection expectedIntent) {
+        if (previews.closed() || previews.projection() != expectedIntent) return;
         previews.stopProjection();
         clear();
     }
@@ -164,7 +137,6 @@ public final class StructureProjectionState {
     }
 
     public void clear() {
-        round = null;
         world = null;
         intent = null;
         clearModel();
@@ -188,9 +160,12 @@ public final class StructureProjectionState {
      */
     public enum Status {DISPLAY_MATCH, MISSING, DIFFERENT, UNLOADED, UNKNOWN}
 
+    /**
+     * Reads the captured model and world on the client thread without changing projection state.
+     */
     @FunctionalInterface
     public interface Observer {
-        Status observe(StructurePreviewModel.Cell cell, BlockPos position);
+        Status observe(StructurePreviewModel model, StructurePreviewModel.Cell cell, BlockPos position);
     }
 
     public record Sample(StructurePreviewModel.Cell cell, BlockPos position, Status status) {

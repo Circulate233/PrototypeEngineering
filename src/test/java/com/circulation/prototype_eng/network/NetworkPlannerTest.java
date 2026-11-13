@@ -120,9 +120,6 @@ class NetworkPlannerTest {
         assertEquals(uuid(6), plan.teams().get("team").dataCenterId());
         assertEquals(NetworkWorkState.ACTIVE_DATA_CENTER, plan.workStates().get(uuid(6)));
         assertFalse(plan.teams().containsKey("other"));
-        assertThrows(UnsupportedOperationException.class, () -> plan.workStates().entrySet().iterator().next().setValue(NetworkWorkState.UNFORMED));
-        assertThrows(UnsupportedOperationException.class, () -> plan.teamIds().entrySet().iterator().next().setValue("other"));
-        assertThrows(UnsupportedOperationException.class, () -> plan.teams().entrySet().iterator().next().setValue(null));
     }
 
     @Test
@@ -141,8 +138,6 @@ class NetworkPlannerTest {
         devices.add(device(2, NetworkDeviceRole.COMPUTER, 1, true, 1, 3, 0));
         var captured = NetworkPlanner.capture(RESOURCES, 1, devices,
             List.of(new NetworkContribution(uuid(30), OWNER, 1, 0, resources(4))), resolver);
-        devices.clear();
-        quantities.clear();
         var worker = new FutureTask<>(() -> NetworkPlanner.plan(captured));
         Thread.ofPlatform().start(worker);
         var plan = worker.get(5, TimeUnit.SECONDS);

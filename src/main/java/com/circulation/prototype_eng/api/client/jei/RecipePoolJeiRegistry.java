@@ -1,7 +1,7 @@
 package com.circulation.prototype_eng.api.client.jei;
 
-import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.RecipePool;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -10,13 +10,13 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Client-owned binding. No JEI reference is stored in the common recipe registry or pool.
@@ -35,6 +35,18 @@ public class RecipePoolJeiRegistry {
     private Map<ResourceLocation, String> externalPages;
     private boolean binding;
     private boolean started;
+
+    public static @Nullable String externalPage(RecipePool pool, Set<String> existingCategoryIds) {
+        if (!pool.hasExistingJeiPage()) return null;
+        var id = pool.existingJeiPageId();
+        return id != null && !id.isBlank() && existingCategoryIds.contains(id) ? id : null;
+    }
+
+    public static List<MachineRecipe> recipesForOwnPages(List<RecipePool> pools, Set<String> existingCategoryIds) {
+        var result = new ObjectArrayList<MachineRecipe>();
+        for (var pool : pools) if (externalPage(pool, existingCategoryIds) == null) result.addAll(pool.recipes());
+        return ObjectLists.unmodifiable(result);
+    }
 
     /**
      * HEI rebuilds categories after a language/resource reload. Retain declarations made before the
@@ -78,7 +90,9 @@ public class RecipePoolJeiRegistry {
         }
     }
 
-    /** Display parameters belong to this category generation, independently of server pool data. */
+    /**
+     * Display parameters belong to this category generation, independently of server pool data.
+     */
     public void renderOptions(ResourceLocation poolId, JeiRenderOptions settings) {
         requireRegistration();
         if (options.putIfAbsent(Objects.requireNonNull(poolId), Objects.requireNonNull(settings)) != null)
@@ -108,13 +122,17 @@ public class RecipePoolJeiRegistry {
         freeze(pools, defaultFactory, null);
     }
 
-    /** During a native runtime rebuild, retained independent pages may prepare their accurate new pool. */
+    /**
+     * During a native runtime rebuild, retained independent pages may prepare their accurate new pool.
+     */
     public void freeze(List<RecipePool> pools, Function<RecipePool, ? extends RecipePoolJeiPage> defaultFactory,
                        @Nullable RecipeJeiDisplays.Snapshot descriptions) {
         freeze(pools, defaultFactory, descriptions, Set.of());
     }
 
-    /** Resolve external categories only from HEI's completed registration or explicit disabled IDs. */
+    /**
+     * Resolve external categories only from HEI's completed registration or explicit disabled IDs.
+     */
     public void freeze(List<RecipePool> pools, Function<RecipePool, ? extends RecipePoolJeiPage> defaultFactory,
                        @Nullable RecipeJeiDisplays.Snapshot descriptions, Set<String> existingCategoryIds) {
         requireRegistration();
@@ -133,7 +151,8 @@ public class RecipePoolJeiRegistry {
                 }
             }
             for (var id : options.keySet()) {
-                if (!known.containsKey(id)) throw new IllegalArgumentException("JEI render options have unknown pool: " + id);
+                if (!known.containsKey(id))
+                    throw new IllegalArgumentException("JEI render options have unknown pool: " + id);
             }
             for (var id : catalysts.keySet()) {
                 if (!known.containsKey(id)) {
@@ -153,8 +172,10 @@ public class RecipePoolJeiRegistry {
                     page = Objects.requireNonNull(defaultFactory.apply(pool), "Default JEI page returned null");
                 } else if (page.pool() != pool && descriptions != null) {
                     var update = page.prepareUpdate(pool, descriptions);
-                    if (update == null) throw new IllegalStateException("Retained JEI page does not support definition updates: " + pool.id());
-                    if (update.page() != page || update.pool() != pool) throw new IllegalArgumentException("Retained JEI page prepared foreign data");
+                    if (update == null)
+                        throw new IllegalStateException("Retained JEI page does not support definition updates: " + pool.id());
+                    if (update.page() != page || update.pool() != pool)
+                        throw new IllegalArgumentException("Retained JEI page prepared foreign data");
                     update.apply();
                 }
                 if (page.pool() != pool || !RecipePoolJeiPage.uid(pool.id()).equals(page.getUid())) {
@@ -181,7 +202,9 @@ public class RecipePoolJeiRegistry {
         return externalPages;
     }
 
-    /** Recipes drawn by this plugin; externally owned pools contribute catalysts only. */
+    /**
+     * Recipes drawn by this plugin; externally owned pools contribute catalysts only.
+     */
     public List<MachineRecipe> ownedRecipes(List<RecipePool> pools) {
         requireFrozen();
         requireSamePools(pools);
@@ -190,19 +213,9 @@ public class RecipePoolJeiRegistry {
         return ObjectLists.unmodifiable(result);
     }
 
-    public static @Nullable String externalPage(RecipePool pool, Set<String> existingCategoryIds) {
-        if (!pool.hasExistingJeiPage()) return null;
-        var id = pool.existingJeiPageId();
-        return id != null && !id.isBlank() && existingCategoryIds.contains(id) ? id : null;
-    }
-
-    public static List<MachineRecipe> recipesForOwnPages(List<RecipePool> pools, Set<String> existingCategoryIds) {
-        var result = new ObjectArrayList<MachineRecipe>();
-        for (var pool : pools) if (externalPage(pool, existingCategoryIds) == null) result.addAll(pool.recipes());
-        return ObjectLists.unmodifiable(result);
-    }
-
-    /** Pool membership and category bindings cannot change during a definition update. */
+    /**
+     * Pool membership and category bindings cannot change during a definition update.
+     */
     public boolean acceptsPools(List<RecipePool> pools) {
         requireFrozen();
         if (pools.size() != registeredPools.size()) return false;
@@ -217,7 +230,8 @@ public class RecipePoolJeiRegistry {
     }
 
     private void requireSamePools(List<RecipePool> pools) {
-        if (!acceptsPools(pools)) throw new IllegalArgumentException("JEI replacement changed the pool set or category bindings");
+        if (!acceptsPools(pools))
+            throw new IllegalArgumentException("JEI replacement changed the pool set or category bindings");
     }
 
     public List<RecipePoolJeiPage.PreparedUpdate> prepareUpdates(List<RecipePool> pools, RecipeJeiDisplays.Snapshot displays) {
@@ -226,7 +240,9 @@ public class RecipePoolJeiRegistry {
         return updates;
     }
 
-    /** A supported shape with an unsupported page is an ordinary preparation rejection. */
+    /**
+     * A supported shape with an unsupported page is an ordinary preparation rejection.
+     */
     public @Nullable List<RecipePoolJeiPage.PreparedUpdate> tryPrepareUpdates(List<RecipePool> pools, RecipeJeiDisplays.Snapshot displays) {
         requireFrozen();
         if (!acceptsPools(pools)) return null;

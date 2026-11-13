@@ -20,7 +20,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-/** Native block-item tooltip; all resource capacities are explicitly per slot. */
+/**
+ * Native block-item tooltip; all resource capacities are explicitly per slot.
+ */
 @SideOnly(Side.CLIENT)
 public final class HatchItemTooltip {
     private HatchItemTooltip() {

@@ -6,7 +6,9 @@ import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
 import net.minecraft.client.renderer.BufferBuilder;
 
 
-/** Buffers enter this pool only after their owned result's final reader exits. */
+/**
+ * Buffers enter this pool only after their owned result's final reader exits.
+ */
 public class ModelBufferPool implements AutoCloseable {
     private final Int2ObjectAVLTreeMap<ObjectArrayFIFOQueue<Entry>> free = new Int2ObjectAVLTreeMap<>();
     private final ReferenceLinkedOpenHashSet<Entry> oversize = new ReferenceLinkedOpenHashSet<>();

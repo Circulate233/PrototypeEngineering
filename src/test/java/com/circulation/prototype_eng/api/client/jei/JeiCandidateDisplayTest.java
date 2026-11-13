@@ -35,7 +35,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Native candidate grouping and tooltip association, using the existing non-FML ingredient fixture. */
+/**
+ * Native candidate grouping and tooltip association, using the existing non-FML ingredient fixture.
+ */
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 class JeiCandidateDisplayTest {

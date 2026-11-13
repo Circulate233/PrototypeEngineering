@@ -2,9 +2,9 @@ package com.circulation.prototype_eng.storage;
 
 import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.Tags;
+import com.circulation.prototype_eng.network.InitNetwork;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
-import com.circulation.prototype_eng.network.InitNetwork;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.fml.common.Mod;
@@ -14,7 +14,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
-/** Server-owner publication to inventory viewers, independent of any loaded hatch tile. */
+/**
+ * Server-owner publication to inventory viewers, independent of any loaded hatch tile.
+ */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class ServerHatchConfigurations {
     private static volatile @Nullable Session session;

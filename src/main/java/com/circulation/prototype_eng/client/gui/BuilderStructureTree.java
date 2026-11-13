@@ -1,41 +1,42 @@
 package com.circulation.prototype_eng.client.gui;
 
-import ae2.api.stacks.AEFluidKey;
-import ae2.api.stacks.GenericStack;
-import ae2.api.stacks.AmountFormat;
-import net.minecraftforge.fluids.Fluid;
 import ae2.api.orientation.BlockOrientation;
+import ae2.api.stacks.AEFluidKey;
+import ae2.api.stacks.AmountFormat;
+import ae2.api.stacks.GenericStack;
+import ae2.core.localization.LocalizationEnum;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
-import com.circulation.prototype_eng.container.StructureToolContainer;
+import com.circulation.prototype_eng.api.structure.StructureTransform;
+import com.circulation.prototype_eng.client.render.GuiItemLighting;
+import com.circulation.prototype_eng.container.ContainerStructureTool;
 import com.circulation.prototype_eng.localization.StructureTitle;
 import com.circulation.prototype_eng.localization.StructureToolText;
+import com.circulation.prototype_eng.structure.StructurePickWorld;
 import com.circulation.prototype_eng.structure.tool.BuilderState;
 import com.circulation.prototype_eng.structure.tool.StructureBuildPlan;
+import com.circulation.prototype_eng.structure.tool.StructureToolExport;
+import it.unimi.dsi.fastutil.objects.Object2BooleanOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectIntBiConsumer;
-import it.unimi.dsi.fastutil.objects.Object2BooleanOpenHashMap;
-import ae2.core.localization.LocalizationEnum;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.block.Block;
-import net.minecraft.init.Blocks;
-import com.circulation.prototype_eng.structure.StructurePickWorld;
-import com.circulation.prototype_eng.structure.tool.StructureToolExport;
-import com.circulation.prototype_eng.api.structure.StructureTransform;
-import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
-import org.jetbrains.annotations.Nullable;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderHelper;
-import com.circulation.prototype_eng.client.render.GuiItemLighting;
+import net.minecraft.init.Blocks;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
+import net.minecraftforge.fluids.Fluid;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
@@ -44,22 +45,29 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/** PM's clipped tree: original row slices, connections, material chooser and slice sliders. */
+/**
+ * PM's clipped tree: original row slices, connections, material chooser and slice sliders.
+ */
 final class BuilderStructureTree {
     private static final int HEIGHT = 130;
-    private final StructureToolContainer container;
+    private final ContainerStructureTool container;
     private final Consumer<Set<BlockPos>> highlight;
-    private Consumer<StructureDisplay> materialReplacement = _ -> { };
-    private Supplier<StructurePreviewSettings> selections = () -> null;
-    private StructurePreviewSettings displayedSelections;
     private final Object2BooleanOpenHashMap<String> expanded = new Object2BooleanOpenHashMap<>();
-    private Supplier<LocalizationEnum> machineTitle = () -> null;
-    private ObjectIntBiConsumer<String> sliceChanged = (_, _) -> { };
     private final List<Hit> hits = new ObjectArrayList<>();
     private final GuiClip clip = new GuiClip();
+    private final Map<ItemChoice, ItemStack> itemChoices = new Object2ObjectLinkedOpenHashMap<>();
+    private Consumer<StructureDisplay> materialReplacement = _ -> {
+    };
+    private Supplier<StructurePreviewSettings> selections = () -> null;
+    private StructurePreviewSettings displayedSelections;
+    private Supplier<LocalizationEnum> machineTitle = () -> null;
+    private ObjectIntBiConsumer<String> sliceChanged = (_, _) -> {
+    };
     private List<StructureBuildPlan.Cell> cells = List.of();
     private StructureCatalogView catalog;
-    private String key = "", selected, pressed;
+    private NBTTagCompound displayedData;
+    private ResourceLocation displayedId;
+    private String selected, pressed;
     private Row root;
     private float panX, panY, scale = 1;
     private String viewRoot, initializedRoot, highlightedPath;
@@ -67,7 +75,6 @@ final class BuilderStructureTree {
     private float mouseX, mouseY;
     private int dragButton = -1, lastX, lastY;
     private Hit slider;
-    private final Map<ItemChoice, ItemStack> itemChoices = new Object2ObjectLinkedOpenHashMap<>();
     private BlockOrientation itemBase = BlockOrientation.NORTH_UP, itemOrientation = BlockOrientation.NORTH_UP;
     private Object itemWorld;
     private boolean materialsPending;
@@ -77,9 +84,27 @@ final class BuilderStructureTree {
     private long lastMaterialClickTime;
     private float drawnPanX, drawnPanY, drawnScale = 1;
 
-    BuilderStructureTree(StructureToolContainer container, Consumer<Set<BlockPos>> highlight) {
+    BuilderStructureTree(ContainerStructureTool container, Consumer<Set<BlockPos>> highlight) {
         this.container = container;
         this.highlight = highlight;
+    }
+
+    private static String offset(BlockPos pos) {
+        return StructureToolText.BuildInstrumentOffset.getLocal(pos.getX(), pos.getY(), pos.getZ());
+    }
+
+    private static void texturedState() {
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
+        GlStateManager.color(1, 1, 1, 1);
+    }
+
+    private static void border(int x, int y, int width, int color) {
+        Gui.drawRect(x, y, x + width, y + 1, color);
+        Gui.drawRect(x, y + 13, x + width, y + 14, color);
+        Gui.drawRect(x, y, x + 1, y + 14, color);
+        Gui.drawRect(x + width - 1, y, x + width, y + 14, color);
     }
 
     void onMaterialReplacement(Consumer<StructureDisplay> listener) {
@@ -115,13 +140,10 @@ final class BuilderStructureTree {
         materialsPending = false;
     }
 
-    private static String offset(BlockPos pos) {
-        return StructureToolText.BuildInstrumentOffset.getLocal(pos.getX(), pos.getY(), pos.getZ());
-    }
-
     private ItemStack stack(@Nullable StructureDisplay.BlockOption option, @Nullable String tileNbt) {
         var mc = Minecraft.getMinecraft();
-        if (option == null || mc.world == null || mc.player == null || !Block.REGISTRY.containsKey(option.blockId())) return ItemStack.EMPTY;
+        if (option == null || mc.world == null || mc.player == null || !Block.REGISTRY.containsKey(option.blockId()))
+            return ItemStack.EMPTY;
         if (itemWorld != mc.world) {
             itemWorld = mc.world;
             itemChoices.clear();
@@ -147,40 +169,37 @@ final class BuilderStructureTree {
         return stack.isEmpty() ? option.blockId().toString() : stack.getDisplayName();
     }
 
-    private static void texturedState() {
-        GlStateManager.enableTexture2D();
-        GlStateManager.enableBlend();
-        GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
-        GlStateManager.color(1, 1, 1, 1);
-    }
-
-    private static void border(int x, int y, int width, int color) {
-        Gui.drawRect(x, y, x + width, y + 1, color);
-        Gui.drawRect(x, y + 13, x + width, y + 14, color);
-        Gui.drawRect(x, y, x + 1, y + 14, color);
-        Gui.drawRect(x + width - 1, y, x + width, y + 14, color);
-    }
-
-    private record ItemChoice(StructureDisplay.BlockOption option, @Nullable String tileNbt) { }
-
     private boolean open(Row row) {
         return expanded.getOrDefault(row.id, row.kind == 0);
+    }
+
+    static boolean sameSelectionData(@Nullable NBTTagCompound previous, NBTTagCompound current) {
+        return previous == current || previous != null
+            && Objects.equals(previous.getTag("MaterialSelections"), current.getTag("MaterialSelections"))
+            && Objects.equals(previous.getTag("CellMaterialSelections"), current.getTag("CellMaterialSelections"))
+            && Objects.equals(previous.getTag("SliceSelections"), current.getTag("SliceSelections"));
     }
 
     private void refresh(StructureCatalogView current, ResourceLocation id, BlockOrientation orientation) {
         var tag = container.snapshot();
         var settings = selections.get();
+        if (current == catalog && Objects.equals(id, displayedId) && orientation == itemOrientation
+            && Objects.equals(settings, displayedSelections) && sameSelectionData(displayedData, tag)) {
+            displayedData = tag;
+            return;
+        }
         var slices = BuilderState.sliceCounts(tag);
-        if (settings != null) settings.sliceCounts().forEach((path, count) -> slices.put(BuilderState.sliceKey(path), count));
-        String next = id + tag.getCompoundTag("MaterialSelections").toString() + tag.getCompoundTag("CellMaterialSelections") + slices + orientation;
-        if (current == catalog && next.equals(key) && Objects.equals(settings, displayedSelections)) return;
+        if (settings != null)
+            for (var entry : settings.sliceCounts().object2IntEntrySet())
+                slices.put(BuilderState.sliceKey(entry.getKey()), entry.getIntValue());
+        displayedData = tag;
+        displayedId = id;
         displayedSelections = settings;
         catalog = current;
         itemChoices.clear();
         itemOrientation = orientation;
         itemBase = current == null || id == null || !current.entries().containsKey(id) ? BlockOrientation.NORTH_UP
             : current.nodes().get(current.entries().get(id).node()).orientation();
-        key = next;
         root = null;
         viewRoot = String.valueOf(id);
         if (current == null || id == null || !current.entries().containsKey(id)) return;
@@ -202,14 +221,15 @@ final class BuilderStructureTree {
             if (root == null) root = row;
             else {
                 var parent = rows.get(instance.path().substring(0, instance.path().lastIndexOf('/')));
-                if (parent != null) parent.children.add(row);
+                parent.children.add(row);
             }
             if (node.kind() == StructurePreviewProvider.Kind.SLICE)
                 row.children.add(new Row(instance.path() + "/slice", StructureToolText.BuildInstrumentSliceSlider.getLocal(instance.count(), node.maxCount()), 3, null, instance.path(), node.minCount(), node.maxCount(), instance.count()));
             var counts = new Object2LongLinkedOpenHashMap<MaterialChoice>();
             for (var cell : plan.cells()) {
                 var display = cell.display();
-                if (display == null || !(cell.path().equals(instance.path()) || cell.path().startsWith(instance.path() + "/"))) continue;
+                if (display == null || !(cell.path().equals(instance.path()) || cell.path().startsWith(instance.path() + "/")))
+                    continue;
                 var choice = BuilderState.choice(tag, display, cell.position(), orientation);
                 if (settings != null) {
                     var local = settings.cellOptions().get(cell.position());
@@ -395,8 +415,7 @@ final class BuilderStructureTree {
                 if (hit.toggle(tx, ty)) {
                     lastMaterialClick = null;
                     pressed = row.id;
-                }
-                else if (row.kind == 3 && tx >= hit.x() + hit.width() - 76) {
+                } else if (row.kind == 3 && tx >= hit.x() + hit.width() - 76) {
                     lastMaterialClick = null;
                     slider = hit;
                     adjustSlider(tx);
@@ -475,16 +494,20 @@ final class BuilderStructureTree {
         return List.of();
     }
 
-    private record MaterialChoice(StructureDisplay display, StructureDisplay.BlockOption option) { }
+    private record ItemChoice(StructureDisplay.BlockOption option, @Nullable String tileNbt) {
+    }
 
-    private static final class Row {
+    private record MaterialChoice(StructureDisplay display, StructureDisplay.BlockOption option) {
+    }
+
+    static final class Row {
         final String id, label;
         final int kind;
         final StructureDisplay display;
-        StructureDisplay.BlockOption option;
         final String path;
         final int min, max, value;
         final List<Row> children = new ObjectArrayList<>();
+        StructureDisplay.BlockOption option;
 
         Row(String id, String label, int kind, StructureDisplay display, String path, int min, int max, int value) {
             this.id = id;

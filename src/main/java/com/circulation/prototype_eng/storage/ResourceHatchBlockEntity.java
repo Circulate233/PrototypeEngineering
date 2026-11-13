@@ -1,12 +1,10 @@
 package com.circulation.prototype_eng.storage;
 
 import ae2.api.AECapabilities;
-import ae2.api.util.AEColor;
-import com.circulation.prototype_eng.api.storage.ResourceHatchGrouping;
-import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
 import ae2.api.behaviors.GenericInternalInventoryAdapters;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.GenericStack;
+import ae2.api.util.AEColor;
 import ae2.items.misc.GenericResourcePackageItem;
 import ae2.tile.AEBaseTile;
 import ae2.util.Platform;
@@ -21,11 +19,12 @@ import com.circulation.prototype_eng.api.storage.HatchReconfigurationStatus;
 import com.circulation.prototype_eng.api.storage.HatchTier;
 import com.circulation.prototype_eng.api.storage.ReconfigurableHatch;
 import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
+import com.circulation.prototype_eng.api.storage.ResourceHatchGrouping;
 import com.circulation.prototype_eng.api.storage.ResourceHatchSettings;
-import com.circulation.prototype_eng.block.ResourceHatchBlock;
+import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
@@ -34,6 +33,7 @@ import net.minecraft.network.play.server.SPacketUpdateTileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
 import net.minecraftforge.items.CapabilityItemHandler;
@@ -42,8 +42,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
-import java.util.Objects;
 import java.util.List;
+import java.util.Objects;
 
 public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatchGrouping, ResourceHatchGuiHost, FluidHatchSettings, ResourceHatchSettings, ReconfigurableHatch {
     private static final VarHandle STORAGE_DIRTY;
@@ -61,15 +61,12 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     private final HatchAutoTransfer autoTransfer = new HatchAutoTransfer();
     @SuppressWarnings("unused") // Worker writes and server-tick drains use STORAGE_DIRTY.
     private boolean storageDirty;
-    private boolean pendingConfiguration;
     private HatchMode mode;
     private HatchTier tier;
     private ResourceHatchConfiguration effective;
     private long observedTargetRevision = -1;
     private boolean configurationNotification;
     private BufferedResourceHatch hatch;
-    @Nullable
-    private String allocationLocation;
     private HatchInventoryPort port;
     private HatchFluidHandler fluids;
     private volatile AEColor resourceColor = AEColor.TRANSPARENT;
@@ -80,7 +77,6 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
 
     public ResourceHatchBlockEntity() {
         this(HatchMode.INPUT);
-        pendingConfiguration = true;
     }
 
     public ResourceHatchBlockEntity(HatchMode mode) {
@@ -92,64 +88,21 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         this.tier = tier;
     }
 
+    private static void addResourceDrops(List<GenericStack> contents, List<ItemStack> drops, World world, BlockPos position) {
+        for (var stack : contents) {
+            // AEItemKey's list cap and amount+stackSize-1 estimate must not discard a large long
+            // balance or later keys. Use AE's native package before either limit can be exceeded.
+            if (stack.what() instanceof AEItemKey item
+                && stack.amount() > (long) Math.max(1, item.getMaxStackSize()) * Math.max(0, 500 - drops.size()))
+                GenericResourcePackageItem.addDrop(stack.what(), stack.amount(), drops);
+            else stack.what().addDrops(stack.amount(), drops, world, position);
+        }
+    }
+
     @Override
     public void onLoad() {
         super.onLoad();
-        if (pendingConfiguration && world != null && world.getTileEntity(pos) == this
-            && world.getBlockState(pos).getBlock() instanceof ResourceHatchBlock block
-            && block.getTileEntity(world, pos) == this) {
-            initializeConfiguration(block.mode(), block.tier());
-        }
-        bindSourceIdentities();
         observeConfigurationTarget();
-    }
-
-    /** Physical labels are captured only once the world owns this tile at its final position. */
-    protected @Nullable String allocationLocation() {
-        return world != null && world.getTileEntity(pos) == this
-            ? "prototype_eng:resource/" + world.provider.getDimension() + "/" + pos.getX() + "/" + pos.getY() + "/" + pos.getZ()
-            : null;
-    }
-
-    private void bindSourceIdentities() {
-        if (hatch == null || !hatch.isValid() || isInvalid()) return;
-        var location = allocationLocation();
-        if (location == null || location.equals(allocationLocation)) return;
-        var input = hatch.input();
-        var output = hatch.output();
-        if (input != null) input.context().bindSourceIdentity(location + "/input");
-        if (output != null) output.context().bindSourceIdentity(location + "/output");
-        allocationLocation = location;
-    }
-
-    @Override
-    public void setPos(@NotNull BlockPos position) {
-        if (allocationLocation != null && !pos.equals(position)) invalidate();
-        super.setPos(position);
-    }
-
-    @Override
-    public void setWorld(@NotNull World nextWorld) {
-        if (allocationLocation != null && world != nextWorld) invalidate();
-        super.setWorld(nextWorld);
-    }
-
-    /**
-     * Completes only an unsaved no-arg instance; explicit construction and NBT remain authoritative.
-     */
-    protected void initializeConfiguration(HatchMode mode, HatchTier tier) {
-        if (!pendingConfiguration) {
-            return;
-        }
-        if (hatch != null) {
-            hatch.invalidate();
-        }
-        hatch = null;
-        adapters.clear();
-        effective = null;
-        this.mode = Objects.requireNonNull(mode);
-        this.tier = Objects.requireNonNull(tier);
-        pendingConfiguration = false;
     }
 
     @Override
@@ -165,7 +118,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     @Override
     public void setResourceColor(AEColor color) {
         Objects.requireNonNull(color, "color");
-        if (world != null && (!world.isRemote && !Objects.requireNonNull(world.getMinecraftServer()).isCallingFromMinecraftThread()))
+        if (world instanceof WorldServer serverWorld && !serverWorld.isCallingFromMinecraftThread())
             throw new IllegalStateException("Resource group changes require the server owner");
         resourceColor = color;
         if (hatch != null) hatch.setInputGroup(new ResourceInputGroup(color));
@@ -182,7 +135,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
      */
     public BufferedResourceHatch storage() {
         if (hatch == null) {
-            allocationLocation = null;
+
             effective = effective == null ? HatchConfig.resourceConfiguration(tier, mode) : effective;
             hatch = new BufferedResourceHatch(effective, this::requestStorageSave);
             port = new HatchInventoryPort(hatch, true, true);
@@ -191,7 +144,6 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
                 hatch.invalidate();
             }
         }
-        bindSourceIdentities();
         hatch.setInputGroup(new ResourceInputGroup(resourceColor));
         return hatch;
     }
@@ -205,9 +157,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         super.update();
         observeConfigurationTarget();
         queueConfiguration();
-        if ((mode.hasInput() && autoInput || mode.hasOutput() && autoOutput)
-            && world != null && !world.isRemote && !isInvalid()
-            && world.isBlockLoaded(pos) && world.getTileEntity(pos) == this)
+        if ((mode.hasInput() && autoInput || mode.hasOutput() && autoOutput) && !world.isRemote)
             autoTransfer.tickResources(this);
         flushStorageChanges();
         notifyConfiguration();
@@ -261,7 +211,9 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
             requestConfiguration(HatchConfig.resourceConfiguration(tier, mode));
     }
 
-    /** Addon hosts may supply an owner scheduler while preserving the public request admission checks. */
+    /**
+     * Addon hosts may supply an owner scheduler while preserving the public request admission checks.
+     */
     protected @Nullable HatchConfigurationRequest.Boundary configurationBoundary() {
         return world == null ? null : HatchConfigurationRequest.boundary(this);
     }
@@ -282,8 +234,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     private HatchReplacement applyConfiguration() {
         var target = (ResourceHatchConfiguration) Objects.requireNonNull(configurationRequest.target());
         var old = storage();
-        var location = allocationLocation();
-        return old.replace(target, location, this::requestStorageSave,
+        return old.replace(target, this::requestStorageSave,
             () -> hatch == old && configurationRequest.target() == target && !isInvalid(), candidate -> {
                 var nextPort = new HatchInventoryPort(candidate, true, true);
                 var nextFluids = new HatchFluidHandler(candidate, this);
@@ -294,7 +245,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
                     port = nextPort;
                     fluids = nextFluids;
                     adapters.clear();
-                    allocationLocation = location;
+
                 };
             });
     }
@@ -421,7 +372,9 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         storage().save(tag);
     }
 
-    /** Only settings travel with the hatch item; AE's additional-drop hook owns stored resources. */
+    /**
+     * Only settings travel with the hatch item; AE's additional-drop hook owns stored resources.
+     */
     public NBTTagCompound saveForItemDrop() {
         var tag = new NBTTagCompound();
         saveAdditional(tag);
@@ -447,17 +400,6 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
             else server.addScheduledTask(deliver);
         });
         addResourceDrops(contents, drops, removalWorld, removalPosition);
-    }
-
-    private static void addResourceDrops(List<GenericStack> contents, List<ItemStack> drops, World world, BlockPos position) {
-        for (var stack : contents) {
-            // AEItemKey's list cap and amount+stackSize-1 estimate must not discard a large long
-            // balance or later keys. Use AE's native package before either limit can be exceeded.
-            if (stack.what() instanceof AEItemKey item
-                && stack.amount() > (long) Math.max(1, item.getMaxStackSize()) * Math.max(0, 500 - drops.size()))
-                GenericResourcePackageItem.addDrop(stack.what(), stack.amount(), drops);
-            else stack.what().addDrops(stack.amount(), drops, world, position);
-        }
     }
 
     @Override
@@ -497,7 +439,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         if (isInvalid()) candidate.invalidate();
         if (hatch != null) hatch.invalidate();
         super.loadTag(tag);
-        pendingConfiguration = false;
+
         mode = nextMode;
         tier = nextTier;
         effective = profile;
@@ -506,7 +448,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         hatch = candidate;
         port = nextPort;
         fluids = nextFluids;
-        allocationLocation = null;
+
         adapters.clear();
         autoInput = nextAutoInput;
         autoOutput = nextAutoOutput;
@@ -519,6 +461,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
 
     @Override
     protected void setRemoved() {
+
         if (hatch != null) {
             hatch.invalidate();
         }
@@ -529,6 +472,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
 
     @Override
     protected void onChunkUnloaded() {
+
         if (hatch != null) {
             hatch.invalidate();
         }

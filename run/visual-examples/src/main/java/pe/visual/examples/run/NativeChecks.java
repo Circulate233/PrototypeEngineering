@@ -6,12 +6,16 @@ import org.apache.logging.log4j.Logger;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-/** Assertions log their actual result; a failed startup assertion aborts that script. */
+/**
+ * Assertions log their actual result; a failed startup assertion aborts that script.
+ */
 @ZenRegister
 @ZenClass("mods.pe_run_tests.NativeChecks")
 public final class NativeChecks {
     private static final Logger LOG = LogManager.getLogger("pe_run_tests");
-    private NativeChecks() { }
+
+    private NativeChecks() {
+    }
 
     @ZenMethod
     public static void check(String id, boolean condition) {

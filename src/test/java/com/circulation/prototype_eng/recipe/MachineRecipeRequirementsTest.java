@@ -227,7 +227,6 @@ class MachineRecipeRequirementsTest {
         var process = new RecipeProcess(owner, recipe, 17);
         declarations.clear();
         assertTrue(process.orderedRequirements().contains(added));
-        assertThrows(UnsupportedOperationException.class, () -> process.orderedRequirements().clear());
         assertSame(recipe.orderedRequirements(), new RecipeProcess(new MachineInstance(), recipe, 17).orderedRequirements());
     }
 

@@ -16,7 +16,9 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
-/** Ordered definition callbacks and immutable exact-object PN bindings, retaining historical work. */
+/**
+ * Ordered definition callbacks and immutable exact-object PN bindings, retaining historical work.
+ */
 @SuppressWarnings("unused")
 public final class NetworkRecipeExtensions {
     public static final NetworkRecipeExtensions INSTANCE = new NetworkRecipeExtensions();
@@ -34,9 +36,13 @@ public final class NetworkRecipeExtensions {
     @Nullable
     private volatile PublicationBinding publicationBinding;
 
-    public void register(NetworkRecipeExtension extension) { register(0, extension); }
+    public void register(NetworkRecipeExtension extension) {
+        register(0, extension);
+    }
 
-    /** Ascending priority, then registration order, matches PN's extension order. */
+    /**
+     * Ascending priority, then registration order, matches PN's extension order.
+     */
     public synchronized void register(int priority, NetworkRecipeExtension extension) {
         if (publicationStarted) throw new IllegalStateException("Network recipe extension registration has ended");
         Objects.requireNonNull(extension);
@@ -45,7 +51,9 @@ public final class NetworkRecipeExtensions {
         registrations.add(new Registration(priority, sequence, extension));
     }
 
-    /** Failed initial publication remains unavailable and cannot replay callbacks or register again. */
+    /**
+     * Failed initial publication remains unavailable and cannot replay callbacks or register again.
+     */
     public void publish(RecipeCatalog catalog, ResearchRegistry research, NetworkResourceRegistry resources) {
         beginPublication(research, resources);
         var recipes = new ObjectArrayList<>(Objects.requireNonNull(catalog).recipes());
@@ -53,22 +61,26 @@ public final class NetworkRecipeExtensions {
         publishInitial(recipes);
     }
 
-    /** Current and declared historical objects must all have accurate PN gates before machine restoration. */
+    /**
+     * Current and declared historical objects must all have accurate PN gates before machine restoration.
+     */
     public void publish(RecipeRegistry.Snapshot catalog, ResearchRegistry research, NetworkResourceRegistry resources) {
         beginPublication(research, resources);
         Objects.requireNonNull(catalog);
         var identities = new ReferenceOpenHashSet<MachineRecipe>();
         var recipes = new ObjectArrayList<MachineRecipe>();
         for (var recipe : catalog.catalog().recipes()) if (identities.add(recipe)) recipes.add(recipe);
-        for (var definition : catalog.historicalDefinitions()) if (identities.add(definition.recipe())) recipes.add(definition.recipe());
+        for (var definition : catalog.historicalDefinitions())
+            if (identities.add(definition.recipe())) recipes.add(definition.recipe());
         recipes.sort(Comparator.comparing(MachineRecipe::id)
-            .thenComparing(recipe -> Objects.requireNonNullElse(catalog.revision(recipe), "")));
+                               .thenComparing(recipe -> Objects.requireNonNullElse(catalog.revision(recipe), "")));
         publishInitial(recipes);
     }
 
     private void beginPublication(ResearchRegistry research, NetworkResourceRegistry resources) {
         synchronized (this) {
-            if (publicationStarted) throw new IllegalStateException("Network recipe extension publication already started");
+            if (publicationStarted)
+                throw new IllegalStateException("Network recipe extension publication already started");
             publicationStarted = true;
             if (!Objects.requireNonNull(research).isFrozen() || !Objects.requireNonNull(resources).isFrozen()) {
                 throw new IllegalStateException("Network recipe extensions need frozen research and computing registries");
@@ -90,7 +102,9 @@ public final class NetworkRecipeExtensions {
         }
     }
 
-    public boolean published() { return frozen != null; }
+    public boolean published() {
+        return frozen != null;
+    }
 
     public Snapshot snapshot() {
         var current = frozen;
@@ -98,12 +112,20 @@ public final class NetworkRecipeExtensions {
         return current;
     }
 
-    public boolean isCurrent(Snapshot expected) { return frozen == Objects.requireNonNull(expected); }
+    public boolean isCurrent(Snapshot expected) {
+        return frozen == Objects.requireNonNull(expected);
+    }
 
-    /** Cached configuration is deliberately invisible here until its prepared union is installed. */
-    public NetworkWorkRequirements require(MachineRecipe recipe) { return snapshot().require(recipe); }
+    /**
+     * Cached configuration is deliberately invisible here until its prepared union is installed.
+     */
+    public NetworkWorkRequirements require(MachineRecipe recipe) {
+        return snapshot().require(recipe);
+    }
 
-    /** Adopts the table for the same concrete session that owns recipe directory publication. */
+    /**
+     * Adopts the table for the same concrete session that owns recipe directory publication.
+     */
     public synchronized PublicationBinding bindPublication(RecipeRegistry.Publication publication) {
         Objects.requireNonNull(publication).requireOwner();
         if (!publication.live() || !canBindPublication()) {
@@ -119,7 +141,9 @@ public final class NetworkRecipeExtensions {
         return current == null || !current.publication.live();
     }
 
-    /** Callbacks use the original frozen research/resources and execute outside the publication monitor. */
+    /**
+     * Callbacks use the original frozen research/resources and execute outside the publication monitor.
+     */
     public Prepared prepare(Snapshot expected, Collection<MachineRecipe> declaredRecipes) {
         var binding = publicationBinding;
         if (binding != null) binding.publication.requireOwnerBoundary();
@@ -148,7 +172,8 @@ public final class NetworkRecipeExtensions {
         synchronized (this) {
             state = configured.get(recipe);
             if (state != null) {
-                if (!state.complete) throw new IllegalStateException("Network recipe configuration is already in progress: " + recipe.id());
+                if (!state.complete)
+                    throw new IllegalStateException("Network recipe configuration is already in progress: " + recipe.id());
                 if (state.failure instanceof RuntimeException failure) throw failure;
                 if (state.failure instanceof Error failure) throw failure;
                 return Objects.requireNonNull(state.requirements);
@@ -190,22 +215,27 @@ public final class NetworkRecipeExtensions {
     }
 
     public synchronized void install(Prepared prepared) {
-        if (publicationBinding != null) throw new IllegalStateException("Adopted network bindings publish only with their recipe directory");
+        if (publicationBinding != null)
+            throw new IllegalStateException("Adopted network bindings publish only with their recipe directory");
         installPrepared(prepared);
     }
 
     private void installPrepared(Prepared prepared) {
-        if (!matchesPrepared(prepared)) throw new IllegalStateException("Foreign, stale or consumed network recipe preparation");
+        if (!matchesPrepared(prepared))
+            throw new IllegalStateException("Foreign, stale or consumed network recipe preparation");
         prepared.consumed = true;
         frozen = prepared.next;
     }
 
-    private record Registration(int priority, long sequence, NetworkRecipeExtension extension) {}
+    private record Registration(int priority, long sequence, NetworkRecipeExtension extension) {
+    }
 
     private static final class Configuration {
         private boolean complete;
-        @Nullable private NetworkWorkRequirements requirements;
-        @Nullable private Throwable failure;
+        @Nullable
+        private NetworkWorkRequirements requirements;
+        @Nullable
+        private Throwable failure;
     }
 
     public static final class Snapshot {
@@ -217,11 +247,14 @@ public final class NetworkRecipeExtensions {
             this.requirements = requirements;
         }
 
-        public NetworkRecipeExtensions owner() { return owner; }
+        public NetworkRecipeExtensions owner() {
+            return owner;
+        }
 
         public NetworkWorkRequirements require(MachineRecipe recipe) {
             var value = requirements.get(Objects.requireNonNull(recipe));
-            if (value == null) throw new IllegalArgumentException("Recipe is outside the published network catalog: " + recipe.id());
+            if (value == null)
+                throw new IllegalArgumentException("Recipe is outside the published network catalog: " + recipe.id());
             return value;
         }
     }
@@ -230,7 +263,8 @@ public final class NetworkRecipeExtensions {
         private final NetworkRecipeExtensions owner;
         private final Snapshot expected;
         private final Snapshot next;
-        @Nullable private final PublicationBinding publicationBinding;
+        @Nullable
+        private final PublicationBinding publicationBinding;
         private boolean consumed;
 
         private Prepared(NetworkRecipeExtensions owner, Snapshot expected, Snapshot next, @Nullable PublicationBinding publicationBinding) {
@@ -240,11 +274,18 @@ public final class NetworkRecipeExtensions {
             this.publicationBinding = publicationBinding;
         }
 
-        public Snapshot expected() { return expected; }
-        public Snapshot next() { return next; }
+        public Snapshot expected() {
+            return expected;
+        }
+
+        public Snapshot next() {
+            return next;
+        }
     }
 
-    /** Private capability retained by the combined publisher; exact registry ownership stays mandatory. */
+    /**
+     * Private capability retained by the combined publisher; exact registry ownership stays mandatory.
+     */
     public static final class PublicationBinding {
         private final NetworkRecipeExtensions extensions;
         private final RecipeRegistry.Publication publication;

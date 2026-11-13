@@ -1,14 +1,14 @@
 package com.circulation.prototype_eng.scheduler;
 
 import com.circulation.prototype_eng.api.component.ComponentMap;
-import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken.Reason;
@@ -17,10 +17,10 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedExecution;
 import com.circulation.prototype_eng.api.storage.ResourceBatch;
 import com.circulation.prototype_eng.scheduler.planned.PlannedRecipeCoordinator;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import it.unimi.dsi.fastutil.ints.Int2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -41,6 +41,7 @@ final class MachineRecipeExecution implements PlannedExecution {
     private final Runnable refresh;
     private final BooleanSupplier tickCurrent;
     private final PlannedCancellationToken cancellation = new PlannedCancellationToken();
+    private final ObjectArrayList<Entry> workerClaims = new ObjectArrayList<>();
     @Nullable
     private PlannedRecipeCoordinator coordinator;
     private boolean acquired;
@@ -50,7 +51,6 @@ final class MachineRecipeExecution implements PlannedExecution {
     private Throwable unreported;
     @Nullable
     private PlannedTaskExecutor.Batch<Boolean> workerBatch;
-    private final ObjectArrayList<Entry> workerClaims = new ObjectArrayList<>();
 
     MachineRecipeExecution(PlannedTaskExecutor tasks, List<Candidate> candidates, PlannedDeadline forwardDeadline,
                            Runnable refresh, BooleanSupplier tickCurrent) {
@@ -89,6 +89,17 @@ final class MachineRecipeExecution implements PlannedExecution {
         if (failure instanceof Error error) {
             throw error;
         }
+    }
+
+    private static Throwable appendFailure(@Nullable Throwable first, Throwable next) {
+        if (first == null) return next;
+        if (first == next) return first;
+        if (next instanceof VirtualMachineError && !(first instanceof VirtualMachineError)) {
+            next.addSuppressed(first);
+            return next;
+        }
+        first.addSuppressed(next);
+        return first;
     }
 
     @Override
@@ -147,23 +158,22 @@ final class MachineRecipeExecution implements PlannedExecution {
                                 if (entry.workedHosts.contains(deferred)) {
                                     handle.finishDeferredRecipeWork(deferred);
                                     resumedWork = true;
-                                }
-                                else if (entry.candidate.policy == null) {
+                                } else if (entry.candidate.policy == null) {
                                     if (entry.candidate.machine instanceof CrossRecipeController) {
                                         hosts.addAll(entry.candidate.machine.recipeHosts());
                                         entry.workedHosts.addAll(entry.candidate.machine.recipeHosts());
                                     } else hosts.add(deferred);
-                                }
-                                else if (entry.policyWork == null) entry.policyWork = new PolicyWork(entry, deferred);
+                                } else if (entry.policyWork == null) entry.policyWork = new PolicyWork(entry, deferred);
                             }
                         }
                     }
                     if (hosts.isEmpty()) {
                         boolean policyPending = false;
-                        for (var entry : entries) if (entry.policyWork != null) {
-                            policyPending = true;
-                            break;
-                        }
+                        for (var entry : entries)
+                            if (entry.policyWork != null) {
+                                policyPending = true;
+                                break;
+                            }
                         if (policyPending || resumedWork) continue;
                         releaseMachines();
                         break;
@@ -271,10 +281,11 @@ final class MachineRecipeExecution implements PlannedExecution {
             }
             for (var group : callbackGroups) {
                 boolean ready = false;
-                for (var entry : group) if (entry.worker != null) {
-                    ready = true;
-                    break;
-                }
+                for (var entry : group)
+                    if (entry.worker != null) {
+                        ready = true;
+                        break;
+                    }
                 if (ready) jobs.add(new PlannedTaskExecutor.Job<>(cancellation, () -> {
                     for (var entry : group) if (entry.worker != null && workerAllowed(entry)) entry.worker.run();
                     return true;
@@ -289,17 +300,6 @@ final class MachineRecipeExecution implements PlannedExecution {
         if (failure != null) record(failure);
     }
 
-    private static Throwable appendFailure(@Nullable Throwable first, Throwable next) {
-        if (first == null) return next;
-        if (first == next) return first;
-        if (next instanceof VirtualMachineError && !(first instanceof VirtualMachineError)) {
-            next.addSuppressed(first);
-            return next;
-        }
-        first.addSuppressed(next);
-        return first;
-    }
-
     @Nullable
     private Throwable reclaimWorkers(List<Entry> delegated, @Nullable Throwable failure) {
         var batch = workerBatch;
@@ -309,7 +309,8 @@ final class MachineRecipeExecution implements PlannedExecution {
             } catch (RuntimeException | Error observed) {
                 failure = appendFailure(failure, observed);
             }
-            if (!batch.quiescent()) return appendFailure(failure, new IllegalStateException("Machine callbacks have not exited"));
+            if (!batch.quiescent())
+                return appendFailure(failure, new IllegalStateException("Machine callbacks have not exited"));
         }
         for (int index = 0; index < delegated.size(); index++) {
             var entry = delegated.get(index);
@@ -330,8 +331,10 @@ final class MachineRecipeExecution implements PlannedExecution {
             for (int index = 0; index < batch.results().size(); index++) {
                 try {
                     var outcome = batch.results().get(index);
-                    if (outcome instanceof PlannedTaskExecutor.Failure<Boolean>(var observed)) failure = appendFailure(failure, observed);
-                    else if (outcome instanceof PlannedTaskExecutor.Stopped<Boolean>(var reason, _)) cancellation.cancel(reason);
+                    if (outcome instanceof PlannedTaskExecutor.Failure<Boolean>(var observed))
+                        failure = appendFailure(failure, observed);
+                    else if (outcome instanceof PlannedTaskExecutor.Stopped<Boolean>(var reason, _))
+                        cancellation.cancel(reason);
                 } catch (RuntimeException | Error observed) {
                     failure = appendFailure(failure, observed);
                 }
@@ -737,7 +740,8 @@ final class MachineRecipeExecution implements PlannedExecution {
                 failure = appendFailure(failure, observed);
             }
             try {
-                if (entry.policyWork != null && entry.policyWork.original != null) entry.policyWork.original.awaitWorkerExit();
+                if (entry.policyWork != null && entry.policyWork.original != null)
+                    entry.policyWork.original.awaitWorkerExit();
             } catch (RuntimeException | Error observed) {
                 failure = appendFailure(failure, observed);
             }
@@ -772,8 +776,8 @@ final class MachineRecipeExecution implements PlannedExecution {
 
     private static final class Entry {
         private final Candidate candidate;
-        private String affinity;
         private final ReferenceOpenHashSet<MachineWorkSlots> workedHosts = new ReferenceOpenHashSet<>();
+        private String affinity;
         @Nullable
         private MachineLifecycle.ScheduledExecution handle;
         @Nullable
@@ -840,13 +844,14 @@ final class MachineRecipeExecution implements PlannedExecution {
             boolean workAsync = Objects.requireNonNull(entry.candidate.policy).workAsync();
             boolean ownerRequired = false;
             if (workAsync) {
-                for (var cohortHost : hosts) for (var slot : cohortHost.slots()) {
-                    var process = slot.process();
-                    if (process != null && process.requiresOwnerThread()) {
-                        ownerRequired = true;
-                        break;
+                for (var cohortHost : hosts)
+                    for (var slot : cohortHost.slots()) {
+                        var process = slot.process();
+                        if (process != null && process.requiresOwnerThread()) {
+                            ownerRequired = true;
+                            break;
+                        }
                     }
-                }
             }
             asynchronous = workAsync && !ownerRequired;
             runner = !workAsync ? tasks.synchronous() : ownerRequired ? tasks : tasks.synchronousSources();

@@ -46,7 +46,7 @@ public final class ResearchDataCenter implements DataCenterStorage {
     public static ResearchDataCenter restore(DataCenterResearchSnapshot saved, ResearchRegistry registry,
                                              Runnable ownerCheck, Runnable changed) {
         var restored = new ResearchDataCenter(saved.dataCenterId(), saved.level(), saved.capacity(), registry, ownerCheck, changed);
-        var levels = new Object2IntOpenHashMap<>(saved.storedResearch());
+        var levels = saved.storedResearch();
         restored.validateContents(levels);
         restored.state = new State(new DataCenterResearchSnapshot(saved.dataCenterId(), saved.level(), saved.capacity(), 0, levels), Map.of());
         return restored;

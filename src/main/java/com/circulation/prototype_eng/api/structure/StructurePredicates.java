@@ -4,8 +4,8 @@ import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ReferenceSets;
 import it.unimi.dsi.fastutil.objects.ReferenceSet;
+import it.unimi.dsi.fastutil.objects.ReferenceSets;
 import net.minecraft.block.Block;
 import net.minecraft.block.properties.IProperty;
 import net.minecraft.block.state.IBlockState;
@@ -57,12 +57,16 @@ public final class StructurePredicates {
         };
     }
 
-    /** Convenience for a rotation-invariant custom query and its display in one declaration. */
+    /**
+     * Convenience for a rotation-invariant custom query and its display in one declaration.
+     */
     public static <T> StructurePredicate test(StructureQuery<T> query, Predicate<? super T> condition, StructureDisplay display) {
         return withDisplay(test(query, condition), display);
     }
 
-    /** The supplied display is rotation-invariant; directional custom predicates should override display/transform together. */
+    /**
+     * The supplied display is rotation-invariant; directional custom predicates should override display/transform together.
+     */
     public static StructurePredicate withDisplay(StructurePredicate predicate, StructureDisplay display) {
         return new Displayed(Objects.requireNonNull(predicate), Objects.requireNonNull(display));
     }
@@ -98,7 +102,7 @@ public final class StructurePredicates {
      * concurrent-use contract as {@link #test}. No callback runs while freezing or previewing.
      */
     public static StructurePredicate custom(Collection<StructureQuery<?>> queries, Collection<BlockPos> offsets,
-                                             Collection<BlockPos> controllerOffsets, Predicate<StructureFacts> validator) {
+                                            Collection<BlockPos> controllerOffsets, Predicate<StructureFacts> validator) {
         return new Custom(List.copyOf(queries), positions(offsets), positions(controllerOffsets),
             StructureTransform.of(BlockOrientation.NORTH_UP), Objects.requireNonNull(validator));
     }
@@ -107,78 +111,6 @@ public final class StructurePredicates {
         var positions = new ObjectArrayList<BlockPos>(source.size());
         for (var position : source) positions.add(Objects.requireNonNull(position).toImmutable());
         return List.copyOf(positions);
-    }
-
-    private record Custom(List<StructureQuery<?>> queries, List<BlockPos> offsets, List<BlockPos> controllerOffsets,
-                          StructureTransform rotation, Predicate<StructureFacts> validator) implements StructurePredicate.ControllerAware {
-        @Override
-        public boolean planReusable() { return true; }
-
-        @Override
-        public void collectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
-            beginCollectReads(plan, position, controller).run();
-        }
-
-        @Override
-        public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
-            Objects.requireNonNull(plan);
-            return declarations(plan, Objects.requireNonNull(position).toImmutable(), Objects.requireNonNull(controller).toImmutable());
-        }
-
-        private StructureOperation<Void> declarations(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
-            return new StructureOperation<>() {
-                private int offsetIndex, queryIndex;
-                private boolean controllers, baseDeclared, areaDeclared;
-
-                @Override
-                public boolean advance(RecipeWorkBudget work) {
-                    if (complete()) return true;
-                    if (!baseDeclared) {
-                        if (!work.take()) return false;
-                        plan.area(StructureBounds.at(position));
-                        baseDeclared = true;
-                    }
-                    while (true) {
-                        var locations = controllers ? controllerOffsets : offsets;
-                        if (offsetIndex == locations.size()) {
-                            if (controllers) break;
-                            controllers = true;
-                            offsetIndex = 0;
-                            continue;
-                        }
-                        var origin = controllers ? controller : position;
-                        var actual = StructurePattern.add(origin, rotation.apply(locations.get(offsetIndex)));
-                        if (!areaDeclared) {
-                            if (!work.take()) return false;
-                            plan.area(StructureBounds.at(actual));
-                            areaDeclared = true;
-                        }
-                        while (queryIndex < queries.size()) {
-                            if (!work.take()) return false;
-                            plan.read(actual, queries.get(queryIndex++));
-                        }
-                        queryIndex = 0;
-                        areaDeclared = false;
-                        offsetIndex++;
-                    }
-                    finish(null);
-                    return true;
-                }
-            };
-        }
-
-        @Override
-        public boolean matches(StructureSnapshot snapshot, BlockPos position, BlockPos controller) {
-            var facts = new StructureFacts(snapshot, position, controller, rotation);
-            return facts.available() && validator.test(facts);
-        }
-
-        @Override
-        public StructurePredicate transform(StructureTransform transform) {
-            var composed = StructureTransform.of(BlockOrientation.get(transform.apply(rotation.apply(EnumFacing.NORTH)),
-                transform.apply(rotation.apply(EnumFacing.UP))));
-            return new Custom(queries, offsets, controllerOffsets, composed, validator);
-        }
     }
 
     public static StructurePredicate notAir() {
@@ -267,7 +199,8 @@ public final class StructurePredicates {
             case Blocks blocks -> new StructurePredicateDisplays.Material(null, blocks.accepted, null);
             case Nbt nbt -> new StructurePredicateDisplays.Nbt(nbt.expected);
             case Composite composite -> new StructurePredicateDisplays.Branch(composite.children, composite.all);
-            case Offset offset when offset.offset.equals(BlockPos.ORIGIN) -> new StructurePredicateDisplays.Branch(List.of(offset.predicate), true);
+            case Offset offset when offset.offset.equals(BlockPos.ORIGIN) ->
+                new StructurePredicateDisplays.Branch(List.of(offset.predicate), true);
             case Offset ignored -> StructurePredicateDisplays.Unknown.INSTANCE;
             default -> {
                 var display = predicate.display();
@@ -276,11 +209,91 @@ public final class StructurePredicates {
         };
     }
 
-    private record Blocks(ReferenceSet<Block> accepted, StructurePredicateDisplays.Cache presentation) implements StructurePredicate {
-        private Blocks(ReferenceSet<Block> accepted) { this(accepted, new StructurePredicateDisplays.Cache()); }
+    private record Custom(List<StructureQuery<?>> queries, List<BlockPos> offsets, List<BlockPos> controllerOffsets,
+                          StructureTransform rotation,
+                          Predicate<StructureFacts> validator) implements StructurePredicate.ControllerAware {
+        @Override
+        public boolean planReusable() {
+            return true;
+        }
 
         @Override
-        public boolean planReusable() { return true; }
+        public void collectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+            beginCollectReads(plan, position, controller).run();
+        }
+
+        @Override
+        public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+            Objects.requireNonNull(plan);
+            return declarations(plan, Objects.requireNonNull(position).toImmutable(), Objects.requireNonNull(controller).toImmutable());
+        }
+
+        private StructureOperation<Void> declarations(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+            return new StructureOperation<>() {
+                private int offsetIndex, queryIndex;
+                private boolean controllers, baseDeclared, areaDeclared;
+
+                @Override
+                public boolean advance(RecipeWorkBudget work) {
+                    if (complete()) return true;
+                    if (!baseDeclared) {
+                        if (!work.take()) return false;
+                        plan.area(StructureBounds.at(position));
+                        baseDeclared = true;
+                    }
+                    while (true) {
+                        var locations = controllers ? controllerOffsets : offsets;
+                        if (offsetIndex == locations.size()) {
+                            if (controllers) break;
+                            controllers = true;
+                            offsetIndex = 0;
+                            continue;
+                        }
+                        var origin = controllers ? controller : position;
+                        var actual = StructurePattern.add(origin, rotation.apply(locations.get(offsetIndex)));
+                        if (!areaDeclared) {
+                            if (!work.take()) return false;
+                            plan.area(StructureBounds.at(actual));
+                            areaDeclared = true;
+                        }
+                        while (queryIndex < queries.size()) {
+                            if (!work.take()) return false;
+                            plan.read(actual, queries.get(queryIndex++));
+                        }
+                        queryIndex = 0;
+                        areaDeclared = false;
+                        offsetIndex++;
+                    }
+                    finish(null);
+                    return true;
+                }
+            };
+        }
+
+        @Override
+        public boolean matches(StructureSnapshot snapshot, BlockPos position, BlockPos controller) {
+            var facts = new StructureFacts(snapshot, position, controller, rotation);
+            return facts.available() && validator.test(facts);
+        }
+
+        @Override
+        public StructurePredicate transform(StructureTransform transform) {
+            var composed = StructureTransform.of(BlockOrientation.get(transform.apply(rotation.apply(EnumFacing.NORTH)),
+                transform.apply(rotation.apply(EnumFacing.UP))));
+            return new Custom(queries, offsets, controllerOffsets, composed, validator);
+        }
+    }
+
+    private record Blocks(ReferenceSet<Block> accepted,
+                          StructurePredicateDisplays.Cache presentation) implements StructurePredicate {
+        private Blocks(ReferenceSet<Block> accepted) {
+            this(accepted, new StructurePredicateDisplays.Cache());
+        }
+
+        @Override
+        public boolean planReusable() {
+            return true;
+        }
 
         @Override
         public void collectReads(StructureReadPlan.Builder plan, BlockPos position) {
@@ -295,27 +308,42 @@ public final class StructurePredicates {
         }
 
         @Override
-        public @Nullable StructureDisplay display() { return presentation.get(this); }
+        public @Nullable StructureDisplay display() {
+            return presentation.get(this);
+        }
     }
 
-    private record Displayed(StructurePredicate predicate, StructureDisplay display) implements StructurePredicate.ControllerAware {
+    private record Displayed(StructurePredicate predicate,
+                             StructureDisplay display) implements StructurePredicate.ControllerAware {
         @Override
-        public boolean planReusable() { return predicate.planReusable(); }
+        public boolean planReusable() {
+            return predicate.planReusable();
+        }
 
         @Override
-        public void collectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) { predicate.collectReads(plan, position, controller); }
+        public void collectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+            predicate.collectReads(plan, position, controller);
+        }
 
         @Override
-        public boolean matches(StructureSnapshot snapshot, BlockPos position, BlockPos controller) { return predicate.matches(snapshot, position, controller); }
+        public boolean matches(StructureSnapshot snapshot, BlockPos position, BlockPos controller) {
+            return predicate.matches(snapshot, position, controller);
+        }
 
         @Override
-        public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) { return predicate.beginCollectReads(plan, position, controller); }
+        public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+            return predicate.beginCollectReads(plan, position, controller);
+        }
 
         @Override
-        public StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position, BlockPos controller) { return predicate.beginMatch(snapshot, position, controller); }
+        public StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position, BlockPos controller) {
+            return predicate.beginMatch(snapshot, position, controller);
+        }
 
         @Override
-        public StructurePredicate transform(StructureTransform rotation) { return new Displayed(predicate.transform(rotation), display); }
+        public StructurePredicate transform(StructureTransform rotation) {
+            return new Displayed(predicate.transform(rotation), display);
+        }
 
         @Override
         public StructureOperation<StructurePredicate> beginTransform(StructureTransform rotation) {
@@ -333,12 +361,16 @@ public final class StructurePredicates {
     }
 
     private record Composite(List<StructurePredicate> children, boolean all,
-                             boolean planReusable, StructurePredicateDisplays.Cache presentation) implements StructurePredicate.ControllerAware {
+                             boolean planReusable,
+                             StructurePredicateDisplays.Cache presentation) implements StructurePredicate.ControllerAware {
         private Composite(List<StructurePredicate> children, boolean all, boolean planReusable) {
             this(children, all, planReusable, new StructurePredicateDisplays.Cache());
         }
+
         @Override
-        public @Nullable StructureDisplay display() { return presentation.get(this); }
+        public @Nullable StructureDisplay display() {
+            return presentation.get(this);
+        }
 
         @Override
         public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
@@ -463,9 +495,6 @@ public final class StructurePredicates {
 
     private record Offset(BlockPos offset, StructurePredicate predicate,
                           boolean planReusable) implements StructurePredicate.ControllerAware {
-        @Override
-        public @Nullable StructureDisplay display() { return offset.equals(BlockPos.ORIGIN) ? predicate.display() : null; }
-
         private Offset(BlockPos offset, StructurePredicate predicate) {
             this(offset, predicate, Objects.requireNonNull(predicate).planReusable());
         }
@@ -473,6 +502,11 @@ public final class StructurePredicates {
         private Offset {
             offset = Objects.requireNonNull(offset).toImmutable();
             Objects.requireNonNull(predicate);
+        }
+
+        @Override
+        public @Nullable StructureDisplay display() {
+            return offset.equals(BlockPos.ORIGIN) ? predicate.display() : null;
         }
 
         @Override
@@ -553,11 +587,16 @@ public final class StructurePredicates {
         }
     }
 
-    private record State(IBlockState expected, StructurePredicateDisplays.Cache presentation) implements StructurePredicate {
-        private State(IBlockState expected) { this(expected, new StructurePredicateDisplays.Cache()); }
+    private record State(IBlockState expected,
+                         StructurePredicateDisplays.Cache presentation) implements StructurePredicate {
+        private State(IBlockState expected) {
+            this(expected, new StructurePredicateDisplays.Cache());
+        }
 
         @Override
-        public @Nullable StructureDisplay display() { return presentation.get(this); }
+        public @Nullable StructureDisplay display() {
+            return presentation.get(this);
+        }
 
         @Override
         public boolean planReusable() {

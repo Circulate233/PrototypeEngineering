@@ -30,11 +30,10 @@ class EnergyHatchReconfigurationTest {
     void bothSidesMigrateUnderTheOriginalFenceAndReservedOrOverfullSidesRejectAtomically() {
         var old = new EnergyHatchStorage(profile(1000, 2000), 11, 7, 900, 1300, () -> {
         });
-        old.bindSourceIdentities("test:energy/1/2/3");
         var input = Objects.requireNonNull(old.input());
         var output = Objects.requireNonNull(old.output());
         var oldPort = new ForgeEnergyPort(input, output);
-        var rejected = old.replace(profile(1000, 1200), 11, 7, null, () -> {
+        var rejected = old.replace(profile(1000, 1200), 11, 7, () -> {
             }, () -> true,
             _ -> {
                 throw new AssertionError("Overfull output must retain both sides");
@@ -44,7 +43,7 @@ class EnergyHatchReconfigurationTest {
         assertArrayEquals(new long[]{900, 1300}, old.savedBalances());
         var reservation = Objects.requireNonNull(input.reserveExtractEnergy(input.energySnapshot(), 5).reservation());
         assertEquals(HatchReconfigurationStatus.PENDING_BUSY,
-            old.replace(profile(2000, 3000), 11, 7, null, () -> {
+            old.replace(profile(2000, 3000), 11, 7, () -> {
                 }, () -> true,
                 _ -> {
                     throw new AssertionError("Active token must block replacement");
@@ -52,7 +51,7 @@ class EnergyHatchReconfigurationTest {
         ResourceTransactions.rollback(List.of(reservation));
         var installed = new EnergyHatchStorage[]{old};
         assertEquals(HatchReconfigurationStatus.APPLIED,
-            old.replace(profile(2000, 3000), 11, 7, "test:energy/1/2/3", () -> {
+            old.replace(profile(2000, 3000), 11, 7, () -> {
                 }, () -> true,
                 candidate -> () -> installed[0] = candidate).status());
         assertArrayEquals(new long[]{900, 1300}, installed[0].savedBalances());
@@ -68,7 +67,7 @@ class EnergyHatchReconfigurationTest {
         int[] notifications = {0};
         var old = new EnergyHatchStorage(profile(1000, 2000), -1, -1, 900, 1300, () -> {
         });
-        assertThrows(IllegalArgumentException.class, () -> old.replace(profile(2000, 3000), -1, -1, "test:new",
+        assertThrows(IllegalArgumentException.class, () -> old.replace(profile(2000, 3000), -1, -1,
             () -> notifications[0]++, () -> true,
             _ -> {
                 throw new IllegalArgumentException("Adapter preparation failed");

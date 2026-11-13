@@ -13,8 +13,8 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.UUID;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * Independent transport subscriber to C's exact server owner publication and verified login context.
@@ -28,14 +28,7 @@ public final class ServerRecipeManifests {
         RecipeDeclarations.INSTANCE.onRegistered((_, snapshot) -> {
             var captured = current;
             if (captured == null || captured.snapshot != snapshot) return;
-            captured.server.addScheduledTask(() -> {
-                if (current != captured) return;
-                try {
-                    send(captured, null, false);
-                } catch (RuntimeException | Error failure) {
-                    PrototypeEngineering.LOGGER.error("Delayed recipe declaration manifest failed", failure);
-                }
-            });
+            captured.server.addScheduledTask(() -> send(captured, null, false));
         });
     }
 

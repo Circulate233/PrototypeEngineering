@@ -14,9 +14,12 @@ import net.minecraftforge.items.wrapper.PlayerInvWrapper;
 
 import java.util.Objects;
 
-/** Delivers only fluid already drained from the world, retaining its exact type, amount and NBT. */
+/**
+ * Delivers only fluid already drained from the world, retaining its exact type, amount and NBT.
+ */
 final class BuilderFluidRecovery {
-    private BuilderFluidRecovery() { }
+    private BuilderFluidRecovery() {
+    }
 
     static void deliver(EntityPlayer player, BlockPos position, FluidStack fluid) {
         var key = Objects.requireNonNull(AEFluidKey.of(fluid), "Drained fluid must have a positive AE key");

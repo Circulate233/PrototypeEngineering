@@ -264,7 +264,7 @@ class TeamResearchQueueTest {
     }
 
     @Test
-    void planKeepsCompleteMaterialDefinitionsAndExposesImmutableAmounts() {
+    void planKeepsCompleteMaterialDefinitionsAndExactAmounts() {
         var resources = new NetworkResourceRegistry();
         resources.freeze();
         var registry = new ResearchRegistry();
@@ -277,8 +277,6 @@ class TeamResearchQueueTest {
         var head = queue.enqueue(id(0), 1, PLAYER, 1);
         var plan = queue.planSegment(head.key(), STATIONS, amounts(1), 2).orElseThrow();
         assertSame(material, plan.materialRequirements().getFirst());
-        assertThrows(UnsupportedOperationException.class, () -> plan.materialRequirements().clear());
-        assertThrows(UnsupportedOperationException.class, () -> plan.grantedResources().object2LongEntrySet().iterator().next().setValue(2));
     }
 
     @Test

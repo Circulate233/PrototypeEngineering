@@ -1,30 +1,29 @@
 package com.circulation.prototype_eng.structure.tool;
 
-import ae2.api.orientation.BlockOrientation;
-import com.circulation.prototype_eng.structure.tool.ConstructionProgress.Step;
-import com.circulation.prototype_eng.Tags;
-import com.circulation.prototype_eng.BuilderConfig;
-import com.circulation.prototype_eng.PrototypeEngineering;
-import com.circulation.prototype_eng.structure.StructureMaterials;
 import ae2.api.config.Actionable;
+import ae2.api.orientation.BlockOrientation;
 import ae2.api.stacks.AEKey2LongMap;
-import ae2.api.stacks.GenericStack;
 import ae2.api.stacks.AmountFormat;
+import ae2.api.stacks.GenericStack;
+import com.circulation.prototype_eng.BuilderConfig;
+import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.localization.StructureToolText;
+import com.circulation.prototype_eng.structure.StructureMaterials;
 import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
+import com.circulation.prototype_eng.structure.tool.ConstructionProgress.Step;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockFalling;
 import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.state.IBlockState;
+import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.item.ItemStack;
-import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.init.Enchantments;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.math.BlockPos;
@@ -44,11 +43,13 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
-/** Server-owned builder tasks: one per player, configurable batches and inventory-safe payments. */
+/**
+ * Server-owned builder tasks: one per player, configurable batches and inventory-safe payments.
+ */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class StructureBuildTasks {
     private static final Map<UUID, Task> TASKS = new Object2ObjectOpenHashMap<>();
@@ -136,7 +137,7 @@ public final class StructureBuildTasks {
                 if (ready == null) return;
                 targets = ready;
             }
-            var task = new Task(player, slot, tool, host, dismantle, List.copyOf(targets));
+            var task = new Task(player, slot, tool, host, dismantle, targets);
             TASKS.put(player.getUniqueID(), task);
             BuilderState.state(tag, dismantle ? BuilderState.State.DISASSEMBLING : BuilderState.State.BUILDING);
             BuilderState.progress(tag, 0, targets.size());
@@ -202,10 +203,12 @@ public final class StructureBuildTasks {
         if (blocked > 0) {
             player.sendMessage(StructureToolText.BuilderBlocked.text(blocked));
         }
-        if (player.isCreative()) return blocked > 0 && BuilderState.Setting.REQUIRE_SPACE.enabled(tag) ? null : candidates;
+        if (player.isCreative())
+            return blocked > 0 && BuilderState.Setting.REQUIRE_SPACE.enabled(tag) ? null : candidates;
         var inventory = new ConstructionInventory(player);
-        var me = BuilderState.meMode(tag) == 0 ? null : ConstructionMeAccess.find((EntityPlayerMP) player);
-        if (BuilderState.meMode(tag) != 0 && me == null) player.sendMessage(StructureToolText.BuilderMeUnavailable.text());
+        var me = BuilderState.meMode(tag) == 0 ? null : ConstructionMEAccess.find((EntityPlayerMP) player);
+        if (BuilderState.meMode(tag) != 0 && me == null)
+            player.sendMessage(StructureToolText.BuilderMeUnavailable.text());
         var result = ConstructionPreflight.allocate(resources, required -> {
             long local = inventory.take(required);
             return local + (me == null ? 0 : me.extract(required.what(), required.amount() - local, Actionable.SIMULATE));
@@ -219,11 +222,14 @@ public final class StructureBuildTasks {
             result.missing().forEachEntry((key, amount) -> {
                 if (me.craftable(key)) craft.add(new GenericStack(key, amount));
             });
-            if (!craft.isEmpty() && !me.openCrafting(craft, tool)) player.sendMessage(StructureToolText.BuilderMeUnavailable.text());
+            if (!craft.isEmpty() && !me.openCrafting(craft, tool))
+                player.sendMessage(StructureToolText.BuilderMeUnavailable.text());
         }
-        if (requireAll && !result.missing().isEmpty() || blocked > 0 && BuilderState.Setting.REQUIRE_SPACE.enabled(tag)) return null;
+        if (requireAll && !result.missing().isEmpty() || blocked > 0 && BuilderState.Setting.REQUIRE_SPACE.enabled(tag))
+            return null;
         if (BuilderState.Setting.WAIT_MATERIALS.enabled(tag)) return candidates;
-        if (admitted.size() < candidates.size()) player.sendMessage(StructureToolText.BuilderSkipped.text(candidates.size() - admitted.size()));
+        if (admitted.size() < candidates.size())
+            player.sendMessage(StructureToolText.BuilderSkipped.text(candidates.size() - admitted.size()));
         return admitted;
     }
 
@@ -235,7 +241,8 @@ public final class StructureBuildTasks {
     }
 
     private static boolean placeable(EntityPlayer player, ItemStack tool, BlockPos pos, IBlockState current) {
-        if (!player.world.isBlockModifiable(player, pos) || !player.canPlayerEdit(pos, EnumFacing.UP, tool)) return false;
+        if (!player.world.isBlockModifiable(player, pos) || !player.canPlayerEdit(pos, EnumFacing.UP, tool))
+            return false;
         if (current.getBlock().isAir(current, player.world, pos)) return true;
         var tag = BuilderState.data(tool);
         if (BuilderState.Setting.REQUIRE_SPACE.enabled(tag))
@@ -316,7 +323,8 @@ public final class StructureBuildTasks {
         boolean finished = false;
         try {
             // Escrow the material before breaking an obstruction; callbacks can still invalidate the task.
-            if (!payment.commit() || !task.valid(player) || !world.getBlockState(pos).equals(current)) return Step.RETRY;
+            if (!payment.commit() || !task.valid(player) || !world.getBlockState(pos).equals(current))
+                return Step.RETRY;
             if (!world.isAirBlock(pos)) {
                 if (!BuilderState.Setting.REQUIRE_SPACE.enabled(tag)) {
                     if (!remove(player, task, pos, current)) {
@@ -330,7 +338,8 @@ public final class StructureBuildTasks {
                     // Ignored world fluid is replaced without harvesting it.
                     var event = new BlockEvent.BreakEvent(world, pos, current, player);
                     event.setExpToDrop(0);
-                    if (MinecraftForge.EVENT_BUS.post(event) || !world.getBlockState(pos).equals(current) || !task.valid(player)) return Step.RETRY;
+                    if (MinecraftForge.EVENT_BUS.post(event) || !world.getBlockState(pos).equals(current) || !task.valid(player))
+                        return Step.RETRY;
                 }
             }
             placed = true;
@@ -341,9 +350,6 @@ public final class StructureBuildTasks {
             finished = true;
             payment.finish();
             return Step.COMPLETE;
-        } catch (RuntimeException failure) {
-            PrototypeEngineering.LOGGER.error("Construction failed at {}", pos, failure);
-            return finished ? Step.COMPLETE : Step.RETRY;
         } finally {
             if (!finished) {
                 try {
@@ -367,7 +373,8 @@ public final class StructureBuildTasks {
         event.setExpToDrop(player.isCreative() || fluid
             || block.canSilkHarvest(world, pos, state, player) && EnchantmentHelper.getEnchantmentLevel(Enchantments.SILK_TOUCH, harvestedWith) > 0
             ? 0 : block.getExpDrop(state, world, pos, EnchantmentHelper.getEnchantmentLevel(Enchantments.FORTUNE, harvestedWith)));
-        if (MinecraftForge.EVENT_BUS.post(event) || !world.getBlockState(pos).equals(state) || !task.valid(player)) return false;
+        if (MinecraftForge.EVENT_BUS.post(event) || !world.getBlockState(pos).equals(state) || !task.valid(player))
+            return false;
         if (fluid && !task.dismantle) return world.setBlockToAir(pos);
         if (fluid && !player.isCreative()) {
             var source = FluidUtil.getFluidHandler(world, pos, EnumFacing.UP);
@@ -393,7 +400,9 @@ public final class StructureBuildTasks {
     }
 
     private record Target(BlockPos position, @Nullable IBlockState state, @Nullable String tileNbt) {
-        Target(BlockPos position, @Nullable IBlockState state) { this(position, state, null); }
+        Target(BlockPos position, @Nullable IBlockState state) {
+            this(position, state, null);
+        }
     }
 
     private static final class Task {

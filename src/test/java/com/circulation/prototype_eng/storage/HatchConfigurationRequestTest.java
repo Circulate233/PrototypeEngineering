@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.storage;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
-
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKeyTypes;
 import com.circulation.prototype_eng.api.energy.EnergyHatchConfiguration;
@@ -14,6 +12,7 @@ import com.circulation.prototype_eng.energy.EnergyHatchBlockEntity;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.nbt.NBTTagCompound;
 import org.junit.jupiter.api.Test;
 
@@ -130,7 +129,9 @@ class HatchConfigurationRequestTest {
         }
     }
 
-    /** Only the host-environment observation is supplied; request, queue, scheduler and buffers are real. */
+    /**
+     * Only the host-environment observation is supplied; request, queue, scheduler and buffers are real.
+     */
     private static final class ResourceHost extends ResourceHatchBlockEntity {
         private final TaskScheduler scheduler;
         private boolean current = true;

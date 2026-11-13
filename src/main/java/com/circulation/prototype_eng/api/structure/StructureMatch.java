@@ -2,10 +2,8 @@ package com.circulation.prototype_eng.api.structure;
 
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.math.BlockPos;
-
-import java.util.AbstractList;
 
 import java.util.Iterator;
 import java.util.List;
@@ -15,67 +13,43 @@ import java.util.Objects;
  * Immutable successful occurrence. Repeated definitions keep separate tree occurrences and counts;
  * never flatten them by structure ID. The shape provides its own covered positions, so external
  * structures participate in discovery/projection without concrete Template/Slice type checks.
+ * The origin, block positions, and both lists are borrowed immutable values for this occurrence
+ * tree's lifetime. Producers finish populating them before construction; consumers never mutate them.
  */
 public record StructureMatch(MachineStructure structure, BlockPos origin, int repetitions,
                              List<BlockPos> blocks, List<StructureMatch> children) {
     public StructureMatch {
         Objects.requireNonNull(structure);
-        origin = Objects.requireNonNull(origin).toImmutable();
+        Objects.requireNonNull(origin);
         if (repetitions < 0) {
             throw new IllegalArgumentException("Negative matched repetition count");
         }
-        if (!(blocks instanceof Frozen<?>)) {
-            var copied = new ObjectArrayList<BlockPos>(blocks.size());
-            for (var block : blocks) copied.add(Objects.requireNonNull(block).toImmutable());
-            blocks = new Frozen<>(copied);
-        }
-        if (!(children instanceof Frozen<?>)) children = List.copyOf(children);
+
     }
 
-    /** Copies the complete occurrence incrementally, publishing no partially copied tree. */
+    /**
+     * Publishes the completed occurrence using the supplied immutable lists without copying.
+     */
     public static StructureOperation<StructureMatch> beginCreate(MachineStructure structure, BlockPos origin, int repetitions,
-                                                                 Iterable<BlockPos> blocks, List<StructureMatch> children) {
-        Objects.requireNonNull(structure);
-        Objects.requireNonNull(origin);
-        var blockIterator = blocks.iterator();
-        var childIterator = children.iterator();
-        return new StructureOperation<>() {
-            private final ObjectArrayList<BlockPos> frozenBlocks = new ObjectArrayList<>();
-            private final ObjectArrayList<StructureMatch> frozenChildren = new ObjectArrayList<>();
-
-            @Override
-            public boolean advance(RecipeWorkBudget work) {
-                Objects.requireNonNull(work);
-                if (complete()) return true;
-                while (blockIterator.hasNext()) {
-                    if (!work.take()) return false;
-                    frozenBlocks.add(Objects.requireNonNull(blockIterator.next()).toImmutable());
-                }
-                while (childIterator.hasNext()) {
-                    if (!work.take()) return false;
-                    frozenChildren.add(Objects.requireNonNull(childIterator.next()));
-                }
-                if (!work.take()) return false;
-                finish(new StructureMatch(structure, origin, repetitions, new Frozen<>(frozenBlocks), new Frozen<>(frozenChildren)));
-                return true;
-            }
-        };
+                                                                 List<BlockPos> blocks, List<StructureMatch> children) {
+        return StructureOperation.call(() -> new StructureMatch(structure, origin, repetitions, blocks, children));
     }
 
     public List<BlockPos> allBlocks() {
         return Objects.requireNonNull(beginAllBlocks().run());
     }
 
-    /** Actual accepted occurrence DFS and deduplication, including repeated definition IDs. */
+    /**
+     * Actual accepted occurrence DFS and deduplication, including repeated definition IDs.
+     */
     @SuppressWarnings("ReturnOfInnerClass") // The cursor retains this immutable accepted occurrence tree.
     public StructureOperation<List<BlockPos>> beginAllBlocks() {
         return new StructureOperation<>() {
             private final ObjectArrayList<Iterator<StructureMatch>> pending = new ObjectArrayList<>();
-            private final ObjectLinkedOpenHashSet<BlockPos> unique = new ObjectLinkedOpenHashSet<>();
-            private final ObjectArrayList<BlockPos> frozen = new ObjectArrayList<>();
+            private final ObjectOpenHashSet<BlockPos> unique = new ObjectOpenHashSet<>();
+            private final ObjectArrayList<BlockPos> collected = new ObjectArrayList<>();
             private StructureMatch node = StructureMatch.this;
             private Iterator<BlockPos> blocks;
-            private Iterator<BlockPos> copy;
             private boolean walked;
 
             @Override
@@ -91,7 +65,8 @@ public record StructureMatch(MachineStructure structure, BlockPos origin, int re
                     }
                     while (blocks.hasNext()) {
                         if (!work.take()) return false;
-                        unique.add(blocks.next());
+                        var position = blocks.next();
+                        if (unique.add(position)) collected.add(position);
                     }
                     while (!pending.isEmpty() && !pending.top().hasNext()) {
                         if (!work.take()) return false;
@@ -99,39 +74,16 @@ public record StructureMatch(MachineStructure structure, BlockPos origin, int re
                     }
                     if (pending.isEmpty()) {
                         walked = true;
-                        copy = unique.iterator();
                     } else {
                         if (!work.take()) return false;
                         node = Objects.requireNonNull(pending.top()).next();
                     }
                 }
-                while (copy.hasNext()) {
-                    if (!work.take()) return false;
-                    frozen.add(copy.next());
-                }
                 if (!work.take()) return false;
-                finish(new Frozen<>(frozen));
+                finish(collected);
                 return true;
             }
         };
     }
 
-    /** Only the private completed computations can transfer an owned immutable list without copying. */
-    private static final class Frozen<T> extends AbstractList<T> {
-        private final List<T> owned;
-
-        private Frozen(List<T> owned) {
-            this.owned = owned;
-        }
-
-        @Override
-        public T get(int index) {
-            return owned.get(index);
-        }
-
-        @Override
-        public int size() {
-            return owned.size();
-        }
-    }
 }

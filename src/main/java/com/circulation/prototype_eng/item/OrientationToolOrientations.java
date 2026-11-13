@@ -13,13 +13,6 @@ import java.util.Objects;
 public final class OrientationToolOrientations {
     public static final double EDGE = .2;
 
-    public enum Part {
-        CENTER, TOP, RIGHT, BOTTOM, LEFT, CORNER;
-
-        /** Shared declaration order; callers must not modify this array. */
-        public static final Part[] VALUES = values();
-    }
-
     private OrientationToolOrientations() {
     }
 
@@ -32,7 +25,9 @@ public final class OrientationToolOrientations {
         return face(current, target(clickedSide, part));
     }
 
-    /** Rigid quarter/half turns preserve the existing top instead of resetting the twist. */
+    /**
+     * Rigid quarter/half turns preserve the existing top instead of resetting the twist.
+     */
     private static BlockOrientation face(BlockOrientation current, EnumFacing target) {
         var front = current.getSide(RelativeSide.FRONT);
         if (target == front) return current;
@@ -80,7 +75,9 @@ public final class OrientationToolOrientations {
         return top ? Part.TOP : Part.CENTER;
     }
 
-    /** Unit-block face coordinates; u increases to the viewer's right and v towards its top. */
+    /**
+     * Unit-block face coordinates; u increases to the viewer's right and v towards its top.
+     */
     public static Vec3d point(EnumFacing face, double u, double v) {
         var right = right(face);
         var up = up(face);
@@ -99,5 +96,14 @@ public final class OrientationToolOrientations {
             case DOWN -> EnumFacing.SOUTH;
             default -> EnumFacing.UP;
         });
+    }
+
+    public enum Part {
+        CENTER, TOP, RIGHT, BOTTOM, LEFT, CORNER;
+
+        /**
+         * Shared declaration order; callers must not modify this array.
+         */
+        public static final Part[] VALUES = values();
     }
 }

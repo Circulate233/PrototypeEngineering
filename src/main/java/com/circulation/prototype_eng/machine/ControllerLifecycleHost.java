@@ -1,7 +1,7 @@
 package com.circulation.prototype_eng.machine;
 
-import ae2.api.orientation.BlockOrientation;
 import ae2.api.inventories.InternalInventory;
+import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.HatchCapabilities;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
@@ -73,7 +73,9 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
         requireServerThread();
     }
 
-    /** Concrete entities explicitly select this native binding; public legacy hosts keep virtual reads. */
+    /**
+     * Concrete entities explicitly select this native binding; public legacy hosts keep virtual reads.
+     */
     public static ControllerLifecycleHost nativeHost(ResourceLocation machineType, TileEntity controller, @Nullable UUID player,
                                                      @Nullable ResourceLocation blockId) {
         return new ControllerLifecycleHost(machineType, controller, player, blockId, true);
@@ -213,6 +215,6 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
             throw new IllegalStateException("Cannot discover structure ports at an unloaded position: " + immutablePosition);
         }
         TileEntity provider = world.getTileEntity(immutablePosition);
-        return provider != null && !provider.isInvalid() && provider instanceof StructureComponentProvider ports ? ports : null;
+        return provider instanceof StructureComponentProvider ports && !provider.isInvalid() ? ports : null;
     }
 }

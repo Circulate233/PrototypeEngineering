@@ -16,7 +16,9 @@ import stanhebben.zenscript.annotations.ZenMethod;
 import java.util.Objects;
 import java.util.UUID;
 
-/** One actual server publication handle, session and snapshot. A new lookup is required after publication. */
+/**
+ * One actual server publication handle, session and snapshot. A new lookup is required after publication.
+ */
 @SuppressWarnings("unused") // Discovered and accessed by ZenScript.
 @ZenRegister
 @ZenClass("mods.prototype_eng.recipe.Updates")
@@ -47,14 +49,16 @@ public final class ZenRecipeUpdates {
         return snapshot.generation();
     }
 
-    /** Author supplies the complete new declaration identity; no closure equivalence is inferred. */
+    /**
+     * Author supplies the complete new declaration identity; no closure equivalence is inferred.
+     */
     @ZenMethod
     public ZenRecipeUpdateTask replace(ZenRecipe[] replacements, String setId, String version) {
         var key = new RecipeDeclarationKey(ZenRecipeSupport.id(setId), version);
         var definitions = new ObjectArrayList<RecipeRegistry.Definition>(replacements.length);
         var codecs = new ObjectArrayList<RecipeProcessNbt>(replacements.length);
         for (var recipe : replacements) {
-            definitions.add(Objects.requireNonNull(recipe).definition());
+            definitions.add(recipe.definition());
             codecs.add(recipe.codec());
         }
         var published = updates.replace(session, snapshot, definitions, codecs).thenApply(result -> {

@@ -4,26 +4,26 @@ import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.structure.MachineStructure;
+import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructureMatch;
 import com.circulation.prototype_eng.api.structure.StructureMatchResult;
 import com.circulation.prototype_eng.api.structure.StructureOperation;
 import com.circulation.prototype_eng.api.structure.StructurePattern;
-import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePredicate;
 import com.circulation.prototype_eng.api.structure.StructurePredicateResult;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.api.structure.StructureReadPlan;
 import com.circulation.prototype_eng.api.structure.StructureSnapshot;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
+import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -76,7 +76,9 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
         }
     }
 
-    /** Explicit default Java factory; ordinary constructor subclasses retain all old virtual hooks. */
+    /**
+     * Explicit default Java factory; ordinary constructor subclasses retain all old virtual hooks.
+     */
     public static TemplateStructure create(ResourceLocation id, BlockOrientation orientation, BlockPos offset, boolean hideWorldBlocks, StructurePattern pattern, List<StructurePredicate> validators, List<MachineStructure> children) {
         return new TemplateStructure(id, orientation, offset, hideWorldBlocks, pattern, validators, children, true, false, false);
     }
@@ -106,7 +108,7 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
     }
 
     @Override
-    public Map<BlockPos, StructureDisplay> displays() {
+    public BlockPos2ObjectMap<StructureDisplay> displays() {
         return pattern.displays();
     }
 
@@ -124,8 +126,11 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
 
     @Override
     public Geometry previewGeometry() {
+        var positions = new ObjectArrayList<BlockPos>(pattern.blocks().size());
+        for (var iterator = pattern.blocks().longKeySet().iterator(); iterator.hasNext(); )
+            positions.add(BlockPos.fromLong(iterator.nextLong()));
         return new Geometry(Kind.TEMPLATE, offset, 1, 1, BlockPos.ORIGIN,
-            new ObjectArrayList<>(pattern.blocks().keySet()), children);
+            positions, children);
     }
 
     @Override
@@ -189,8 +194,8 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
             matchedChildren.add(result);
         }
         var blocks = new ObjectArrayList<BlockPos>(pattern.blocks().size());
-        for (BlockPos relative : pattern.blocks().keySet()) {
-            BlockPos position = StructurePattern.add(origin, relative);
+        for (var iterator = pattern.blocks().longKeySet().iterator(); iterator.hasNext(); ) {
+            BlockPos position = StructurePattern.add(origin, iterator.nextLong());
             if (!position.equals(controller)) {
                 blocks.add(position);
             }
@@ -329,7 +334,7 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
             private final StructureOperation<StructurePredicateResult> patternWork = pattern.beginMatch(snapshot, origin, controller);
             private final ObjectArrayList<StructureMatch> matchedChildren = new ObjectArrayList<>();
             private final ObjectArrayList<BlockPos> matchedBlocks = new ObjectArrayList<>();
-            private final Iterator<BlockPos> positions = pattern.blocks().keySet().iterator();
+            private final LongIterator positions = pattern.blocks().longKeySet().iterator();
             @Nullable
             private StructureOperation<StructurePredicateResult> validator;
             @Nullable
@@ -379,7 +384,7 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
                 }
                 while (positions.hasNext()) {
                     if (!work.take()) return false;
-                    var position = StructurePattern.add(origin, positions.next());
+                    var position = StructurePattern.add(origin, positions.nextLong());
                     if (!position.equals(controller)) matchedBlocks.add(position);
                 }
                 if (freeze == null) {

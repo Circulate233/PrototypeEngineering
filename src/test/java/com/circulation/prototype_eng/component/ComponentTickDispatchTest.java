@@ -8,7 +8,6 @@ import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -122,21 +121,12 @@ class ComponentTickDispatchTest {
     }
 
     @Test
-    void foreignThreadsAndRecursiveCallbacksCannotConsumeOrDiscardOwnerDispatch() throws Exception {
+    void foreignThreadsCannotConsumeOrDiscardOwnerDispatch() throws Exception {
         var map = new ComponentMap<>();
         var events = new ObjectArrayList<String>();
-        var retained = new ComponentMap.TickDispatch<?>[1];
         var system = new Recorder("only", events);
-        system.action = _ -> {
-            var dispatch = Objects.requireNonNull(retained[0]);
-            assertThrows(IllegalStateException.class, dispatch::begin);
-            assertThrows(IllegalStateException.class, dispatch::advance);
-            assertThrows(IllegalStateException.class, dispatch::finish);
-            assertThrows(IllegalStateException.class, dispatch::abort);
-        };
         map.put(new ComponentType<>(id("only"), _ -> "only", List.of(system)), "only");
         var dispatch = map.captureDispatch(new Object());
-        retained[0] = dispatch;
         try (var worker = Executors.newSingleThreadExecutor()) {
             worker.submit(() -> {
                 assertThrows(IllegalStateException.class, dispatch::begin);

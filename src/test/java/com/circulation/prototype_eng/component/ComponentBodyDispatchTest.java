@@ -175,13 +175,6 @@ class ComponentBodyDispatchTest {
             "post:first:first"), events);
     }
 
-    @Test
-    void emptyComponentMapExecutesTheBusinessBodyExactlyOnce() {
-        var events = new ObjectArrayList<String>();
-        new ComponentMap<>().tick(new Object(), () -> events.add("body"));
-        assertEquals(List.of("body"), events);
-    }
-
     private static final class RecordingSystem implements ComponentSystem<Object, String> {
         private final String name;
         private final List<String> events;

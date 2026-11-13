@@ -1,8 +1,8 @@
 package com.circulation.prototype_eng.client.preview;
 
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
-import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
+import com.circulation.prototype_eng.api.structure.StructureTransform;
 import net.minecraft.block.properties.IProperty;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.EnumFacing;
@@ -19,37 +19,26 @@ final class PreviewBlockStates {
         var display = cell.display();
         if (display == null) return false;
         for (var option : display.options())
-            if (ForgeRegistries.BLOCKS.containsKey(option.blockId())
-                && ForgeRegistries.BLOCKS.getValue(option.blockId()) != null) return true;
+            if (ForgeRegistries.BLOCKS.containsKey(option.blockId())) return true;
         return false;
     }
 
     static IBlockState first(StructurePreviewModel model, StructurePreviewModel.Cell cell) {
-        var explicit = model.settings().explicitOption(cell);
-        if (explicit != null) return selected(model, cell, explicit);
         var display = cell.display();
         if (display == null) return null;
+        var explicit = model.settings().explicitOption(cell);
+        if (explicit != null) return selected(model, display, explicit);
         var root = model.generation().entries().get(model.structureId());
         var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
         for (var option : display.options()) {
-            // containsKey prevents Forge's missing registry lookup from silently returning AIR.
-            if (!ForgeRegistries.BLOCKS.containsKey(option.blockId())) continue;
-            var block = ForgeRegistries.BLOCKS.getValue(option.blockId());
-            if (block != null) {
-                var state = resolve(option, rotation);
-                if (state != null) return state;
-            }
+            var state = resolve(option, rotation);
+            if (state != null) return state;
         }
         return null;
     }
 
-    static IBlockState selected(StructurePreviewModel model, StructurePreviewModel.Cell cell, int optionIndex) {
-        var display = cell.display();
-        if (display == null || optionIndex < 0 || optionIndex >= display.options().size()) return null;
+    static IBlockState selected(StructurePreviewModel model, StructureDisplay display, int optionIndex) {
         var option = display.options().get(optionIndex);
-        if (!ForgeRegistries.BLOCKS.containsKey(option.blockId())) return null;
-        var block = ForgeRegistries.BLOCKS.getValue(option.blockId());
-        if (block == null) return null;
         var root = model.generation().entries().get(model.structureId());
         var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
         return resolve(option, rotation);
@@ -57,6 +46,7 @@ final class PreviewBlockStates {
 
     @SuppressWarnings("deprecation")
     static IBlockState resolve(StructureDisplay.BlockOption option, StructureTransform rotation) {
+        // Missing registry lookups can return AIR; resolve this boundary once per option.
         if (!ForgeRegistries.BLOCKS.containsKey(option.blockId())) return null;
         var block = ForgeRegistries.BLOCKS.getValue(option.blockId());
         if (block == null) return null;

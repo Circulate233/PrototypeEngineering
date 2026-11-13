@@ -3,8 +3,6 @@ package com.circulation.prototype_eng.api.research;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.research.manual.ManualMaterialKey;
-import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.research.reward.RewardChild;
 import com.circulation.prototype_eng.api.research.reward.RewardClaim;
@@ -20,10 +18,8 @@ import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
-import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
@@ -100,7 +96,7 @@ class ResearchWorldViewTest {
         var first = new TeamResearchQueue.Key(BASE, 3, 1);
         var queue = new TeamResearchQueue.Snapshot("old", ObjectList.of(new TeamResearchQueue.Entry(first, BOB, 2),
             new TeamResearchQueue.Entry(new TeamResearchQueue.Key(DEPENDENT, 1, 2), ALICE, 3)), first,
-            quantities(COMPUTE, 6), 3, 7, 10, 1, 9);
+            Object2LongMaps.singleton(COMPUTE, 6), 3, 7, 10, 1, 9);
         var team = new ResearchWorldSnapshot.Team("old", members(ALICE, BOB), new ObjectOpenHashSet<>(),
             new TeamOwnedResearch.Snapshot("old", levels(OWNED, 2)), queue, ObjectList.of());
         var world = new ResearchWorld(registry, resources, permissions, writer);
@@ -123,12 +119,6 @@ class ResearchWorldViewTest {
     private static Object2IntMap<ResourceLocation> levels(ResourceLocation id, int value) {
         var result = new Object2IntOpenHashMap<ResourceLocation>();
         result.put(id, value);
-        return result;
-    }
-
-    private static <T> Object2LongMap<T> quantities(T key, long value) {
-        var result = new Object2LongOpenHashMap<T>();
-        result.put(key, value);
         return result;
     }
 
@@ -363,25 +353,4 @@ class ResearchWorldViewTest {
         assertInstanceOf(IllegalStateException.class, assertThrows(CompletionException.class, async::join).getCause());
     }
 
-    @Test
-    void detachedMapsAndManualProgressRejectMutationThroughPrimitiveEntries() {
-        var levels = levels(BASE, 1);
-        var progress = quantities(COMPUTE.id(), 6);
-        var material = new ManualMaterialKey(id("material"), 0);
-        var work = quantities(material, 4);
-        var manual = new ResearchPlayerView.ManualRow(1, ManualResearchSession.Status.ACTIVE, null, ALICE, work);
-        var rows = new ObjectArrayList<>(ObjectList.of(manual));
-        var team = new ResearchPlayerView.Team(ResearchPlayerView.TeamStatus.AVAILABLE, "old", ALLOWED, ALLOWED, ALLOWED, ALLOWED,
-            levels, Object2IntMaps.emptyMap(), new ObjectOpenHashSet<>(), 0, ObjectList.of(), progress, rows);
-        levels.put(BASE, 3);
-        progress.put(COMPUTE.id(), 10);
-        work.put(material, 9);
-        rows.clear();
-        assertEquals(1, team.sharedLevels().getInt(BASE));
-        assertEquals(6, team.numericProgress().getLong(COMPUTE.id()));
-        assertEquals(4, team.manualRows().getFirst().work().getLong(material));
-        assertThrows(UnsupportedOperationException.class, () -> team.sharedLevels().object2IntEntrySet().iterator().next().setValue(2));
-        assertThrows(UnsupportedOperationException.class, () -> team.numericProgress().object2LongEntrySet().iterator().next().setValue(2L));
-        assertThrows(UnsupportedOperationException.class, () -> manual.work().object2LongEntrySet().iterator().next().setValue(2L));
-    }
 }

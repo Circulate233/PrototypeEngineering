@@ -4,7 +4,9 @@ import ae2.api.util.AEColor;
 
 import java.util.Objects;
 
-/** An explicit partition identifies an isolated inventory; color applies only without a partition. */
+/**
+ * An explicit partition identifies an isolated inventory; color applies only without a partition.
+ */
 public record ResourceInputGroup(AEColor color, String partition) {
     public static final ResourceInputGroup TRANSPARENT = new ResourceInputGroup(AEColor.TRANSPARENT, "");
     public static final ResourceInputGroup RED = new ResourceInputGroup(AEColor.RED, "");

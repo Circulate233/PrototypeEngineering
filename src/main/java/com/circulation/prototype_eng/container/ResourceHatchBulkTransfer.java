@@ -8,7 +8,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Consumer;
 
-/** PM double-tap transfers. Player slot zero is the cursor, followed by main inventory and offhand. */
+/**
+ * PM double-tap transfers. Player slot zero is the cursor, followed by main inventory and offhand.
+ */
 final class ResourceHatchBulkTransfer {
     private ResourceHatchBulkTransfer() {
     }

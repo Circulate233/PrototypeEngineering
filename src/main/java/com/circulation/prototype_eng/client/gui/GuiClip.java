@@ -7,7 +7,9 @@ import org.lwjgl.util.glu.GLU;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
-/** Scissor rectangles in the caller's current GUI transform, including embedded JEI pages. */
+/**
+ * Scissor rectangles in the caller's current GUI transform, including embedded JEI pages.
+ */
 public final class GuiClip {
     private final FloatBuffer model = BufferUtils.createFloatBuffer(16), projection = BufferUtils.createFloatBuffer(16);
     private final FloatBuffer first = BufferUtils.createFloatBuffer(3), second = BufferUtils.createFloatBuffer(3);

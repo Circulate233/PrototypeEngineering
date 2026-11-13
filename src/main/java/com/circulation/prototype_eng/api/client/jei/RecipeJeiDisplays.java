@@ -4,15 +4,15 @@ import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
 import com.circulation.prototype_eng.integration.jei.DefaultRecipeDisplays;
-import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMaps;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.Collection;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Display-only extension for custom requirement types. Register before the JEI binding event closes.
@@ -28,7 +28,9 @@ public class RecipeJeiDisplays {
     private boolean started;
     private boolean describing;
 
-    /** Rebuild event providers/descriptions while preserving explicit client-init declarations. */
+    /**
+     * Rebuild event providers/descriptions while preserving explicit client-init declarations.
+     */
     public void beginRegistration() {
         if (sealedDeclaration) throw new IllegalStateException("JEI declaration providers are immutable");
         if (describing) throw new IllegalStateException("JEI descriptions are currently binding");
@@ -80,22 +82,29 @@ public class RecipeJeiDisplays {
         return copy;
     }
 
-    /** Exact local provider identities; behavior/revision promises remain the declaration author's contract. */
+    /**
+     * Exact local provider identities; behavior/revision promises remain the declaration author's contract.
+     */
     public boolean sameProviders(RecipeJeiDisplays other) {
         Objects.requireNonNull(other);
-        if (!frozen || !other.frozen) throw new IllegalStateException("JEI provider comparison requires frozen declarations");
+        if (!frozen || !other.frozen)
+            throw new IllegalStateException("JEI provider comparison requires frozen declarations");
         if (providers.size() != other.providers.size()) return false;
         for (var entry : providers.reference2ObjectEntrySet())
             if (other.providers.get(entry.getKey()) != entry.getValue()) return false;
         return true;
     }
 
-    /** Describe the entire generation privately, without clearing current providers/descriptions. */
+    /**
+     * Describe the entire generation privately, without clearing current providers/descriptions.
+     */
     public Snapshot snapshot(Collection<MachineRecipe> recipes) {
         return snapshot(recipes, null, null);
     }
 
-    /** Preserve measured display identities only for the same immutable recipe and provider identities. */
+    /**
+     * Preserve measured display identities only for the same immutable recipe and provider identities.
+     */
     public Snapshot snapshot(Collection<MachineRecipe> recipes, @Nullable RecipeJeiDisplays measuredProviders,
                              @Nullable Snapshot measured) {
         var copy = frozenCopy();
@@ -105,28 +114,14 @@ public class RecipeJeiDisplays {
         return copy.capture(recipes);
     }
 
-    /** One registration source supplies both category measurement and every initial wrapper. */
+    /**
+     * One registration source supplies both category measurement and every initial wrapper.
+     */
     public Snapshot capture(Collection<MachineRecipe> recipes) {
         if (!frozen) throw new IllegalStateException("JEI displays are not ready");
         var prepared = new Reference2ObjectOpenHashMap<MachineRecipe, JeiRecipeDisplay>();
         for (var recipe : recipes) prepared.put(recipe, describe(recipe));
         return new Snapshot(Reference2ObjectMaps.unmodifiable(prepared));
-    }
-
-    public static final class Snapshot {
-        private final Map<MachineRecipe, JeiRecipeDisplay> descriptions;
-        private Snapshot(Map<MachineRecipe, JeiRecipeDisplay> descriptions) { this.descriptions = descriptions; }
-        public JeiRecipeDisplay describe(MachineRecipe recipe) {
-            return Objects.requireNonNull(descriptions.get(recipe), "Recipe is outside the prepared JEI generation");
-        }
-
-        public boolean sameDescriptions(Collection<MachineRecipe> recipes, Snapshot measured) {
-            for (var recipe : recipes) {
-                var current = descriptions.get(recipe);
-                if (current == null || current != measured.descriptions.get(recipe)) return false;
-            }
-            return true;
-        }
     }
 
     /**
@@ -145,5 +140,25 @@ public class RecipeJeiDisplays {
     @FunctionalInterface
     public interface Provider<C> {
         void describe(MachineRecipe recipe, RecipeRequirement<C> requirement, JeiRecipeDisplay.Builder display);
+    }
+
+    public static final class Snapshot {
+        private final Map<MachineRecipe, JeiRecipeDisplay> descriptions;
+
+        private Snapshot(Map<MachineRecipe, JeiRecipeDisplay> descriptions) {
+            this.descriptions = descriptions;
+        }
+
+        public JeiRecipeDisplay describe(MachineRecipe recipe) {
+            return Objects.requireNonNull(descriptions.get(recipe), "Recipe is outside the prepared JEI generation");
+        }
+
+        public boolean sameDescriptions(Collection<MachineRecipe> recipes, Snapshot measured) {
+            for (var recipe : recipes) {
+                var current = descriptions.get(recipe);
+                if (current == null || current != measured.descriptions.get(recipe)) return false;
+            }
+            return true;
+        }
     }
 }

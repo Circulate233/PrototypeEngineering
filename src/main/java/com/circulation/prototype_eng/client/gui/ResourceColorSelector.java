@@ -5,7 +5,7 @@ import ae2.client.Point;
 import ae2.client.gui.ICompositeWidget;
 import ae2.client.gui.Tooltip;
 import com.circulation.prototype_eng.localization.IsolationGroupText;
-import com.circulation.prototype_eng.localization.MeAssemblyText;
+import com.circulation.prototype_eng.localization.MEAssemblyText;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.renderer.GlStateManager;
 import org.jetbrains.annotations.Nullable;
@@ -17,7 +17,9 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/** Shared palette behavior with separate physical-hatch and ME source-artwork frames. */
+/**
+ * Shared palette behavior with separate physical-hatch and ME source-artwork frames.
+ */
 public final class ResourceColorSelector implements ICompositeWidget {
     private static final AEColor[] COLORS = {AEColor.RED, AEColor.BROWN, AEColor.ORANGE, AEColor.YELLOW,
         AEColor.LIME, AEColor.GREEN, AEColor.CYAN, AEColor.LIGHT_BLUE, AEColor.BLUE, AEColor.PURPLE,
@@ -36,6 +38,24 @@ public final class ResourceColorSelector implements ICompositeWidget {
         this.choose = Objects.requireNonNull(choose);
         this.style = Objects.requireNonNull(style);
         position = new Point(style == Style.ME ? 1 : 4, 13);
+    }
+
+    private static void enableFrameBlend() {
+        // Match AE2Button: transparent pixels in the PM frames must preserve the panel below.
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
+    }
+
+    private void drawSwatch(int x, int y, AEColor color) {
+        int size = style.swatchSize;
+        Gui.drawRect(x, y, x + size, y + size, 0xff000000 | color.mediumVariant);
+        if (color == AEColor.TRANSPARENT) {
+            Gui.drawRect(x, y, x + style.darkWidth, y + size, 0xff000000 | color.blackVariant);
+            Gui.drawRect(x + style.lightOffset, y, x + size, y + size, 0xff000000 | color.whiteVariant);
+        }
+        GlStateManager.color(1, 1, 1, 1);
+        // Gui.drawRect disables blending; keep AE's blended widget state for the next frame.
+        GlStateManager.enableBlend();
     }
 
     public boolean expanded() {
@@ -137,7 +157,7 @@ public final class ResourceColorSelector implements ICompositeWidget {
     public @Nullable Tooltip getTooltip(int mouseX, int mouseY) {
         if (!getBounds().contains(mouseX, mouseY)) return null;
         AEColor hovered = expanded ? colorAt(mouseX, mouseY) : selected.get();
-        return hovered == null ? null : new Tooltip(MeAssemblyText.ColorChannel.text(IsolationGroupText.of(hovered).text()));
+        return hovered == null ? null : new Tooltip(MEAssemblyText.ColorChannel.text(IsolationGroupText.of(hovered).text()));
     }
 
     private @Nullable AEColor colorAt(int x, int y) {
@@ -194,18 +214,6 @@ public final class ResourceColorSelector implements ICompositeWidget {
         }
     }
 
-    private void drawSwatch(int x, int y, AEColor color) {
-        int size = style.swatchSize;
-        Gui.drawRect(x, y, x + size, y + size, 0xff000000 | color.mediumVariant);
-        if (color == AEColor.TRANSPARENT) {
-            Gui.drawRect(x, y, x + style.darkWidth, y + size, 0xff000000 | color.blackVariant);
-            Gui.drawRect(x + style.lightOffset, y, x + size, y + size, 0xff000000 | color.whiteVariant);
-        }
-        GlStateManager.color(1, 1, 1, 1);
-        // Gui.drawRect disables blending; keep AE's blended widget state for the next frame.
-        GlStateManager.enableBlend();
-    }
-
     private void drawButton(int x, int y, boolean hovered, AEColor color) {
         boolean pressed = pressedButton >= 0 && hovered;
         enableFrameBlend();
@@ -214,12 +222,6 @@ public final class ResourceColorSelector implements ICompositeWidget {
         // The original physical-hatch face moves down one/two pixels; the ME inset stays fixed.
         int faceOffset = style == Style.HATCH ? pressed ? 2 : hovered ? 1 : 0 : 0;
         drawSwatch(x + style.swatchOffset, y + style.swatchOffset + faceOffset, color);
-    }
-
-    private static void enableFrameBlend() {
-        // Match AE2Button: transparent pixels in the PM frames must preserve the panel below.
-        GlStateManager.enableBlend();
-        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
     }
 
     public enum Style {

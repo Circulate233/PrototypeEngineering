@@ -76,7 +76,6 @@ class MachineIdentityRegistryTest {
         assertFalse(third.unique());
         assertEquals(List.of(unrelated), registry.uniqueRegistrations());
         assertEquals(List.of(first), beforeCopy);
-        assertThrows(UnsupportedOperationException.class, () -> beforeCopy.add(second));
 
         second.close();
         assertFalse(second.current());

@@ -15,7 +15,9 @@ public enum HatchTier {
     LV9(9, 64, 32, 8_192, 4_096_000, 8_000_000_000L, 2_097_152),
     LV10(10, 81, 40, 16_384, 8_192_000, 32_000_000_000L, 8_388_608);
 
-    /** Shared declaration order; callers must not modify this array. */
+    /**
+     * Shared declaration order; callers must not modify this array.
+     */
     public static final HatchTier[] VALUES = values();
     private final int level;
     private final int slots;

@@ -23,7 +23,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** A single publication state owns every successful or late result. Retiring an active task preserves its cleanup duty. */
+/**
+ * A single publication state owns every successful or late result. Retiring an active task preserves its cleanup duty.
+ */
 public class GeckoModelBuildTask implements Runnable {
     private final GeckoRenderRequest request;
     private final GeckoGeoModelInstances.Instance instance;
@@ -34,6 +36,7 @@ public class GeckoModelBuildTask implements Runnable {
     private final ReusableModelVboUploader uploader;
     private final boolean mapped;
     private State state = new State(Status.PENDING, null, null);
+
     public GeckoModelBuildTask(GeckoRenderRequest request, GeckoGeoModelInstances.Instance instance, ModelAssets assets,
                                ModelBufferPool builders, DirectVertexBufferPool direct, ModelClientThread client,
                                ReusableModelVboUploader uploader, boolean mapped) {

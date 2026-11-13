@@ -1,10 +1,10 @@
 package com.circulation.prototype_eng.research.reward;
 
-import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryTemplates;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKey;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKeyNbt;
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryTemplates;
 import com.circulation.prototype_eng.api.research.reward.RewardEventKey;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import net.minecraft.entity.player.EntityPlayer;

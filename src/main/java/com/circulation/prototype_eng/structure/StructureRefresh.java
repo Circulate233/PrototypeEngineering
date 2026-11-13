@@ -72,11 +72,15 @@ public final class StructureRefresh {
         }
     }
 
-    /** Merge comparisons and output visits resume independently, including one-unit slices. */
-    private static StructureOperation<List<BlockPos>> sortPositions(List<BlockPos> positions) {
+    /**
+     * Merge comparisons and output visits resume independently, including one-unit slices.
+     * Takes ownership of the mutable list; two buffers are reused until the final list is published.
+     */
+    private static StructureOperation<List<BlockPos>> sortPositions(ObjectArrayList<BlockPos> positions) {
         return new StructureOperation<>() {
-            private List<BlockPos> source = positions;
-            private ObjectArrayList<BlockPos> output = new ObjectArrayList<>();
+            private ObjectArrayList<BlockPos> source = positions;
+            private ObjectArrayList<BlockPos> output = positions.size() < 2 ? positions : ObjectArrayList.wrap(new BlockPos[positions.size()]);
+            private int written;
             private int width = 1;
             private int left;
             private int first;
@@ -104,19 +108,21 @@ public final class StructureRefresh {
                         while (first < middle || second < end) {
                             if (!work.take()) return false;
                             boolean chooseFirst = second == end || first < middle && POSITION_ORDER.compare(source.get(first), source.get(second)) <= 0;
-                            output.add(source.get(chooseFirst ? first++ : second++));
+                            output.set(written++, source.get(chooseFirst ? first++ : second++));
                         }
                         left = end;
                         merging = false;
                     }
-                    source = output;
                     if (width >= (source.size() + 1L) / 2L) {
-                        finish(source);
+                        finish(output);
                         return true;
                     }
+                    var previous = source;
+                    source = output;
+                    output = previous;
                     width *= 2;
                     left = 0;
-                    output = new ObjectArrayList<>();
+                    written = 0;
                 }
             }
         };
@@ -130,7 +136,9 @@ public final class StructureRefresh {
         return beginPrepare(null).run();
     }
 
-    /** Retained planning and capture keep one configuration; no live read window crosses advance. */
+    /**
+     * Retained planning and capture keep one configuration; no live read window crosses advance.
+     */
     @SuppressWarnings("ReturnOfInnerClass") // The retained cursor owns exact configuration and preparation authority.
     public StructureOperation<Request> beginPrepare(@Nullable StructureSnapshot.JoinedWorker worker) {
         enter();
@@ -195,7 +203,9 @@ public final class StructureRefresh {
         }
     }
 
-    /** Same authority and planning as beginPrepare, with an explicit externally joined read phase. */
+    /**
+     * Same authority and planning as beginPrepare, with an explicit externally joined read phase.
+     */
     @SuppressWarnings("ReturnOfInnerClass") // The cursor retains this exact refresh owner and its revocation proof.
     public ParallelPreparation beginParallelPrepare() {
         enter();
@@ -235,7 +245,9 @@ public final class StructureRefresh {
         return publish(result, new RecipeWorkBudget(Long.MAX_VALUE), null);
     }
 
-    /** A complete actual owner capture, match, both proofs and install occupy this one transition. */
+    /**
+     * A complete actual owner capture, match, both proofs and install occupy this one transition.
+     */
     public boolean publish(Result result, RecipeWorkBudget work, @Nullable StructureSnapshot.JoinedWorker worker) {
         Objects.requireNonNull(result);
         enter();
@@ -307,7 +319,9 @@ public final class StructureRefresh {
         return attachmentCurrent.getAsBoolean() && host.structureConfiguration() == configuration;
     }
 
-    /** One owner-only slot; both preparation paths use the same exact generation and position checks. */
+    /**
+     * One owner-only slot; both preparation paths use the same exact generation and position checks.
+     */
     private StructureOperation<StructurePlan> beginPlan(Object owner, StructureConfiguration configuration) {
         var controller = host.identity().controllerPos().toImmutable();
         boolean reusable = configuration.definition().planReusable();
@@ -341,7 +355,9 @@ public final class StructureRefresh {
         cachedPlan = null;
     }
 
-    /** Preparation really discovers each binding and port; none of these candidates authorizes work. */
+    /**
+     * Preparation really discovers each binding and port; none of these candidates authorizes work.
+     */
     @SuppressWarnings("ReturnOfInnerClass")
     // The discovery cursor retains exact request authority without granting publication.
     public StructureOperation<StructureAssembly> beginDiscovery(Result result) {
@@ -532,7 +548,9 @@ public final class StructureRefresh {
             }
         }
 
-        /** Cleanup is unconditional, even when another owner's preparation revoked this request. */
+        /**
+         * Cleanup is unconditional, even when another owner's preparation revoked this request.
+         */
         public void finishWorker(boolean accepted, @Nullable Throwable primary) {
             enter();
             try {
@@ -589,8 +607,6 @@ public final class StructureRefresh {
         private Iterator<StructureComponentProvider.Entry<?>> entries;
         @Nullable
         private StructureComponentProvider.Context context;
-        @Nullable
-        private StructureOperation<MachineHatches> freezeHatches;
         @Nullable
         private StructureOperation<StructureComponents> freezePorts;
 
@@ -672,11 +688,9 @@ public final class StructureRefresh {
                 index++;
                 phase = 0;
             }
-            if (freezeHatches == null) freezeHatches = MachineHatches.beginCreate(resources, inputs, outputs);
-            if (!freezeHatches.advance(work)) return false;
             if (freezePorts == null) freezePorts = StructureComponents.beginCreate(ports);
             if (!freezePorts.advance(work) || !work.take()) return false;
-            finish(new StructureAssembly(match, Objects.requireNonNull(freezeHatches.result()), Objects.requireNonNull(freezePorts.result())));
+            finish(new StructureAssembly(match, new MachineHatches(resources, inputs, outputs), Objects.requireNonNull(freezePorts.result())));
             return true;
         }
     }

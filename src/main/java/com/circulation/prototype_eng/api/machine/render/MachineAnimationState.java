@@ -16,7 +16,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 
-/** Owner-context state only. No World callback, synchronization permission or transient TE owner. */
+/**
+ * Owner-context state only. No World callback, synchronization permission or transient TE owner.
+ */
 public class MachineAnimationState {
     public static final int MAX_LAYERS = 256;
     public static final int MAX_NAME_LENGTH = 1024;
@@ -55,11 +57,14 @@ public class MachineAnimationState {
         return state;
     }
 
-    /** Called in the machine's current execution context; changing state never calls TE/World. */
+    /**
+     * Called in the machine's current execution context; changing state never calls TE/World.
+     * The supplied layer list is borrowed and must stay unchanged until replaced; snapshot readers
+     * must not modify it.
+     */
     public void setLayers(List<String> layers) {
-        var next = new Snapshot(state.revision(), layers);
-        if (!next.layers().equals(state.layers()))
-            state = new Snapshot(Math.incrementExact(state.revision()), next.layers());
+        if (!layers.equals(state.layers()))
+            state = new Snapshot(Math.incrementExact(state.revision()), layers);
     }
 
     public void setAnimation(@Nullable String name) {
@@ -74,14 +79,11 @@ public class MachineAnimationState {
         public Snapshot {
             if (revision < 0 || layers.size() > MAX_LAYERS)
                 throw new IllegalArgumentException("Invalid animation revision/layer count");
-            var copy = new ObjectArrayList<String>(layers.size());
             for (var name : layers) {
                 Objects.requireNonNull(name, "animation layer");
                 if (name.isBlank() || !name.equals(name.trim()) || name.length() > MAX_NAME_LENGTH)
                     throw new IllegalArgumentException("Animation layer must be a nonempty, trimmed bounded name");
-                copy.add(name);
             }
-            layers = List.copyOf(copy);
         }
     }
 }

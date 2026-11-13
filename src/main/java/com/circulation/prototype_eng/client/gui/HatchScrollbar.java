@@ -6,7 +6,9 @@ import net.minecraft.client.gui.Gui;
 
 import java.awt.Rectangle;
 
-/** PM's two hatch scrollbar skins, 30-pixel wheel steps and 180–360 ms cubic easing. */
+/**
+ * PM's two hatch scrollbar skins, 30-pixel wheel steps and 180–360 ms cubic easing.
+ */
 final class HatchScrollbar implements ICompositeWidget {
     private final boolean thin;
     private final boolean present;
@@ -151,8 +153,6 @@ final class HatchScrollbar implements ICompositeWidget {
         return dragging ? ThumbState.PRESSED : hover ? ThumbState.HOVER : ThumbState.NORMAL;
     }
 
-    enum ThumbState { DISABLED, NORMAL, HOVER, PRESSED }
-
     @Override
     public void drawForegroundLayer(Rectangle bounds, Point mouse) {
         if (!isVisible()) return;
@@ -160,4 +160,6 @@ final class HatchScrollbar implements ICompositeWidget {
         if (shadeTrack) Gui.drawRect(x, position.y(), x + width, position.y() + trackHeight, 0x3f000000);
         HatchGuiSprites.scrollbar(x, y, thin, thumbState(mouse));
     }
+
+    enum ThumbState {DISABLED, NORMAL, HOVER, PRESSED}
 }

@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.api.research;
 
-import java.util.List;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleListener;
@@ -56,6 +55,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.time.Duration;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -82,12 +82,13 @@ public final class ResearchWorld {
     private final ResearchEligibility eligibility;
     private final Consumer<ResearchWorldSnapshot> writer;
     private final Object2ObjectLinkedOpenHashMap<String, TeamProgress> teams = new Object2ObjectLinkedOpenHashMap<>();
-    @Nullable private List<TeamProgress> capturedTeams;
     private final ResearchDownloadSources downloadSources;
     private final Object2ObjectLinkedOpenHashMap<UUID, ResearchDownloadOperation> downloads = new Object2ObjectLinkedOpenHashMap<>();
     private final Object2ObjectLinkedOpenHashMap<UUID, ResearchDownloadReceipt> downloadReceipts = new Object2ObjectLinkedOpenHashMap<>();
     private final Object2ObjectLinkedOpenHashMap<UUID, ResearchDiskOperation> diskImports = new Object2ObjectLinkedOpenHashMap<>();
     private final ObjectSet<ResearchStations.Site> pendingDestructions = new ObjectOpenHashSet<>();
+    @Nullable
+    private List<TeamProgress> capturedTeams;
     private Object2ObjectLinkedOpenHashMap<UUID, PlayerResearchState> players = new Object2ObjectLinkedOpenHashMap<>();
     @Nullable
     private ResearchWorldSnapshot pendingSave;
@@ -238,10 +239,11 @@ public final class ResearchWorld {
         for (var site : pendingDestructions) {
             for (var team : teams.values()) {
                 boolean present = false;
-                for (var source : team.station.sites()) if (source.sameStation(site)) {
-                    present = true;
-                    break;
-                }
+                for (var source : team.station.sites())
+                    if (source.sameStation(site)) {
+                        present = true;
+                        break;
+                    }
                 if (present) {
                     try {
                         team.station.destroy(site, PlannedDeadline.after(Duration.ofSeconds(5)));
@@ -367,7 +369,7 @@ public final class ResearchWorld {
             var structuralTargets = new Object2IntOpenHashMap<ResourceLocation>();
             var blacklist = ObjectSets.<ResourceLocation>emptySet();
             if (viewDecision == ResearchPermissionPolicy.Decision.ALLOWED) {
-                blacklist = team == null ? ObjectSets.emptySet() : team.blacklist;
+                blacklist = team == null ? ObjectSets.emptySet() : team.blacklistSnapshot();
                 var structural = eligibility.calculateStructural(Objects.requireNonNull(teamId), membership.members(), memberSources,
                     teamSnapshot == null ? Object2IntMaps.emptyMap() : teamSnapshot.levels(), blacklist);
                 sharedLevels = structural.sharedLevels();
@@ -1380,20 +1382,26 @@ public final class ResearchWorld {
         });
     }
 
-    /** Forget the suffix starting at forgottenLevel; existing rewards and paid work are retained. */
+    /**
+     * Forget the suffix starting at forgottenLevel; existing rewards and paid work are retained.
+     */
     public ResearchLevelResult forgetPersonal(OwnerTeamResolution membership, ResearchPermissionContext permission,
                                               ResourceLocation id, int forgottenLevel, long time, BooleanSupplier current) {
         return forgetPersonal(membership, permission, id, forgottenLevel, -1, time, current);
     }
 
-    /** expectedBefore binds a displayed personal level; -1 is the ordinary Java API without a view. */
+    /**
+     * expectedBefore binds a displayed personal level; -1 is the ordinary Java API without a view.
+     */
     public ResearchLevelResult forgetPersonal(OwnerTeamResolution membership, ResearchPermissionContext permission,
                                               ResourceLocation id, int forgottenLevel, int expectedBefore,
                                               long time, BooleanSupplier current) {
         return changePlayerLevel(membership, permission, id, forgottenLevel, expectedBefore, true, time, current);
     }
 
-    /** Absolute personal source repair, including zero, without creating reward eligibility. */
+    /**
+     * Absolute personal source repair, including zero, without creating reward eligibility.
+     */
     public ResearchLevelResult setPlayerResearchLevel(OwnerTeamResolution target, ResearchPermissionContext permission,
                                                       ResourceLocation id, int level, long time, BooleanSupplier current) {
         return changePlayerLevel(target, permission, id, level, -1, false, time, current);
@@ -1452,7 +1460,9 @@ public final class ResearchWorld {
         });
     }
 
-    /** Explicit stable team IDs may repair an empty or historical direct source table. */
+    /**
+     * Explicit stable team IDs may repair an empty or historical direct source table.
+     */
     public ResearchLevelResult setTeamResearchLevel(String target, Collection<UUID> members, ResearchPermissionContext permission,
                                                     ResourceLocation id, int level, long time, BooleanSupplier current) {
         requireOwner();
@@ -1525,7 +1535,9 @@ public final class ResearchWorld {
         return false;
     }
 
-    /** An IO fault retains committed state and pendingSave; only precommit faults compensate. */
+    /**
+     * An IO fault retains committed state and pendingSave; only precommit faults compensate.
+     */
     private ResearchLevelResult applyLevelChange(ReversibleTransaction receipt, BooleanSupplier current, Runnable publish) {
         boolean committed = false;
         try {
@@ -1996,14 +2008,9 @@ public final class ResearchWorld {
         private final ManualResearch manual;
         private final ResearchStationWork station;
         private final ObjectSet<ResourceLocation> blacklist = new ObjectOpenHashSet<>();
-        @Nullable private ObjectSet<ResourceLocation> capturedBlacklist;
+        @Nullable
+        private ObjectSet<ResourceLocation> capturedBlacklist;
         private ObjectSet<UUID> knownMembers = ObjectSets.emptySet();
-
-        private ObjectSet<ResourceLocation> blacklistSnapshot() {
-            if (capturedBlacklist == null) capturedBlacklist = blacklist.isEmpty() ? ObjectSets.emptySet()
-                : ObjectSets.unmodifiable(new ObjectOpenHashSet<>(blacklist));
-            return capturedBlacklist;
-        }
 
         private TeamProgress(String id, TeamResearchQueue queue, Map<UUID, PlayerResearchState> sources) {
             this.id = id;
@@ -2011,6 +2018,12 @@ public final class ResearchWorld {
             research = new TeamOwnedResearch(id, registry);
             manual = new ManualResearch(queue, research, sources, state -> manualCheckpoint(this, state));
             station = new ResearchStationWork(queue, research, sources);
+        }
+
+        private ObjectSet<ResourceLocation> blacklistSnapshot() {
+            if (capturedBlacklist == null) capturedBlacklist = blacklist.isEmpty() ? ObjectSets.emptySet()
+                : ObjectSets.unmodifiable(new ObjectOpenHashSet<>(blacklist));
+            return capturedBlacklist;
         }
     }
 

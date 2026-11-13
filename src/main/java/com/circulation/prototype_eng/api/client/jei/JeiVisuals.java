@@ -17,7 +17,9 @@ import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.Locale;
 import java.util.Objects;
 
-/** Native Minecraft drawing compositions. Resource slots share AEKey rendering and generic skins. */
+/**
+ * Native Minecraft drawing compositions. Resource slots share AEKey rendering and generic skins.
+ */
 @SideOnly(Side.CLIENT)
 @ParametersAreNonnullByDefault
 public final class JeiVisuals {
@@ -31,7 +33,9 @@ public final class JeiVisuals {
         return new ResourceLocation("prototype_eng", "textures/gui/jei_recipeicons/" + path + ".png");
     }
 
-    /** End coordinates and normalized UVs; zero area is skipped rather than submitted to GL. */
+    /**
+     * End coordinates and normalized UVs; zero area is skipped rather than submitted to GL.
+     */
     public static void quad(double x0, double y0, double x1, double y1, double u0, double v0, double u1, double v1) {
         if (x1 <= x0 || y1 <= y0) return;
         var tessellator = Tessellator.getInstance();
@@ -112,7 +116,9 @@ public final class JeiVisuals {
             full = new Texture(texture("energy_module/" + key + "_full"), width, height);
         }
 
-        /** Stable role demonstration, never a live machine capacity or a JEI ingredient. */
+        /**
+         * Stable role demonstration, never a live machine capacity or a JEI ingredient.
+         */
         public void draw(Minecraft minecraft, int x, int y, int width, int height, @Nullable JeiRecipeDisplay.Role role, int ledYOffset) {
             empty.draw(minecraft, x, y, width, height);
             double ratio = role == JeiRecipeDisplay.Role.INPUT ? .65 : role == JeiRecipeDisplay.Role.OUTPUT ? .35 : .5;
@@ -155,7 +161,9 @@ public final class JeiVisuals {
         }
     }
 
-    /** Explicit source size avoids metadata caching and automatically uses resource-pack replacements. */
+    /**
+     * Explicit source size avoids metadata caching and automatically uses resource-pack replacements.
+     */
     public record NineSlice(Texture source, int width, int height, int border, boolean fillCenter,
                             int centerColor) implements IDrawable {
         public NineSlice {
@@ -200,7 +208,9 @@ public final class JeiVisuals {
         }
     }
 
-    /** Either a PM module texture or native arrow/cycle geometry, with independent fill direction. */
+    /**
+     * Either a PM module texture or native arrow/cycle geometry, with independent fill direction.
+     */
     public record Progress(@Nullable Module module, Shape shape, Direction direction, int width, int height,
                            long cycleTicks, boolean smooth, int emptyColor,
                            int fullColor) implements JeiRecipeDecorator {
@@ -295,7 +305,9 @@ public final class JeiVisuals {
         }
     }
 
-    /** Null template uses LocalizationEnum; explicit templates replace {ticks} and {seconds}. */
+    /**
+     * Null template uses LocalizationEnum; explicit templates replace {ticks} and {seconds}.
+     */
     public record Duration(@Nullable String template, int width, int height, Alignment alignment,
                            float scale, int color, boolean shadow) implements JeiRecipeDecorator {
         public Duration {

@@ -7,7 +7,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
-/** One registered physical controller; null model uses the original PM controller artwork. */
+/**
+ * One registered physical controller; null model uses the original PM controller artwork.
+ */
 public record ParallelControllerType(ResourceLocation id, LocalizationEnum displayName, int maximum,
                                      @Nullable ResourceLocation model) {
     public ParallelControllerType {

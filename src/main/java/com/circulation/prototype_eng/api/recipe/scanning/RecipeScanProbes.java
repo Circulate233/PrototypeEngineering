@@ -28,21 +28,26 @@ public final class RecipeScanProbes {
     private RecipeScanProbes() {
     }
 
+    /**
+     * Borrows both lists unchanged until the returned session finishes, including cancellation.
+     */
     public static Session begin(RecipeProcess process, List<RecipeScanPreparation> preparations,
                                 List<RecipeParallelismConstraint> constraints) {
         return new Session(process, preparations, constraints);
     }
 
+    /**
+     * Preparations and callbacks must leave the borrowed preparation list unchanged during this call.
+     */
     public static ProcessResult check(RecipeProcess process, List<RecipeScanPreparation> preparations,
                                       Function<RecipeProcess, ProcessResult> check) {
         requireBoundary(process);
         Objects.requireNonNull(check, "check");
-        var ordered = new ObjectArrayList<>(Objects.requireNonNull(preparations, "preparations"));
-        var transactions = new ObjectArrayList<RequirementTransaction>(ordered.size());
+        var transactions = new ObjectArrayList<RequirementTransaction>(preparations.size());
         var reservations = new ObjectArrayList<ResourceReservation>(6);
         ProcessResult result = ProcessResult.SUCCESS;
         try {
-            for (var preparation : ordered) {
+            for (var preparation : preparations) {
                 if (retired(process)) {
                     result = RecipeText.Cancelled.blocked();
                     break;

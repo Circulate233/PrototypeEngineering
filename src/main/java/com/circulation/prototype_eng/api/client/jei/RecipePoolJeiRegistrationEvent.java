@@ -1,8 +1,6 @@
 package com.circulation.prototype_eng.api.client.jei;
 
 import com.circulation.prototype_eng.api.recipe.RecipePool;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import mezz.jei.api.IGuiHelper;
 import net.minecraftforge.fml.common.eventhandler.Event;
 import net.minecraftforge.fml.relauncher.Side;
@@ -12,6 +10,7 @@ import java.util.List;
 
 /**
  * Fired only by HEI's client category phase after the common RecipeRegistry has frozen.
+ * The frozen registry's pool list is borrowed read-only; event listeners must not mutate it.
  */
 @SideOnly(Side.CLIENT)
 public class RecipePoolJeiRegistrationEvent extends Event {
@@ -25,7 +24,7 @@ public class RecipePoolJeiRegistrationEvent extends Event {
         this.pages = pages;
         this.displays = displays;
         this.guiHelper = guiHelper;
-        this.pools = ObjectLists.unmodifiable(new ObjectArrayList<>(pools));
+        this.pools = pools;
     }
 
     @SuppressWarnings("unused") // Public addon event data.

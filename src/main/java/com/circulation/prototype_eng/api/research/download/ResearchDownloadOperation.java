@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryTemplates;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
@@ -15,6 +14,8 @@ import java.util.UUID;
 
 /**
  * Frozen event output and source payment, retained until material and item effects are confirmed.
+ * Fragments are borrowed immutable data. Callers and readers must not mutate their list while any
+ * operation or saved checkpoint retains it; replacement transitions create their own list.
  */
 public record ResearchDownloadOperation(UUID id, Intent intent, ResearchDownloadSources.Plan sources,
                                         ResearchDownloadMaterial material, NBTTagCompound output, long amount,
@@ -41,7 +42,7 @@ public record ResearchDownloadOperation(UUID id, Intent intent, ResearchDownload
         if (materialCommitted != (material.status() == ResearchDownloadMaterial.Status.COMMITTED)) {
             throw new IllegalArgumentException("Download phase differs from its material evidence");
         }
-        fragments = ObjectLists.unmodifiable(new ObjectArrayList<>(Objects.requireNonNull(fragments)));
+        Objects.requireNonNull(fragments);
         if (status != Status.DELIVERING && !fragments.isEmpty()) {
             throw new IllegalArgumentException("Only output delivery carries item fragments");
         }

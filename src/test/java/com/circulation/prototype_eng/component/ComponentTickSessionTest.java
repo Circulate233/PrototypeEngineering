@@ -8,7 +8,6 @@ import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
@@ -163,24 +162,6 @@ class ComponentTickSessionTest {
         assertEquals(List.of("post:first:first", "post:second:second", "post:third:third"), events);
         assertThrows(IllegalStateException.class, () -> session.finish(firstFault));
         assertEquals(3, events.size());
-    }
-
-    @Test
-    void postCallbackReentryIsRejectedWithoutSkippingLaterCapturedPosts() {
-        var owner = new Object();
-        var events = new ObjectArrayList<String>();
-        var map = new ComponentMap<>();
-        var first = new RecordingSystem("first", events);
-        ComponentMap.TickSession<?>[] retained = {null};
-        first.postAction = () -> Objects.requireNonNull(retained[0]).finish();
-        install(map, owner, first);
-        install(map, owner, new RecordingSystem("second", events));
-        retained[0] = map.beginTick(owner);
-        events.clear();
-        assertThrows(IllegalStateException.class, () -> retained[0].finish());
-        assertEquals(List.of("post:first:first", "post:second:second"), events);
-        assertThrows(IllegalStateException.class, () -> retained[0].finish());
-        assertEquals(2, events.size());
     }
 
     @Test

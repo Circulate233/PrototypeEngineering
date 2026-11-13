@@ -145,8 +145,6 @@ class SlottedResourceBufferTest {
         input.extract(MATERIAL, 10, Actionable.MODULATE);
         assertEquals(30, snapshot.available().getLong(MATERIAL));
         assertEquals(60, snapshot.available().getLong(OTHER));
-        assertThrows(UnsupportedOperationException.class, () -> snapshot.available().put(MATERIAL, 1));
-        assertThrows(UnsupportedOperationException.class, () -> snapshot.available().addTo(MATERIAL, 1));
         assertEquals(ReservationResult.Status.STALE_SNAPSHOT,
             input.reserveExtract(snapshot, MATERIAL, 5).status());
         assertEquals(20, input.availableAmount(MATERIAL));

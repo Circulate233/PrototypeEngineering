@@ -8,7 +8,9 @@ import stanhebben.zenscript.annotations.ZenGetter;
 
 import java.util.Objects;
 
-/** Detached projection facts; no process, storage, lease or owner is exposed. */
+/**
+ * Detached projection facts; no process, storage, lease or owner is exposed.
+ */
 @SuppressWarnings("unused")
 @ZenRegister
 @ZenClass("mods.prototype_eng.recipe.AllocationContext")
@@ -46,7 +48,9 @@ public final class ZenAllocationContext {
         return resource;
     }
 
-    /** The Java allocation contract uses a null AEKey to denote independent FE. */
+    /**
+     * The Java allocation contract uses a null AEKey to denote independent FE.
+     */
     @ZenGetter("isEnergy")
     public boolean isEnergy() {
         return resource == null;

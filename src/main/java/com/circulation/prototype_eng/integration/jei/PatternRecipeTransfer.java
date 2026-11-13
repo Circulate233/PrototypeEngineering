@@ -32,10 +32,12 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.function.Function;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 
-/** Uses the complete wrapper data and AE2S's priority, event, filter packet and encoding APIs. */
+/**
+ * Uses the complete wrapper data and AE2S's priority, event, filter packet and encoding APIs.
+ */
 final class PatternRecipeTransfer<C extends ContainerPatternEncodingTerm> implements IRecipeTransferHandler<C> {
     private final Class<C> containerClass;
     private final IRecipeTransferHandlerHelper errors;
@@ -45,15 +47,15 @@ final class PatternRecipeTransfer<C extends ContainerPatternEncodingTerm> implem
         this.errors = errors;
     }
 
-    enum EventOutcome { PROCEED, CANCELLED, STALE }
-
     static EventOutcome dispatch(BooleanSupplier current, BooleanSupplier event) {
         if (!current.getAsBoolean()) return EventOutcome.STALE;
         if (event.getAsBoolean()) return EventOutcome.CANCELLED;
         return current.getAsBoolean() ? EventOutcome.PROCEED : EventOutcome.STALE;
     }
 
-    /** Mirrors AE's selected-key merge and candidate intersection, with a preflight instead of losing overflow. */
+    /**
+     * Mirrors AE's selected-key merge and candidate intersection, with a preflight instead of losing overflow.
+     */
     static @Nullable List<PatternRecipeTransferSlot> plan(List<List<GenericStack>> groups,
                                                           Function<List<GenericStack>, GenericStack> select, boolean merge) {
         var result = new ObjectArrayList<PatternRecipeTransferSlot>(groups.size());
@@ -113,7 +115,8 @@ final class PatternRecipeTransfer<C extends ContainerPatternEncodingTerm> implem
                 current = recipe::isCurrent;
             } else if (wrapper instanceof StructurePreviewJeiRecipe recipe && category instanceof StructurePreviewJeiCategory) {
                 var snapshot = recipe.patternRecipe();
-                if (snapshot == null) return errors.createUserErrorWithTooltip(JeiText.PatternStructureUnavailable.getLocal());
+                if (snapshot == null)
+                    return errors.createUserErrorWithTooltip(JeiText.PatternStructureUnavailable.getLocal());
                 source = snapshot.recipe();
                 current = snapshot.current();
             } else return errors.createInternalError();
@@ -170,4 +173,6 @@ final class PatternRecipeTransfer<C extends ContainerPatternEncodingTerm> implem
         return errors.createUserErrorWithTooltip(JeiText.PatternCapacity.getLocal(inputs.size(), outputs.size(),
             container.getProcessingInputSlots().length, container.getProcessingOutputSlots().length));
     }
+
+    enum EventOutcome {PROCEED, CANCELLED, STALE}
 }

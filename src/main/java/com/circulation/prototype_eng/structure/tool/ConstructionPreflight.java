@@ -9,11 +9,16 @@ import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.List;
 import java.util.function.ToLongFunction;
 
-/** Allocates one immutable plan against one simulated stock budget, retaining exact per-position quantities. */
+/**
+ * Allocates one immutable plan against one simulated stock budget, retaining exact per-position quantities.
+ */
 public final class ConstructionPreflight {
     private ConstructionPreflight() {
     }
 
+    /**
+     * The callback must return the obtainable amount in [0, requested amount] without consuming stock.
+     */
     public static Result allocate(List<GenericStack> positions, ToLongFunction<GenericStack> available) {
         AEKey2LongMap totals = new AEKeyLinkedOpenHashMap(positions.size());
         for (var resource : positions) {
@@ -24,7 +29,7 @@ public final class ConstructionPreflight {
         AEKey2LongMap budget = new AEKey2LongMap.OpenHashMap(totals.size());
         AEKey2LongMap missing = new AEKey2LongMap.OpenHashMap(totals.size());
         totals.forEachEntry((key, amount) -> {
-            long supply = Math.clamp(available.applyAsLong(new GenericStack(key, amount)), 0, amount);
+            long supply = available.applyAsLong(new GenericStack(key, amount));
             budget.put(key, supply);
             if (supply < amount) missing.addTo(key, amount - supply);
         });

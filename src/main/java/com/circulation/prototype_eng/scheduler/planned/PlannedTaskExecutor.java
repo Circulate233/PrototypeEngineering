@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationTo
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
@@ -19,6 +18,7 @@ import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 /**
+ * Published collections are read-only by contract; consumers must not modify them.
  * PM's ordered planned execution barriers, separate from coordinator policy. Executors are borrowed,
  * never cancelled or closed here. A stopped result is not an exit proof: retain its Batch until
  * quiescent before retiring owners or releasing uncertain source reservations.
@@ -36,7 +36,9 @@ public final class PlannedTaskExecutor {
     @Nullable
     private final PlannedTaskExecutor synchronousSourcesView;
 
-    /** Inline coordination uses the same batch protocol without allocating an executor or thread. */
+    /**
+     * Inline coordination uses the same batch protocol without allocating an executor or thread.
+     */
     private PlannedTaskExecutor() {
         workers = null;
         sourceLanes = new ExecutorService[0];
@@ -47,17 +49,16 @@ public final class PlannedTaskExecutor {
         synchronousSourcesView = this;
     }
 
-    public static PlannedTaskExecutor direct() {
-        return DIRECT;
-    }
-
+    /**
+     * The caller retains ownership of the executors and must not mutate the lane array.
+     */
     public PlannedTaskExecutor(ExecutorService workers, ExecutorService[] sourceLanes) {
         this(workers, sourceLanes, System::nanoTime);
     }
 
     PlannedTaskExecutor(ExecutorService workers, ExecutorService[] sourceLanes, LongSupplier nanoTime) {
         this.workers = Objects.requireNonNull(workers);
-        this.sourceLanes = sourceLanes.clone();
+        this.sourceLanes = sourceLanes;
         if (sourceLanes.length == 0) {
             throw new IllegalArgumentException("Planned source execution needs at least one serial lane");
         }
@@ -79,6 +80,10 @@ public final class PlannedTaskExecutor {
         this.original = original;
         synchronousView = null;
         synchronousSourcesView = null;
+    }
+
+    public static PlannedTaskExecutor direct() {
+        return DIRECT;
     }
 
     /**
@@ -248,7 +253,9 @@ public final class PlannedTaskExecutor {
     public sealed interface Result<T> permits Success, Failure, Stopped {
     }
 
-    /** A null per-job deadline preserves the original batch-wide planned execution policy. */
+    /**
+     * A null per-job deadline preserves the original batch-wide planned execution policy.
+     */
     public record Job<T>(@Nullable PlannedCancellationToken cancellation, Supplier<? extends T> action,
                          @Nullable PlannedDeadline deadline) {
         public Job(@Nullable PlannedCancellationToken cancellation, Supplier<? extends T> action) {
@@ -474,7 +481,9 @@ public final class PlannedTaskExecutor {
             }
         }
 
-        /** The waiting owner services each deadline; no new timer pool or backend is needed. */
+        /**
+         * The waiting owner services each deadline; no new timer pool or backend is needed.
+         */
         private void awaitIndividualDeadlines() throws InterruptedException {
             while (terminal.getCount() != 0) {
                 long remaining;
@@ -574,7 +583,7 @@ public final class PlannedTaskExecutor {
                 for (var entry : entries) {
                     copy.add(Objects.requireNonNull(entry.result));
                 }
-                results = ObjectLists.unmodifiable(copy);
+                results = copy;
             }
         }
     }

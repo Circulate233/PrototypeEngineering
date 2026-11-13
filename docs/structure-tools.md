@@ -103,7 +103,7 @@ GUI投影使用30秒单调时钟期限，关闭GUI后继续显示至期限；移
 
 ## 2026-11-10 无法打开及原 GUI 补漏
 
-用户实机日志 `run/logs/latest.log` 反复记录 `Client action structure_tool max payload length must be between 0 and 16384`，在 StructureToolContainer 构造阶段失败，因此两个 GUI 均无法打开。原声明写了32768；现改用AEBaseContainer的默认动作注册重载，由AE自身应用合法上限。原始日志保存在 `build/staging/pm-tool-gui-parity/runtime-before.log`；以前仅有源码/构建证据不能证明已经能打开。
+用户实机日志 `run/logs/latest.log` 反复记录 `Client action structure_tool max payload length must be between 0 and 16384`，在 ContainerStructureTool 构造阶段失败，因此两个 GUI 均无法打开。原声明写了32768；现改用AEBaseContainer的默认动作注册重载，由AE自身应用合法上限。原始日志保存在 `build/staging/pm-tool-gui-parity/runtime-before.log`；以前仅有源码/构建证据不能证明已经能打开。
 
 逐项对照 PM 的 ScannerInstrumentItem、ScannerInstrumentUi、ScannerInstrumentClientUi、ScannerSelectionRenderHandler、BuildInstrumentUi、BuildInstrumentClientUi、TreeDiagramWidget 与 BuildInstrumentProgressBarWidget：
 
@@ -117,7 +117,7 @@ GUI投影使用30秒单调时钟期限，关闭GUI后继续显示至期限；移
 完整1694 tests/221 suites全零；末次迭代器检查清理后的5项专项/build通过，10 Java及两语言本机全级零并全文读回与磁盘一致，MCP build成功。完整日志、原始失败、本机报告与精确本地提交在 `build/staging/pm-tool-gui-parity/`。未启动Minecraft/服务端/Bootstrap/FML；用户重新运行客户端后的视觉和实际建造仍需复验，不将这些结果称为视觉验收。
 
 
-本阶段恢复 PM 的范围结构选择器与机械构建器。入口为 `StructureToolItems`、`StructureToolItem`、`StructureToolContainer`、`structure/tool` 和两个对应的 AEBaseGui。它们属于通用库工具，主产物未新增示例机器或配方。
+本阶段恢复 PM 的范围结构选择器与机械构建器。入口为 `StructureToolItems`、`StructureToolItem`、`ContainerStructureTool`、`structure/tool` 和两个对应的 AEBaseGui。它们属于通用库工具，主产物未新增示例机器或配方。
 
 ## 范围结构选择器
 

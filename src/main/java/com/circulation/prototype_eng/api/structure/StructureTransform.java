@@ -1,8 +1,8 @@
 package com.circulation.prototype_eng.api.structure;
 
-import com.circulation.prototype_eng.util.ExternalEnumValues;
-
 import ae2.api.orientation.BlockOrientation;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
+import com.circulation.prototype_eng.util.ExternalEnumValues;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 
@@ -10,8 +10,8 @@ import java.util.Objects;
 
 /**
  * An exact rotation of structure offsets and directions. {@link BlockOrientation#NORTH_UP} is the
- * base orientation: positive X is right, positive Y is top, and negative Z is front. Rotation does
- * not translate coordinates; a world anchor must be added separately.
+ * base orientation: positive X is right, positive Y is top, and negative Z is front. {@code apply}
+ * rotates offsets; {@link #applyAt(BlockPos, BlockPos)} also adds the world anchor.
  */
 public final class StructureTransform {
     private static final StructureTransform[] ROTATIONS = createRotations();
@@ -64,13 +64,28 @@ public final class StructureTransform {
      */
     public BlockPos apply(BlockPos position) {
         Objects.requireNonNull(position, "position");
-        long x = position.getX();
-        long y = position.getY();
-        long z = position.getZ();
+        return apply(position.getX(), position.getY(), position.getZ(), BlockPos.ORIGIN);
+    }
+
+    /**
+     * Rotates a packed position without allocating an intermediate decoded BlockPos.
+     */
+    public BlockPos apply(long position) {
+        return apply(BlockPos2ObjectMap.unpackX(position), BlockPos2ObjectMap.unpackY(position), BlockPos2ObjectMap.unpackZ(position), BlockPos.ORIGIN);
+    }
+
+    /**
+     * Rotates and translates in one allocation, retaining exact intermediate coordinate checks.
+     */
+    public BlockPos applyAt(BlockPos origin, BlockPos offset) {
+        return apply(offset.getX(), offset.getY(), offset.getZ(), origin);
+    }
+
+    private BlockPos apply(long x, long y, long z, BlockPos origin) {
         return new BlockPos(
-            Math.toIntExact(x * east.getXOffset() + y * up.getXOffset() + z * south.getXOffset()),
-            Math.toIntExact(x * east.getYOffset() + y * up.getYOffset() + z * south.getYOffset()),
-            Math.toIntExact(x * east.getZOffset() + y * up.getZOffset() + z * south.getZOffset()));
+            Math.addExact(origin.getX(), Math.toIntExact(x * east.getXOffset() + y * up.getXOffset() + z * south.getXOffset())),
+            Math.addExact(origin.getY(), Math.toIntExact(x * east.getYOffset() + y * up.getYOffset() + z * south.getYOffset())),
+            Math.addExact(origin.getZ(), Math.toIntExact(x * east.getZOffset() + y * up.getZOffset() + z * south.getZOffset())));
     }
 
     /**

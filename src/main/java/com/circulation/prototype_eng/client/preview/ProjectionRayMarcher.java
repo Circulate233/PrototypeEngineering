@@ -6,11 +6,16 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Predicate;
 
-/** Amanatides/Woo voxel visits, including empty cells; no world query or client matcher. */
+/**
+ * Amanatides/Woo voxel visits, including empty cells; no world query or client matcher.
+ */
 public final class ProjectionRayMarcher {
     private ProjectionRayMarcher() {
     }
 
+    /**
+     * The predicate borrows a mutable relative position only for the call and must not retain it.
+     */
     public static @Nullable BlockPos pick(BlockPos anchor, Vec3d start, Vec3d direction, double maxDistance,
                                           int maxVisits, Predicate<BlockPos> relativeCell) {
         if (!Double.isFinite(maxDistance) || maxDistance <= 0 || maxVisits <= 0 || !finite(start) || !finite(direction))
@@ -24,10 +29,11 @@ public final class ProjectionRayMarcher {
         double dx = ray.x == 0 ? Double.POSITIVE_INFINITY : Math.abs(1 / ray.x);
         double dy = ray.y == 0 ? Double.POSITIVE_INFINITY : Math.abs(1 / ray.y);
         double dz = ray.z == 0 ? Double.POSITIVE_INFINITY : Math.abs(1 / ray.z);
+        var relative = new BlockPos.MutableBlockPos();
         for (int visits = 0; visits < maxVisits; visits++) {
             long rx = (long) x - anchor.getX(), ry = (long) y - anchor.getY(), rz = (long) z - anchor.getZ();
             if (rx >= Integer.MIN_VALUE && rx <= Integer.MAX_VALUE && ry >= Integer.MIN_VALUE && ry <= Integer.MAX_VALUE && rz >= Integer.MIN_VALUE && rz <= Integer.MAX_VALUE
-                && relativeCell.test(new BlockPos((int) rx, (int) ry, (int) rz))) return new BlockPos(x, y, z);
+                && relativeCell.test(relative.setPos((int) rx, (int) ry, (int) rz))) return new BlockPos(x, y, z);
             double next = Math.min(tx, Math.min(ty, tz));
             if (next > maxDistance) return null;
             if (tx <= ty && tx <= tz) {

@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.research.manual;
 
-import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
-
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
@@ -10,18 +8,13 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.research.manual.ManualMaterialKey;
-import it.unimi.dsi.fastutil.objects.AbstractObject2LongMap;
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectSet;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.ApiStatus;
 
@@ -37,7 +30,8 @@ public final class ManualMaterials {
     private final Object2ObjectOpenHashMap<ManualMaterialKey, Material> byId = new Object2ObjectOpenHashMap<>();
 
     private ManualMaterials(ObjectList<Material> materials) {
-        this.materials = ObjectLists.unmodifiable(new ObjectArrayList<>(materials));
+        // from() transfers its completed private list; no caller can mutate it.
+        this.materials = materials;
         for (var material : materials) {
             byId.put(material.id(), material);
         }
@@ -135,65 +129,14 @@ public final class ManualMaterials {
         return sequence;
     }
 
+    /**
+     * Completed zero-default maps are transferred read-only for the plan's lifetime.
+     */
     public record Plan(Object2LongMap<ManualMaterialKey> increments, Object2LongMap<ManualMaterialKey> expectedWork,
                        AEKey2LongMap quantities, long sequence, boolean completesResearch) {
-        public Plan {
-            increments = Object2LongMaps.unmodifiable(new FrozenLongMap<>(increments, new Object2LongLinkedOpenHashMap<>()));
-            expectedWork = Object2LongMaps.unmodifiable(new FrozenLongMap<>(expectedWork, new Object2LongLinkedOpenHashMap<>()));
-            quantities = new AEKey2LongMap.UnmodifiableMap(new FrozenQuantities(quantities));
-        }
     }
 
     private record Material(ManualMaterialKey id, AEKey key, long amount) {
     }
 
-    /**
-     * BasicEntry snapshots prevent setValue through either primitive or boxed entry views.
-     */
-    private static class FrozenLongMap<K> extends AbstractObject2LongMap<K> {
-        private final Object2LongMap<K> values;
-        private final ObjectSet<Object2LongMap.Entry<K>> entries;
-
-        private FrozenLongMap(Object2LongMap<K> source, Object2LongMap<K> copy) {
-            copy.putAll(Objects.requireNonNull(source));
-            copy.defaultReturnValue(0);
-            values = copy;
-            var snapshot = new ObjectLinkedOpenHashSet<Object2LongMap.Entry<K>>(copy.size());
-            for (var entry : copy.object2LongEntrySet()) {
-                snapshot.add(new BasicEntry<>(entry.getKey(), entry.getLongValue()));
-            }
-            entries = ObjectSets.unmodifiable(snapshot);
-        }
-
-        @Override
-        public ObjectSet<Object2LongMap.Entry<K>> object2LongEntrySet() {
-            return entries;
-        }
-
-        @Override
-        public long getLong(Object key) {
-            return values.getLong(key);
-        }
-
-        @Override
-        public boolean containsKey(Object key) {
-            return values.containsKey(key);
-        }
-
-        @Override
-        public int size() {
-            return values.size();
-        }
-    }
-
-    private static final class FrozenQuantities extends FrozenLongMap<AEKey> implements AEKey2LongMap {
-        private FrozenQuantities(AEKey2LongMap source) {
-            super(source, new AEKeyLinkedOpenHashMap(6));
-        }
-
-        @Override
-        public long addTo(AEKey key, long increment) {
-            throw new UnsupportedOperationException("This map is immutable");
-        }
-    }
 }

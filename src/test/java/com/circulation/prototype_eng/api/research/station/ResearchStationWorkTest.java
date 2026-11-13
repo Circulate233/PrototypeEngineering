@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.api.research.station;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
-
 import ae2.api.config.Actionable;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
@@ -39,6 +37,7 @@ import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.testsupport.TestResources;
 import it.unimi.dsi.fastutil.ints.IntLists;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;

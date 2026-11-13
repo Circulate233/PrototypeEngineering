@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.machine;
 
-import it.unimi.dsi.fastutil.ints.IntArrayList;
-
 import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.component.ComponentSystem;
 import com.circulation.prototype_eng.api.component.ComponentType;
@@ -26,6 +24,7 @@ import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.energy.EnergyBuffer;
 import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;

@@ -1,22 +1,15 @@
 package com.circulation.prototype_eng.proxy;
 
-import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.BuilderConfig;
-import com.circulation.prototype_eng.api.structure.StructureConstructionRegistry;
-import com.circulation.prototype_eng.api.structure.StructureConstructionRegistrationEvent;
-import com.circulation.prototype_eng.MeAssemblyConfig;
-import com.circulation.prototype_eng.ParallelControllerConfig;
-import com.circulation.prototype_eng.storage.MeResourceHatchBlockEntity;
-import com.circulation.prototype_eng.storage.MePatternAssemblyBlockEntity;
-import com.circulation.prototype_eng.container.MePatternAssemblyContainer;
-import com.circulation.prototype_eng.container.MeResourceHatchContainer;
-import com.circulation.prototype_eng.container.ParallelControllerContainer;
-import com.circulation.prototype_eng.api.gui.ParallelControllerGuiHost;
+import com.circulation.prototype_eng.HatchConfig;
+import com.circulation.prototype_eng.MEAssemblyConfig;
 import com.circulation.prototype_eng.OrientationToolConfig;
+import com.circulation.prototype_eng.ParallelControllerConfig;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.gui.EnergyHatchGuiHost;
 import com.circulation.prototype_eng.api.gui.MachineGuiRegistry;
+import com.circulation.prototype_eng.api.gui.ParallelControllerGuiHost;
 import com.circulation.prototype_eng.api.gui.ResearchGuiAccess;
 import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
@@ -28,44 +21,51 @@ import com.circulation.prototype_eng.api.network.resource.NetworkComputerCompone
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistrationEvent;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
+import com.circulation.prototype_eng.api.recipe.RecipeDeclarationRegistrationEvent;
+import com.circulation.prototype_eng.api.recipe.RecipeDeclarations;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
-import com.circulation.prototype_eng.api.recipe.RecipeDeclarations;
-import com.circulation.prototype_eng.api.recipe.RecipeDeclarationRegistrationEvent;
-import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
-import com.circulation.prototype_eng.recipe.ServerRecipeManifests;
-import com.circulation.prototype_eng.recipe.ServerRecipeDefinitions;
 import com.circulation.prototype_eng.api.research.ResearchRegistrationEvent;
+import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchServerConfiguration;
 import com.circulation.prototype_eng.api.research.ResearchServerConfigurationEvent;
-import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistrationEvent;
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistry;
 import com.circulation.prototype_eng.api.structure.StructureCatalog;
+import com.circulation.prototype_eng.api.structure.StructureConstructionRegistrationEvent;
+import com.circulation.prototype_eng.api.structure.StructureConstructionRegistry;
 import com.circulation.prototype_eng.api.structure.json.StructurePredicateRegistrationEvent;
 import com.circulation.prototype_eng.api.structure.json.StructurePredicateRegistry;
-import com.circulation.prototype_eng.container.EnergyHatchContainer;
-import com.circulation.prototype_eng.container.ResearchContainer;
-import com.circulation.prototype_eng.container.ResourceHatchContainer;
-import com.circulation.prototype_eng.container.StructureToolContainer;
+import com.circulation.prototype_eng.container.ContainerEnergyHatch;
+import com.circulation.prototype_eng.container.ContainerMEPatternAssembly;
+import com.circulation.prototype_eng.container.ContainerMEResourceHatch;
+import com.circulation.prototype_eng.container.ContainerParallelController;
+import com.circulation.prototype_eng.container.ContainerResearch;
+import com.circulation.prototype_eng.container.ContainerResourceHatch;
+import com.circulation.prototype_eng.container.ContainerStructureTool;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import com.circulation.prototype_eng.machine.ServerMachineIdentities;
 import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
 import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
+import com.circulation.prototype_eng.network.InitNetwork;
+import com.circulation.prototype_eng.network.clientbound.HatchConfigurationPacket;
+import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
+import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
+import com.circulation.prototype_eng.recipe.ServerRecipeDefinitions;
+import com.circulation.prototype_eng.recipe.ServerRecipeManifests;
 import com.circulation.prototype_eng.research.ServerResearch;
 import com.circulation.prototype_eng.scheduler.SchedulerCommand;
 import com.circulation.prototype_eng.scheduler.SchedulerConfig;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.circulation.prototype_eng.storage.HatchCapabilityRegistration;
-import com.circulation.prototype_eng.network.clientbound.HatchConfigurationPacket;
+import com.circulation.prototype_eng.storage.MEPatternAssemblyBlockEntity;
+import com.circulation.prototype_eng.storage.MEResourceHatchBlockEntity;
 import com.circulation.prototype_eng.storage.ServerHatchConfigurations;
 import com.circulation.prototype_eng.structure.json.BuiltinStructurePredicates;
 import com.circulation.prototype_eng.structure.json.ForgeStructureBlocks;
 import com.circulation.prototype_eng.structure.json.StructureJsonLoader;
 import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
-import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
-import com.circulation.prototype_eng.network.InitNetwork;
 import com.circulation.prototype_eng.structure.reload.StructureReloadCommand;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.network.NetworkManager;
@@ -99,7 +99,7 @@ public class CommonProxy implements IGuiHandler {
     public void preInit(FMLPreInitializationEvent event) {
         HatchConfig.load(event.getModConfigurationDirectory());
         BuilderConfig.load(event.getModConfigurationDirectory());
-        MeAssemblyConfig.load(event.getModConfigurationDirectory());
+        MEAssemblyConfig.load(event.getModConfigurationDirectory());
         ParallelControllerConfig.load(event.getModConfigurationDirectory());
         SchedulerConfig.load(event.getModConfigurationDirectory());
         OrientationToolConfig.load(event.getModConfigurationDirectory());
@@ -140,7 +140,7 @@ public class CommonProxy implements IGuiHandler {
         StructureConstructionRegistry.INSTANCE.freeze(MachineTypeRegistry.INSTANCE.structureCatalog());
     }
 
-    public void serverAboutToStart(FMLServerAboutToStartEvent event) {
+    public final void serverAboutToStart(FMLServerAboutToStartEvent event) {
         ServerTaskSchedulers.start(event.getServer());
         try {
             ServerRecipeDefinitions.start(event.getServer());
@@ -167,13 +167,13 @@ public class CommonProxy implements IGuiHandler {
         }
     }
 
-    public void serverStarting(FMLServerStartingEvent event) {
+    public final void serverStarting(FMLServerStartingEvent event) {
         ServerResearch.start(event.getServer());
         event.registerServerCommand(new StructureReloadCommand());
         event.registerServerCommand(new SchedulerCommand());
     }
 
-    public void serverStopping() {
+    public final void serverStopping() {
         try {
             ServerRecipeDefinitions.stopping();
             ServerRecipeManifests.stop();
@@ -184,7 +184,7 @@ public class CommonProxy implements IGuiHandler {
         }
     }
 
-    public void serverStopped() {
+    public final void serverStopped() {
         ServerRecipeDefinitions.stopping();
         ServerTaskSchedulers.stop();
         ServerRecipeDefinitions.stop();
@@ -238,29 +238,29 @@ public class CommonProxy implements IGuiHandler {
 
     @Override
     public Object getServerGuiElement(int id, EntityPlayer player, World world, int x, int y, int z) {
-        if (id == StructureToolContainer.GUI_ID) {
-            return StructureToolContainer.open(player.inventory, x);
+        if (id == ContainerStructureTool.GUI_ID) {
+            return ContainerStructureTool.open(player.inventory, x);
         }
         if (id == ResearchGuiAccess.GUI_ID) {
-            return new ResearchContainer(player.inventory);
+            return new ContainerResearch(player.inventory);
         }
-        if (id == 3 && world.isBlockLoaded(new BlockPos(x, y, z))
-            && world.getTileEntity(new BlockPos(x, y, z)) instanceof MeResourceHatchBlockEntity me)
-            return new MeResourceHatchContainer(player.inventory, me);
-        if (id == 4 && world.isBlockLoaded(new BlockPos(x, y, z))
-            && world.getTileEntity(new BlockPos(x, y, z)) instanceof MePatternAssemblyBlockEntity pattern)
-            return new MePatternAssemblyContainer(player.inventory, pattern);
-        if (id == 5 && world.isBlockLoaded(new BlockPos(x, y, z))
-            && world.getTileEntity(new BlockPos(x, y, z)) instanceof ParallelControllerGuiHost parallel)
-            return new ParallelControllerContainer(player.inventory, parallel);
-        if (id != 0 || !world.isBlockLoaded(new BlockPos(x, y, z))) {
-            return null;
-        }
-        return switch (world.getTileEntity(new BlockPos(x, y, z))) {
-            case MachineControllerHost machine -> MachineGuiRegistry.create(player.inventory, machine);
-            case ResourceHatchGuiHost resource -> new ResourceHatchContainer(player.inventory, resource);
-            case EnergyHatchGuiHost energy -> new EnergyHatchContainer(player.inventory, energy);
-            case null, default -> null;
+        if (id != 0 && id != 3 && id != 4 && id != 5) return null;
+        var position = new BlockPos(x, y, z);
+        if (!world.isBlockLoaded(position)) return null;
+        var tile = world.getTileEntity(position);
+        return switch (id) {
+            case 3 ->
+                tile instanceof MEResourceHatchBlockEntity me ? new ContainerMEResourceHatch(player.inventory, me) : null;
+            case 4 ->
+                tile instanceof MEPatternAssemblyBlockEntity pattern ? new ContainerMEPatternAssembly(player.inventory, pattern) : null;
+            case 5 ->
+                tile instanceof ParallelControllerGuiHost parallel ? new ContainerParallelController(player.inventory, parallel) : null;
+            default -> switch (tile) {
+                case MachineControllerHost machine -> MachineGuiRegistry.create(player.inventory, machine);
+                case ResourceHatchGuiHost resource -> new ContainerResourceHatch(player.inventory, resource);
+                case EnergyHatchGuiHost energy -> new ContainerEnergyHatch(player.inventory, energy);
+                case null, default -> null;
+            };
         };
     }
 

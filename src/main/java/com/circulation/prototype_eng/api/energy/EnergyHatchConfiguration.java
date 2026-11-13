@@ -4,7 +4,9 @@ import com.circulation.prototype_eng.api.storage.HatchConfiguration;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import org.jetbrains.annotations.Nullable;
 
-/** Independent FE capacities and default transfer ceilings. User limits remain host settings. */
+/**
+ * Independent FE capacities and default transfer ceilings. User limits remain host settings.
+ */
 public record EnergyHatchConfiguration(@Nullable Side input, @Nullable Side output) implements HatchConfiguration {
     public EnergyHatchConfiguration {
         if (input == null && output == null) throw new IllegalArgumentException("A hatch needs a side");

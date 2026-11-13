@@ -16,7 +16,9 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** The batch and global-TESR boundaries both feed the same ordered model pass pipeline. */
+/**
+ * The batch and global-TESR boundaries both feed the same ordered model pass pipeline.
+ */
 @Mixin(RenderGlobal.class)
 public abstract class RenderGlobalMachineModelsMixin {
     @Unique

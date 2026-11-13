@@ -41,7 +41,7 @@ AE 原有 InventoryActionPacket 用于中键、填充/清空容器与 space 区�
 
 同类转移通过每个 storage context 的锁把 expectedKey 判断、首次 quick move 的 key 记录、实际提取与未转移数量的准确补回绑定在一起。并发写入不同 key 时，该槽不参与原同类转移；不会读取一次 A 后按当前 B 提取。混合两侧不同时持锁。双击填充非物品资源时，只有真实 `ContainerItemContext` 模拟接受所选资源才优先执行整容器填充；普通物品光标不能灌装时继续 PM 同类整侧插入。
 
-tooltip 已通过当前有限快照接线：`ResourceHatchWindow.capture` 在该侧 context 锁内从每个显示资源的真实 key 调用 `storage.getMaxAmount(stack.what())`，将当前 long 数量与对应容量写入同一 Entry；`ResourceHatchContainer.capacity` 校验该 native cell 的 key 仍相同后读回 Entry.capacity，`ResourceHatchGui` 用这个 key 的 FULL 数量格式显示 `ResourceStored`。占用槽/总槽同样来自各自 Side 快照。没有新增用户说明控件或替换原 GUI 文案。
+tooltip 已通过当前有限快照接线：`ResourceHatchWindow.capture` 在该侧 context 锁内从每个显示资源的真实 key 调用 `storage.getMaxAmount(stack.what())`，将当前 long 数量与对应容量写入同一 Entry；`ContainerResourceHatch.capacity` 校验该 native cell 的 key 仍相同后读回 Entry.capacity，`GuiResourceHatch` 用这个 key 的 FULL 数量格式显示 `ResourceStored`。占用槽/总槽同样来自各自 Side 快照。没有新增用户说明控件或替换原 GUI 文案。
 
 资源区 PM 双击与 vanilla PICKUP_ALL 的方向存在真实冲突：前者会把光标和背包同类物品全部存回输入仓，后者会将同类资源补入光标。按本轮裁定资源区使用 PM 同 button 双击；玩家背包区保留 vanilla 双击。不新增替代手势。原资源 collect 函数仍以完整逻辑双侧为范围，不会因窗口化误变为仅可见格。
 

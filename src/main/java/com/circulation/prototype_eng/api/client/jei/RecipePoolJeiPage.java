@@ -9,9 +9,9 @@ import mezz.jei.api.recipe.IRecipeCategory;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
+import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.ParametersAreNonnullByDefault;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * One native JEI category per canonical pool. Custom pages need not extend the default page.
@@ -34,15 +34,6 @@ public interface RecipePoolJeiPage extends IRecipeCategory<RecipePoolJeiRecipe> 
         return null;
     }
 
-    interface PreparedUpdate {
-        RecipePoolJeiPage page();
-        RecipePool pool();
-        RecipePoolJeiRecipe createRecipe(MachineRecipe recipe, JeiRecipeDisplay display, JeiRecipeIngredients ingredients);
-
-        /** Single use: validate the captured owner data, then assign prepared data without external callbacks. */
-        void apply();
-    }
-
     @Override
     default String getUid() {
         return uid(pool().id());
@@ -63,5 +54,18 @@ public interface RecipePoolJeiPage extends IRecipeCategory<RecipePoolJeiRecipe> 
      */
     default RecipePoolJeiRecipe createRecipe(MachineRecipe recipe, JeiRecipeDisplay display, JeiRecipeIngredients ingredients) {
         return new RecipePoolJeiRecipe(this, recipe, display, ingredients);
+    }
+
+    interface PreparedUpdate {
+        RecipePoolJeiPage page();
+
+        RecipePool pool();
+
+        RecipePoolJeiRecipe createRecipe(MachineRecipe recipe, JeiRecipeDisplay display, JeiRecipeIngredients ingredients);
+
+        /**
+         * Single use: validate the captured owner data, then assign prepared data without external callbacks.
+         */
+        void apply();
     }
 }

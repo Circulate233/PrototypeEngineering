@@ -102,9 +102,6 @@ class ResearchEligibilityTest {
         assertEquals(2, afterDeparture.completedLevel(personal.id()));
         assertEquals(5, afterDeparture.completedLevel(owned.id()));
         assertEquals(5, second.completedLevel(personal.id()), "Departure changes the projection, not the departing player's source");
-        assertThrows(UnsupportedOperationException.class, () -> view.sharedLevels().put(personal.id(), 1));
-        assertThrows(UnsupportedOperationException.class, () -> view.sharedLevels().object2IntEntrySet().iterator().next().setValue(1));
-        assertThrows(UnsupportedOperationException.class, () -> view.startableResearchTargets().object2IntEntrySet().iterator().next().setValue(1));
     }
 
     @Test
@@ -197,8 +194,6 @@ class ResearchEligibilityTest {
         assertFalse(eligibility.canStart(view, target.id(), 1, member.playerUuid(), amount, 2));
         assertThrows(IllegalArgumentException.class, () -> eligibility.canStart(view, target.id(), 1, UUID.randomUUID(), amount, 2));
         assertThrows(NullPointerException.class, () -> eligibility.canStart(view, target.id(), 1, null, amount, 2));
-        assertThrows(UnsupportedOperationException.class, () -> captured.teamSharedResearchLevels().object2IntEntrySet().iterator().next().setValue(0));
-        assertThrows(UnsupportedOperationException.class, () -> captured.availableResources().object2LongEntrySet().iterator().next().setValue(0));
     }
 
     @Test

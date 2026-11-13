@@ -17,7 +17,9 @@ import java.util.Locale;
 import java.util.NoSuchElementException;
 import java.util.regex.Pattern;
 
-/** Persistent selection and edit buffers from PM's range structure selector. */
+/**
+ * Persistent selection and edit buffers from PM's range structure selector.
+ */
 public final class ScannerState {
     public static final String ROOT = "pm_scanner";
     private static final Pattern INTEGER = Pattern.compile("-?[0-9]{1,10}");
@@ -100,7 +102,9 @@ public final class ScannerState {
         return value != null ? value : position(data, "origin");
     }
 
-    /** Returns true when the click starts a fresh selection. */
+    /**
+     * Returns true when the click starts a fresh selection.
+     */
     public static boolean select(NBTTagCompound data, BlockPos pos, int dimension, boolean restart, String name) {
         boolean fresh = restart || position(data, "origin") == null || data.getInteger("dimension") != dimension;
         if (fresh) {
@@ -171,7 +175,9 @@ public final class ScannerState {
         SPACING("expandedSpacing"), SUBSTRUCTURE("substructure"), NBT("includeTileNbt"), MIRROR("allowMirror"),
         X("originEditX"), Y("originEditY"), Z("originEditZ"), PREVIEW_MIRROR("previewMirror");
 
-        /** Shared declaration order; callers must not modify this array. */
+        /**
+         * Shared declaration order; callers must not modify this array.
+         */
         public static final Field[] VALUES = values();
         public final String key;
 
@@ -208,13 +214,17 @@ public final class ScannerState {
             return (long) max.getZ() - min.getZ() + 1;
         }
 
-        /** PM previews all cells up to 32768, then only the complete outer surface. */
+        /**
+         * PM previews all cells up to 32768, then only the complete outer surface.
+         */
         public Iterator<BlockPos> previewCells() {
             if (!exceeds(32768)) return previewPositions(32768).iterator();
             return new BoundaryIterator(min, max);
         }
 
-        /** Includes both box edges; work is bounded even for selections spanning the int coordinate range. */
+        /**
+         * Includes both box edges; work is bounded even for selections spanning the int coordinate range.
+         */
         public List<BlockPos> previewPositions(int budget) {
             if (budget < 8) throw new IllegalArgumentException("Preview budget must include box corners");
             long low = 1, high = Math.max(sizeX(), Math.max(sizeY(), sizeZ()));

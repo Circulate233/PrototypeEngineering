@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.storage;
 
-import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
-
 import ae2.api.AECapabilities;
 import ae2.api.config.Actionable;
 import ae2.api.networking.security.IActionSource;
@@ -19,6 +17,7 @@ import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.energy.EnergyBuffer;
 import com.circulation.prototype_eng.energy.EnergyHatchBlockEntity;
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.tileentity.TileEntity;
@@ -35,7 +34,9 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongUnaryOperator;
 
-/** One tile's bounded automatic IO cursors. External capabilities are resolved anew for each tick. */
+/**
+ * One tile's bounded automatic IO cursors. External capabilities are resolved anew for each tick.
+ */
 public final class HatchAutoTransfer {
     private static final int PROBES = 4;
     private static final int ENUMERATION_INTERVAL = 20;
@@ -50,8 +51,143 @@ public final class HatchAutoTransfer {
         for (int i = 0; i < cursors.length; i++) cursors[i] = new ResourceCursor();
     }
 
+    private static boolean current(WorldServer world, BlockPos position, @Nullable TileEntity tile) {
+        return world.isBlockLoaded(position, false) && world.getTileEntity(position) == tile
+            && (tile == null || !tile.isInvalid());
+    }
+
+    @SuppressWarnings("UnstableApiUsage")
+    // AE's registered type-specific external storage bridge is the intended extension point.
+    private static ResourceEndpoint resourceEndpoint(WorldServer world, BlockPos position, EnumFacing face,
+                                                     @Nullable TileEntity neighbor, @Nullable ResourceHatch resource) {
+        var contexts = peerContexts(neighbor, face, resource);
+        var output = resource != null && resource.output() instanceof SlottedResourceStorage slotted ? slotted : null;
+        var direct = neighbor == null ? null : neighbor.getCapability(AECapabilities.ME_STORAGE, face);
+        if (direct != null) return new ResourceEndpoint(List.of(new ResourcePort(null, direct)), output, contexts);
+        var ports = new ObjectArrayList<ResourcePort>();
+        for (var entry : StackWorldBehaviors.createExternalStorageStrategies(world, position, face).entrySet()) {
+            var wrapper = entry.getValue().createWrapper(false, () -> {
+            });
+            if (wrapper != null) ports.add(new ResourcePort(entry.getKey(), wrapper));
+        }
+        return new ResourceEndpoint(ports, null, contexts);
+    }
+
+    private static List<StorageContext> peerContexts(@Nullable TileEntity neighbor, EnumFacing face,
+                                                     @Nullable ResourceHatch resource) {
+        var contexts = new ObjectArrayList<StorageContext>(4);
+        if (resource != null) {
+            var input = resource.input();
+            var output = resource.output();
+            if (input != null) addContext(contexts, input.context());
+            if (output != null) addContext(contexts, output.context());
+        }
+        var energyInput = HatchCapabilities.findEnergyInput(neighbor, face);
+        var energyOutput = HatchCapabilities.findEnergyOutput(neighbor, face);
+        if (energyInput != null) addContext(contexts, energyInput.context());
+        if (energyOutput != null) addContext(contexts, energyOutput.context());
+        return contexts;
+    }
+
+    private static void exportResources(SlottedResourceBuffer output, ResourceEndpoint peer, ResourceCursor cursor,
+                                        long fluidRate, BooleanSupplier current) {
+        for (int probe = 0; probe < PROBES && current.getAsBoolean() && output.isValid(); probe++) {
+            int slot = Math.floorMod(cursor.outputSlot++, output.size());
+            var stack = output.getStack(slot);
+            if (stack == null) continue;
+            for (var port : peer.ports()) {
+                if (port.type() != null && port.type() != stack.what().getType()) continue;
+                long offered = output.extract(slot, stack.what(), fluidLimit(stack.what(), stack.amount(), fluidRate), Actionable.SIMULATE);
+                var reservation = offered > 0 ? output.reserveTransfer(slot, stack.what(), offered, false) : null;
+                if (reservation != null)
+                    settle(output.context(), reservation, amount -> port.storage().insert(stack.what(), amount, Actionable.MODULATE, SOURCE));
+                break;
+            }
+        }
+    }
+
+    private static long fluidLimit(AEKey key, long amount, long maximum) {
+        return key instanceof AEFluidKey && maximum > 0 ? Math.min(amount, maximum) : amount;
+    }
+
+    static void energy(@Nullable EnergyBuffer input, @Nullable EnergyBuffer output, IEnergyStorage remote,
+                       List<StorageContext> peerContexts, boolean inputEnabled, boolean outputEnabled, BooleanSupplier current) {
+        var contexts = new ObjectArrayList<StorageContext>(4);
+        if (input != null) addContext(contexts, input.context());
+        if (output != null) addContext(contexts, output.context());
+        if (!includePeer(contexts, peerContexts) || !tryLocks(contexts)) return;
+        try {
+            if (!current.getAsBoolean() || !validContexts(contexts)) return;
+            if (inputEnabled && input != null && remote.canExtract()) {
+                long offered = input.receiveEnergy(Integer.MAX_VALUE, Actionable.SIMULATE);
+                var reservation = offered > 0 ? input.reserveTransfer(offered, true) : null;
+                if (reservation != null)
+                    settle(input.context(), reservation, amount -> remote.extractEnergy((int) amount, false));
+            }
+            if (outputEnabled && output != null && current.getAsBoolean() && output.isValid() && remote.canReceive()) {
+                long offered = output.extractEnergy(Integer.MAX_VALUE, Actionable.SIMULATE);
+                var reservation = offered > 0 ? output.reserveTransfer(offered, false) : null;
+                if (reservation != null)
+                    settle(output.context(), reservation, amount -> remote.receiveEnergy((int) amount, false));
+            }
+        } finally {
+            unlock(contexts);
+        }
+    }
+
+    private static void settle(StorageContext context, NativeTransferReservation reservation, LongUnaryOperator external) {
+        try {
+            long actual = external.applyAsLong(reservation.amount());
+            if (actual < 0 || actual > reservation.amount())
+                throw new IllegalStateException("External storage returned an unknown transfer amount");
+            reservation.complete(actual);
+        } catch (RuntimeException | Error failure) {
+            // Unknown external effects cannot be refunded. Retain the native hold and stop this lifetime.
+            try {
+                context.invalidate();
+            } catch (RuntimeException | Error invalidation) {
+                failure.addSuppressed(invalidation);
+            }
+            throw failure;
+        }
+    }
+
+    private static boolean validContexts(List<StorageContext> contexts) {
+        for (var context : contexts) if (!context.isValid()) return false;
+        return true;
+    }
+
+    private static void addContext(List<StorageContext> contexts, StorageContext context) {
+        if (!contexts.contains(context)) contexts.add(context);
+    }
+
+    private static boolean includePeer(List<StorageContext> local, List<StorageContext> peer) {
+        for (var context : peer) if (local.contains(context)) return false;
+        for (var context : peer) addContext(local, context);
+        local.sort(Comparator.comparingLong(StorageContext::order));
+        return true;
+    }
+
+    private static boolean tryLocks(List<StorageContext> contexts) {
+        int acquired = 0;
+        for (var context : contexts) {
+            if (!context.tryOrdinaryLock()) {
+                for (int i = acquired - 1; i >= 0; i--) contexts.get(i).unlockDeferred();
+                return false;
+            }
+            acquired++;
+        }
+        return true;
+    }
+
+    private static void unlock(List<StorageContext> contexts) {
+        for (int i = contexts.size() - 1; i >= 0; i--) contexts.get(i).unlockDeferred();
+        contexts.forEach(StorageContext::publishChanges);
+    }
+
     public void tickResources(ResourceHatchBlockEntity host) {
-        if (!(host.getWorld() instanceof WorldServer world) || !current(world, host.getPos(), host)) return;
+        if (!(host.getWorld() instanceof WorldServer world) || !world.isCallingFromMinecraftThread()
+            || !current(world, host.getPos(), host)) return;
         if (!host.autoInput() && !host.autoOutput()) return;
         var hatch = host.storage();
         beginTick();
@@ -85,7 +221,8 @@ public final class HatchAutoTransfer {
     }
 
     public void tickEnergy(EnergyHatchBlockEntity host) {
-        if (!(host.getWorld() instanceof WorldServer world) || !current(world, host.getPos(), host)) return;
+        if (!(host.getWorld() instanceof WorldServer world) || !world.isCallingFromMinecraftThread()
+            || !current(world, host.getPos(), host)) return;
         if (!host.autoInput() && !host.autoOutput()) return;
         var input = host.inputStorage();
         var output = host.outputStorage();
@@ -107,11 +244,6 @@ public final class HatchAutoTransfer {
         }
     }
 
-    private static boolean current(WorldServer world, BlockPos position, @Nullable TileEntity tile) {
-        return !world.isRemote && world.isCallingFromMinecraftThread() && world.isBlockLoaded(position, false)
-            && world.getTileEntity(position) == tile && (tile == null || !tile.isInvalid() && tile.getWorld() == world);
-    }
-
     void beginTick() {
         tick++;
         firstFace = (firstFace + 1) % EnumFacing.VALUES.length;
@@ -124,37 +256,6 @@ public final class HatchAutoTransfer {
             cursor.clear();
             cursor.neighbor = new WeakReference<>(neighbor);
         }
-    }
-
-    @SuppressWarnings("UnstableApiUsage") // AE's registered type-specific external storage bridge is the intended extension point.
-    private static ResourceEndpoint resourceEndpoint(WorldServer world, BlockPos position, EnumFacing face,
-                                                      @Nullable TileEntity neighbor, @Nullable ResourceHatch resource) {
-        var contexts = peerContexts(neighbor, face, resource);
-        var output = resource != null && resource.output() instanceof SlottedResourceStorage slotted ? slotted : null;
-        var direct = neighbor == null ? null : neighbor.getCapability(AECapabilities.ME_STORAGE, face);
-        if (direct != null) return new ResourceEndpoint(List.of(new ResourcePort(null, direct)), output, contexts);
-        var ports = new ObjectArrayList<ResourcePort>();
-        for (var entry : StackWorldBehaviors.createExternalStorageStrategies(world, position, face).entrySet()) {
-            var wrapper = entry.getValue().createWrapper(false, () -> {});
-            if (wrapper != null) ports.add(new ResourcePort(entry.getKey(), wrapper));
-        }
-        return new ResourceEndpoint(ports, null, contexts);
-    }
-
-    private static List<StorageContext> peerContexts(@Nullable TileEntity neighbor, EnumFacing face,
-                                                    @Nullable ResourceHatch resource) {
-        var contexts = new ObjectArrayList<StorageContext>(4);
-        if (resource != null) {
-            var input = resource.input();
-            var output = resource.output();
-            if (input != null) addContext(contexts, input.context());
-            if (output != null) addContext(contexts, output.context());
-        }
-        var energyInput = HatchCapabilities.findEnergyInput(neighbor, face);
-        var energyOutput = HatchCapabilities.findEnergyOutput(neighbor, face);
-        if (energyInput != null) addContext(contexts, energyInput.context());
-        if (energyOutput != null) addContext(contexts, energyOutput.context());
-        return contexts;
     }
 
     void resources(BufferedResourceHatch hatch, ResourceEndpoint peer, int face, boolean inputEnabled,
@@ -273,105 +374,12 @@ public final class HatchAutoTransfer {
         enumeratedThisTick = true;
     }
 
-    private static void exportResources(SlottedResourceBuffer output, ResourceEndpoint peer, ResourceCursor cursor,
-                                        long fluidRate, BooleanSupplier current) {
-        for (int probe = 0; probe < PROBES && current.getAsBoolean() && output.isValid(); probe++) {
-            int slot = Math.floorMod(cursor.outputSlot++, output.size());
-            var stack = output.getStack(slot);
-            if (stack == null) continue;
-            for (var port : peer.ports()) {
-                if (port.type() != null && port.type() != stack.what().getType()) continue;
-                long offered = output.extract(slot, stack.what(), fluidLimit(stack.what(), stack.amount(), fluidRate), Actionable.SIMULATE);
-                var reservation = offered > 0 ? output.reserveTransfer(slot, stack.what(), offered, false) : null;
-                if (reservation != null)
-                    settle(output.context(), reservation, amount -> port.storage().insert(stack.what(), amount, Actionable.MODULATE, SOURCE));
-                break;
-            }
-        }
+    record ResourcePort(@Nullable AEKeyType type, MEStorage storage) {
     }
 
-    private static long fluidLimit(AEKey key, long amount, long maximum) {
-        return key instanceof AEFluidKey && maximum > 0 ? Math.min(amount, maximum) : amount;
+    record ResourceEndpoint(List<ResourcePort> ports, @Nullable SlottedResourceStorage slots,
+                            List<StorageContext> contexts) {
     }
-
-    static void energy(@Nullable EnergyBuffer input, @Nullable EnergyBuffer output, IEnergyStorage remote,
-                       List<StorageContext> peerContexts, boolean inputEnabled, boolean outputEnabled, BooleanSupplier current) {
-        var contexts = new ObjectArrayList<StorageContext>(4);
-        if (input != null) addContext(contexts, input.context());
-        if (output != null) addContext(contexts, output.context());
-        if (!includePeer(contexts, peerContexts) || !tryLocks(contexts)) return;
-        try {
-            if (!current.getAsBoolean() || !validContexts(contexts)) return;
-            if (inputEnabled && input != null && remote.canExtract()) {
-                long offered = input.receiveEnergy(Integer.MAX_VALUE, Actionable.SIMULATE);
-                var reservation = offered > 0 ? input.reserveTransfer(offered, true) : null;
-                if (reservation != null)
-                    settle(input.context(), reservation, amount -> remote.extractEnergy((int) amount, false));
-            }
-            if (outputEnabled && output != null && current.getAsBoolean() && output.isValid() && remote.canReceive()) {
-                long offered = output.extractEnergy(Integer.MAX_VALUE, Actionable.SIMULATE);
-                var reservation = offered > 0 ? output.reserveTransfer(offered, false) : null;
-                if (reservation != null)
-                    settle(output.context(), reservation, amount -> remote.receiveEnergy((int) amount, false));
-            }
-        } finally {
-            unlock(contexts);
-        }
-    }
-
-    private static void settle(StorageContext context, NativeTransferReservation reservation, LongUnaryOperator external) {
-        try {
-            long actual = external.applyAsLong(reservation.amount());
-            if (actual < 0 || actual > reservation.amount())
-                throw new IllegalStateException("External storage returned an unknown transfer amount");
-            reservation.complete(actual);
-        } catch (RuntimeException | Error failure) {
-            // Unknown external effects cannot be refunded. Retain the native hold and stop this lifetime.
-            try {
-                context.invalidate();
-            } catch (RuntimeException | Error invalidation) {
-                failure.addSuppressed(invalidation);
-            }
-            throw failure;
-        }
-    }
-
-    private static boolean validContexts(List<StorageContext> contexts) {
-        for (var context : contexts) if (!context.isValid()) return false;
-        return true;
-    }
-
-    private static void addContext(List<StorageContext> contexts, StorageContext context) {
-        if (!contexts.contains(context)) contexts.add(context);
-    }
-
-    private static boolean includePeer(List<StorageContext> local, List<StorageContext> peer) {
-        for (var context : peer) if (local.contains(context)) return false;
-        for (var context : peer) addContext(local, context);
-        local.sort(Comparator.comparingLong(StorageContext::order));
-        return true;
-    }
-
-    private static boolean tryLocks(List<StorageContext> contexts) {
-        int acquired = 0;
-        for (var context : contexts) {
-            if (!context.tryOrdinaryLock()) {
-                for (int i = acquired - 1; i >= 0; i--) contexts.get(i).unlockDeferred();
-                return false;
-            }
-            acquired++;
-        }
-        return true;
-    }
-
-    private static void unlock(List<StorageContext> contexts) {
-        for (int i = contexts.size() - 1; i >= 0; i--) contexts.get(i).unlockDeferred();
-        contexts.forEach(StorageContext::publishChanges);
-    }
-
-    record ResourcePort(@Nullable AEKeyType type, MEStorage storage) {}
-
-    record ResourceEndpoint(List<ResourcePort> ports, @Nullable SlottedResourceStorage slots, List<StorageContext> contexts) {}
 
     private static final class ResourceCursor {
         private final Reference2ObjectOpenHashMap<AEKeyType, SourceCursor> sources = new Reference2ObjectOpenHashMap<>();

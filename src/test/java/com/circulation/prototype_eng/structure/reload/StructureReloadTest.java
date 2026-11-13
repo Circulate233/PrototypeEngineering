@@ -29,14 +29,15 @@ import com.circulation.prototype_eng.machine.ControllerStructureUpdates;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
 import com.circulation.prototype_eng.structure.StructureRefresh;
 import com.circulation.prototype_eng.structure.TemplateStructure;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -65,10 +66,10 @@ class StructureReloadTest {
 
     private static TemplateStructure shape(String name, int x, Runnable matched) {
         return new TemplateStructure(id(name), BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false,
-            new StructurePattern(Map.of(new BlockPos(x, 0, 0), StructurePredicates.test(MARKER, value -> {
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(new BlockPos(x, 0, 0), StructurePredicates.test(MARKER, value -> {
                 matched.run();
                 return "body".equals(value);
-            }))), List.of(), List.of());
+            })))), List.of(), List.of());
     }
 
     private static StructureCatalog catalog(TemplateStructure... shapes) {

@@ -1,15 +1,14 @@
 package com.circulation.prototype_eng.storage;
 
-import ae2.api.stacks.AEKeyType;
-import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
-
 import ae2.api.config.Actionable;
+import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -29,7 +28,8 @@ class HatchDestructionTest {
     private static final Key B = new Key(SECOND, "b");
 
     private static BufferedResourceHatch hatch(HatchMode mode) {
-        return new BufferedResourceHatch(mode, 3, new Reference2LongArrayMap<>(new AEKeyType[]{FIRST, SECOND}, new long[]{Long.MAX_VALUE, 1000L}), () -> { });
+        return new BufferedResourceHatch(mode, 3, new Reference2LongArrayMap<>(new AEKeyType[]{FIRST, SECOND}, new long[]{Long.MAX_VALUE, 1000L}), () -> {
+        });
     }
 
     private static SlottedResourceBuffer input(BufferedResourceHatch hatch) {
@@ -42,8 +42,11 @@ class HatchDestructionTest {
 
     private static void apply(ResourceReservation token) {
         token.context().lock();
-        try { token.apply(); }
-        finally { token.context().unlock(); }
+        try {
+            token.apply();
+        } finally {
+            token.context().unlock();
+        }
     }
 
     private static void settle(ResourceReservation token, boolean complete) {
@@ -51,7 +54,9 @@ class HatchDestructionTest {
         try {
             if (complete) token.complete();
             else token.rollback();
-        } finally { token.context().unlock(); }
+        } finally {
+            token.context().unlock();
+        }
     }
 
     @Test
@@ -94,7 +99,9 @@ class HatchDestructionTest {
         try {
             assertFalse(token.canApply());
             assertThrows(IllegalStateException.class, token::apply);
-        } finally { token.context().unlock(); }
+        } finally {
+            token.context().unlock();
+        }
         settle(token, false);
         assertEquals(List.of(new GenericStack(A, 100)), delayed);
         assertNull(input.getStack(0));
@@ -158,13 +165,19 @@ class HatchDestructionTest {
             if (!insert) side.insert(A, 100, Actionable.MODULATE);
             NativeTransferReservation receipt;
             side.context().lock();
-            try { receipt = Objects.requireNonNull(side.reserveTransfer(A, 60, insert)); }
-            finally { side.context().unlock(); }
+            try {
+                receipt = Objects.requireNonNull(side.reserveTransfer(A, 60, insert));
+            } finally {
+                side.context().unlock();
+            }
             var delayed = new ObjectArrayList<GenericStack>();
             assertTrue(hatch.removeForDrops(delayed::addAll).isEmpty());
             side.context().lock();
-            try { receipt.complete(25); }
-            finally { side.context().unlock(); }
+            try {
+                receipt.complete(25);
+            } finally {
+                side.context().unlock();
+            }
             assertEquals(List.of(new GenericStack(A, insert ? 25 : 75)), delayed);
             assertNull(side.getStack(0));
         }

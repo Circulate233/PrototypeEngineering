@@ -11,7 +11,10 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Objects;
 
-/** One cache ownership plus explicit readers cover builders, packed buffers and concrete GPU slots together. */
+/**
+ * One cache ownership plus explicit readers cover builders, packed buffers and concrete GPU slots together.
+ * Construction transfers the three completed pass maps; producers must not modify them afterwards.
+ */
 public final class BuiltModelBuffers {
     private final BlockPos origin;
     private final @Nullable AxisAlignedBB bounds;
@@ -47,9 +50,9 @@ public final class BuiltModelBuffers {
                              ModelBufferPool buffers, DirectVertexBufferPool direct, ModelClientThread client, Runnable releaseExtra,
                              @Nullable ModelAssets assets, ModelAssets.@Nullable TextureLease texture, @Nullable AxisAlignedBB bounds) {
         this.origin = origin.toImmutable();
-        this.builders = Map.copyOf(builders);
-        this.packed = Map.copyOf(packed);
-        this.gpu = Map.copyOf(gpu);
+        this.builders = builders;
+        this.packed = packed;
+        this.gpu = gpu;
         this.buffers = buffers;
         this.direct = direct;
         this.client = client;
@@ -129,11 +132,11 @@ public final class BuiltModelBuffers {
             } catch (RuntimeException | Error exception) {
                 failure = append(failure, exception);
             }
-        var resident = Map.copyOf(uploads);
+        // All readers have exited before disposal, so no later upload can be added.
         try {
             client.execute(() -> {
                 Throwable uploadFailure = null;
-                for (var draw : resident.values())
+                for (var draw : uploads.values())
                     try {
                         draw.close();
                     } catch (RuntimeException | Error exception) {
@@ -215,7 +218,9 @@ public final class BuiltModelBuffers {
             return value;
         }
 
-        /** Existing readers may hand lifetime to a deferred phase after cache retirement. */
+        /**
+         * Existing readers may hand lifetime to a deferred phase after cache retirement.
+         */
         public synchronized Lease fork() {
             if (closed) throw new IllegalStateException("Model result lease closed");
             return value.forkReader();

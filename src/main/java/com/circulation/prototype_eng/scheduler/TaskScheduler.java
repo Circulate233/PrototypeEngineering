@@ -14,7 +14,6 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayFIFOQueue;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
@@ -36,6 +35,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
+ * Published collections are read-only by contract; consumers must not modify them.
  * Owned ordinary worker pool and serialized affinity lanes. Every tick joins all accepted tasks
  * before returning or throwing. No Future escapes and no accepted Future is cancelled. Failures
  * permanently revoke execution; unregister and close remain available for cleanup. Main callbacks
@@ -141,15 +141,15 @@ public final class TaskScheduler implements AutoCloseable {
                   @Nullable PlannedFactory plannedFactory, @Nullable PlannedFactory beforeOrdinary, Duration plannedTimeout) {
         this(owner, workerThreads, laneCount, plannedFactory, beforeOrdinary, plannedTimeout);
         Objects.requireNonNull(workers);
-        ExecutorService[] copied = Objects.requireNonNull(lanes).clone();
-        if (copied.length != laneCount) {
+        Objects.requireNonNull(lanes);
+        if (lanes.length != laneCount) {
             throw new IllegalArgumentException("Injected lane count differs from configuration");
         }
-        for (ExecutorService lane : copied) {
+        for (ExecutorService lane : lanes) {
             Objects.requireNonNull(lane);
         }
         this.workers = workers;
-        this.lanes = copied;
+        this.lanes = lanes;
     }
 
     private static void dispatch(ExecutorService executor, Runnable action, ObjectArrayList<FutureTask<Void>> futures) {
@@ -220,7 +220,9 @@ public final class TaskScheduler implements AutoCloseable {
         return registered.size();
     }
 
-    /** Exact joined owner window, for publishing prepared definitions without starting another scheduler. */
+    /**
+     * Exact joined owner window, for publishing prepared definitions without starting another scheduler.
+     */
     public void requireOwnerBoundary() {
         requireOwner();
         if (state != State.BOUNDARY || !boundaryReady) {
@@ -244,7 +246,9 @@ public final class TaskScheduler implements AutoCloseable {
         return effectiveSettings.workerStrategy().policyLabel();
     }
 
-    /** Real admission/cleanup state; a queued settings request is reported separately. */
+    /**
+     * Real admission/cleanup state; a queued settings request is reported separately.
+     */
     public Status status() {
         requireOwner();
         return new Status(policyLabel(), registered.size(), pendingExecution != null, boundaryReady,
@@ -256,7 +260,9 @@ public final class TaskScheduler implements AutoCloseable {
         return metrics.snapshotReport(policyLabel());
     }
 
-    /** Owner requests only enqueue. Even an idle request waits for a later joined tick entry. */
+    /**
+     * Owner requests only enqueue. Even an idle request waits for a later joined tick entry.
+     */
     public void requestSettings(SchedulerConfig.Settings settings) {
         requireOwner();
         if (state != State.IDLE && state != State.MAIN && state != State.BOUNDARY && state != State.PLANNED)
@@ -349,12 +355,16 @@ public final class TaskScheduler implements AutoCloseable {
         });
     }
 
-    /** Owner observation follows this check without inserting a fence between adjacent checks. */
+    /**
+     * Owner observation follows this check without inserting a fence between adjacent checks.
+     */
     public void enqueueStructureCheck(Supplier<StructureWork> prepare, Runnable completed) {
         enqueueStructureCheck(prepare, prepare, completed);
     }
 
-    /** Repeated submissions of one exact owner retain FIFO order and cannot share a worker batch. */
+    /**
+     * Repeated submissions of one exact owner retain FIFO order and cannot share a worker batch.
+     */
     public void enqueueStructureCheck(Object ownerIdentity, Supplier<StructureWork> prepare, Runnable completed) {
         requireOwner();
         Objects.requireNonNull(ownerIdentity);
@@ -795,7 +805,7 @@ public final class TaskScheduler implements AutoCloseable {
                 result.add(new PlannedCandidate(task, mode, current));
             }
         }
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     /**

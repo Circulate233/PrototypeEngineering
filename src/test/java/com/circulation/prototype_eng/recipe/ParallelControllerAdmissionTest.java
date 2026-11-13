@@ -27,6 +27,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ParallelControllerAdmissionTest {
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("parallel_controller_test", path);
+    }
+
+    private static StructureComponents.Binding<ParallelController> binding(MultithreadController machine, ParallelController controller, int x) {
+        return new StructureComponents.Binding<>(new StructureComponentProvider.Context(machine, new BlockPos(x, 0, 0), 1),
+            new StructureComponentProvider.Entry<>(ParallelControllers.TYPE, "parallel", controller));
+    }
+
     @Test
     void structuralControllerChangesRevokeAdmissionProofAndOnlyAffectNewWork() {
         var machine = new MultithreadController();
@@ -59,15 +68,6 @@ class ParallelControllerAdmissionTest {
         var next = scanner.scan(new ScanLimits(10, 30));
         assertEquals(RecipeScanner.Status.ADMITTED, next.status());
         assertEquals(4, RecipeParallelism.effective(Objects.requireNonNull(next.process())));
-    }
-
-    private static ResourceLocation id(String path) {
-        return new ResourceLocation("parallel_controller_test", path);
-    }
-
-    private static StructureComponents.Binding<ParallelController> binding(MultithreadController machine, ParallelController controller, int x) {
-        return new StructureComponents.Binding<>(new StructureComponentProvider.Context(machine, new BlockPos(x, 0, 0), 1),
-            new StructureComponentProvider.Entry<>(ParallelControllers.TYPE, "parallel", controller));
     }
 
     private static final class Setting implements ParallelController {

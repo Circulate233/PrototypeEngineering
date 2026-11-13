@@ -72,7 +72,6 @@ class RecipeStageAcquisitionTest {
         assertSame(token, acquisition.reservations().getFirst());
         assertSame(transition, acquisition.transactions().getLast());
         assertEquals(2, acquisition.transactions().size());
-        assertThrows(UnsupportedOperationException.class, () -> acquisition.reservations().clear());
         assertThrows(IllegalStateException.class, acquisition::settleSynchronously);
         acquisition.rollbackSynchronously();
         assertTrue(acquisition.resolved());

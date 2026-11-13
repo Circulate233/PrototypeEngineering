@@ -12,7 +12,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
-/** Viewer-local representatives with one exact retirement owner. Never inserted, ticked or networked. */
+/**
+ * Viewer-local representatives with one exact retirement owner. Never inserted, ticked or networked.
+ */
 public final class PreviewTileEntities<T> implements AutoCloseable {
     private final Thread ownerThread = Thread.currentThread();
     private final Owner<T> owner;
@@ -20,6 +22,7 @@ public final class PreviewTileEntities<T> implements AutoCloseable {
     private Object token, world;
     private int buildCursor, drawCursor;
     private boolean closed;
+
     public PreviewTileEntities(Owner<T> owner) {
         this.owner = Objects.requireNonNull(owner);
     }
@@ -77,7 +80,9 @@ public final class PreviewTileEntities<T> implements AutoCloseable {
         }
     }
 
-    /** Real per-representative acquisition, separated from native state lookup for precise ownership tests. */
+    /**
+     * Real per-representative acquisition, separated from native state lookup for precise ownership tests.
+     */
     void capture(Object expectedToken, Object currentWorld, StructurePreviewModel.Cell cell, @Nullable IBlockState state,
                  @Nullable NBTTagCompound template, BooleanSupplier currentModel) {
         requireOwner();
@@ -137,7 +142,9 @@ public final class PreviewTileEntities<T> implements AutoCloseable {
         clear();
     }
 
-    /** Narrow seam for actual TE ownership and tests; not a rendering-provider hierarchy. */
+    /**
+     * Narrow seam for actual TE ownership and tests; not a rendering-provider hierarchy.
+     */
     public interface Owner<T> {
         @Nullable T create(Object world, IBlockState state, BlockPos position, @Nullable NBTTagCompound ownTag);
 

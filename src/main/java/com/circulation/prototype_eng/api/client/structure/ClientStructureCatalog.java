@@ -1,8 +1,8 @@
 package com.circulation.prototype_eng.api.client.structure;
 
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
-import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
 import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
+import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.jetbrains.annotations.Nullable;
 
@@ -22,7 +22,9 @@ public final class ClientStructureCatalog {
     @Nullable
     private Pending pending;
 
-    /** Detached, screen-owned world selection; never installed in the connected server directory. */
+    /**
+     * Detached, screen-owned world selection; never installed in the connected server directory.
+     */
     public static ClientStructureCatalog local(StructureCatalogView view) {
         var catalog = new ClientStructureCatalog();
         catalog.view = Objects.requireNonNull(view);

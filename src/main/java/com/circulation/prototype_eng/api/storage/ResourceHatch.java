@@ -10,17 +10,23 @@ import java.util.List;
  * Implementations share the physical balance's StorageContext across all adapter aliases.
  */
 public interface ResourceHatch {
-    /** Uncolored input is its own group and is also visible to every colored input group. */
+    /**
+     * Uncolored input is its own group and is also visible to every colored input group.
+     */
     default ResourceInputGroup inputGroup() {
         return ResourceInputGroup.TRANSPARENT;
     }
 
-    /** A pattern provider exposes independently isolated views without aggregating their balances. */
+    /**
+     * A pattern provider exposes independently isolated views without aggregating their balances.
+     */
     default List<? extends ResourceHatch> inputPartitions() {
         return List.of(this);
     }
 
-    /** Shared catalyst views join every isolated input partition of the same color. */
+    /**
+     * Shared catalyst views join every isolated input partition of the same color.
+     */
     default boolean sharedInput() {
         return false;
     }

@@ -13,8 +13,11 @@ import java.util.Objects;
 
 @Mod.EventBusSubscriber(modid = VisualExamples.MOD_ID, value = Side.CLIENT)
 public final class ExternalHatchClient {
-    private ExternalHatchClient() { }
-    @SubscribeEvent public static void registerModel(ModelRegistryEvent event) {
+    private ExternalHatchClient() {
+    }
+
+    @SubscribeEvent
+    public static void registerModel(ModelRegistryEvent event) {
         var item = Objects.requireNonNull(ForgeRegistries.ITEMS.getValue(ExternalHatchExamples.BLOCK_ID));
         ModelLoader.setCustomModelResourceLocation(item, 0, new ModelResourceLocation(ExternalHatchExamples.BLOCK_ID, "inventory"));
     }

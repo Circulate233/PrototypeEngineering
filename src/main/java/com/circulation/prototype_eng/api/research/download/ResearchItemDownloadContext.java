@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.api.research.download;
 
+import ae2.api.stacks.AEItemKey;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -45,6 +46,15 @@ public final class ResearchItemDownloadContext {
         this.teamKey = DownloadValidation.requireTeamKey(teamKey);
         this.worldTick = worldTick;
         this.operationId = DownloadValidation.requireUuid(operationId, "Download operation UUID");
+        if (!registry.isFrozen()) {
+            throw new IllegalArgumentException("Download context requires a frozen research registry");
+        }
+        if (registry.require(research.id()) != research) {
+            throw new IllegalArgumentException("Download research must be the canonical registered definition");
+        }
+        if (downloadLevel < 1 || downloadLevel > research.maxLevel()) {
+            throw new IllegalArgumentException("Download level is outside the registered research range");
+        }
         validateFor(registry);
         this.material = DownloadValidation.copyMaterial(material);
     }
@@ -55,6 +65,10 @@ public final class ResearchItemDownloadContext {
 
     public ItemStack material() {
         return material.copy();
+    }
+
+    AEItemKey materialKey() {
+        return Objects.requireNonNull(AEItemKey.of(material));
     }
 
     public ResearchDefinition research() {
@@ -90,24 +104,18 @@ public final class ResearchItemDownloadContext {
     }
 
     void validateFor(ResearchRegistry expectedRegistry) {
-        if (registry != expectedRegistry || !registry.isFrozen()) {
+        if (registry != expectedRegistry) {
             throw new IllegalArgumentException("Download context requires the evaluator's frozen research registry");
-        }
-        if (registry.require(research.id()) != research) {
-            throw new IllegalArgumentException("Download research must be the canonical registered definition");
-        }
-        if (downloadLevel < 1 || downloadLevel > research.maxLevel()) {
-            throw new IllegalArgumentException("Download level is outside the registered research range");
         }
         if (!server.isCallingFromMinecraftThread()) {
             throw new IllegalStateException("Research item download requires the authoritative server thread");
         }
-        if (world.isRemote || world.getMinecraftServer() != server
+        if (world.getMinecraftServer() != server
             || server.getWorld(world.provider.getDimension()) != world) {
             throw new IllegalArgumentException("Download world must be the authoritative world of this server");
         }
-        if (actor instanceof FakePlayer || actor.getUniqueID() == null || actor.connection == null
-            || actor.getServerWorld() != world || server.getPlayerList() == null
+        if (actor instanceof FakePlayer || actor.connection == null
+            || actor.getServerWorld() != world
             || server.getPlayerList().getPlayerByUUID(actor.getUniqueID()) != actor) {
             throw new IllegalArgumentException("Download actor must be a connected real player in this world");
         }

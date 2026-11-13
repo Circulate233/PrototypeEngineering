@@ -93,7 +93,6 @@ class RecipeOverlaysTest {
         var replacement = new ObjectArrayList<>(List.of(stack(LIQUID, 4)));
         overlays.put(target, "start_end", RecipeOverlayTypes.RESOURCE_IO,
             new ResourceRequirementPatch(replacement, null, null, List.of(stack(PRODUCT, 6)), null)).complete();
-        replacement.clear();
         overlays.put(target, "tick", RecipeOverlayTypes.RESOURCE_IO,
             new ResourceRequirementPatch(null, List.of(stack(LIQUID, 3)), List.of(stack(MATERIAL, 2)), null, null)).complete();
         assertSame(ProcessResult.SUCCESS, process.tick());

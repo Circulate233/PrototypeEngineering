@@ -71,8 +71,6 @@ class NetworkTeamBudgetTest {
             assertEquals(0L, budget.availableResources().getLong(NetworkResources.QUBIT));
             assertEquals(10L, budget.numericResources().getLong(NetworkResources.COMPUTE));
             var retained = budget.availableResources();
-            assertThrows(UnsupportedOperationException.class,
-                () -> retained.object2LongEntrySet().iterator().next().setValue(100L));
             reservation.rollback();
             assertEquals(3L, retained.getLong(NetworkResources.COMPUTE));
             assertEquals(10L, budget.availableResources().getLong(NetworkResources.COMPUTE));

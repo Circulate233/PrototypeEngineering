@@ -1,8 +1,5 @@
 package com.circulation.prototype_eng.client.render;
 
-import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.ints.IntList;
-
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.render.GeckoModelBinding;
 import com.circulation.prototype_eng.api.client.render.GeckoStructureBinding;
@@ -11,8 +8,10 @@ import com.circulation.prototype_eng.api.data.ComponentData;
 import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.ints.IntLists;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -21,7 +20,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-/** Accepted world origins/steps are never transformed again. Only model-local offsets rotate. */
+/**
+ * Accepted world origins/steps are never transformed again. Only model-local offsets rotate.
+ */
 public final class StructureRenderAnchors {
     private StructureRenderAnchors() {
     }
@@ -30,7 +31,9 @@ public final class StructureRenderAnchors {
         return select(snapshot, bindings, null);
     }
 
-    /** Data has already been captured from the exact client attachment; workers only see chosen names. */
+    /**
+     * Data has already been captured from the exact client attachment; workers only see chosen names.
+     */
     public static List<Anchor> select(MachineRenderSnapshot snapshot, MachineRenderBindings.View bindings, @Nullable ComponentData.Snapshot data) {
         var result = new ObjectArrayList<Anchor>();
         var type = snapshot.display().type();
@@ -70,12 +73,15 @@ public final class StructureRenderAnchors {
         return ObjectLists.unmodifiable(result);
     }
 
-    /** Frustum classification needs only binding presence, never a copied/expanded anchor graph. */
+    /**
+     * Frustum classification needs only binding presence, never a copied/expanded anchor graph.
+     */
     public static boolean hasBinding(MachineRenderSnapshot snapshot, MachineRenderBindings.View bindings) {
         var type = snapshot.display().type();
         if (usesStructureBindings(snapshot, bindings)) {
             for (var occurrence : snapshot.occurrences())
-                if (bindings.structures().containsKey(new MachineRenderBindings.StructureKey(type, occurrence.structure()))) return true;
+                if (bindings.structures().containsKey(new MachineRenderBindings.StructureKey(type, occurrence.structure())))
+                    return true;
             return false;
         }
         if (bindings.machines().containsKey(type)) return true;

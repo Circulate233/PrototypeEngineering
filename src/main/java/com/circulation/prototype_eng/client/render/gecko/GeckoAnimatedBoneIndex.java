@@ -1,11 +1,11 @@
 package com.circulation.prototype_eng.client.render.gecko;
 
-import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 
 import java.io.Reader;
 import java.util.Collections;
@@ -13,7 +13,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Immutable animation-file bone index, owned by the exact resource epoch. Malformed files fail explicitly. */
+/**
+ * Immutable animation-file bone index, owned by the exact resource epoch. Malformed files fail explicitly.
+ */
 public final class GeckoAnimatedBoneIndex {
     private final Map<String, Set<String>> bones;
     private final Set<String> all;

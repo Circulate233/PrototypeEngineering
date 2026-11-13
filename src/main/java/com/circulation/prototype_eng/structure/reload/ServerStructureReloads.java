@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.structure.reload;
 
-import com.circulation.prototype_eng.network.InitNetwork;
-
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
@@ -14,6 +12,7 @@ import com.circulation.prototype_eng.api.structure.StructureCatalog;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.json.StructurePredicateRegistry;
 import com.circulation.prototype_eng.machine.ControllerStructureUpdates;
+import com.circulation.prototype_eng.network.InitNetwork;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
 import com.circulation.prototype_eng.structure.json.ForgeStructureBlocks;
@@ -46,15 +45,8 @@ public final class ServerStructureReloads {
             throw new IllegalStateException("Structure session start requires an unused server owner");
         var scheduler = ServerTaskSchedulers.forServer(server);
         var coordinator = new StructureReloadCoordinator(scheduler, MachineTypeRegistry.INSTANCE,
-            () -> readCandidate(server, directory, javaDefinitions, factories),
+            () -> StructureJsonLoader.readDirectory(directory).resolve(javaDefinitions, factories, new ForgeStructureBlocks()),
             publication -> {
-                var current = session;
-                if (current != null && current.server == server) {
-                    current.publishedView = publication.view();
-                    // Keep the exact input object; a same-ID foreign runtime replacement cannot acquire this view.
-                    current.publishedCatalog = current.candidateCatalog;
-                    current.candidateCatalog = null;
-                }
                 for (var player : server.getPlayerList().getPlayers()) InitNetwork.send(publication, player);
             });
         var subscription = MachineLifecycleRegistry.GLOBAL.register(new MachineLifecycleListener() {
@@ -76,22 +68,17 @@ public final class ServerStructureReloads {
         session = new Session(server, scheduler, coordinator, subscription);
     }
 
-    private static StructureCatalog readCandidate(MinecraftServer server, Path directory, StructureCatalog javaDefinitions,
-                                                  StructurePredicateRegistry factories) {
-        var candidate = StructureJsonLoader.readDirectory(directory).resolve(javaDefinitions, factories, new ForgeStructureBlocks());
-        requireSession(server).candidateCatalog = candidate;
-        return candidate;
-    }
-
-    /** Exact owner query; absent session, replacement interval or foreign catalog has no usable display generation. */
+    /**
+     * Exact owner query; absent session, replacement interval or foreign catalog has no usable display generation.
+     */
     public static @Nullable StructureCatalogView view(MinecraftServer server, StructureCatalog expected) {
         if (!server.isCallingFromMinecraftThread())
             throw new IllegalStateException("Structure display view requires its server owner");
         var current = session;
-        if (current == null || current.server != server || current.publishedCatalog != expected ||
-            MachineTypeRegistry.INSTANCE.structureCatalog() != expected || current.coordinator.publication().view() != current.publishedView)
-            return null;
-        return current.publishedView;
+        if (current == null || current.server != server) return null;
+        var publication = current.coordinator.publication();
+        return publication.catalog() == expected && MachineTypeRegistry.INSTANCE.structureCatalog() == expected
+            ? publication.view() : null;
     }
 
     /**
@@ -181,11 +168,6 @@ public final class ServerStructureReloads {
         private final TaskScheduler scheduler;
         private final StructureReloadCoordinator coordinator;
         private final MachineLifecycleRegistry.Subscription subscription;
-        @Nullable
-        private StructureCatalog candidateCatalog;
-        @Nullable
-        private StructureCatalog publishedCatalog;
-        private StructureCatalogView publishedView;
         private long tick;
 
         private Session(MinecraftServer server, TaskScheduler scheduler, StructureReloadCoordinator coordinator, MachineLifecycleRegistry.Subscription subscription) {
@@ -193,8 +175,6 @@ public final class ServerStructureReloads {
             this.scheduler = scheduler;
             this.coordinator = coordinator;
             this.subscription = subscription;
-            publishedCatalog = MachineTypeRegistry.INSTANCE.structureCatalog();
-            publishedView = coordinator.publication().view();
         }
     }
 }

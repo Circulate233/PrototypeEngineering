@@ -27,20 +27,26 @@ public record ZenStructure(StructureDefinition definition) {
 
     @ZenMethod
     public static ZenStructure template(String id, String orientation, int x, int y, int z, boolean hideWorldBlocks,
-                                         ZenStructurePattern pattern, ZenStructurePredicate[] validators, ZenStructure[] children) {
+                                        ZenStructurePattern pattern, ZenStructurePredicate[] validators, ZenStructure[] children) {
         return new ZenStructure(new StructureDefinition(StructureDefinitions.template(new ResourceLocation(id),
             BlockOrientation.valueOf(orientation.toUpperCase(Locale.ROOT)), new BlockPos(x, y, z), hideWorldBlocks,
-            Objects.requireNonNull(pattern).value(), ZenStructurePredicate.values(validators), values(children))));
+            pattern.value(), ZenStructurePredicate.values(validators), values(children))));
     }
 
     @ZenMethod
     public static ZenStructure slice(String id, String orientation, int x, int y, int z, boolean hideWorldBlocks,
-                                      ZenStructurePattern pattern, int minCount, int maxCount, int stepX, int stepY, int stepZ,
-                                      ZenStructurePredicate[] validators, ZenStructure[] children) {
+                                     ZenStructurePattern pattern, int minCount, int maxCount, int stepX, int stepY, int stepZ,
+                                     ZenStructurePredicate[] validators, ZenStructure[] children) {
         return new ZenStructure(new StructureDefinition(StructureDefinitions.slice(new ResourceLocation(id),
             BlockOrientation.valueOf(orientation.toUpperCase(Locale.ROOT)), new BlockPos(x, y, z), hideWorldBlocks,
-            Objects.requireNonNull(pattern).value(), minCount, maxCount, new BlockPos(stepX, stepY, stepZ),
+            pattern.value(), minCount, maxCount, new BlockPos(stepX, stepY, stepZ),
             ZenStructurePredicate.values(validators), values(children))));
+    }
+
+    private static List<MachineStructure> values(ZenStructure[] structures) {
+        var values = new ObjectArrayList<MachineStructure>(structures.length);
+        for (var structure : structures) values.add(structure.definition.shape());
+        return values;
     }
 
     @ZenMethod
@@ -56,11 +62,5 @@ public record ZenStructure(StructureDefinition definition) {
     @ZenGetter("id")
     public String id() {
         return definition.id().toString();
-    }
-
-    private static List<MachineStructure> values(ZenStructure[] structures) {
-        var values = new ObjectArrayList<MachineStructure>(structures.length);
-        for (var structure : structures) values.add(Objects.requireNonNull(structure).definition.shape());
-        return values;
     }
 }

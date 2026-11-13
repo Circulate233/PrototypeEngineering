@@ -6,7 +6,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
@@ -109,7 +108,9 @@ public final class MachineAttributes {
         epoch.marker = new Object();
     }
 
-    /** Captures all related layers for aggregate quantities such as machine-wide parallel usage. */
+    /**
+     * Captures all related layers for aggregate quantities such as machine-wide parallel usage.
+     */
     public FamilyCapture familyCapture() {
         return new FamilyCapture(epoch);
     }
@@ -189,14 +190,15 @@ public final class MachineAttributes {
     }
 
     /**
-     * Copies both map levels into unmodifiable maps, retaining immutable modifier references. Saves
+     * Captures both mutable map levels once, retaining immutable modifier references. The returned
+     * snapshot maps are read-only by contract. Saves
      * only local bases/modifiers and their inheritance mode, never the parent or layer default.
      * Preserve the layer's constructor default separately when persisting its owning machine/process.
      */
     public Map<ResourceLocation, LocalAttribute> localSnapshot() {
         var snapshot = new Object2ObjectLinkedOpenHashMap<ResourceLocation, LocalAttribute>();
-        local.forEach((id, state) -> snapshot.put(id, new LocalAttribute(state.baseOverride, state.modifiers, state.inheritModifiers)));
-        return Collections.unmodifiableMap(snapshot);
+        local.forEach((id, state) -> snapshot.put(id, new LocalAttribute(state.baseOverride, new Object2ObjectLinkedOpenHashMap<>(state.modifiers), state.inheritModifiers)));
+        return snapshot;
     }
 
     /**
@@ -208,11 +210,10 @@ public final class MachineAttributes {
         for (var entry : snapshot.entrySet()) {
             var id = Objects.requireNonNull(entry.getKey(), "attribute ID");
             var saved = Objects.requireNonNull(entry.getValue(), "local attribute");
-            var checked = new LocalAttribute(saved.baseOverride(), saved.modifiers(), saved.inheritModifiers());
             var state = new LocalState();
-            state.baseOverride = checked.baseOverride();
-            state.inheritModifiers = checked.inheritModifiers();
-            state.modifiers.putAll(checked.modifiers());
+            state.baseOverride = saved.baseOverride();
+            state.inheritModifiers = saved.inheritModifiers();
+            state.modifiers.putAll(saved.modifiers());
             if (replacement.putIfAbsent(id, state) != null) {
                 throw new IllegalArgumentException("Duplicate attribute ID: " + id);
             }
@@ -233,7 +234,9 @@ public final class MachineAttributes {
         return parent != null && parent.contains(id) ? parent.base(id) : defaultBase;
     }
 
-    /** Tests modifier presence across this effective family without evaluating modifier callbacks. */
+    /**
+     * Tests modifier presence across this effective family without evaluating modifier callbacks.
+     */
     public boolean hasModifiers(ResourceLocation id) {
         var state = local.get(id);
         return state != null && !state.modifiers.isEmpty()
@@ -278,7 +281,8 @@ public final class MachineAttributes {
     }
 
     /**
-     * A local save entry. The map is copied; modifier objects must satisfy their immutable contract.
+     * A local save entry. Its modifier map and modifier objects are borrowed read-only and must
+     * remain unchanged for the entry lifetime.
      */
     public record LocalAttribute(@Nullable Double baseOverride, Map<String, AttributeModifier> modifiers,
                                  boolean inheritModifiers) {
@@ -290,21 +294,16 @@ public final class MachineAttributes {
                 throw new IllegalArgumentException("Blocking inherited modifiers requires a resolved base");
             }
             Objects.requireNonNull(modifiers, "modifiers");
-            var copy = new Object2ObjectLinkedOpenHashMap<String, AttributeModifier>(modifiers.size());
             for (var entry : modifiers.entrySet()) {
                 var modifier = entry.getValue();
                 validateModifier(modifier);
                 if (!modifier.id().equals(entry.getKey())) {
                     throw new IllegalArgumentException("Modifier map key must match its ID");
                 }
-                if (copy.putIfAbsent(modifier.id(), modifier) != null) {
-                    throw new IllegalArgumentException("Duplicate modifier ID: " + modifier.id());
-                }
             }
-            if (baseOverride == null && copy.isEmpty()) {
+            if (baseOverride == null && modifiers.isEmpty()) {
                 throw new IllegalArgumentException("Empty local attributes must be absent");
             }
-            modifiers = Collections.unmodifiableMap(copy);
         }
 
         public LocalAttribute(@Nullable Double baseOverride, Map<String, AttributeModifier> modifiers) {

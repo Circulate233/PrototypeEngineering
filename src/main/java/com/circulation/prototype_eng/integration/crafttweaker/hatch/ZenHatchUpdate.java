@@ -22,7 +22,9 @@ public record ZenHatchUpdate(CompletableFuture<HatchConfigurationUpdates.Report>
         return value.isDone();
     }
 
-    /** Pending remains explicit; completed Java failures propagate instead of becoming success. */
+    /**
+     * Pending remains explicit; completed Java failures propagate instead of becoming success.
+     */
     @ZenGetter("result")
     @Nullable
     public ZenHatchReport result() {

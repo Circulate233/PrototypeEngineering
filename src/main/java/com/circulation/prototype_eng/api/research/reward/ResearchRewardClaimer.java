@@ -97,7 +97,13 @@ public final class ResearchRewardClaimer {
                 var claim = session.requireCurrent();
                 save(request, session, claim.replaceChild(index, claim.children().get(index).replaceFragment(fragment)));
             }, request.itemDelivery(), request.current());
-        if (status != ItemDelivery.Status.COMPLETED) return result(Status.valueOf(status.name()), status.name());
+        var pause = switch (status) {
+            case COMPLETED -> null;
+            case RETRY_LATER -> Status.RETRY_LATER;
+            case RECOVERY_ERROR -> Status.RECOVERY_ERROR;
+            case STALE_CONTEXT -> Status.STALE_CONTEXT;
+        };
+        if (pause != null) return result(pause, status.name());
         var claim = session.requireCurrent();
         save(request, session, claim.replaceChild(index, claim.children().get(index).withStatus(RewardClaim.ChildStatus.COMPLETED)));
         return null;

@@ -1,9 +1,9 @@
 package com.circulation.prototype_eng.network.clientbound;
 
 import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.api.recipe.RecipeDefinitionManifest;
 import com.circulation.prototype_eng.network.ConnectionClientboundPacket;
 import com.circulation.prototype_eng.recipe.RecipeDefinitionManifestCodec;
-import com.circulation.prototype_eng.api.recipe.RecipeDefinitionManifest;
 import io.netty.buffer.ByteBuf;
 
 import java.util.Arrays;

@@ -20,13 +20,16 @@ import net.minecraftforge.fml.relauncher.Side;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL14;
 
-/** Face-local 20/60/20 grid; its hit regions are the same ones used by the server tool. */
+/**
+ * Face-local 20/60/20 grid; its hit regions are the same ones used by the server tool.
+ */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID, value = Side.CLIENT)
 public final class OrientationToolGridRenderer {
     private static final BufferBuilder BUFFER = new BufferBuilder(4096);
     private static final WorldVertexBufferUploader UPLOADER = new WorldVertexBufferUploader();
 
-    private OrientationToolGridRenderer() { }
+    private OrientationToolGridRenderer() {
+    }
 
     @SubscribeEvent
     public static void highlight(DrawBlockHighlightEvent event) {
@@ -36,9 +39,11 @@ public final class OrientationToolGridRenderer {
         var camera = mc.getRenderViewEntity();
         if (mc.world == null || camera == null || mc.currentScreen != null || mc.gameSettings.hideGUI
             || !ControllerOrientationTool.rotating(player.getHeldItemMainhand()) && !ControllerOrientationTool.rotating(player.getHeldItemOffhand())
-            || hit == null || hit.typeOfHit != RayTraceResult.Type.BLOCK || hit.sideHit == null || hit.hitVec == null) return;
+            || hit == null || hit.typeOfHit != RayTraceResult.Type.BLOCK || hit.sideHit == null || hit.hitVec == null)
+            return;
         var pos = hit.getBlockPos();
-        if (!mc.world.isBlockLoaded(pos, false) || !(mc.world.getTileEntity(pos) instanceof MachineControllerHost controller)) return;
+        if (!mc.world.isBlockLoaded(pos, false) || !(mc.world.getTileEntity(pos) instanceof MachineControllerHost controller))
+            return;
         var face = hit.sideHit;
         var part = OrientationToolOrientations.part(face, (float) (hit.hitVec.x - pos.getX()),
             (float) (hit.hitVec.y - pos.getY()), (float) (hit.hitVec.z - pos.getZ()));

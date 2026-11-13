@@ -67,7 +67,6 @@ public final class EnergyBuffer implements EnergyHatch {
      * Updates limits in place. Existing tokens are rechecked against lower limits before applying.
      */
     public void setTransferLimits(long maxReceive, long maxExtract) {
-        checkLimits(maxReceive, maxExtract);
         context.lock();
         try {
             requireTransferLimits(maxReceive, maxExtract);
@@ -159,7 +158,9 @@ public final class EnergyBuffer implements EnergyHatch {
         return reserve(snapshot, amount, true);
     }
 
-    /** Reserve before the external callback; the caller keeps this context locked through settlement. */
+    /**
+     * Reserve before the external callback; the caller keeps this context locked through settlement.
+     */
     @SuppressWarnings("ReturnOfInnerClass") // The public receipt must retain its exact private native token.
     public @Nullable NativeTransferReservation reserveTransfer(long amount, boolean receive) {
         context.requireOrdinaryLock();

@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng;
 
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.AEKeyTypes;
 import com.circulation.prototype_eng.api.energy.EnergyHatchConfiguration;
@@ -13,6 +12,7 @@ import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
 import com.circulation.prototype_eng.storage.ServerHatchConfigurations;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import it.unimi.dsi.fastutil.objects.Reference2LongMap;
 import net.minecraftforge.common.config.Configuration;
@@ -23,7 +23,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
-/** File defaults and explicit script targets are published as a single immutable generation. */
+/**
+ * File defaults and explicit script targets are published as a single immutable generation.
+ */
 public final class HatchConfig {
     private static volatile State state = new State(0, defaults(), Map.of());
 
@@ -32,9 +34,10 @@ public final class HatchConfig {
 
     private static List<Defaults> defaults() {
         var result = new ObjectArrayList<Defaults>(HatchTier.VALUES.length);
-        for (var tier : HatchTier.VALUES) result.add(new Defaults(
-            tier.slotsPerSide(HatchMode.INPUT), tier.slotsPerSide(HatchMode.MIXED), tier.itemsPerSlot(),
-            tier.energyCapacity(), tier.energyTransfer()));
+        for (var tier : HatchTier.VALUES)
+            result.add(new Defaults(
+                tier.slotsPerSide(HatchMode.INPUT), tier.slotsPerSide(HatchMode.MIXED), tier.itemsPerSlot(),
+                tier.energyCapacity(), tier.energyTransfer()));
         return ObjectLists.unmodifiable(result);
     }
 

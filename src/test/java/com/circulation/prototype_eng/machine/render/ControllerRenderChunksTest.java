@@ -1,9 +1,5 @@
 package com.circulation.prototype_eng.machine.render;
 
-import it.unimi.dsi.fastutil.longs.LongArrayList;
-
-import it.unimi.dsi.fastutil.ints.IntList;
-
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.render.MachineRenderBindings;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
@@ -12,9 +8,12 @@ import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.client.render.ClientMachineRenderSnapshots;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
-import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
 import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
+import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import io.netty.buffer.Unpooled;
+import it.unimi.dsi.fastutil.ints.IntList;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
@@ -27,7 +26,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -52,7 +50,7 @@ class ControllerRenderChunksTest {
     static void installCatalog(ClientStructureCatalog client, Object connection, long sequence) {
         var root = new StructureCatalogView.Node(MachineRenderSnapshotTest.id("root"), BlockOrientation.NORTH_UP, true, StructurePreviewProvider.Kind.OPAQUE, BlockPos.ORIGIN, 0, 0, BlockPos.ORIGIN, List.of(), IntList.of());
         var view = new StructureCatalogView(MachineRenderSnapshotTest.SESSION, sequence, List.of(root),
-            Map.of(root.id(), new StructureCatalogView.Entry(0, null, Map.of())));
+            Map.of(root.id(), new StructureCatalogView.Entry(0, null, BlockPos2ObjectMap.emptyMap())));
         byte[] bytes = StructureCatalogCodec.encode(view);
         assertTrue(client.receive(connection, new StructureCatalogPacket(view.session(), view.sequence(), bytes.length, 0, bytes)));
     }
@@ -96,9 +94,10 @@ class ControllerRenderChunksTest {
         var parts = ControllerRenderChunks.split(initial);
         var assembler = new ControllerRenderChunks.Assembler();
         assertNull(assembler.receive(parts.getFirst()));
-        var bytes = parts.getFirst().bytes();
+        var conflictTag = parts.getFirst().encode().copy();
+        var bytes = conflictTag.getByteArray("Bytes");
         bytes[bytes.length - 1] ^= 1;
-        var conflicting = new ControllerRenderChunks.Part(initial.display(), initial.catalog(), parts.getFirst().totalBytes(), 0, bytes);
+        var conflicting = ControllerRenderChunks.Part.decode(initial.display(), conflictTag);
         assertThrows(IllegalArgumentException.class, () -> assembler.receive(conflicting));
         for (var part : parts) assertNull(assembler.receive(part));
         var next = snapshot(2, 0, 0, 9000);
@@ -243,23 +242,6 @@ class ControllerRenderChunksTest {
             assertFalse(client.current(before));
             assertNull(client.view(world, tile, BlockPos.ORIGIN));
         }
-    }
-
-    @Test
-    void nativeEncodedTagCannotMutateFrozenPartOrAnotherEncoding() {
-        var original = ControllerRenderChunks.split(snapshot(1, 1, 0, 1)).getFirst();
-        var input = original.bytes();
-        var expected = input.clone();
-        var part = new ControllerRenderChunks.Part(original.display(), original.catalog(), original.totalBytes(), original.index(), input);
-        input[0] ^= 1;
-        var exposed = part.bytes();
-        exposed[1] ^= 1;
-        var firstTag = part.encode();
-        var secondTag = part.encode();
-        firstTag.getByteArray("Bytes")[2] ^= 1;
-        assertArrayEquals(expected, part.bytes());
-        assertArrayEquals(expected, secondTag.getByteArray("Bytes"));
-        assertArrayEquals(expected, part.encode().getByteArray("Bytes"));
     }
 
     @Test

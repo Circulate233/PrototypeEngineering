@@ -11,10 +11,13 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.relauncher.Side;
 
-/** Names the controller result through AE2S's normal, client-side pattern transfer event. */
+/**
+ * Names the controller result through AE2S's normal, client-side pattern transfer event.
+ */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID, value = Side.CLIENT)
 public final class StructurePatternOutput {
-    private StructurePatternOutput() { }
+    private StructurePatternOutput() {
+    }
 
     @SubscribeEvent
     public static void importing(PatternRecipeTransferEvent event) {

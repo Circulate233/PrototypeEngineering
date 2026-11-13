@@ -24,7 +24,8 @@ import java.util.Objects;
 public final class ParallelControllerBlocks {
     private static List<ParallelControllerBlock> blocks = List.of();
 
-    private ParallelControllerBlocks() {}
+    private ParallelControllerBlocks() {
+    }
 
     public static List<ParallelControllerBlock> all() {
         return blocks;
@@ -39,7 +40,7 @@ public final class ParallelControllerBlocks {
         for (var type : registry.freeze()) created.add(new ParallelControllerBlock(type));
         event.getRegistry().registerAll(created.toArray(ParallelControllerBlock[]::new));
         GameRegistry.registerTileEntity(ParallelControllerBlockEntity.class, new ResourceLocation(Tags.MOD_ID, "parallel_controller"));
-        blocks = List.copyOf(created);
+        blocks = created;
     }
 
     private static void registerBuiltins(ParallelControllerRegistry registry) {

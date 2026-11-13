@@ -13,8 +13,8 @@ import net.minecraft.util.ResourceLocation;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * An author's declaration table. Same-name definitions affect subsequent lookups only; consumers
@@ -38,7 +38,9 @@ public final class ZenRecipeBindings {
         return new ZenRecipeBindings();
     }
 
-    /** Shared declaration scope across preinit and ordinary loaders, without sharing script globals. */
+    /**
+     * Shared declaration scope across preinit and ordinary loaders, without sharing script globals.
+     */
     @ZenMethod
     public static synchronized ZenRecipeBindings scope(String id) {
         return SCOPES.computeIfAbsent(ZenRecipeSupport.id(id), _ -> new ZenRecipeBindings());
@@ -51,7 +53,7 @@ public final class ZenRecipeBindings {
     @ZenMethod
     public synchronized void defineMatcher(ZenMatcher matcher) {
         requireDeclarations();
-        matchers.put(Objects.requireNonNull(matcher).value().id(), matcher);
+        matchers.put(matcher.value().id(), matcher);
     }
 
     @ZenMethod
@@ -64,7 +66,7 @@ public final class ZenRecipeBindings {
     @ZenMethod
     public synchronized void defineSelective(ZenSelectiveModifier modifier) {
         requireDeclarations();
-        selective.put(Objects.requireNonNull(modifier).value().id(), modifier);
+        selective.put(modifier.value().id(), modifier);
     }
 
     @ZenMethod
@@ -77,7 +79,7 @@ public final class ZenRecipeBindings {
     @ZenMethod
     public synchronized void defineOverlay(ZenOverlayModifier modifier) {
         requireDeclarations();
-        overlays.put(Objects.requireNonNull(modifier).value().id(), modifier);
+        overlays.put(modifier.value().id(), modifier);
     }
 
     @ZenMethod
@@ -148,7 +150,8 @@ public final class ZenRecipeBindings {
         DefinitionRegistrations.recipes(event -> {
             for (var pool : frozenPools) event.registry().register(pool.value());
             for (var recipe : frozenCurrent) event.registry().declareRevision(recipe.recipe(), recipe.revision());
-            for (var recipe : frozenHistory) event.registry().declareHistoricalRevision(recipe.recipe(), recipe.revision());
+            for (var recipe : frozenHistory)
+                event.registry().declareHistoricalRevision(recipe.recipe(), recipe.revision());
             event.registry().bindProcessCodecs(resolver);
         });
         frozen = true;
@@ -158,12 +161,15 @@ public final class ZenRecipeBindings {
         return resolver;
     }
 
-    /** The author asserts one identity for the complete local directory, including other scopes. */
+    /**
+     * The author asserts one identity for the complete local directory, including other scopes.
+     */
     @ZenMethod
     public synchronized void declareManifest(String setId, String version) {
         var key = new RecipeDeclarationKey(ZenRecipeSupport.id(setId), version);
         if (manifest != null) {
-            if (!manifest.equals(key)) throw new IllegalStateException("This scope already declared a complete manifest identity");
+            if (!manifest.equals(key))
+                throw new IllegalStateException("This scope already declared a complete manifest identity");
             return;
         }
         DefinitionRegistrations.declarations(event -> event.declarations().register(key, event.snapshot()));
@@ -181,7 +187,7 @@ public final class ZenRecipeBindings {
         var definitions = new ObjectArrayList<RecipeRegistry.Definition>(replacements.length);
         var codecs = new ObjectArrayList<RecipeProcessNbt>(replacements.length);
         for (var recipe : replacements) {
-            definitions.add(Objects.requireNonNull(recipe).definition());
+            definitions.add(recipe.definition());
             codecs.add(recipe.codec());
         }
         ClientRecipeManifestDeclarations.add(key, definitions, codecs);

@@ -33,6 +33,7 @@ import com.circulation.prototype_eng.localization.RecipeText;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import com.circulation.prototype_eng.structure.SliceStructure;
 import com.circulation.prototype_eng.structure.TemplateStructure;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
@@ -62,15 +63,15 @@ class MachineRenderSnapshotTest {
 
     static MachineStructure nested() {
         var tail = new TemplateStructure(id("tail"), BlockOrientation.NORTH_UP, new BlockPos(1, 2, 3), true,
-            new StructurePattern(Map.of(BlockPos.ORIGIN, YES)), List.of(), List.of());
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(BlockPos.ORIGIN, YES))), List.of(), List.of());
         var zero = new SliceStructure(id("zero"), BlockOrientation.NORTH_UP, new BlockPos(7, 1, 0), true,
-            new StructurePattern(Map.of()), 0, 0, new BlockPos(0, 0, -4), List.of(), List.of(tail));
+            new StructurePattern(BlockPos2ObjectMap.emptyMap()), 0, 0, new BlockPos(0, 0, -4), List.of(), List.of(tail));
         var first = new SliceStructure(id("repeated"), BlockOrientation.NORTH_UP, new BlockPos(0, 3, 0), true,
-            new StructurePattern(Map.of(BlockPos.ORIGIN, YES)), 2, 2, new BlockPos(0, 0, -2), List.of(), List.of());
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(BlockPos.ORIGIN, YES))), 2, 2, new BlockPos(0, 0, -2), List.of(), List.of());
         var second = new SliceStructure(id("repeated"), BlockOrientation.NORTH_UP, new BlockPos(0, 6, 0), true,
-            new StructurePattern(Map.of(BlockPos.ORIGIN, YES)), 1, 1, new BlockPos(0, 0, -3), List.of(), List.of());
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(BlockPos.ORIGIN, YES))), 1, 1, new BlockPos(0, 0, -3), List.of(), List.of());
         return new TemplateStructure(id("root"), BlockOrientation.NORTH_UP, new BlockPos(2, 1, 0), true,
-            new StructurePattern(Map.of(new BlockPos(3, 0, 0), YES)), List.of(), List.of(first, second, zero));
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(new BlockPos(3, 0, 0), YES))), List.of(), List.of(first, second, zero));
     }
 
     @Test

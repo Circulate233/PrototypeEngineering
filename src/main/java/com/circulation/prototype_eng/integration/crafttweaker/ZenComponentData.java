@@ -22,7 +22,9 @@ import stanhebben.zenscript.annotations.ZenOperator;
 
 import java.util.Objects;
 
-/** IData conversion only; mutable storage and change detection belong to the public Java API. */
+/**
+ * IData conversion only; mutable storage and change detection belong to the public Java API.
+ */
 @ZenRegister
 @ZenClass("mods.prototype_eng.data.ComponentData")
 @SuppressWarnings("unused") // Public entry points are resolved by ZenScript's registered type.
@@ -47,7 +49,8 @@ public final class ZenComponentData {
 
     private static NBTTagCompound compound(IData values) {
         var tag = NBTConverter.from(Objects.requireNonNull(values));
-        if (!(tag instanceof NBTTagCompound compound)) throw new IllegalArgumentException("Component data requires an IData map");
+        if (!(tag instanceof NBTTagCompound compound))
+            throw new IllegalArgumentException("Component data requires an IData map");
         return compound;
     }
 

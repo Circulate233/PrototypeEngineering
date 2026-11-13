@@ -1,11 +1,11 @@
 package com.circulation.prototype_eng.network;
 
 import com.circulation.prototype_eng.api.recipe.RecipeDefinitionManifest;
-import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
 import com.circulation.prototype_eng.network.clientbound.HatchConfigurationPacket;
+import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
 import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
-import com.circulation.prototype_eng.structure.reload.StructureReloadCoordinator;
 import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
+import com.circulation.prototype_eng.structure.reload.StructureReloadCoordinator;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraftforge.fml.common.network.NetworkRegistry;
 import net.minecraftforge.fml.common.network.simpleimpl.SimpleNetworkWrapper;

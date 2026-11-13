@@ -242,7 +242,7 @@ class ResearchRewardClaimTest {
     }
 
     @Test
-    void restoredStatePreservesFullIdentityAndRejectsChangedDefinitionsAndMutableEntries() {
+    void restoredStatePreservesFullIdentityAndRejectsChangedDefinitions() {
         var definition = definition(group(new RewardChild.Item(id("items"), ITEM, 5)));
         var registry = new ResearchRegistry();
         registry.register(definition);
@@ -262,8 +262,6 @@ class ResearchRewardClaimTest {
         var independent = fragment.taggedStackNbt();
         independent.setString("payload", "changed");
         assertEquals("business", fragment.taggedStackNbt().getString("payload"));
-        assertThrows(UnsupportedOperationException.class, () -> loaded.completedLevels().object2IntEntrySet().iterator().next().setValue(2));
-        assertThrows(UnsupportedOperationException.class, () -> loaded.rewardClaims().getFirst().children().getFirst().fragments().object2ObjectEntrySet().iterator().next().setValue(fragment));
         var corrupt = saved.copy();
         corrupt.getTagList("Claims", 10).getCompoundTagAt(0).setString("Group", id("unknown").toString());
         assertThrows(IllegalArgumentException.class, () -> codec.decode(corrupt));

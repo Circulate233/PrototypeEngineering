@@ -2,35 +2,30 @@ package com.circulation.prototype_eng.api.structure;
 
 import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.localization.StructureTitle;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import net.minecraft.util.ResourceLocation;
-import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Map;
 import java.util.Objects;
 
 /**
  * Complete catalog entry: intrinsic shape presentation plus explicit per-cell overrides.
  */
 public record StructureDefinition(MachineStructure shape, @Nullable String translationKey,
-                                  Map<BlockPos, StructureDisplay> displays) {
+                                  BlockPos2ObjectMap<StructureDisplay> displays) {
     public StructureDefinition {
         Objects.requireNonNull(shape);
         Objects.requireNonNull(shape.id());
         if (translationKey != null && translationKey.isBlank())
             throw new IllegalArgumentException("Empty structure translation key");
-        var copy = new Object2ObjectLinkedOpenHashMap<>(shape.displays());
-        displays.forEach((position, display) -> {
-            var fixedPosition = Objects.requireNonNull(position).toImmutable();
-            copy.put(fixedPosition, Objects.requireNonNull(display));
-        });
-        displays = Object2ObjectMaps.unmodifiable(copy);
+        var copy = new BlockPos2ObjectMap<>(shape.displays());
+        for (var entry : displays.long2ObjectEntrySet())
+            copy.put(entry.getLongKey(), Objects.requireNonNull(entry.getValue()));
+        displays = copy;
     }
 
     public StructureDefinition(MachineStructure shape) {
-        this(shape, null, Map.of());
+        this(shape, null, BlockPos2ObjectMap.emptyMap());
     }
 
     public ResourceLocation id() {

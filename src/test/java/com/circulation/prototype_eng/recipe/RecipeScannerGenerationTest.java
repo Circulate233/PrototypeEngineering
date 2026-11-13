@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.recipe;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
-
 import ae2.api.config.Actionable;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
@@ -39,6 +37,7 @@ import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
@@ -89,7 +88,8 @@ class RecipeScannerGenerationTest {
     }
 
     private static BufferedResourceHatch hatch(MachineInstance owner) {
-        var hatch = new BufferedResourceHatch(HatchMode.MIXED, 1, Reference2LongMaps.singleton(TYPE, 100L), () -> { });
+        var hatch = new BufferedResourceHatch(HatchMode.MIXED, 1, Reference2LongMaps.singleton(TYPE, 100L), () -> {
+        });
         owner.components().put(MachineHatches.TYPE, new MachineHatches(List.of(hatch), List.of(), List.of()));
         return hatch;
     }
@@ -100,7 +100,9 @@ class RecipeScannerGenerationTest {
         return owner.createRecipeHost(List.of(new WorkSlotDefinition("a"), new WorkSlotDefinition("b")), Set.of());
     }
 
-    /** The real source/computation protocol, sharing each one-credit caller allowance. */
+    /**
+     * The real source/computation protocol, sharing each one-credit caller allowance.
+     */
     private static RecipeScanner.Result step(RecipeScanner.ScanAttempt attempt, int credits) {
         var budget = new RecipeWorkBudget(credits);
         for (var source : attempt.sources()) {
@@ -130,7 +132,8 @@ class RecipeScannerGenerationTest {
             var second = owner.createRecipeScanner(secondHost, registry.catalog(), () -> 2).follow(registry, null);
             assertTrue(owner.supportsStableFixedInputLowerBounds());
             assertEquals(0, first.scan(LIMITS).candidates());
-            var unstable = new MachineRecipe(old.recipe().id(), 3, old.recipe().orderedRequirements(), Set.of(), 1, _ -> { });
+            var unstable = new MachineRecipe(old.recipe().id(), 3, old.recipe().orderedRequirements(), Set.of(), 1, _ -> {
+            });
             replace(registry, unstable, "v2");
             assertFalse(first.supportsStableFixedInputLowerBounds());
             assertFalse(second.supportsStableFixedInputLowerBounds());
@@ -251,7 +254,9 @@ class RecipeScannerGenerationTest {
                             }
 
                             @Override
-                            public RecipeProcess result() { return Objects.requireNonNull(result); }
+                            public RecipeProcess result() {
+                                return Objects.requireNonNull(result);
+                            }
                         };
                     }
                 };
@@ -286,11 +291,19 @@ class RecipeScannerGenerationTest {
             acquired[0]++;
             return new RequirementTransaction() {
                 @Override
-                public ProcessResult result() { return ProcessResult.SUCCESS; }
+                public ProcessResult result() {
+                    return ProcessResult.SUCCESS;
+                }
+
                 @Override
-                public void commit() { throw new AssertionError("A probe cannot commit preparation"); }
+                public void commit() {
+                    throw new AssertionError("A probe cannot commit preparation");
+                }
+
                 @Override
-                public void rollback() { undone[0]++; }
+                public void rollback() {
+                    undone[0]++;
+                }
             };
         };
         var scanner = new RecipeScanner(host, registry.catalog(), RecipeProcessFactory.STANDARD,
@@ -322,16 +335,24 @@ class RecipeScannerGenerationTest {
             acquired[0]++;
             return new RequirementTransaction() {
                 @Override
-                public ProcessResult result() { return ProcessResult.SUCCESS; }
+                public ProcessResult result() {
+                    return ProcessResult.SUCCESS;
+                }
+
                 @Override
-                public void commit() { }
+                public void commit() {
+                }
+
                 @Override
                 public void rollback() {
                     rollbackCalls[0]++;
                     throw new IllegalStateException("Rollback confirmation pending");
                 }
+
                 @Override
-                public Resolution resolution() { return proof[0]; }
+                public Resolution resolution() {
+                    return proof[0];
+                }
             };
         };
         var scanner = new RecipeScanner(host, registry.catalog(), RecipeProcessFactory.STANDARD,
@@ -366,9 +387,15 @@ class RecipeScannerGenerationTest {
             owner.attributes().setBase(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 1);
             owner.attributes().addModifier(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, new AttributeModifier() {
                 @Override
-                public String id() { return "publish_after_probe"; }
+                public String id() {
+                    return "publish_after_probe";
+                }
+
                 @Override
-                public Operation operation() { return Operation.ADDITION; }
+                public Operation operation() {
+                    return Operation.ADDITION;
+                }
+
                 @Override
                 public double apply(double base, double current) {
                     if (created[0] && !published[0]) {
@@ -416,9 +443,15 @@ class RecipeScannerGenerationTest {
             owner.attributes().setBase(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 1);
             owner.attributes().addModifier(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, new AttributeModifier() {
                 @Override
-                public String id() { return "mark_final_capacity"; }
+                public String id() {
+                    return "mark_final_capacity";
+                }
+
                 @Override
-                public Operation operation() { return Operation.ADDITION; }
+                public Operation operation() {
+                    return Operation.ADDITION;
+                }
+
                 @Override
                 public double apply(double base, double current) {
                     if (created[0]) finalCapacity[0] = true;

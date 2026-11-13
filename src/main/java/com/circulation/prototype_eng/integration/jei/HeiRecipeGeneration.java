@@ -12,21 +12,20 @@ import net.minecraft.client.Minecraft;
 import java.util.List;
 import java.util.Map;
 
-/** The HEI 4.35.1 add/hide and tail-map contract, confined to this version-specific integration. */
+/**
+ * The HEI 4.35.1 add/hide and tail-map contract, confined to this version-specific integration.
+ */
 final class HeiRecipeGeneration {
-    private HeiRecipeGeneration() {}
+    private HeiRecipeGeneration() {
+    }
 
     static boolean categoryDisabled(String uid) {
         return Config.isRecipeCategoryDisabled(uid);
     }
 
-    interface Access<R> {
-        void add(R recipe);
-        void hide(R recipe);
-        boolean confirmed(R recipe, boolean immediateTail);
-    }
-
-    /** Candidates are fresh objects: failed hidden objects must never be added again. */
+    /**
+     * Candidates are fresh objects: failed hidden objects must never be added again.
+     */
     static <R> boolean install(Access<R> access, List<R> previous, List<R> next) {
         try {
             for (var recipe : next) {
@@ -38,14 +37,18 @@ final class HeiRecipeGeneration {
                 }
             }
             for (var recipe : previous) access.hide(recipe);
-            for (var recipe : next) if (!access.confirmed(recipe, false)) {
-                hideAll(access, previous, next);
-                return false;
-            }
+            for (var recipe : next)
+                if (!access.confirmed(recipe, false)) {
+                    hideAll(access, previous, next);
+                    return false;
+                }
             return true;
         } catch (RuntimeException | Error failure) {
-            try { hideAll(access, previous, next); }
-            catch (RuntimeException | Error cleanupFailure) { failure.addSuppressed(cleanupFailure); }
+            try {
+                hideAll(access, previous, next);
+            } catch (RuntimeException | Error cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
             throw failure;
         }
     }
@@ -55,8 +58,9 @@ final class HeiRecipeGeneration {
         var all = new ObjectArrayList<>(previous);
         all.addAll(next);
         for (var recipe : all) {
-            try { access.hide(recipe); }
-            catch (RuntimeException | Error problem) {
+            try {
+                access.hide(recipe);
+            } catch (RuntimeException | Error problem) {
                 if (failure == null) failure = problem;
                 else if (failure != problem) failure.addSuppressed(problem);
             }
@@ -68,17 +72,36 @@ final class HeiRecipeGeneration {
     static void closeLayout(Minecraft minecraft, RecipesGui gui) {
         if (minecraft.currentScreen == gui) {
             gui.close();
-            if (minecraft.currentScreen == gui) throw new IllegalStateException("HEI could not close the current recipe layout");
+            if (minecraft.currentScreen == gui)
+                throw new IllegalStateException("HEI could not close the current recipe layout");
         }
+    }
+
+    interface Access<R> {
+        void add(R recipe);
+
+        void hide(R recipe);
+
+        boolean confirmed(R recipe, boolean immediateTail);
     }
 
     static final class NativeAccess implements Access<RecipePoolJeiRecipe> {
         private final RecipeRegistry registry;
-        NativeAccess(RecipeRegistry registry) { this.registry = registry; }
+
+        NativeAccess(RecipeRegistry registry) {
+            this.registry = registry;
+        }
+
+        private static boolean containsRecipe(Iterable<?> candidates, RecipePoolJeiRecipe recipe) {
+            for (var candidate : candidates) if (candidate == recipe) return true;
+            return false;
+        }
 
         @Override
         @SuppressWarnings("deprecation") // HEI 4.35.1 runtime wrapper/category add API.
-        public void add(RecipePoolJeiRecipe recipe) { registry.addRecipe(recipe, recipe.page().getUid()); }
+        public void add(RecipePoolJeiRecipe recipe) {
+            registry.addRecipe(recipe, recipe.page().getUid());
+        }
 
         @Override
         public void hide(RecipePoolJeiRecipe recipe) {
@@ -96,16 +119,13 @@ final class HeiRecipeGeneration {
                 && focuses(recipe, ingredients.getOutputIngredients(), IFocus.Mode.OUTPUT);
         }
 
-        private static boolean containsRecipe(Iterable<?> candidates, RecipePoolJeiRecipe recipe) {
-            for (var candidate : candidates) if (candidate == recipe) return true;
-            return false;
-        }
-
         @SuppressWarnings("rawtypes") // HEI's Ingredients exposes flattened maps with erased ingredient types.
         private boolean focuses(RecipePoolJeiRecipe recipe, Map<IIngredientType, List> entries, IFocus.Mode mode) {
-            for (var ingredients : entries.values()) for (Object ingredient : ingredients) {
-                if (ingredient != null && !containsRecipe(registry.getRecipeWrappers(recipe.page(), registry.createFocus(mode, ingredient)), recipe)) return false;
-            }
+            for (var ingredients : entries.values())
+                for (Object ingredient : ingredients) {
+                    if (ingredient != null && !containsRecipe(registry.getRecipeWrappers(recipe.page(), registry.createFocus(mode, ingredient)), recipe))
+                        return false;
+                }
             return true;
         }
     }

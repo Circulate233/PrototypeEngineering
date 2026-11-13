@@ -2,14 +2,10 @@ package com.circulation.prototype_eng.api.machine.workslot;
 
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.component.ComponentType;
-import com.circulation.prototype_eng.api.machine.MachineInstance;
-import com.circulation.prototype_eng.api.machine.ParallelControllers;
 import com.circulation.prototype_eng.api.machine.CrossRecipeBatch;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
-import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
-import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken;
-import com.circulation.prototype_eng.scheduler.planned.PlannedRecipeCoordinator;
-import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.ParallelControllers;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
@@ -19,20 +15,21 @@ import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.localization.RecipeText;
 import com.circulation.prototype_eng.machine.WorkSlotProcessingSystem;
+import com.circulation.prototype_eng.scheduler.planned.PlannedRecipeCoordinator;
+import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Iterator;
 import java.time.Duration;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -40,6 +37,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 /**
+ * Published collections are read-only by contract; consumers must not modify them.
  * PM's ordered work-slot host. One execution owner controls admission, tick, transfer and persistence;
  * these methods are not synchronization primitives for workers. Scheduler joins must transfer ownership
  * before mutating the host. Concurrent-process attributes limit admission, never evict existing work.
@@ -49,8 +47,7 @@ public final class MachineWorkSlots {
         new ResourceLocation(Tags.MOD_ID, "work_slots"), MachineWorkSlots::fromDeclaration,
         List.of(new WorkSlotProcessingSystem()));
     private final MachineInstance owner;
-    private final List<WorkSlot> slots;
-    private final ObjectArrayList<WorkSlot> slotStorage;
+    private final ObjectArrayList<WorkSlot> slots;
     private final boolean dynamicRoster;
     private final int declaredSlotCount;
     private final Set<ResourceLocation> dynamicGroups;
@@ -76,6 +73,7 @@ public final class MachineWorkSlots {
 
     /**
      * An empty layout uses PM's implicit main slot; empty machine-level groups add no group filter.
+     * The default group set is borrowed and must remain unchanged for this host's lifetime.
      */
     public MachineWorkSlots(MachineInstance owner, List<WorkSlotDefinition> definitions, Set<ResourceLocation> defaultGroups,
                             RecipeExecutor executor) {
@@ -88,7 +86,7 @@ public final class MachineWorkSlots {
         this.executor = Objects.requireNonNull(executor);
         Objects.requireNonNull(defaultGroups);
         this.dynamicRoster = dynamicRoster;
-        dynamicGroups = ObjectSets.unmodifiable(new ObjectLinkedOpenHashSet<>(defaultGroups));
+        dynamicGroups = defaultGroups;
         var declared = !dynamicRoster && definitions.isEmpty() ? List.of(new WorkSlotDefinition("main", defaultGroups)) : definitions;
         declaredSlotCount = declared.size();
         var workSlots = new ObjectArrayList<WorkSlot>(declared.size());
@@ -101,12 +99,13 @@ public final class MachineWorkSlots {
             }
             workSlots.add(slot);
         }
-        slotStorage = workSlots;
-        slots = ObjectLists.unmodifiable(slotStorage);
+        slots = workSlots;
         owner.registerRecipeHost(this);
     }
 
-    /** Explicit cross-recipe binding; legacy public constructors keep their complete fixed layout. */
+    /**
+     * Explicit cross-recipe binding; legacy public constructors keep their complete fixed layout.
+     */
     public static MachineWorkSlots crossRecipe(MachineInstance owner, List<WorkSlotDefinition> definitions, Set<ResourceLocation> groups) {
         return new MachineWorkSlots(owner, definitions, groups, RecipeExecutor.DEFAULT, true);
     }
@@ -119,12 +118,12 @@ public final class MachineWorkSlots {
 
     /**
      * Captures every host before installing any lease or running any process callback.
+     * The ordered host list must remain unchanged throughout this call.
      */
     public static TickGroup prepareTickGroup(List<MachineWorkSlots> hosts) {
-        var ordered = new ObjectArrayList<>(Objects.requireNonNull(hosts));
-        var unique = new ReferenceOpenHashSet<MachineWorkSlots>(ordered.size());
-        var batches = new ObjectArrayList<TickBatch>(ordered.size());
-        for (var host : ordered) {
+        var unique = new ReferenceOpenHashSet<MachineWorkSlots>(hosts.size());
+        var batches = new ObjectArrayList<TickBatch>(hosts.size());
+        for (var host : hosts) {
             Objects.requireNonNull(host);
             if (!unique.add(host)) {
                 throw new IllegalArgumentException("Duplicate work-slot host in tick group");
@@ -155,7 +154,9 @@ public final class MachineWorkSlots {
         return nextRuntimeSlot;
     }
 
-    /** Allocate at most one vacant process slot during an admission search, never a JVM thread. */
+    /**
+     * Allocate at most one vacant process slot during an admission search, never a JVM thread.
+     */
     @Nullable
     public WorkSlot dynamicScanSlot(MachineRecipe recipe) {
         requireBoundary();
@@ -166,7 +167,9 @@ public final class MachineWorkSlots {
         return appendRuntimeSlot(recipe);
     }
 
-    /** Called after the scanner has budgeted its complete vacancy search. No roster traversal. */
+    /**
+     * Called after the scanner has budgeted its complete vacancy search. No roster traversal.
+     */
     @Nullable
     public WorkSlot appendRuntimeSlot(MachineRecipe recipe) {
         requireBoundary();
@@ -177,7 +180,7 @@ public final class MachineWorkSlots {
         var slot = new WorkSlot(new WorkSlotDefinition(name, dynamicGroups, false, WorkSlotRestartPolicy.LOCKED_RETRY));
         owner.recordRecipeHostLayoutChange(this);
         nextRuntimeSlot = next;
-        slotStorage.add(slot);
+        slots.add(slot);
         byName.put(name, slot);
         return slot;
     }
@@ -212,7 +215,9 @@ public final class MachineWorkSlots {
         nextRuntimeSlot = Math.max(nextRuntimeSlot, next);
     }
 
-    /** No execution permission is granted; a later admission always rechecks the actual machine. */
+    /**
+     * No execution permission is granted; a later admission always rechecks the actual machine.
+     */
     public SharedUsage sharedUsage(MachineRecipe recipe) {
         return Objects.requireNonNull(beginSharedUsage(recipe, null).run());
     }
@@ -329,7 +334,7 @@ public final class MachineWorkSlots {
                 processes.add(slot.process());
             }
         }
-        return ObjectLists.unmodifiable(processes);
+        return processes;
     }
 
     public boolean start(RecipeProcess process) {
@@ -687,7 +692,7 @@ public final class MachineWorkSlots {
             }
             snapshot.add(new SlotSnapshot(slot.definition(), process, slot.result()));
         }
-        return ObjectLists.unmodifiable(snapshot);
+        return snapshot;
     }
 
     /**
@@ -776,7 +781,8 @@ public final class MachineWorkSlots {
                     throw new IllegalArgumentException("Restored cross-recipe slots contain different batches");
                 else timing = candidate;
             }
-            if (timing != null && untimed) throw new IllegalArgumentException("Restored cross-recipe batch contains untimed work");
+            if (timing != null && untimed)
+                throw new IllegalArgumentException("Restored cross-recipe batch contains untimed work");
         }
         // Every operation after validation is local assignment under the same exclusive owner.
         owner.recordRecipeHostLayoutChange(this);
@@ -784,11 +790,11 @@ public final class MachineWorkSlots {
             old.detachFrom(this);
         }
         if (dynamicRoster) {
-            slotStorage.clear();
+            slots.clear();
             byName.clear();
             for (var saved : replacement) {
                 var slot = new WorkSlot(saved.definition());
-                slotStorage.add(slot);
+                slots.add(slot);
                 byName.put(slot.name(), slot);
             }
         }
@@ -803,7 +809,9 @@ public final class MachineWorkSlots {
         nextRuntimeSlot = restoredNext;
     }
 
-    /** Dynamic roster and its monotonic identity counter are validated before replacing any live slot. */
+    /**
+     * Dynamic roster and its monotonic identity counter are validated before replacing any live slot.
+     */
     public void restore(List<SlotSnapshot> snapshot, long nextRuntimeSlot) {
         requireBoundary();
         if (!dynamicRoster || nextRuntimeSlot < 0) throw new IllegalArgumentException("Invalid runtime roster save");
@@ -896,7 +904,7 @@ public final class MachineWorkSlots {
         private boolean finished;
 
         private TickGroup(ObjectArrayList<TickBatch> batches) {
-            this.batches = ObjectLists.unmodifiable(batches);
+            this.batches = batches;
             for (var batch : batches) {
                 for (var entry : batch.entries) {
                     processes.add(entry.process);
@@ -948,7 +956,7 @@ public final class MachineWorkSlots {
                     controlledBatch = batch;
                     stages.addAll(batch.nextRound());
                 }
-                return ObjectLists.unmodifiable(stages);
+                return stages;
             } catch (RuntimeException | Error failure) {
                 recordFailureInternal(failure);
                 throw failure;
@@ -974,7 +982,7 @@ public final class MachineWorkSlots {
                     controlledBatch = batch;
                     stages.addAll(batch.currentStages());
                 }
-                return ObjectLists.unmodifiable(stages);
+                return stages;
             } finally {
                 controlledBatch = previous;
             }
@@ -1195,7 +1203,7 @@ public final class MachineWorkSlots {
                         stages.add(stage);
                     }
                 }
-                return ObjectLists.unmodifiable(stages);
+                return stages;
             } catch (RuntimeException | Error failure) {
                 recordFailure(failure);
                 throw failure;
@@ -1221,7 +1229,7 @@ public final class MachineWorkSlots {
                     stages.add(stage);
                 }
             }
-            return ObjectLists.unmodifiable(stages);
+            return stages;
         }
 
         /**

@@ -3,9 +3,7 @@ package com.circulation.prototype_eng.api.research.download;
 import com.circulation.prototype_eng.api.research.delivery.DownloadOutputKey;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryTemplates;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.nbt.NBTTagCompound;
 
@@ -14,6 +12,8 @@ import java.util.UUID;
 
 /**
  * Permanent nonce result after all transient inventory evidence has been durably released.
+ * Fragments are borrowed from the completed operation and remain immutable for this receipt's
+ * lifetime. Neither the supplier nor a consumer may mutate their list.
  */
 public record ResearchDownloadReceipt(UUID operationId, ResearchDownloadOperation.Intent intent,
                                       ResearchDownloadSources.Plan sources, NBTTagCompound output, long amount,
@@ -28,7 +28,7 @@ public record ResearchDownloadReceipt(UUID operationId, ResearchDownloadOperatio
             || !intent.researchId().equals(sources.researchId()) || intent.level() != sources.downloadLevel()) {
             throw new IllegalArgumentException("Terminal download differs from its frozen intent");
         }
-        fragments = ObjectLists.unmodifiable(new ObjectArrayList<>(Objects.requireNonNull(fragments)));
+        Objects.requireNonNull(fragments);
         if (outcome == Outcome.ABORTED && !fragments.isEmpty())
             throw new IllegalArgumentException("Aborted download has output effects");
         if (outcome == Outcome.COMPLETED) {

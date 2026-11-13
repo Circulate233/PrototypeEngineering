@@ -8,12 +8,13 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
-/** AE clientbound family with the exact connection captured before its client-owner scheduling. */
+/**
+ * AE clientbound family with the exact connection captured before its client-owner scheduling.
+ */
 public abstract class ConnectionClientboundPacket extends ClientboundPacket {
     private @Nullable Object receivedConnection;
 
     final void receiveConnection(Object connection) {
-        if (receivedConnection != null) throw new IllegalStateException("Clientbound packet was already received");
         receivedConnection = Objects.requireNonNull(connection);
     }
 

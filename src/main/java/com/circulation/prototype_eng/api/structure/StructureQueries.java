@@ -84,7 +84,9 @@ public final class StructureQueries {
     public static final StructureQuery<Boolean> RAINING = immutable("raining", (world, _) -> world.isRaining());
     public static final StructureQuery<Boolean> THUNDERING = immutable("thundering", (world, _) -> world.isThundering());
 
-    /** Original biome display name, distinct from its registry identity. */
+    /**
+     * Original biome display name, distinct from its registry identity.
+     */
     public static final StructureQuery<String> BIOME_NAME = immutable("biome_name", (world, position) -> world.getBiome(position).getBiomeName());
     public static final StructureQuery<Float> BIOME_TEMPERATURE = immutable("biome_temperature", (world, position) -> world.getBiome(position).getTemperature(position));
     public static final StructureQuery<Float> BIOME_RAINFALL = immutable("biome_rainfall", (world, position) -> world.getBiome(position).getRainfall());

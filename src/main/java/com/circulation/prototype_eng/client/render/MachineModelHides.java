@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.client.render;
 import com.cleanroommc.multiblocked.persistence.MultiblockWorldSavedData;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.fml.common.Loader;
 import org.jetbrains.annotations.Nullable;
@@ -13,24 +12,28 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
 
-/** Exact native per-controller registrations preserve overlaps, foreign entries, and replacement identity. */
+/**
+ * Exact native per-controller registrations preserve overlaps, foreign entries, and replacement identity.
+ */
 public class MachineModelHides implements AutoCloseable {
     private final Thread owner = Thread.currentThread();
     private final Map<BlockPos, Lease> leases = new Object2ObjectOpenHashMap<>();
     @Nullable
     private List<Lease> capturedLeases;
 
+    /**
+     * Borrows positions read-only until the returned lease closes; the caller must not mutate the list.
+     */
     public @Nullable Lease acquire(Object world, Object tile, BlockPos controller, List<BlockPos> positions, BooleanSupplier current) {
         requireOwner();
         if (!enabled()) return null;
         var previous = leases.get(controller);
         if (previous != null) previous.close();
         if (positions.isEmpty() || !current.getAsBoolean() || entries().containsKey(controller)) return null;
-        var collection = ObjectLists.unmodifiable(new ObjectArrayList<>(positions));
-        var lease = new Lease(this, world, tile, controller.toImmutable(), collection, current);
+        var lease = new Lease(this, world, tile, controller.toImmutable(), positions, current);
         try {
-            add(controller, collection);
-            if (!current.getAsBoolean() || entries().get(controller) != collection) {
+            add(controller, positions);
+            if (!current.getAsBoolean() || entries().get(controller) != positions) {
                 lease.close();
                 return null;
             }
@@ -85,7 +88,7 @@ public class MachineModelHides implements AutoCloseable {
     }
 
     private List<Lease> leaseSnapshot() {
-        if (capturedLeases == null) capturedLeases = ObjectLists.unmodifiable(new ObjectArrayList<>(leases.values()));
+        if (capturedLeases == null) capturedLeases = new ObjectArrayList<>(leases.values());
         return capturedLeases;
     }
 

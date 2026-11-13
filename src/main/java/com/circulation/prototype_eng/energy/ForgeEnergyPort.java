@@ -20,7 +20,9 @@ public final class ForgeEnergyPort implements IEnergyStorage {
             mode.hasOutput() ? Objects.requireNonNull(storage) : null);
     }
 
-    /** Receives only into the input balance and extracts only from the output balance. */
+    /**
+     * Receives only into the input balance and extracts only from the output balance.
+     */
     public ForgeEnergyPort(@Nullable EnergyHatch input, @Nullable EnergyHatch output) {
         if (input == null && output == null) throw new IllegalArgumentException("No energy direction");
         this.input = input;

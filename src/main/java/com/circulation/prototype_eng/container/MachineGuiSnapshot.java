@@ -1,18 +1,17 @@
 package com.circulation.prototype_eng.container;
 
 import ae2.container.guisync.PacketWritable;
-import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotStatus;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
-import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
+import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import io.netty.buffer.ByteBuf;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.network.PacketBuffer;
 import org.jetbrains.annotations.Nullable;
 
@@ -21,9 +20,11 @@ import java.util.Objects;
 
 /**
  * Immutable, bounded display data. Capture only after scheduler join; never retain runtime objects.
+ * Entry lists are borrowed read-only for the snapshot's lifetime; callers must not mutate them.
  */
 public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots, int offset,
-                                 List<Entry> entries, WorkSlotStatus overallStatus, Details details) implements PacketWritable {
+                                 List<Entry> entries, WorkSlotStatus overallStatus,
+                                 Details details) implements PacketWritable {
     public static final int MAX_ROWS = 7;
     public static final MachineGuiSnapshot EMPTY = new MachineGuiSnapshot(false, false, 0, 0, List.of());
     private static final int MAX_TEXT = 1024;
@@ -35,7 +36,6 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
         if (offset < 0 || offset > totalSlots || entries.size() > MAX_ROWS || entries.size() > totalSlots - offset) {
             throw new IllegalArgumentException("Invalid machine GUI page");
         }
-        entries = ObjectLists.unmodifiable(new ObjectArrayList<>(entries));
         entries.forEach(Objects::requireNonNull);
     }
 
@@ -43,15 +43,15 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
         this(formed, active, totalSlots, offset, entries, overall(entries), Details.EMPTY);
     }
 
+    @SuppressWarnings("unused") // AE2 GuiSync invokes the public ByteBuf constructor.
+    public MachineGuiSnapshot(ByteBuf data) {
+        this(data.readBoolean(), data.readBoolean(), data.readInt(), data.readInt(), readEntries(new PacketBuffer(data)), readStatus(data), readDetails(new PacketBuffer(data)));
+    }
+
     private static WorkSlotStatus overall(List<Entry> entries) {
         var status = WorkSlotStatus.IDLE;
         for (var entry : entries) status = combine(status, entry.status());
         return status;
-    }
-
-    @SuppressWarnings("unused") // AE2 GuiSync invokes the public ByteBuf constructor.
-    public MachineGuiSnapshot(ByteBuf data) {
-        this(data.readBoolean(), data.readBoolean(), data.readInt(), data.readInt(), readEntries(new PacketBuffer(data)), readStatus(data), readDetails(new PacketBuffer(data)));
     }
 
     public static MachineGuiSnapshot unavailable(boolean formed, String structure) {
@@ -168,6 +168,19 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
         return text.substring(0, Math.min(text.length(), MAX_TEXT));
     }
 
+    private static Details readDetails(PacketBuffer packet) {
+        boolean cross = packet.readBoolean(), processing = packet.readBoolean();
+        int running = packet.readInt(), threads = packet.readInt();
+        long used = packet.readLong(), limit = packet.readLong();
+        int mode = packet.readUnsignedByte();
+        if (mode >= ExecutionMode.VALUES.length) throw new IllegalArgumentException("Invalid execution mode");
+        int policy = packet.readByte();
+        if (policy < -1 || policy >= ControllerExecutionPolicy.VALUES.length)
+            throw new IllegalArgumentException("Invalid controller execution policy");
+        return new Details(cross, processing, running, threads, used, limit, ExecutionMode.VALUES[mode], packet.readString(MAX_TEXT),
+            policy == -1 ? null : ControllerExecutionPolicy.VALUES[policy]);
+    }
+
     @Override
     public void writeToPacket(ByteBuf data) {
         data.writeBoolean(formed).writeBoolean(active).writeInt(totalSlots).writeInt(offset).writeByte(entries.size());
@@ -183,21 +196,9 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
         }
         packet.writeByte(overallStatus.ordinal());
         packet.writeBoolean(details.crossRecipe).writeBoolean(details.processing).writeInt(details.running).writeInt(details.threadLimit)
-            .writeLong(details.usedParallelism).writeLong(details.parallelismLimit).writeByte(details.mode.ordinal());
+              .writeLong(details.usedParallelism).writeLong(details.parallelismLimit).writeByte(details.mode.ordinal());
         packet.writeByte(details.policy == null ? -1 : details.policy.ordinal());
         packet.writeString(details.structure);
-    }
-
-    private static Details readDetails(PacketBuffer packet) {
-        boolean cross = packet.readBoolean(), processing = packet.readBoolean();
-        int running = packet.readInt(), threads = packet.readInt();
-        long used = packet.readLong(), limit = packet.readLong();
-        int mode = packet.readUnsignedByte();
-        if (mode >= ExecutionMode.VALUES.length) throw new IllegalArgumentException("Invalid execution mode");
-        int policy = packet.readByte();
-        if (policy < -1 || policy >= ControllerExecutionPolicy.VALUES.length) throw new IllegalArgumentException("Invalid controller execution policy");
-        return new Details(cross, processing, running, threads, used, limit, ExecutionMode.VALUES[mode], packet.readString(MAX_TEXT),
-            policy == -1 ? null : ControllerExecutionPolicy.VALUES[policy]);
     }
 
     public record Details(boolean crossRecipe, boolean processing, int running, int threadLimit,
@@ -209,6 +210,7 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
                        long usedParallelism, long parallelismLimit, ExecutionMode mode, String structure) {
             this(crossRecipe, processing, running, threadLimit, usedParallelism, parallelismLimit, mode, structure, null);
         }
+
         public Details {
             if (running < 0 || threadLimit < 0 || usedParallelism < 0 || parallelismLimit < 0)
                 throw new IllegalArgumentException("Negative machine GUI count");
@@ -235,7 +237,7 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
             for (int i = 0; i < Math.min(MAX_ARGUMENTS, arguments.size()); i++) {
                 copy.add(bounded(arguments.get(i)));
             }
-            arguments = ObjectLists.unmodifiable(copy);
+            arguments = copy;
         }
     }
 }

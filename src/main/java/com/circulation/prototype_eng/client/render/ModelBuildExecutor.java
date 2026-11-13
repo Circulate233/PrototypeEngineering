@@ -8,7 +8,9 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 
-/** Dedicated CPU executor. Closing never joins workers that may be waiting for a client mapping reply. */
+/**
+ * Dedicated CPU executor. Closing never joins workers that may be waiting for a client mapping reply.
+ */
 public class ModelBuildExecutor implements AutoCloseable {
     private final ExecutorService executor;
 

@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.api.research;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
@@ -15,6 +14,7 @@ import java.util.UUID;
 
 /**
  * Immutable eligibility input, not a reservation or permission to mutate resources.
+ * Captured native maps and entry views are read-only for the context's lifetime.
  */
 @SuppressWarnings("unused")
 public record ResearchStartContext(ResourceLocation researchId, int targetLevel, @Nullable UUID playerId,
@@ -32,7 +32,7 @@ public record ResearchStartContext(ResourceLocation researchId, int targetLevel,
             }
             levels.put(Objects.requireNonNull(entry.getKey()), entry.getIntValue());
         }
-        teamSharedResearchLevels = ResearchSnapshots.levels(levels);
+        teamSharedResearchLevels = levels;
         var amounts = new Object2LongOpenHashMap<NetworkResourceType>(availableResources.size());
         var ids = new ObjectOpenHashSet<ResourceLocation>(availableResources.size());
         for (var entry : Objects.requireNonNull(availableResources).object2LongEntrySet()) {
@@ -42,7 +42,7 @@ public record ResearchStartContext(ResourceLocation researchId, int targetLevel,
             }
             amounts.put(type, entry.getLongValue());
         }
-        availableResources = NetworkResourceModifier.copyResources(amounts);
+        availableResources = amounts;
     }
 
     public boolean teamHasNetworkCenter() {

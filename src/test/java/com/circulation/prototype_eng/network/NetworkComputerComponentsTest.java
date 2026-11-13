@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.network;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
-
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.component.ComponentType;
@@ -32,6 +30,7 @@ import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;

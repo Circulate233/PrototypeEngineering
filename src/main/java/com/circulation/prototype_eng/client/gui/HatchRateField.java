@@ -8,7 +8,9 @@ import net.minecraft.client.renderer.GlStateManager;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.input.Keyboard;
 
-/** Borderless rate field with a matching hit/clip area and four-pixel horizontal text padding. */
+/**
+ * Borderless rate field with a matching hit/clip area and four-pixel horizontal text padding.
+ */
 final class HatchRateField extends GuiTextField {
     private final int left, top, areaWidth;
     private final FontRenderer font;

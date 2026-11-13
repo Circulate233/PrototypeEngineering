@@ -4,7 +4,9 @@ import net.minecraft.util.ResourceLocation;
 
 import java.util.Objects;
 
-/** Declared behavior identity; revisions are not inferred from object hashes or server generations. */
+/**
+ * Declared behavior identity; revisions are not inferred from object hashes or server generations.
+ */
 public record RecipeDefinitionRevision(ResourceLocation recipeId, String revision) {
     public RecipeDefinitionRevision {
         Objects.requireNonNull(recipeId, "recipe ID");

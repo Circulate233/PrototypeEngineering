@@ -10,7 +10,9 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.function.Predicate;
 
-/** Actual active viewer resources; JEI wrappers own and retire their own scenes. */
+/**
+ * Actual active viewer resources; JEI wrappers own and retire their own scenes.
+ */
 @ParametersAreNonnullByDefault
 public final class PreviewGuiResources implements ISelectiveResourceReloadListener {
     public static final PreviewGuiResources INSTANCE = new PreviewGuiResources();

@@ -6,7 +6,9 @@ import net.minecraft.client.gui.Gui;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.util.ResourceLocation;
 
-/** Original PM controls with native AE disabled-scrollbar artwork. */
+/**
+ * Original PM controls with native AE disabled-scrollbar artwork.
+ */
 public final class HatchGuiSprites {
     private static final ResourceLocation HATCH_COLOR_BUTTON = GuiAtlas.texture("hatch_color_button");
     private static final ResourceLocation ME_MODES = GuiAtlas.texture("io_mode");

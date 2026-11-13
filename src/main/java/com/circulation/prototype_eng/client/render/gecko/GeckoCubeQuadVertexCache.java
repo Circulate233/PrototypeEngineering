@@ -6,7 +6,9 @@ import software.bernie.geckolib3.geo.render.built.GeoCube;
 import javax.vecmath.Matrix3f;
 import javax.vecmath.Matrix4f;
 
-/** Per-instance read-only SoA coordinates and raw UV bits retain loader/null-quad/mirror ordering. */
+/**
+ * Per-instance read-only SoA coordinates and raw UV bits retain loader/null-quad/mirror ordering.
+ */
 public final class GeckoCubeQuadVertexCache {
     private final Reference2ObjectOpenHashMap<GeoCube, CubeData> cache = new Reference2ObjectOpenHashMap<>();
 

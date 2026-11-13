@@ -7,17 +7,19 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.storage.ResourceInputGroups;
 import it.unimi.dsi.fastutil.ints.Int2ObjectAVLTreeMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
-import java.util.List;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
 
-/** Each inventory group receives a separate lookup; only recipe identities and maxima are merged. */
+/**
+ * Each inventory group receives a separate lookup; only recipe identities and maxima are merged.
+ */
 public final class GroupedResourceLookup implements RecipeCandidateIndex.Cursor {
     private final MachineInstance machine;
     private final Function<ResourceInputGroups.Group, RecipeCandidateIndex.Cursor> factory;
@@ -85,9 +87,9 @@ public final class GroupedResourceLookup implements RecipeCandidateIndex.Cursor 
     }
 
     @Override
-    public List<MachineRecipe> result() {
+    public @NotNull List<MachineRecipe> result() {
         if (!complete || !current()) throw new IllegalStateException("Grouped input lookup is incomplete or stale");
-        return ObjectLists.unmodifiable(results);
+        return results;
     }
 
     @Override

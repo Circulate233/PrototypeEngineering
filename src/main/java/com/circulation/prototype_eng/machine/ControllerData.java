@@ -9,19 +9,14 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 
 /**
- * The tile's detached save envelope; reading it never creates a machine or touches a world.
+ * The tile's transient save envelope; reading it never creates a machine or touches a world.
+ * Runtime NBT is borrowed: do not mutate input, accessor results or encoded runtime while this
+ * value is in use. Components capture live mutable data before creating this envelope.
  */
-@SuppressWarnings("ClassCanBeRecord") // Mutable NBT stays private; accessors return detached copies.
-public final class ControllerData {
-    private final ResourceLocation type;
-    private final BlockOrientation orientation;
-    @Nullable
-    private final NBTTagCompound runtime;
-
-    public ControllerData(ResourceLocation type, BlockOrientation orientation, @Nullable NBTTagCompound runtime) {
-        this.type = Objects.requireNonNull(type);
-        this.orientation = Objects.requireNonNull(orientation);
-        this.runtime = runtime == null ? null : runtime.copy();
+public record ControllerData(ResourceLocation type, BlockOrientation orientation, @Nullable NBTTagCompound runtime) {
+    public ControllerData {
+        Objects.requireNonNull(type);
+        Objects.requireNonNull(orientation);
     }
 
     public static ControllerData decode(NBTTagCompound saved) {
@@ -34,26 +29,13 @@ public final class ControllerData {
             saved.hasKey("Runtime") ? StrictNbt.requireCompound(saved, "Runtime") : null);
     }
 
-    public ResourceLocation type() {
-        return type;
-    }
-
-    public BlockOrientation orientation() {
-        return orientation;
-    }
-
-    @Nullable
-    public NBTTagCompound runtime() {
-        return runtime == null ? null : runtime.copy();
-    }
-
     public NBTTagCompound encode() {
         var saved = new NBTTagCompound();
         saved.setInteger("Version", 1);
         saved.setString("Type", type.toString());
         saved.setString("Orientation", orientation.name());
         if (runtime != null) {
-            saved.setTag("Runtime", runtime.copy());
+            saved.setTag("Runtime", runtime);
         }
         return saved;
     }

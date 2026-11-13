@@ -1,9 +1,8 @@
 package com.circulation.prototype_eng.client.render;
 
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import ae2.tile.AEBaseTile;
-import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.data.ComponentData;
+import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.client.render.gecko.GeckoModelBaker;
 import com.circulation.prototype_eng.client.render.gecko.GeckoRenderRequest;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -18,7 +17,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
-/** Client-only collection of exact accepted views. Workers receive immutable requests and identity tokens. */
+/**
+ * Client-only collection of exact accepted views. Workers receive immutable requests and identity tokens.
+ */
 public class MachineModelRenderState implements AutoCloseable {
     private static final List<GeckoModelBaker.BakeMode> ANIMATED = List.of(GeckoModelBaker.BakeMode.PERMANENT_STATIC_ONLY,
         GeckoModelBaker.BakeMode.TEMP_STATIC_ONLY, GeckoModelBaker.BakeMode.ANIMATED_ONLY);
@@ -26,8 +27,10 @@ public class MachineModelRenderState implements AutoCloseable {
     private final MachineRenderOptions options;
     private final MachineModelHides hides = new MachineModelHides();
     private final Reference2ObjectOpenHashMap<AEBaseTile, State> states = new Reference2ObjectOpenHashMap<>();
-    @Nullable private List<AEBaseTile> capturedTiles;
-    @Nullable private Runnable capturedFailureRevoker;
+    @Nullable
+    private List<AEBaseTile> capturedTiles;
+    @Nullable
+    private Runnable capturedFailureRevoker;
     private ObjectArrayList<MachineModelPasses.Entry> pending = new ObjectArrayList<>();
     @Nullable
     private ObjectArrayList<MachineModelPasses.Entry> reusablePending;
@@ -37,7 +40,9 @@ public class MachineModelRenderState implements AutoCloseable {
         this.options = options;
     }
 
-    /** A coarse camera frame keeps nearby machines in the same native draw bucket. */
+    /**
+     * A coarse camera frame keeps nearby machines in the same native draw bucket.
+     */
     static BlockPos worldOrigin(double cameraX, double cameraY, double cameraZ, int renderDistanceChunks) {
         long grid = Math.max(256L, Math.max(2L, renderDistanceChunks) * 32L);
         return new BlockPos(snap(cameraX, grid), snap(cameraY, grid), snap(cameraZ, grid));
@@ -75,6 +80,11 @@ public class MachineModelRenderState implements AutoCloseable {
                 failure = BuiltModelBuffers.append(failure, exception);
             }
         BuiltModelBuffers.rethrow(failure);
+    }
+
+    private static boolean forcesGlobalRenderer(List<StructureRenderAnchors.Anchor> geometry) {
+        for (var anchor : geometry) if (anchor.binding().forceGlobalRenderer()) return true;
+        return false;
     }
 
     public <T extends AEBaseTile & MachineControllerHost> void submit(T tile, ClientMachineRenderSnapshots.View view,
@@ -227,11 +237,6 @@ public class MachineModelRenderState implements AutoCloseable {
             state.bounds.maxX - state.bounds.minX > 32 || state.bounds.maxY - state.bounds.minY > 32 || state.bounds.maxZ - state.bounds.minZ > 32;
     }
 
-    private static boolean forcesGlobalRenderer(List<StructureRenderAnchors.Anchor> geometry) {
-        for (var anchor : geometry) if (anchor.binding().forceGlobalRenderer()) return true;
-        return false;
-    }
-
     public AxisAlignedBB bounds(AEBaseTile tile) {
         var state = states.get(tile);
         return state == null || !state.accepted.getAsBoolean() ? new AxisAlignedBB(tile.getPos()) : state.bounds;
@@ -246,7 +251,7 @@ public class MachineModelRenderState implements AutoCloseable {
     }
 
     private List<AEBaseTile> tileSnapshot() {
-        if (capturedTiles == null) capturedTiles = ObjectLists.unmodifiable(new ObjectArrayList<>(states.keySet()));
+        if (capturedTiles == null) capturedTiles = new ObjectArrayList<>(states.keySet());
         return capturedTiles;
     }
 
@@ -268,7 +273,9 @@ public class MachineModelRenderState implements AutoCloseable {
         return capturedFailureRevoker;
     }
 
-    /** Revoked views release draw/hide rights immediately while immutable geometry may remain cached for the successor. */
+    /**
+     * Revoked views release draw/hide rights immediately while immutable geometry may remain cached for the successor.
+     */
     public void invalidateViews() {
         for (var state : states.values()) state.complete = false;
         var entries = takePending();

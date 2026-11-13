@@ -16,7 +16,9 @@ import net.minecraft.util.math.Vec3d;
 
 import java.util.List;
 
-/** Concrete Scene model ownership. No machine instance, attached controller or accepted runtime state is created. */
+/**
+ * Concrete Scene model ownership. No machine instance, attached controller or accepted runtime state is created.
+ */
 final class PreviewMachineModels implements AutoCloseable {
     private static final GeckoModelBaker.BakeMode[] STATIC_MODES = {GeckoModelBaker.BakeMode.ALL};
     private static final GeckoModelBaker.BakeMode[] ANIMATION_MODES = {GeckoModelBaker.BakeMode.PERMANENT_STATIC_ONLY,
@@ -44,7 +46,9 @@ final class PreviewMachineModels implements AutoCloseable {
         subscription = bindings.onInvalidated(this::invalidate);
     }
 
-    /** The caller closes this concrete frame after immediate/deferred-pass handoff has acquired its own readers. */
+    /**
+     * The caller closes this concrete frame after immediate/deferred-pass handoff has acquired its own readers.
+     */
     Frame request(double ticks) {
         var nextModel = view.model();
         var machine = view.machine();
@@ -71,7 +75,7 @@ final class PreviewMachineModels implements AutoCloseable {
         }
         var held = new ObjectArrayList<MachineModelPasses.Entry>();
         var capturedOwner = owner;
-        var frame = new Frame(this, cache, capturedOwner, ObjectLists.unmodifiable(held));
+        var frame = new Frame(this, cache, capturedOwner, held);
         try {
             selection.advance(512);
             var anchors = selection.completed();

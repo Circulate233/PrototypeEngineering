@@ -15,12 +15,14 @@ import java.util.UUID;
 public final class RecipeDefinitionPublicationEvent extends Event {
     private final MinecraftServer server;
     private final UUID sessionId;
-    @Nullable private final RecipeRegistry.Snapshot previous;
+    @Nullable
+    private final RecipeRegistry.Snapshot previous;
     private final RecipeRegistry.Snapshot current;
-    @Nullable private final EntityPlayerMP player;
+    @Nullable
+    private final EntityPlayerMP player;
 
     public RecipeDefinitionPublicationEvent(MinecraftServer server, UUID sessionId, @Nullable RecipeRegistry.Snapshot previous,
-                                             RecipeRegistry.Snapshot current, @Nullable EntityPlayerMP player) {
+                                            RecipeRegistry.Snapshot current, @Nullable EntityPlayerMP player) {
         this.server = Objects.requireNonNull(server);
         this.sessionId = Objects.requireNonNull(sessionId);
         this.previous = previous;
@@ -28,9 +30,25 @@ public final class RecipeDefinitionPublicationEvent extends Event {
         this.player = player;
     }
 
-    public MinecraftServer server() { return server; }
-    public UUID sessionId() { return sessionId; }
-    @Nullable public RecipeRegistry.Snapshot previous() { return previous; }
-    public RecipeRegistry.Snapshot current() { return current; }
-    @Nullable public EntityPlayerMP player() { return player; }
+    public MinecraftServer server() {
+        return server;
+    }
+
+    public UUID sessionId() {
+        return sessionId;
+    }
+
+    @Nullable
+    public RecipeRegistry.Snapshot previous() {
+        return previous;
+    }
+
+    public RecipeRegistry.Snapshot current() {
+        return current;
+    }
+
+    @Nullable
+    public EntityPlayerMP player() {
+        return player;
+    }
 }

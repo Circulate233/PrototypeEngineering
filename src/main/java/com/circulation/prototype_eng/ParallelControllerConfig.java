@@ -4,13 +4,16 @@ import net.minecraftforge.common.config.Configuration;
 
 import java.io.File;
 
-/** MMCE's five defaults; configuration is loaded before physical controller registration. */
+/**
+ * MMCE's five defaults; configuration is loaded before physical controller registration.
+ */
 public final class ParallelControllerConfig {
     public static final String[] TIERS = {"normal", "reinforced", "elite", "super", "ultimate"};
     private static final int[] DEFAULTS = {4, 16, 64, 256, 512};
     private static int[] maxima = DEFAULTS.clone();
 
-    private ParallelControllerConfig() {}
+    private ParallelControllerConfig() {
+    }
 
     public static void load(File directory) {
         var config = new Configuration(new File(directory, Tags.MOD_ID + "/parallel_controllers.cfg"));

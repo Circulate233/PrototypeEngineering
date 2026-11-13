@@ -10,6 +10,7 @@ import java.util.UUID;
 /**
  * Resource projection of an active participant's validated snapshot. The participant runtime still
  * owns work units, sources and version validation at commit; this projection never grants those capabilities.
+ * Resource quantities are borrowed zero-default immutable data for this projection's lifetime.
  */
 public record NetworkContribution(UUID participantId, UUID ownerId, long epoch, long version,
                                   Object2LongMap<NetworkResourceType> resourcesPerTick) {
@@ -19,6 +20,6 @@ public record NetworkContribution(UUID participantId, UUID ownerId, long epoch, 
         if (epoch < 0 || version < 0) {
             throw new IllegalArgumentException("Invalid participant snapshot generation");
         }
-        resourcesPerTick = NetworkResourceModifier.copyResources(resourcesPerTick);
+        NetworkResourceModifier.validateResources(resourcesPerTick);
     }
 }

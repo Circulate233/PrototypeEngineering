@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.client.render;
 
-import java.util.List;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import com.circulation.prototype_eng.api.client.render.MachineRenderBindings;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
 import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
@@ -14,11 +12,14 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Client owner only. A complete fact can wait for its exact catalog, without retaining draw rights. */
+/**
+ * Client owner only. A complete fact can wait for its exact catalog, without retaining draw rights.
+ */
 @SuppressWarnings("resource") // This manager retains owner leases and retires them on replacement/unload/close.
 public final class ClientMachineRenderSnapshots implements AutoCloseable {
     private final Thread thread = Thread.currentThread();
@@ -30,8 +31,10 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
     private final MachineRenderBindings.Registration bindingListener;
     private Object resourceEpoch = new Object();
     private boolean closed;
-    @Nullable private List<Owner> capturedOwners;
-    @Nullable private List<Listener> capturedListeners;
+    @Nullable
+    private List<Owner> capturedOwners;
+    @Nullable
+    private List<Listener> capturedListeners;
 
     public ClientMachineRenderSnapshots(ClientStructureCatalog catalog, MachineRenderBindings bindings) {
         this.catalog = Objects.requireNonNull(catalog);
@@ -166,7 +169,9 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
         bindingsChanged();
     }
 
-    /** Tick removes unloaded/replaced owners even when vanilla has not called their close hook yet. */
+    /**
+     * Tick removes unloaded/replaced owners even when vanilla has not called their close hook yet.
+     */
     public void tick() {
         requireOwner();
         boolean removed = false;
@@ -234,12 +239,12 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
     }
 
     private List<Owner> ownerSnapshot() {
-        if (capturedOwners == null) capturedOwners = ObjectLists.unmodifiable(new ObjectArrayList<>(owners.values()));
+        if (capturedOwners == null) capturedOwners = new ObjectArrayList<>(owners.values());
         return capturedOwners;
     }
 
     private List<Listener> listenerSnapshot() {
-        if (capturedListeners == null) capturedListeners = ObjectLists.unmodifiable(new ObjectArrayList<>(listeners));
+        if (capturedListeners == null) capturedListeners = new ObjectArrayList<>(listeners);
         return capturedListeners;
     }
 

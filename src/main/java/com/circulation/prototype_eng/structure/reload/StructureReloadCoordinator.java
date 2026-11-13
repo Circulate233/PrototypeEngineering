@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.structure.reload;
 
-import java.util.List;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
@@ -11,9 +9,11 @@ import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.machine.ControllerStructureUpdates;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -30,11 +30,11 @@ public final class StructureReloadCoordinator {
     private final Consumer<Publication> publishClients;
     private final Reference2ObjectLinkedOpenHashMap<ControllerStructureUpdates, Registration> registrations = new Reference2ObjectLinkedOpenHashMap<>();
     private final Reference2ObjectLinkedOpenHashMap<MachineLifecycle, Loaded> loadedHosts = new Reference2ObjectLinkedOpenHashMap<>();
-    private final UUID session = UUID.randomUUID();
     private Publication publication;
     private boolean applying;
     private boolean closed;
-    @Nullable private List<LoadedIdentity> capturedLoaded;
+    @Nullable
+    private List<LoadedIdentity> capturedLoaded;
 
     public StructureReloadCoordinator(TaskScheduler scheduler, MachineTypeRegistry registry, Supplier<StructureCatalog> readCandidate,
                                       Consumer<Publication> publishClients) {
@@ -42,13 +42,18 @@ public final class StructureReloadCoordinator {
         this.registry = Objects.requireNonNull(registry);
         this.readCandidate = Objects.requireNonNull(readCandidate);
         this.publishClients = Objects.requireNonNull(publishClients);
-        publication = presentation(registry.structureCatalog(), 0);
+        publication = presentation(registry.structureCatalog(), UUID.randomUUID(), 0);
     }
 
     private static Throwable append(@Nullable Throwable first, Throwable additional) {
         if (first == null) return additional;
         if (first != additional) first.addSuppressed(additional);
         return first;
+    }
+
+    private static Publication presentation(StructureCatalog catalog, UUID session, long sequence) {
+        var view = StructureCatalogView.capture(catalog, session, sequence);
+        return new Publication(catalog, view, StructureCatalogCodec.encode(view));
     }
 
     @SuppressWarnings("resource") // The updates scheduler is borrowed; this table owns its registration handles.
@@ -157,7 +162,8 @@ public final class StructureReloadCoordinator {
     private List<LoadedIdentity> loadedSnapshot() {
         if (capturedLoaded == null) {
             var captured = new ObjectArrayList<LoadedIdentity>(loadedHosts.size());
-            for (var entry : loadedHosts.reference2ObjectEntrySet()) captured.add(new LoadedIdentity(entry.getKey(), entry.getValue()));
+            for (var entry : loadedHosts.reference2ObjectEntrySet())
+                captured.add(new LoadedIdentity(entry.getKey(), entry.getValue()));
             capturedLoaded = ObjectLists.unmodifiable(captured);
         }
         return capturedLoaded;
@@ -200,7 +206,7 @@ public final class StructureReloadCoordinator {
             var batch = new ObjectArrayList<Prepared>();
             try {
                 replacement = registry.prepareReplacement(Objects.requireNonNull(readCandidate.get()));
-                next = presentation(replacement.catalog(), Math.incrementExact(publication.view().sequence()));
+                next = presentation(replacement.catalog(), publication.view().session(), Math.incrementExact(publication.view().sequence()));
                 for (var registration : new ObjectArrayList<>(registrations.values())) {
                     if (!registration.active || !registration.updates.loaded()) {
                         unregister(registration.updates);
@@ -240,7 +246,6 @@ public final class StructureReloadCoordinator {
                 completed.accept(new Result(false, publication.view().sequence(), caught));
                 throw caught;
             }
-            publication = next;
             for (var prepared : batch)
                 if (current(prepared)) {
                     try {
@@ -249,6 +254,7 @@ public final class StructureReloadCoordinator {
                         failure = append(failure, caught);
                     }
                 }
+            publication = next;
             // The committed directory must be broadcast even if an individual refresh callback failed.
             try {
                 publishClients.accept(next);
@@ -266,11 +272,6 @@ public final class StructureReloadCoordinator {
     private boolean current(Prepared prepared) {
         var registration = prepared.registration;
         return registration.active && registrations.get(registration.updates) == registration && registration.updates.loaded();
-    }
-
-    private Publication presentation(StructureCatalog catalog, long sequence) {
-        var view = StructureCatalogView.capture(catalog, session, sequence);
-        return new Publication(view, StructureCatalogCodec.encode(view));
     }
 
     public Publication publication() {
@@ -314,8 +315,9 @@ public final class StructureReloadCoordinator {
     public record Result(boolean published, long sequence, @Nullable Throwable failure) {
     }
 
-    public record Publication(StructureCatalogView view, byte[] bytes) {
+    public record Publication(StructureCatalog catalog, StructureCatalogView view, byte[] bytes) {
         public Publication {
+            Objects.requireNonNull(catalog);
             Objects.requireNonNull(view);
             bytes = bytes.clone();
         }

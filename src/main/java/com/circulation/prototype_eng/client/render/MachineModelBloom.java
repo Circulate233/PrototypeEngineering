@@ -1,14 +1,15 @@
 package com.circulation.prototype_eng.client.render;
 
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.util.math.Vec3d;
 import net.minecraftforge.fml.common.Loader;
 
 import java.util.List;
 
-/** The two native post-processing draws share forks; retirement cannot return their buffers between phases. */
+/**
+ * The two native post-processing draws share forks; retirement cannot return their buffers between phases.
+ */
 public final class MachineModelBloom {
     private static ObjectArrayList<Batch> pending = new ObjectArrayList<>();
     private static ObjectArrayList<Batch> reusable;
@@ -43,7 +44,7 @@ public final class MachineModelBloom {
                         throw failure;
                     }
                 }
-            pending.add(new Batch(cache, ObjectLists.unmodifiable(retained), revoke));
+            pending.add(new Batch(cache, retained, revoke));
         } catch (RuntimeException | Error failure) {
             for (var entry : retained)
                 try {
@@ -105,7 +106,9 @@ public final class MachineModelBloom {
         BuiltModelBuffers.rethrow(failure);
     }
 
-    /** Frame end also releases a skipped second phase, before any next frame begins. */
+    /**
+     * Frame end also releases a skipped second phase, before any next frame begins.
+     */
     public static void clear() {
         var old = pending;
         pending = reusable == null ? new ObjectArrayList<>(old.size()) : reusable;

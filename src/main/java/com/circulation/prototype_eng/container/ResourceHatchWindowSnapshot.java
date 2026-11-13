@@ -9,7 +9,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-/** One atomic resource display revision; vanilla slot packets never write this data. */
+/**
+ * One atomic resource display revision; vanilla slot packets never write this data.
+ * Entry lists are borrowed read-only and must remain unchanged while the snapshot is retained.
+ */
 public record ResourceHatchWindowSnapshot(long revision, Side input, Side output) implements PacketWritable {
     public static final int MAX_CELLS = 72;
     public static final ResourceHatchWindowSnapshot EMPTY = new ResourceHatchWindowSnapshot(0, Side.EMPTY, Side.EMPTY);
@@ -60,7 +63,6 @@ public record ResourceHatchWindowSnapshot(long revision, Side input, Side output
                 || usedTypes < 0 || usedTypes > usedSlots || entries.size() > MAX_CELLS
                 || entries.size() > totalSlots - firstSlot)
                 throw new IllegalArgumentException("Invalid hatch side window");
-            entries = List.copyOf(entries);
         }
 
         public @Nullable GenericStack stack(int cell) {

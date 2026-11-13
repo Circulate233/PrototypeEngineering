@@ -157,7 +157,6 @@ class ResourceRecipeIndexTest {
         var expected = List.of(both, energy, universal, dynamic, selected, noStartInput, externallyModified, unknownType);
         var candidates = catalog.candidates(machine, Set.of(GROUP), List.of(index));
         assertEquals(expected, candidates);
-        assertThrows(UnsupportedOperationException.class, candidates::clear);
         var reverseScope = new ObjectArrayList<>(catalog.candidates(machine, Set.of(GROUP), List.of()));
         Collections.reverse(reverseScope);
         assertEquals(expected, index.lookup(machine, Set.of(GROUP), reverseScope));

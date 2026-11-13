@@ -15,13 +15,6 @@ class FullCtmTextureTest {
     private static final Dir[] DIRECTIONS = {Dir.TOP, Dir.RIGHT, Dir.BOTTOM, Dir.LEFT,
         Dir.TOP_RIGHT, Dir.BOTTOM_RIGHT, Dir.BOTTOM_LEFT, Dir.TOP_LEFT};
 
-    private static final class Connections extends CTMLogic {
-        private Connections(int neighbors) {
-            for (int direction = 0; direction < DIRECTIONS.length; direction++)
-                setConnectedState(DIRECTIONS[direction], (neighbors & 1 << direction) != 0);
-        }
-    }
-
     @Test
     void nativeConnectionMapsSelectFullSourceTilesWhoseVisibleEdgesMatchTheActualNeighbors() throws Exception {
         var images = new BufferedImage[3];
@@ -49,5 +42,12 @@ class FullCtmTextureTest {
             }
         }
         assertEquals(47, selected.size());
+    }
+
+    private static final class Connections extends CTMLogic {
+        private Connections(int neighbors) {
+            for (int direction = 0; direction < DIRECTIONS.length; direction++)
+                setConnectedState(DIRECTIONS[direction], (neighbors & 1 << direction) != 0);
+        }
     }
 }

@@ -12,8 +12,8 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedExecution;
 import com.circulation.prototype_eng.api.storage.ResourceBatch;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.AbstractList;
@@ -44,6 +44,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     private final PlannedCancellationToken cancellation;
     private final BooleanSupplier authorization;
     private final LongSupplier nanoTime;
+    private final ObjectOpenHashSet<UUID> rejectedCohorts = new ObjectOpenHashSet<>();
     private ObjectArrayList<Entry> round = new ObjectArrayList<>();
     @Nullable
     private List<RecipeProcess.Stage> roundCapture;
@@ -102,7 +103,6 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     private ObjectArrayList<RecipePureComputation> prepareRound = new ObjectArrayList<>();
     private boolean prepareOwnerSelected;
     private boolean receivedWorkerExit;
-    private final ObjectOpenHashSet<UUID> rejectedCohorts = new ObjectOpenHashSet<>();
 
     public PlannedRecipeCoordinator(PlannedTaskExecutor tasks, List<MachineWorkSlots> hosts,
                                     PlannedDeadline forwardDeadline, PlannedCancellationToken cancellation,
@@ -501,7 +501,9 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         }
     }
 
-    /** Join-only handoff after the coordinator action exited; receipts remain owned by its original thread. */
+    /**
+     * Join-only handoff after the coordinator action exited; receipts remain owned by its original thread.
+     */
     public void awaitWorkerExit() {
         if (executing) throw new IllegalStateException("Coordinator action has not exited");
         awaitCapturedWorkers();

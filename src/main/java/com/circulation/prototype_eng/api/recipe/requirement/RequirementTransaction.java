@@ -37,6 +37,8 @@ public interface RequirementTransaction extends ReversibleTransaction {
 
     /**
      * Stable, side-effect-free list of all acquired tokens, including a partially rejected acquisition.
+     * The executor borrows this list through settlement; implementations must not modify it after
+     * returning the transaction, and consumers must not mutate it.
      */
     default List<? extends ResourceReservation> reservations() {
         return List.of();

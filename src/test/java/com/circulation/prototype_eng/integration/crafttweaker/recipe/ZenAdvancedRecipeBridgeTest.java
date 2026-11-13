@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.integration.crafttweaker.recipe;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
-
 import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.data.DataComponents;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -30,6 +28,7 @@ import crafttweaker.zenscript.expand.ExpandDataStringDict;
 import crafttweaker.zenscript.expand.ExpandInt;
 import crafttweaker.zenscript.expand.ExpandString;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagInt;
 import net.minecraft.util.ResourceLocation;
@@ -72,6 +71,29 @@ class ZenAdvancedRecipeBridgeTest {
         var owner = new MachineInstance();
         owner.components().put(MachineHatches.TYPE, hatches);
         return owner;
+    }
+
+    private static void compileAndRun(String script, String name) throws Exception {
+        var output = new ByteArrayOutputStream();
+        var environment = new GenericCompileEnvironment();
+        var registry = new GenericRegistry(environment, new GenericErrorLogger(new PrintStream(output, true, StandardCharsets.UTF_8)));
+        for (var type : List.of(ZenResource.class, ZenRequirement.class, ZenRecipe.class, ZenInputAllocation.class,
+            ZenAllocationCallback.class, ZenAllocationContext.class, ZenAllocationSource.class, ZenAllocationPortion.class,
+            ZenSelectiveContext.class, ZenSelectiveModifier.class, ZenSelectiveCallback.class,
+            ZenOverlayContext.class, ZenOverlayModifier.class, ZenOverlayCallback.class, ZenRequirementOverlay.class, IData.class, Harness.class))
+            registry.registerNativeClass(type);
+        // CT 718 caches primitive casting rules; every compiler fixture must include the same real data expansions.
+        for (var expansion : List.of(ExpandAnyDict.class, ExpandDataStringDict.class, ExpandInt.class, ExpandBool.class, ExpandString.class))
+            registry.registerExpansion(expansion);
+        var classes = new Object2ObjectOpenHashMap<String, byte[]>();
+        var global = registry.makeGlobalEnvironment(classes);
+        var parsed = new ZenParsedFile(name, "AdvancedRecipeScript_" + name.replace('.', '_'),
+            new ZenTokener(new StringReader(script), environment, name, false), global);
+        ZenModule.compileScripts(name, List.of(parsed), global, false);
+        assertEquals("", output.toString(StandardCharsets.UTF_8));
+        ZenModule.classes.clear();
+        ZenModule.loadedClasses.clear();
+        Objects.requireNonNull(new ZenModule(classes, ZenAdvancedRecipeBridgeTest.class.getClassLoader()).getMain()).run();
     }
 
     @Test
@@ -176,7 +198,8 @@ class ZenAdvancedRecipeBridgeTest {
     void externalJavaRequirementAndTypedOverlayRetainAccurateCodecAfterOtherHandlesChange() throws Exception {
         var number = new RecipeRequirementType<Integer>(id("number"), new RecipeRequirementSystem<>() {
             @Override
-            @SuppressWarnings("ReturnOfInnerClass") // Transaction retains exactly this process's data and prior value for compensation.
+            @SuppressWarnings("ReturnOfInnerClass")
+            // Transaction retains exactly this process's data and prior value for compensation.
             public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Integer> requirement) {
                 var data = Objects.requireNonNull(process.components().get(DataComponents.PROCESS));
                 var before = data.get("number");
@@ -218,12 +241,12 @@ class ZenAdvancedRecipeBridgeTest {
         Harness.externalOverlay = new ZenRequirementOverlay(target, add, 5);
         var recipe = new MachineRecipe(id("external_recipe"), 2, List.of(target));
         var codec = RecipeProcessNbt.builder(recipe, "original")
-            .component(DataComponents.PROCESS, DataComponents.PROCESS_CODEC).overlay(add, integerCodec)
-            .validator(process -> {
-                var data = Objects.requireNonNull(process.components().get(DataComponents.PROCESS));
-                int expected = RecipeOverlays.getOrCreate(process).resolve(target).payload();
-                assertEquals(expected, data.snapshot().data().getInteger("number"));
-            }).build();
+                                    .component(DataComponents.PROCESS, DataComponents.PROCESS_CODEC).overlay(add, integerCodec)
+                                    .validator(process -> {
+                                        var data = Objects.requireNonNull(process.components().get(DataComponents.PROCESS));
+                                        int expected = RecipeOverlays.getOrCreate(process).resolve(target).payload();
+                                        assertEquals(expected, data.snapshot().data().getInteger("number"));
+                                    }).build();
         Harness.javaRecipe = new ZenRecipe(codec);
         compileAndRun("""
             import mods.prototype_eng.recipe.Recipe;
@@ -239,7 +262,7 @@ class ZenAdvancedRecipeBridgeTest {
             """, "external.zs");
         Harness.externalOverlay = new ZenRequirementOverlay(target,
             new RecipeOverlayType<>(add.id(), number, Math::multiplyExact), 10);
-        Harness.javaRecipe = ZenRecipe.create("advanced_bridge:external_recipe", "new", 2, new ZenRequirement[] {});
+        Harness.javaRecipe = ZenRecipe.create("advanced_bridge:external_recipe", "new", 2, new ZenRequirement[]{});
         var machine = owner(new MachineHatches(List.of(), List.of(), List.of()));
         var scripted = new RecipeProcess(machine, Harness.invalid.recipe(), 23);
         scripted.components().create(DataComponents.PROCESS, scripted);
@@ -254,29 +277,6 @@ class ZenAdvancedRecipeBridgeTest {
         assertSame(recipe, restored.recipe());
         assertSame(ProcessResult.SUCCESS, restored.tick());
         assertEquals(15, Objects.requireNonNull(restored.components().get(DataComponents.PROCESS)).snapshot().data().getInteger("number"));
-    }
-
-    private static void compileAndRun(String script, String name) throws Exception {
-        var output = new ByteArrayOutputStream();
-        var environment = new GenericCompileEnvironment();
-        var registry = new GenericRegistry(environment, new GenericErrorLogger(new PrintStream(output, true, StandardCharsets.UTF_8)));
-        for (var type : List.of(ZenResource.class, ZenRequirement.class, ZenRecipe.class, ZenInputAllocation.class,
-            ZenAllocationCallback.class, ZenAllocationContext.class, ZenAllocationSource.class, ZenAllocationPortion.class,
-            ZenSelectiveContext.class, ZenSelectiveModifier.class, ZenSelectiveCallback.class,
-            ZenOverlayContext.class, ZenOverlayModifier.class, ZenOverlayCallback.class, ZenRequirementOverlay.class, IData.class, Harness.class))
-            registry.registerNativeClass(type);
-        // CT 718 caches primitive casting rules; every compiler fixture must include the same real data expansions.
-        for (var expansion : List.of(ExpandAnyDict.class, ExpandDataStringDict.class, ExpandInt.class, ExpandBool.class, ExpandString.class))
-            registry.registerExpansion(expansion);
-        var classes = new Object2ObjectOpenHashMap<String, byte[]>();
-        var global = registry.makeGlobalEnvironment(classes);
-        var parsed = new ZenParsedFile(name, "AdvancedRecipeScript_" + name.replace('.', '_'),
-            new ZenTokener(new StringReader(script), environment, name, false), global);
-        ZenModule.compileScripts(name, List.of(parsed), global, false);
-        assertEquals("", output.toString(StandardCharsets.UTF_8));
-        ZenModule.classes.clear();
-        ZenModule.loadedClasses.clear();
-        Objects.requireNonNull(new ZenModule(classes, ZenAdvancedRecipeBridgeTest.class.getClassLoader()).getMain()).run();
     }
 
     @SuppressWarnings("unused")

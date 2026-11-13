@@ -309,11 +309,26 @@ class JeiTestViews {
         }
     }
 
-    record Slot<T>(boolean input, int x, int y, int width, int height, List<T> ingredients) implements IGuiIngredient<T> {
-        @Override public @Nullable T getDisplayedIngredient() { return ingredients.isEmpty() ? null : ingredients.getFirst(); }
-        @Override public List<T> getAllIngredients() { return ingredients; }
-        @Override public boolean isInput() { return input; }
-        @Override public void drawHighlight(Minecraft ignored, Color ignoredColor, int ignoredX, int ignoredY) {}
+    record Slot<T>(boolean input, int x, int y, int width, int height,
+                   List<T> ingredients) implements IGuiIngredient<T> {
+        @Override
+        public @Nullable T getDisplayedIngredient() {
+            return ingredients.isEmpty() ? null : ingredients.getFirst();
+        }
+
+        @Override
+        public List<T> getAllIngredients() {
+            return ingredients;
+        }
+
+        @Override
+        public boolean isInput() {
+            return input;
+        }
+
+        @Override
+        public void drawHighlight(Minecraft ignored, Color ignoredColor, int ignoredX, int ignoredY) {
+        }
     }
 
     static class Layout implements IRecipeLayout {

@@ -1,8 +1,7 @@
 package com.circulation.prototype_eng.mixin.client;
 
-import com.circulation.prototype_eng.util.ExternalEnumValues;
-
 import com.circulation.prototype_eng.client.render.HatchBloomMetadata;
+import com.circulation.prototype_eng.util.ExternalEnumValues;
 import com.google.gson.JsonElement;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
@@ -10,7 +9,9 @@ import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
-/** The typed CTM deserializer sees an opt-in copy only when no provider installed a BLOOM layer. */
+/**
+ * The typed CTM deserializer sees an opt-in copy only when no provider installed a BLOOM layer.
+ */
 @Pseudo
 @Mixin(targets = "team.chisel.ctm.client.texture.IMetadataSectionCTM$Serializer", remap = false)
 public abstract class CtmHatchBloomMetadataMixin {

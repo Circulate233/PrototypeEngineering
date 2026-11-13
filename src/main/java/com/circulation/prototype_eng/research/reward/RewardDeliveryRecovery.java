@@ -12,7 +12,8 @@ import java.nio.file.Files;
 import java.util.Objects;
 
 public final class RewardDeliveryRecovery {
-    private RewardDeliveryRecovery() {}
+    private RewardDeliveryRecovery() {
+    }
 
     public static void reconcileDeliveryJournal(EntityPlayer player) {
         if (player.world.isRemote || !(player instanceof EntityPlayerMP actual) || player instanceof FakePlayer) return;

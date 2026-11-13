@@ -20,8 +20,8 @@ import com.circulation.prototype_eng.localization.RecipeText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.AbstractList;
@@ -469,7 +469,7 @@ public final class RecipeStageExecutor {
          */
         private boolean appendStep(RecipeWorkBudget budget, boolean rollbackOnly) {
             if (appendInput == null) {
-                appendInput = acquisition.stableStepReservations();
+                appendInput = acquisition.stepReservations();
                 appendOwnedTokens = new ObjectArrayList<>();
                 appendCursor = 0;
                 appendViolation = false;
@@ -487,7 +487,7 @@ public final class RecipeStageExecutor {
                 appendCursor++;
             }
             if (!Objects.requireNonNull(batch).appendWithinBudget(Objects.requireNonNull(appendOwnedTokens),
-                acquisition.stableStepTransactions(), rollbackOnly || appendViolation, budget)) return false;
+                acquisition.stepTransactions(), rollbackOnly || appendViolation, budget)) return false;
             boolean rejected = appendViolation;
             appendInput = null;
             appendOwnedTokens = null;
@@ -1139,7 +1139,7 @@ public final class RecipeStageExecutor {
                 frame.observationStart = sources.size();
             } else if (frame.savepoint != null) {
                 batch.releaseSavepoint(frame.savepoint);
-                if (frame.savepoint != null) activeAlternativeCount--;
+                activeAlternativeCount--;
                 frame.savepoint = null;
             }
         }
@@ -1174,7 +1174,7 @@ public final class RecipeStageExecutor {
             } else if (frame.savepoint != null) {
                 if (!budget.take()) return false;
                 batch.releaseSavepoint(frame.savepoint);
-                if (frame.savepoint != null) activeAlternativeCount--;
+                activeAlternativeCount--;
                 frame.savepoint = null;
             }
             preparingFrame = null;
@@ -1288,17 +1288,23 @@ public final class RecipeStageExecutor {
             return true;
         }
 
-        public List<ResourceReservation> stableStepReservations() {
+        /**
+         * Read-only view valid until the next acquire/rewind step; callers must not retain or mutate it.
+         */
+        public List<ResourceReservation> stepReservations() {
             requireSealed();
             if (sealedStepReservations == null)
-                sealedStepReservations = ObjectLists.unmodifiable(reservations.subList(stepSourceStart, reservations.size()));
+                sealedStepReservations = reservations.subList(stepSourceStart, reservations.size());
             return sealedStepReservations;
         }
 
-        public List<RequirementTransaction> stableStepTransactions() {
+        /**
+         * Read-only view valid until the next acquire/rewind step; callers must not retain or mutate it.
+         */
+        public List<RequirementTransaction> stepTransactions() {
             requireSealed();
             if (sealedStepTransactions == null)
-                sealedStepTransactions = ObjectLists.unmodifiable(transactions.subList(stepBusinessStart, transactions.size()));
+                sealedStepTransactions = transactions.subList(stepBusinessStart, transactions.size());
             return sealedStepTransactions;
         }
 
@@ -1349,16 +1355,6 @@ public final class RecipeStageExecutor {
             return !transitionAdded && !acquisitionFailed && result == ProcessResult.SUCCESS;
         }
 
-        public List<RequirementTransaction> stepTransactions() {
-            requireSealed();
-            return ObjectLists.unmodifiable(new ObjectArrayList<>(transactions.subList(stepBusinessStart, transactions.size())));
-        }
-
-        public List<ResourceReservation> stepReservations() {
-            requireSealed();
-            return ObjectLists.unmodifiable(new ObjectArrayList<>(reservations.subList(stepSourceStart, reservations.size())));
-        }
-
         public ProcessResult result() {
             requireSealed();
             return result;
@@ -1372,12 +1368,12 @@ public final class RecipeStageExecutor {
 
         public List<RequirementTransaction> transactions() {
             requireSealed();
-            return ObjectLists.unmodifiable(transactions);
+            return transactions;
         }
 
         public List<ResourceReservation> reservations() {
             requireSealed();
-            return ObjectLists.unmodifiable(reservations);
+            return reservations;
         }
 
         public boolean inventoryComplete() {
@@ -1505,10 +1501,11 @@ public final class RecipeStageExecutor {
             }
             var tokens = stepReservations();
             var steps = stepTransactions();
-            for (var token : tokens) if (!token.supportsSequentialUse()) {
-                batch.appendForRollback(tokens, steps);
-                throw new IllegalArgumentException("Continued storage reservations must support reversible sequential use");
-            }
+            for (var token : tokens)
+                if (!token.supportsSequentialUse()) {
+                    batch.appendForRollback(tokens, steps);
+                    throw new IllegalArgumentException("Continued storage reservations must support reversible sequential use");
+                }
             batch.append(tokens, steps);
         }
 
@@ -1930,7 +1927,7 @@ public final class RecipeStageExecutor {
             }
 
             public List<ResourceReservation> reservations() {
-                return ObjectLists.unmodifiable(tokens);
+                return tokens;
             }
 
             public RequirementTransaction transaction() {
@@ -1938,7 +1935,7 @@ public final class RecipeStageExecutor {
             }
 
             public List<RequirementTransaction> transactions() {
-                return ObjectLists.unmodifiable(business);
+                return business;
             }
 
             public void continueWith(RequirementTransaction transaction) {

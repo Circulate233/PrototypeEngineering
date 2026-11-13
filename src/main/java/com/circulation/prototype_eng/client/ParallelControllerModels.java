@@ -1,16 +1,16 @@
 package com.circulation.prototype_eng.client;
 
-import com.circulation.prototype_eng.Tags;
-import com.circulation.prototype_eng.block.ParallelControllerBlocks;
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
+import com.circulation.prototype_eng.Tags;
+import com.circulation.prototype_eng.block.ParallelControllerBlocks;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.block.model.ModelResourceLocation;
 import net.minecraft.client.renderer.block.statemap.StateMapperBase;
 import net.minecraft.item.Item;
-import net.minecraftforge.client.event.ModelRegistryEvent;
 import net.minecraftforge.client.event.ModelBakeEvent;
+import net.minecraftforge.client.event.ModelRegistryEvent;
 import net.minecraftforge.client.model.ModelLoader;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -19,7 +19,8 @@ import org.jetbrains.annotations.NotNull;
 
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID, value = Side.CLIENT)
 public final class ParallelControllerModels {
-    private ParallelControllerModels() {}
+    private ParallelControllerModels() {
+    }
 
     @SubscribeEvent
     public static void registerModels(ModelRegistryEvent event) {

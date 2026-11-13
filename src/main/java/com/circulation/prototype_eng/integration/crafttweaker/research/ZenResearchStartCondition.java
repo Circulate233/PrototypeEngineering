@@ -7,4 +7,6 @@ import stanhebben.zenscript.annotations.ZenClass;
 @ZenClass("mods.prototype_eng.research.ResearchStartCondition")
 @SuppressWarnings("unused") // Public adapters are discovered by ZenScript.
 @FunctionalInterface
-public interface ZenResearchStartCondition { boolean canStart(ZenResearchStartContext context); }
+public interface ZenResearchStartCondition {
+    boolean canStart(ZenResearchStartContext context);
+}

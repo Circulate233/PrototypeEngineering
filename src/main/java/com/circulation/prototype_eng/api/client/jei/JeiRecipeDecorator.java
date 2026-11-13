@@ -4,7 +4,9 @@ import net.minecraft.client.Minecraft;
 
 import java.util.Objects;
 
-/** Native Java recipe drawing extension; independent custom pages can call the same decorations. */
+/**
+ * Native Java recipe drawing extension; independent custom pages can call the same decorations.
+ */
 @FunctionalInterface
 public interface JeiRecipeDecorator {
     void draw(Minecraft minecraft, RecipePoolJeiRecipe recipe, int x, int y);

@@ -9,15 +9,16 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Consumer;
 
-/** Server-owned logical window. Its revision identifies both sides together. */
+/**
+ * Server-owned logical window. Its local revision identifies both sides of the current page.
+ */
 public final class ResourceHatchWindow {
-    private static long lastIdentity;
     private final int columns;
     private final int visibleRows;
     private final int cells;
     private final SideState input;
     private final SideState output;
-    private long revision = nextIdentity();
+    private long revision = 1;
 
     public ResourceHatchWindow(SlottedResourceHatch hatch, int columns, int visibleRows) {
         if (columns < 1 || columns > 9 || visibleRows < 1 || visibleRows > 7)
@@ -29,11 +30,6 @@ public final class ResourceHatchWindow {
         output = new SideState(hatch.output());
     }
 
-    private static synchronized long nextIdentity() {
-        if (lastIdentity == Long.MAX_VALUE) throw new IllegalStateException("Resource window identities exhausted");
-        return ++lastIdentity;
-    }
-
     public static int rows(int slots, int columns) {
         return (int) ((slots + (long) columns - 1) / columns);
     }
@@ -41,14 +37,15 @@ public final class ResourceHatchWindow {
     public boolean move(long expectedRevision, int inputRow, int outputRow) {
         if (expectedRevision != revision || !input.acceptsRow(inputRow) || !output.acceptsRow(outputRow)) return false;
         if (input.firstSlot == (long) inputRow * columns && output.firstSlot == (long) outputRow * columns) return true;
-        long next = nextIdentity();
         input.firstSlot = inputRow * columns;
         output.firstSlot = outputRow * columns;
-        revision = next;
+        revision++;
         return true;
     }
 
-    /** Validates before entering any action, including fill/empty and bulk transfers. */
+    /**
+     * Validates before entering any action, including fill/empty and bulk transfers.
+     */
     public boolean interact(long expectedRevision, boolean inputSide, int logicalSlot, Consumer<SlottedResourceStorage> action) {
         var side = inputSide ? input : output;
         var storage = side.storage;
@@ -88,7 +85,8 @@ public final class ResourceHatchWindow {
             storage.context().lock();
             try {
                 long current = storage.context().revision();
-                if (captured != null && capturedFirstSlot == firstSlot && storage.context().current(capturedRevision)) return captured;
+                if (captured != null && capturedFirstSlot == firstSlot && storage.context().current(capturedRevision))
+                    return captured;
                 if (countedRevision != current) {
                     int occupied = 0;
                     var keys = new ObjectOpenHashSet<AEKey>();

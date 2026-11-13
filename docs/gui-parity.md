@@ -2,7 +2,7 @@
 
 ## 2026-11-10 材料仓容器提示统一AE2S
 
-截图中的水桶操作提示不再使用自有单行文案。ResourceHatchGui对照实际GuiMEStorage直接调用Tooltips.getEmptyingTooltip(StoreAction)生成左右键存入两行，装填调用FillAction并复用muted/of/TextComponentItemStack，使用AE原生分色、嵌入图标与drawTooltipWithHeader；有效操作提示优先于底层资源详情。空光标信息及原点击/Shift整批行为保持。源码提交 `cf27716`，单Java本机MCP全级零/完整读回及必要构建通过，未运行测试或游戏；真实渲染待用户复验，证据见[实施进度](implementation-status.md)。
+截图中的水桶操作提示不再使用自有单行文案。GuiResourceHatch对照实际GuiMEStorage直接调用Tooltips.getEmptyingTooltip(StoreAction)生成左右键存入两行，装填调用FillAction并复用muted/of/TextComponentItemStack，使用AE原生分色、嵌入图标与drawTooltipWithHeader；有效操作提示优先于底层资源详情。空光标信息及原点击/Shift整批行为保持。源码提交 `cf27716`，单Java本机MCP全级零/完整读回及必要构建通过，未运行测试或游戏；真实渲染待用户复验，证据见[实施进度](implementation-status.md)。
 
 ## 2026-11-10 两件工具继续修复
 
@@ -13,7 +13,7 @@
 
 PM `DefaultMachineUI.buildMainPage` 将玩家背包挂在第一页，`buildExtensionPage` 只有内容区及扩展说明。PE 原先仅对 AppEngSlot 调用 setActive/setSlotEnabled，而 AEBaseContainer.addPlayerInventorySlots 实际创建普通 Slot，因此两处判断均未生效。
 
-MachineContainer 现使用随页显隐的普通 PlayerSlot，保持27格背包/9格快捷栏、原坐标和 AE SlotSemantics。客户端选择页面立即更新可见性，服务器验证同一个 PAGE 动作后禁止第二页插入、取出、槽位点击；已有锁定槽限制保留。库存槽和物品不删除、不重建。MachineGui 去掉无效的 AppEngSlot 循环，仍使用 PM 原 A/B 背景和页面内容。没有擅加新仓室槽或改造原扩展页面。
+ContainerMachine 现使用随页显隐的普通 PlayerSlot，保持27格背包/9格快捷栏、原坐标和 AE SlotSemantics。客户端选择页面立即更新可见性，服务器验证同一个 PAGE 动作后禁止第二页插入、取出、槽位点击；已有锁定槽限制保留。库存槽和物品不删除、不重建。GuiMachine 去掉无效的 AppEngSlot 循环，仍使用 PM 原 A/B 背景和页面内容。没有擅加新仓室槽或改造原扩展页面。
 
 JEI 原背景、材料提示与重复机器标签的修正见[JEI说明](jei.md)。专项39项/完整1693项通过，12 Java与两语言本机全级零，MCP build成功；证据 `build/staging/jei-catalyst-only/`。真实第二页显隐、切回第一页和游戏内拖放仍待用户复验。
 
@@ -48,9 +48,9 @@ JEI 原背景、材料提示与重复机器标签的修正见[JEI说明](jei.md)
 
 ## 首次核对的偏离
 
-- ResourceHatchGui 使用 BackgroundGenerator 与 drawRect 重画背景/槽框，分辨率和坐标也改动；额外流体限速/清空控件来自流体仓而非用户指定的物品仓 GUI。PM 原 ItemHatchGUI/ItemIOHatchGUI 使用分等级图、states.png、(26,25)/(26,24) 槽区、固定玩家背包、自动输入/输出图标与平滑滚动。
-- MachineGui 只用了 gui_controller_states.png 的进度条，未使用 gui_controller_a/b.png 背景，列表移位、缺原分页及原布局；“工位/无工位”并非 PM 原文。PM 原进度行是 #编号、百分比、空闲/工作中/错误，没有新增的工位标题。
-- EnergyHatchGui 改为 176×214 灰底/应用按钮；PM 原为 192×168 分等级背景、(146,10) 16×66 能源条、(40,52)/(40,68) 无背景输入框与侧边图标。
+- GuiResourceHatch 使用 BackgroundGenerator 与 drawRect 重画背景/槽框，分辨率和坐标也改动；额外流体限速/清空控件来自流体仓而非用户指定的物品仓 GUI。PM 原 ItemHatchGUI/ItemIOHatchGUI 使用分等级图、states.png、(26,25)/(26,24) 槽区、固定玩家背包、自动输入/输出图标与平滑滚动。
+- GuiMachine 只用了 gui_controller_states.png 的进度条，未使用 gui_controller_a/b.png 背景，列表移位、缺原分页及原布局；“工位/无工位”并非 PM 原文。PM 原进度行是 #编号、百分比、空闲/工作中/错误，没有新增的工位标题。
+- GuiEnergyHatch 改为 176×214 灰底/应用按钮；PM 原为 192×168 分等级背景、(146,10) 16×66 能源条、(40,52)/(40,68) 无背景输入框与侧边图标。
 - 结构预览此前重画控件、初始相机偏离原控制器中心，并将世界投影的透明系数用于 GUI。控制器缺原 ModelBake 包装，仓室缺部分原 inventory variant/alias 链；本轮按实际矩阵、资产和朝向实现修正，实机视觉仍待验收。
 
 ## 实际阅读入口
@@ -58,7 +58,7 @@ JEI 原背景、材料提示与重复机器标签的修正见[JEI说明](jei.md)
 - PM：`F:/clone/PrototypeMachinery/src/main/kotlin/common/block/hatch/item/{ItemHatchGUI,ItemIOHatchGUI}.kt`、`common/block/hatch/energy/EnergyHatchGUI.kt`、`client/gui/DefaultMachineUI.kt`、`client/gui/scroll/PM{Thin,}VerticalScrollData.kt`、`client/preview/ui/StructurePreviewUiScreen.kt`。
 - 原图：`F:/clone/PrototypeMachinery/src/main/resources/assets/prototypemachinery/textures/gui/`。主代理已直接查看原 item_hatch_1、controller_a、structure_preview_a PNG。
 - AE：`F:/clone/Applied-Energistics-2/src/main/java/ae2/client/gui/AEBaseGui.java` 的 drawSlot/drawGenericStackSlot 与 handleMouseClick；AppEngSlot 接收 GenericStackDisplayInventory，AEKeyRendering 负责图标与单位，ContainerItemStrategies 负责非物品容器交互。
-- 当前 PE：`client/gui/{ResourceHatchGui,EnergyHatchGui,MachineGui,StructurePreviewGui}.java`、`container/ResourceHatchContainer.java`、`storage/HatchGuiInventory.java`、`client/preview/StructurePreviewPanel.java`。
+- 当前 PE：`client/gui/{GuiResourceHatch,GuiEnergyHatch,GuiMachine,GuiStructurePreview}.java`、`container/ContainerResourceHatch.java`、`storage/HatchGuiInventory.java`、`client/preview/StructurePreviewPanel.java`。
 
 ## 上一轮源码修改（部分由上节反馈修正）
 

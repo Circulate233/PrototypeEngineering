@@ -8,7 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Tests the native key boundary and buffered-wheel ownership without an LWJGL device or game bootstrap. */
+/**
+ * Tests the native key boundary and buffered-wheel ownership without an LWJGL device or game bootstrap.
+ */
 class JeiRecipeInputsTest {
     @Test
     void nativeRuntimeRebuildRevokesOldWrapperOnTheSameScreen() {

@@ -13,18 +13,26 @@ import stanhebben.zenscript.type.ZenType;
 import stanhebben.zenscript.type.ZenTypeNative;
 import stanhebben.zenscript.util.ZenPosition;
 
-/** CT2 dynamic native getters otherwise return an Expression which cannot be assigned. */
+/**
+ * CT2 dynamic native getters otherwise return an Expression which cannot be assigned.
+ */
 public final class ZenComponentDataMembers {
     private ZenComponentDataMembers() {
     }
 
-    /** Preserve ordinary native methods/getters and every class other than this data adapter. */
+    /**
+     * Preserve ordinary native methods/getters and every class other than this data adapter.
+     */
     public static @Nullable IPartialExpression member(ZenTypeNative nativeType, ZenPosition position, IEnvironmentGlobal environment,
-                                                       IPartialExpression value, String name) {
-        if (nativeType.toJavaClass() != ZenComponentData.class || nativeType.getMembers().containsKey(name)) return null;
+                                                      IPartialExpression value, String name) {
+        if (nativeType.toJavaClass() != ZenComponentData.class || nativeType.getMembers().containsKey(name))
+            return null;
         var receiver = value.eval(environment);
         var expansion = environment.getExpansion(nativeType.getName());
-        if (expansion != null && expansion.instanceMember(position, environment, receiver, name) != null) return null;
+        if (expansion != null) {
+            var member = expansion.instanceMember(position, environment, receiver, name);
+            if (member != null) return member;
+        }
         return new Member(nativeType, position, receiver, new ExpressionString(position, name), environment.getType(IData.class));
     }
 

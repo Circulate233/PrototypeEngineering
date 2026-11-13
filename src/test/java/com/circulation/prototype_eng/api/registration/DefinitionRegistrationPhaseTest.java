@@ -1,8 +1,8 @@
 package com.circulation.prototype_eng.api.registration;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.junit.jupiter.api.Test;
 
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

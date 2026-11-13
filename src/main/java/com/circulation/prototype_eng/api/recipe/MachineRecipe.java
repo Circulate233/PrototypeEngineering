@@ -44,7 +44,9 @@ public final class MachineRecipe {
         this(id, durationTicks, requirements, recipeGroups, Integer.MAX_VALUE);
     }
 
-    /** Logical running processes of this canonical recipe on one machine, independent of parallel quantities. */
+    /**
+     * Logical running processes of this canonical recipe on one machine, independent of parallel quantities.
+     */
     public MachineRecipe(ResourceLocation id, int durationTicks, Collection<? extends RecipeRequirement<?>> requirements,
                          Collection<ResourceLocation> recipeGroups, int maxConcurrentThreads) {
         this(id, durationTicks, requirements, recipeGroups, maxConcurrentThreads, RecipeParallelismSelection.NONE);

@@ -16,7 +16,9 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Map;
 
-/** Client-owned current/next slots. Time changes may reuse a completed frame; base/owner/epoch changes revoke it first. */
+/**
+ * Client-owned current/next slots. Time changes may reuse a completed frame; base/owner/epoch changes revoke it first.
+ */
 public class ModelBuildCache implements AutoCloseable {
     private final ModelClientThread client;
     private final ModelAssets assets;

@@ -31,7 +31,7 @@ import com.circulation.prototype_eng.localization.RecipeText;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
 import com.circulation.prototype_eng.structure.StructureRefresh;
 import com.circulation.prototype_eng.structure.TemplateStructure;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
@@ -73,7 +73,7 @@ class ControllerStructureUpdatesTest {
             return "body".equals(value);
         });
         return new StructureConfiguration(new TemplateStructure(id("shape"), BlockOrientation.NORTH_UP,
-            BlockPos.ORIGIN, false, new StructurePattern(Map.of(BODY, predicate)), List.of(), List.of()), BlockOrientation.NORTH_UP);
+            BlockPos.ORIGIN, false, new StructurePattern(new BlockPos2ObjectMap<>(Map.of(BODY, predicate))), List.of(), List.of()), BlockOrientation.NORTH_UP);
     }
 
     private static ResourceLocation id(String name) {
@@ -100,12 +100,12 @@ class ControllerStructureUpdatesTest {
              var observer = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory())) {
             longer.updates.tick(0);
             shorter.updates.tick(0);
-            var pattern = new Object2ObjectLinkedOpenHashMap<BlockPos, StructurePredicate>();
+            var pattern = new BlockPos2ObjectMap<StructurePredicate>();
             var predicate = StructurePredicates.test(MARKER, "body"::equals);
             for (int x = 1; x <= 600; x++) pattern.put(new BlockPos(x, 0, 0), predicate);
             longer.host.multiplePositions = true;
             longer.host.configuration = new StructureConfiguration(new TemplateStructure(id("longer"), BlockOrientation.NORTH_UP,
-                BlockPos.ORIGIN, false, new StructurePattern(pattern), List.of(), List.of()), BlockOrientation.NORTH_UP);
+                BlockPos.ORIGIN, false, new StructurePattern(new BlockPos2ObjectMap<>(pattern)), List.of(), List.of()), BlockOrientation.NORTH_UP);
             for (var fixture : List.of(longer, shorter)) {
                 fixture.updates.checkPolicy(new StructureCheckPolicy(1_000_000, Duration.ofSeconds(2), Duration.ofSeconds(5), StructureCheckPolicy.FinalMode.COOPERATIVE));
                 fixture.host.workerRead = () -> {
@@ -265,7 +265,7 @@ class ControllerStructureUpdatesTest {
             fixture.tick(10);
             fixture.host.configuration = new StructureConfiguration(TemplateStructure.create(id("budgeted_default"),
                 BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false,
-                new StructurePattern(Map.of(BODY, StructurePredicates.test(MARKER, "body"::equals))), List.of(), List.of()),
+                new StructurePattern(new BlockPos2ObjectMap<>(Map.of(BODY, StructurePredicates.test(MARKER, "body"::equals)))), List.of(), List.of()),
                 BlockOrientation.NORTH_UP);
             var accepted = fixture.lifecycle().structureMatch();
             fixture.updates.checkPolicy(new StructureCheckPolicy(1, Duration.ofSeconds(5), StructureCheckPolicy.FinalMode.COOPERATIVE));

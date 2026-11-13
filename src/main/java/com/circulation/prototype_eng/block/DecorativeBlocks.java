@@ -32,7 +32,7 @@ public final class DecorativeBlocks {
     }
 
     private static DecorativeBlock[] createBlocks() {
-        return new DecorativeBlock[] {
+        return new DecorativeBlock[]{
             create("block_casing", false),
             create("block_casing_plain", false),
             create("casing", false),
@@ -55,8 +55,11 @@ public final class DecorativeBlocks {
         return new DecorativeBlock(name, glass);
     }
 
+    /**
+     * Shared registration array; callers must not modify it.
+     */
     public static Block[] all() {
-        return BLOCKS.clone();
+        return BLOCKS;
     }
 
     @SubscribeEvent
@@ -74,6 +77,7 @@ public final class DecorativeBlocks {
     @SuppressWarnings("deprecation") // Forge 1.12 dispatches these block-state hooks.
     private static class DecorativeBlock extends AEBaseBlock {
         private final boolean glass;
+
         private DecorativeBlock(String name, boolean glassBlock) {
             super(glassBlock ? Material.GLASS : Material.IRON);
             this.glass = glassBlock;
@@ -88,8 +92,7 @@ public final class DecorativeBlocks {
                 setFullSize();
                 setLightOpacity(0);
                 useNeighborBrightness = true;
-            }
-            else setHarvestLevel("pickaxe", 0);
+            } else setHarvestLevel("pickaxe", 0);
         }
 
         @Override

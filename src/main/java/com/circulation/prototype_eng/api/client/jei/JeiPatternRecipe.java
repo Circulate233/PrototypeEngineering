@@ -6,22 +6,22 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
 import java.util.List;
 
-/** Complete displayed processing resources; each inner list contains the candidates shown in one slot. */
+/**
+ * Complete displayed processing resources; each inner list contains the candidates shown in one slot.
+ * Outer and candidate lists are borrowed read-only and must remain unchanged while the recipe is in use.
+ */
 public record JeiPatternRecipe(List<List<GenericStack>> inputs, List<List<GenericStack>> outputs) {
     public JeiPatternRecipe {
-        inputs = copy(inputs);
-        outputs = copy(outputs);
+        validate(inputs);
+        validate(outputs);
     }
 
-    private static List<List<GenericStack>> copy(List<List<GenericStack>> groups) {
-        var result = new ObjectArrayList<List<GenericStack>>(groups.size());
+    private static void validate(List<List<GenericStack>> groups) {
         for (var group : groups) {
             if (group.isEmpty()) throw new IllegalArgumentException("Empty pattern candidate group");
             for (var stack : group)
                 if (stack == null || stack.amount() <= 0) throw new IllegalArgumentException("Invalid pattern amount");
-            result.add(List.copyOf(group));
         }
-        return List.copyOf(result);
     }
 
     public static JeiPatternRecipe fromGroups(List<List<JeiRecipeDisplay.Resource>> inputs,
@@ -35,10 +35,11 @@ public record JeiPatternRecipe(List<List<GenericStack>> inputs, List<List<Generi
             var candidates = new ObjectArrayList<GenericStack>(group.size());
             for (var row : group) {
                 boolean perTick = false;
-                for (var detail : row.details()) if (perTick(detail)) {
-                    perTick = true;
-                    break;
-                }
+                for (var detail : row.details())
+                    if (perTick(detail)) {
+                        perTick = true;
+                        break;
+                    }
                 long amount = perTick ? Math.multiplyExact(row.stack().amount(), durationTicks) : row.stack().amount();
                 candidates.add(new GenericStack(row.stack().what(), amount));
             }

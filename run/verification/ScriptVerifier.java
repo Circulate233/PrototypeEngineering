@@ -58,7 +58,9 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
-/** A separate process: SDK Parser/Compiler and actual core API behavior, without Minecraft/FML bootstrap. */
+/**
+ * A separate process: SDK Parser/Compiler and actual core API behavior, without Minecraft/FML bootstrap.
+ */
 public final class ScriptVerifier {
     private final ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
     private final GenericCompileEnvironment environment = new GenericCompileEnvironment();
@@ -96,7 +98,8 @@ public final class ScriptVerifier {
             ZenResearchRewardCallback.class, ZenResearchRewardEvent.class, ZenResearchStartCondition.class, ZenResearchStartContext.class,
             ZenResearchDownloads.class, ZenResearchDownloadCallback.class, ZenResearchDownloadContext.class,
             ZenResearchServer.class, ZenResearchPermissionCallback.class, ZenResearchPermissionContext.class,
-            ExampleText.class, CoreCases.class, NativeChecks.class, RunNetworkRender.class)) registry.registerNativeClass(type);
+            ExampleText.class, CoreCases.class, NativeChecks.class, RunNetworkRender.class))
+            registry.registerNativeClass(type);
         registry.registerBracketHandler(new DeferredBrackets(registry));
     }
 
@@ -212,7 +215,9 @@ public final class ScriptVerifier {
         return loadModule ? new ZenModule(bytes, ScriptVerifier.class.getClassLoader()) : null;
     }
 
-    private record Script(Path path, String loader, int priority, String source) {}
+    private record Script(Path path, String loader, int priority, String source) {
+    }
+
     private static List<Script> readScripts(Path directory) throws java.io.IOException {
         var scripts = new ObjectArrayList<Script>();
         try (var walk = Files.walk(directory)) {
@@ -223,26 +228,36 @@ public final class ScriptVerifier {
                 for (var original : Files.readAllLines(path)) {
                     var line = original.startsWith("\ufeff") ? original.substring(1) : original;
                     var directive = line.strip();
-                    if (directive.startsWith("#loader ")) { loader = directive.substring(8).trim(); body.append('\n'); }
-                    else if (directive.startsWith("#priority ")) { priority = Integer.parseInt(directive.substring(10).trim()); body.append('\n'); }
-                    else body.append(line).append('\n');
+                    if (directive.startsWith("#loader ")) {
+                        loader = directive.substring(8).trim();
+                        body.append('\n');
+                    } else if (directive.startsWith("#priority ")) {
+                        priority = Integer.parseInt(directive.substring(10).trim());
+                        body.append('\n');
+                    } else body.append(line).append('\n');
                 }
-                if (!loader.equals("preinit") && !loader.equals("crafttweaker")) throw new IllegalArgumentException("Unsupported verifier loader " + loader + " in " + path);
+                if (!loader.equals("preinit") && !loader.equals("crafttweaker"))
+                    throw new IllegalArgumentException("Unsupported verifier loader " + loader + " in " + path);
                 scripts.add(new Script(path, loader, priority, body.toString()));
             }
         }
         scripts.sort(Comparator.comparingInt((Script s) -> s.loader().equals("preinit") ? 0 : 1)
-            .thenComparing(Comparator.comparingInt(Script::priority).reversed()).thenComparing(s -> s.path().toString()));
+                               .thenComparing(Comparator.comparingInt(Script::priority).reversed()).thenComparing(s -> s.path().toString()));
         return scripts;
     }
+
     private static Script require(List<Script> scripts, String name) {
         return scripts.stream().filter(script -> script.path().getFileName().toString().equals(name)).findFirst()
-            .orElseThrow(() -> new IllegalArgumentException("Missing actual script: " + name));
+                      .orElseThrow(() -> new IllegalArgumentException("Missing actual script: " + name));
     }
 
     private static final class WritableDataType extends ZenTypeNative {
-        private WritableDataType() { super(ZenComponentData.class); }
-        @Override public IPartialExpression getMember(ZenPosition position, IEnvironmentGlobal environment, IPartialExpression value, String name) {
+        private WritableDataType() {
+            super(ZenComponentData.class);
+        }
+
+        @Override
+        public IPartialExpression getMember(ZenPosition position, IEnvironmentGlobal environment, IPartialExpression value, String name) {
             var member = ZenComponentDataMembers.member(this, position, environment, value, name);
             return member == null ? super.getMember(position, environment, value, name) : member;
         }
@@ -251,8 +266,13 @@ public final class ScriptVerifier {
     @BracketHandler(priority = 10)
     private static final class DeferredBrackets implements IBracketHandler {
         private final GenericRegistry registry;
-        private DeferredBrackets(GenericRegistry registry) { this.registry = registry; }
-        @Override public IZenSymbol resolve(IEnvironmentGlobal environment, List<Token> tokens) {
+
+        private DeferredBrackets(GenericRegistry registry) {
+            this.registry = registry;
+        }
+
+        @Override
+        public IZenSymbol resolve(IEnvironmentGlobal environment, List<Token> tokens) {
             var text = new StringBuilder();
             for (var token : tokens) text.append(token.getValue());
             String literal = text.toString();
@@ -262,7 +282,10 @@ public final class ScriptVerifier {
             return position -> new ExpressionCallStatic(position, environment, method, new ExpressionString(position, literal));
         }
     }
-    /** Real lookup target, intentionally never invoked in the no-bootstrap compilation layer. */
+
+    /**
+     * Real lookup target, intentionally never invoked in the no-bootstrap compilation layer.
+     */
     public static IItemStack item(String literal) {
         var parts = literal.split(":");
         int meta = parts.length == 3 ? Integer.parseInt(parts[2]) : 0;
@@ -271,17 +294,41 @@ public final class ScriptVerifier {
         if (item == null) throw new IllegalArgumentException("Unknown native item: " + name);
         return CraftTweakerMC.getIItemStack(new ItemStack(item, 1, meta));
     }
+
     public static ILiquidStack fluid(String literal) {
         var fluid = FluidRegistry.getFluid(literal.substring("liquid:".length()));
         if (fluid == null) throw new IllegalArgumentException("Unknown native fluid: " + literal);
         return CraftTweakerMC.getILiquidStack(new FluidStack(fluid, 1000));
     }
+
     private static final class NoBlocks implements StructureBlockResolver {
-        private IllegalArgumentException unexpected() { return new IllegalArgumentException("Core JSON must not resolve native blocks/displays"); }
-        @Override public StructurePredicate block(ResourceLocation id) { throw unexpected(); }
-        @Override public StructurePredicate state(ResourceLocation id, int meta, Map<String, String> nbt) { throw unexpected(); }
-        @Override public StructurePredicate regex(String expression) { throw unexpected(); }
-        @Override public StructureDisplay.BlockOption displayState(ResourceLocation id, int meta, Map<String, String> nbt) { throw unexpected(); }
-        @Override public List<StructureDisplay.BlockOption> displayRegex(String expression) { throw unexpected(); }
+        private IllegalArgumentException unexpected() {
+            return new IllegalArgumentException("Core JSON must not resolve native blocks/displays");
+        }
+
+        @Override
+        public StructurePredicate block(ResourceLocation id) {
+            throw unexpected();
+        }
+
+        @Override
+        public StructurePredicate state(ResourceLocation id, int meta, Map<String, String> nbt) {
+            throw unexpected();
+        }
+
+        @Override
+        public StructurePredicate regex(String expression) {
+            throw unexpected();
+        }
+
+        @Override
+        public StructureDisplay.BlockOption displayState(ResourceLocation id, int meta, Map<String, String> nbt) {
+            throw unexpected();
+        }
+
+        @Override
+        public List<StructureDisplay.BlockOption> displayRegex(String expression) {
+            throw unexpected();
+        }
     }
 }

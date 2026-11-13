@@ -13,6 +13,7 @@ import java.util.UUID;
  */
 public final class ItemDeliveryTemplates {
     public static final String DELIVERY_TAG = "PrototypeEngineeringRewardDelivery";
+
     private ItemDeliveryTemplates() {
     }
 

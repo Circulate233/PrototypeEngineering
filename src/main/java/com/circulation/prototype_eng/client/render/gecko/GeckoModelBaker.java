@@ -14,7 +14,9 @@ import javax.vecmath.Matrix4f;
 import java.util.Set;
 import java.util.function.Function;
 
-/** CPU-only hierarchy baker. Read-only SoA and cube-sized packed writes serve all three output paths. */
+/**
+ * CPU-only hierarchy baker. Read-only SoA and cube-sized packed writes serve all three output paths.
+ */
 public class GeckoModelBaker {
     private static final int WHITE = GeckoBakerMath.packColor(1, 1, 1, 1);
     private final GeckoCubeQuadVertexCache cubes = new GeckoCubeQuadVertexCache();
@@ -161,7 +163,9 @@ public class GeckoModelBaker {
 
     @FunctionalInterface
     public interface PackedVertexDataWriter {
-        /** Consume synchronously without retaining the borrowed array; a batch contains whole quads. */
+        /**
+         * Consume synchronously without retaining the borrowed array; a batch contains whole quads.
+         */
         void write(int[] data, int offset, int length);
     }
 

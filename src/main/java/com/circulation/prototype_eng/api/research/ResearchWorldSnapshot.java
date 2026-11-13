@@ -7,10 +7,8 @@ import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.research.station.ResearchStationWork;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
@@ -21,6 +19,8 @@ import java.util.UUID;
 
 /**
  * One immutable world checkpoint, including every offline player source needed for recovery.
+ * Lists are completed snapshots borrowed unchanged for this checkpoint's lifetime, including
+ * pending save retries. Producers finish populating them before handoff; consumers never mutate them.
  */
 public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchState.Snapshot> players,
                                     ObjectList<Team> teams,
@@ -43,11 +43,6 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
         if (serverTime < 0) {
             throw new IllegalArgumentException("Negative research world time");
         }
-        players = frozenList(players);
-        teams = frozenList(teams);
-        downloads = frozenList(downloads);
-        downloadReceipts = frozenList(downloadReceipts);
-        diskImports = frozenList(diskImports);
         var playerIds = new ObjectOpenHashSet<UUID>(players.size());
         for (var player : players) {
             if (!playerIds.add(player.playerUuid())) {
@@ -144,14 +139,6 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
         }
     }
 
-    private static <T> ObjectList<T> frozenList(ObjectList<T> values) {
-        var copy = new ObjectArrayList<>(Objects.requireNonNull(values));
-        for (var value : copy) {
-            Objects.requireNonNull(value);
-        }
-        return ObjectLists.unmodifiable(copy);
-    }
-
     private static <T> ObjectSet<T> frozenSet(ObjectSet<T> values) {
         var copy = new ObjectLinkedOpenHashSet<>(Objects.requireNonNull(values));
         for (var value : copy) {
@@ -187,7 +174,6 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
             blacklist = frozenSet(blacklist);
             Objects.requireNonNull(research);
             Objects.requireNonNull(queue);
-            manualSessions = frozenList(manualSessions);
             Objects.requireNonNull(stationWork);
             if (!teamId.equals(research.teamId()) || !teamId.equals(queue.teamId())) {
                 throw new IllegalArgumentException("Research team sources have different owners");

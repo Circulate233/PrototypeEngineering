@@ -1,59 +1,38 @@
 package com.circulation.prototype_eng.structure.tool;
 
-import it.unimi.dsi.fastutil.objects.Object2IntMap;
-
+import ae2.api.orientation.BlockOrientation;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewPath;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
-import ae2.api.orientation.BlockOrientation;
-import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
-import com.circulation.prototype_eng.api.client.structure.StructurePreviewPath;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectRBTreeMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Map;
 import java.util.UUID;
 
-/** Original builder binding, task states and per-material choice persistence. */
+/**
+ * Original builder binding, task states and per-material choice persistence.
+ */
 public final class BuilderState {
-    public enum Setting {
-        REQUIRE_MATERIALS("BuilderRequireMaterials", true), REQUIRE_SPACE("BuilderRequireSpace", true),
-        REPLACE_FLUIDS("BuilderReplaceFluids", false), WAIT_MATERIALS("BuilderWaitMaterials", false);
-        public static final Setting[] VALUES = values();
-        public final String key;
-        private final boolean fallback;
-
-        Setting(String key, boolean fallback) { this.key = key; this.fallback = fallback; }
-
-        public boolean available(NBTTagCompound tag) {
-            return switch (this) {
-                case WAIT_MATERIALS -> !REQUIRE_MATERIALS.enabled(tag);
-                case REPLACE_FLUIDS -> REQUIRE_SPACE.enabled(tag);
-                default -> true;
-            };
-        }
-
-        public boolean enabled(NBTTagCompound tag) {
-            return available(tag) && (tag.hasKey(key) ? tag.getBoolean(key) : fallback);
-        }
-
-        public void toggle(NBTTagCompound tag) {
-            if (!available(tag)) return;
-            tag.setBoolean(key, !enabled(tag));
-            if (this == REQUIRE_MATERIALS && enabled(tag)) tag.setBoolean(WAIT_MATERIALS.key, false);
-            if (this == REQUIRE_SPACE && !enabled(tag)) tag.setBoolean(REPLACE_FLUIDS.key, false);
-        }
+    private BuilderState() {
     }
 
-    public static int meMode(NBTTagCompound tag) { return Math.clamp(tag.getInteger("BuilderMeMode"), 0, 2); }
+    public static int meMode(NBTTagCompound tag) {
+        return Math.clamp(tag.getInteger("BuilderMeMode"), 0, 2);
+    }
 
-    public static void cycleMeMode(NBTTagCompound tag) { tag.setInteger("BuilderMeMode", (meMode(tag) + 1) % 3); }
+    public static void cycleMeMode(NBTTagCompound tag) {
+        tag.setInteger("BuilderMeMode", (meMode(tag) + 1) % 3);
+    }
+
     public static void toggleMeUse(NBTTagCompound tag) {
         tag.setInteger("BuilderMeMode", meMode(tag) > 0 ? 0 : 1);
     }
@@ -61,9 +40,6 @@ public final class BuilderState {
     public static void toggleMeCraft(NBTTagCompound tag) {
         int mode = meMode(tag);
         if (mode > 0) tag.setInteger("BuilderMeMode", mode == 2 ? 1 : 2);
-    }
-
-    private BuilderState() {
     }
 
     public static NBTTagCompound data(ItemStack stack) {
@@ -164,15 +140,19 @@ public final class BuilderState {
     }
 
     public static @Nullable BlockPos cellPosition(String key) {
-        if (key.length() > 35 || !key.matches("-?(0|[1-9][0-9]{0,9}),-?(0|[1-9][0-9]{0,9}),-?(0|[1-9][0-9]{0,9})")) return null;
+        if (key.length() > 35 || !key.matches("-?(0|[1-9][0-9]{0,9}),-?(0|[1-9][0-9]{0,9}),-?(0|[1-9][0-9]{0,9})"))
+            return null;
         var parts = key.split(",");
         long x = Long.parseLong(parts[0]), y = Long.parseLong(parts[1]), z = Long.parseLong(parts[2]);
-        if (x < Integer.MIN_VALUE || x > Integer.MAX_VALUE || y < Integer.MIN_VALUE || y > Integer.MAX_VALUE || z < Integer.MIN_VALUE || z > Integer.MAX_VALUE) return null;
+        if (x < Integer.MIN_VALUE || x > Integer.MAX_VALUE || y < Integer.MIN_VALUE || y > Integer.MAX_VALUE || z < Integer.MIN_VALUE || z > Integer.MAX_VALUE)
+            return null;
         var result = new BlockPos((int) x, (int) y, (int) z);
         return cellKey(result).equals(key) ? result : null;
     }
 
-    /** Length-prefixed material identity cannot collide with newlines or option-map contents. */
+    /**
+     * Length-prefixed material identity cannot collide with newlines or option-map contents.
+     */
     public static String cellValue(StructureDisplay display, int option, BlockOrientation orientation) {
         return orientation.name() + ":" + display.key().length() + ":" + display.key() + optionKey(display.options().get(option));
     }
@@ -188,7 +168,8 @@ public final class BuilderState {
 
     private static int cellOption(NBTTagCompound tag, StructureDisplay display, BlockPos position, BlockOrientation orientation) {
         var saved = tag.getCompoundTag("CellMaterialSelections").getCompoundTag(cellKey(position));
-        if (!saved.getString("Material").equals(display.key()) || !saved.getString("Orientation").equals(orientation.name())) return -1;
+        if (!saved.getString("Material").equals(display.key()) || !saved.getString("Orientation").equals(orientation.name()))
+            return -1;
         var option = saved.getString("Option");
         for (int index = 0; index < display.options().size(); index++)
             if (optionKey(display.options().get(index)).equals(option)) return index;
@@ -200,23 +181,43 @@ public final class BuilderState {
         return local < 0 ? choice(tag, display) : display.options().get(local);
     }
 
-    public static Map<BlockPos, StructurePreviewSettings.CellChoice> cellChoices(NBTTagCompound tag, Map<BlockPos, StructureDisplay> displays,
-                                                                            BlockOrientation orientation) {
-        var choices = new Object2ObjectOpenHashMap<BlockPos, StructurePreviewSettings.CellChoice>();
-        displays.forEach((position, display) -> {
-            if (display == null) return;
+    public static BlockPos2ObjectMap<StructurePreviewSettings.CellChoice> cellChoices(NBTTagCompound tag, BlockPos2ObjectMap<StructureDisplay> displays,
+                                                                                      BlockOrientation orientation) {
+        var choices = new BlockPos2ObjectMap<StructurePreviewSettings.CellChoice>();
+        for (var iterator = displays.fastIterator(); iterator.hasNext(); ) {
+            var entry = iterator.next();
+            var display = entry.getValue();
+            if (display == null) continue;
+            var position = BlockPos.fromLong(entry.getLongKey());
             int option = cellOption(tag, display, position, orientation);
-            if (option >= 0) choices.put(position.toImmutable(), new StructurePreviewSettings.CellChoice(display, option));
-        });
+            if (option >= 0)
+                choices.put(entry.getLongKey(), new StructurePreviewSettings.CellChoice(display, option));
+        }
         return choices;
     }
 
-    /** Construction keys identify occurrences, so two uses of one shared child remain independent. */
+    /**
+     * Construction keys identify occurrences, so two uses of one shared child remain independent.
+     */
     public static @Nullable StructurePreviewPath slicePath(String key) {
-        if (key.length() > 8192 || !key.matches("0(?:/(?:0|[1-9][0-9]{0,4}))*")) return null;
+        return slicePath(key, true);
+    }
+
+    private static @Nullable StructurePreviewPath slicePath(String key, boolean createPath) {
+        if (key.isEmpty() || key.length() > 8192 || key.charAt(0) != '0') return null;
         var path = StructurePreviewPath.ROOT;
-        var edges = key.split("/");
-        for (int index = 1; index < edges.length; index++) path = path.child(Integer.parseInt(edges[index]));
+        for (int index = 1; index < key.length(); ) {
+            if (key.charAt(index++) != '/' || index == key.length()) return null;
+            int start = index;
+            int child = 0;
+            while (index < key.length() && key.charAt(index) != '/') {
+                char digit = key.charAt(index++);
+                if (digit < '0' || digit > '9' || index - start > 5) return null;
+                child = child * 10 + digit - '0';
+            }
+            if (index == start || index - start > 1 && key.charAt(start) == '0') return null;
+            if (createPath) path = path.child(child);
+        }
         return path;
     }
 
@@ -232,27 +233,71 @@ public final class BuilderState {
         var result = new Object2IntOpenHashMap<String>();
         var saved = tag.getCompoundTag("SliceSelections");
         for (var key : saved.getKeySet())
-            if (saved.hasKey(key, 3) && saved.getInteger(key) >= 0 && slicePath(key) != null) result.put(key, saved.getInteger(key));
+            if (saved.hasKey(key, 3) && saved.getInteger(key) >= 0 && slicePath(key, false) != null)
+                result.put(key, saved.getInteger(key));
         return result;
     }
 
     public static Object2IntMap<StructurePreviewPath> previewSlices(NBTTagCompound tag) {
         var result = new Object2IntOpenHashMap<StructurePreviewPath>();
-        sliceCounts(tag).forEach((key, count) -> result.put(slicePath(key), count));
+        var saved = tag.getCompoundTag("SliceSelections");
+        for (var key : saved.getKeySet()) {
+            if (!saved.hasKey(key, 3)) continue;
+            int count = saved.getInteger(key);
+            if (count < 0) continue;
+            var path = slicePath(key);
+            if (path != null) result.put(path, count);
+        }
         return result;
     }
 
-    /** The container validates this occurrence's min/max against the current server catalog first. */
+    /**
+     * The container validates this occurrence's min/max against the current server catalog first.
+     */
     public static void chooseSlice(NBTTagCompound tag, String key, int count) {
-        if (slicePath(key) == null || count < 0) throw new IllegalArgumentException("Invalid slice selection");
+        if (slicePath(key, false) == null || count < 0) throw new IllegalArgumentException("Invalid slice selection");
         if (!tag.hasKey("SliceSelections", 10)) tag.setTag("SliceSelections", new NBTTagCompound());
         tag.getCompoundTag("SliceSelections").setInteger(key, count);
+    }
+
+    public enum Setting {
+        REQUIRE_MATERIALS("BuilderRequireMaterials", true), REQUIRE_SPACE("BuilderRequireSpace", true),
+        REPLACE_FLUIDS("BuilderReplaceFluids", false), WAIT_MATERIALS("BuilderWaitMaterials", false);
+        public static final Setting[] VALUES = values();
+        public final String key;
+        private final boolean fallback;
+
+        Setting(String key, boolean fallback) {
+            this.key = key;
+            this.fallback = fallback;
+        }
+
+        public boolean available(NBTTagCompound tag) {
+            return switch (this) {
+                case WAIT_MATERIALS -> !REQUIRE_MATERIALS.enabled(tag);
+                case REPLACE_FLUIDS -> REQUIRE_SPACE.enabled(tag);
+                default -> true;
+            };
+        }
+
+        public boolean enabled(NBTTagCompound tag) {
+            return available(tag) && (tag.hasKey(key) ? tag.getBoolean(key) : fallback);
+        }
+
+        public void toggle(NBTTagCompound tag) {
+            if (!available(tag)) return;
+            tag.setBoolean(key, !enabled(tag));
+            if (this == REQUIRE_MATERIALS && enabled(tag)) tag.setBoolean(WAIT_MATERIALS.key, false);
+            if (this == REQUIRE_SPACE && !enabled(tag)) tag.setBoolean(REPLACE_FLUIDS.key, false);
+        }
     }
 
     public enum State {
         IDLE, BUILDING, PAUSED_BUILDING, DISASSEMBLING, PAUSED_DISASSEMBLING;
 
-        /** Shared declaration order; callers must not modify this array. */
+        /**
+         * Shared declaration order; callers must not modify this array.
+         */
         public static final State[] VALUES = values();
 
         public boolean paused() {

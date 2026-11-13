@@ -2,8 +2,8 @@ package com.circulation.prototype_eng.integration.crafttweaker;
 
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.data.DataComponents;
-import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.ControllerInventory;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
 import crafttweaker.annotations.ZenRegister;
 import crafttweaker.api.item.IItemStack;
 import crafttweaker.api.minecraft.CraftTweakerMC;
@@ -16,7 +16,9 @@ import stanhebben.zenscript.annotations.ZenMethod;
 import java.util.List;
 import java.util.Objects;
 
-/** One reusable script view per attached machine; inventory access requires the server owner. */
+/**
+ * One reusable script view per attached machine; inventory access requires the server owner.
+ */
 @ZenRegister
 @ZenClass("mods.prototype_eng.ControllerContext")
 @SuppressWarnings("unused") // Script methods are resolved through ZenScript annotations.

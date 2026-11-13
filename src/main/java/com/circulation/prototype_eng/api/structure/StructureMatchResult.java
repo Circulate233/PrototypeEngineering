@@ -4,7 +4,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
-/** Complete matching outcome; unavailable facts grant no new structure publication authority. */
+/**
+ * Complete matching outcome; unavailable facts grant no new structure publication authority.
+ */
 public record StructureMatchResult(StructurePredicateResult status, @Nullable StructureMatch match) {
     public StructureMatchResult {
         Objects.requireNonNull(status);

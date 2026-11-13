@@ -36,7 +36,9 @@ public final class MinecraftDataCenterPersistence implements MachineDataCenterPe
         return target(owner) != null;
     }
 
-    /** The native storage attachment uses the same physical target as synchronous persistence. */
+    /**
+     * The native storage attachment uses the same physical target as synchronous persistence.
+     */
     public static void markDirty(MachineInstance owner) {
         Objects.requireNonNull(owner.lifecycle()).host().requireServerThread();
         Objects.requireNonNull(target(owner), "Original Anvil database host is unavailable").tile().markDirty();
@@ -58,15 +60,14 @@ public final class MinecraftDataCenterPersistence implements MachineDataCenterPe
         var lifecycle = Objects.requireNonNull(owner.lifecycle());
         var location = lifecycle.host().identity();
         if (!(lifecycle.host().world() instanceof WorldServer world) || lifecycle.host().worldIdentity() != world
-            || world.provider.getDimension() != location.dimension() || world.getMinecraftServer() == null
-            || world.getMinecraftServer().getWorld(location.dimension()) != world
+            || world.provider.getDimension() != location.dimension()
+            || lifecycle.host().server().getWorld(location.dimension()) != world
             || !(world.getChunkProvider().chunkLoader instanceof AnvilChunkLoader loader)) return null;
         var chunk = world.getChunkProvider().getLoadedChunk(location.controllerPos().getX() >> 4, location.controllerPos().getZ() >> 4);
         if (chunk == null) return null;
         var tile = world.getTileEntity(location.controllerPos());
-        if (!(tile instanceof MachineControllerHost controller) || tile.isInvalid() || tile.getWorld() != world
-            || !tile.getPos().equals(location.controllerPos()) || controller.blockEntity() != tile
-            || controller.machine() != owner || controller.type() != owner.type()) return null;
+        if (!(tile instanceof MachineControllerHost controller) || tile.isInvalid()
+            || controller.machine() != owner) return null;
         return new Target(world, tile, controller, chunk, loader, location);
     }
 

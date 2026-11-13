@@ -4,7 +4,6 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
@@ -18,6 +17,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
 /**
+ * Published collections are read-only by contract; consumers must not modify them.
  * Original reversible batch and source lanes, with owner-local resumable preparation/settlement.
  * A budget pause retains the exact participants and cursor, never a lock or scope. A source action
  * is counted until its finally has actually exited; state alone is not a worker-exit proof.
@@ -31,8 +31,7 @@ public final class ResourceBatch {
     private final ReferenceOpenHashSet<ResourceReservation> tokenIdentities = new ReferenceOpenHashSet<>();
     private final ReferenceOpenHashSet<ReversibleTransaction> businessIdentities = new ReferenceOpenHashSet<>();
     private final Reference2ObjectLinkedOpenHashMap<StorageContext, Source> sourceDomains = new Reference2ObjectLinkedOpenHashMap<>();
-    private final ObjectArrayList<Source> sourceList = new ObjectArrayList<>();
-    private final ObjectList<Source> sources = ObjectLists.unmodifiable(sourceList);
+    private final ObjectArrayList<Source> sources = new ObjectArrayList<>();
     private final ObjectArrayList<Participant> transactions = new ObjectArrayList<>();
     private StorageFence fence;
     private ObjectArrayList<Savepoint> savepoints = new ObjectArrayList<>();
@@ -126,7 +125,7 @@ public final class ResourceBatch {
         if (source == null) {
             source = new Source(context);
             sourceDomains.put(context, source);
-            sourceList.add(source);
+            sources.add(source);
         }
         source.tokens.add(new Token(token));
         source.refreshConfirmed();

@@ -10,7 +10,9 @@ import team.chisel.ctm.client.texture.render.TextureCTM;
 import team.chisel.ctm.client.texture.type.TextureTypeCTM;
 import team.chisel.ctm.client.util.CTMLogic;
 
-/** Native CTM artwork and neighbor logic, with a model-derived shared casing substrate. */
+/**
+ * Native CTM artwork and neighbor logic, with a model-derived shared casing substrate.
+ */
 @TextureType("prototype_eng:casing")
 @SuppressWarnings("unchecked") // CTM's generic factory conflicts with TextureTypeCTM's concrete override.
 public final class CasingTextureType extends TextureTypeCTM {

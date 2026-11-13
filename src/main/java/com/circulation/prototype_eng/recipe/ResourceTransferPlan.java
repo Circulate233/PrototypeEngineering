@@ -1,8 +1,7 @@
 package com.circulation.prototype_eng.recipe;
 
-import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
-
 import ae2.api.stacks.GenericStack;
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.util.ResourceLocation;

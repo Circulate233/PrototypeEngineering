@@ -1,11 +1,11 @@
 package com.circulation.prototype_eng.api.structure;
 
 import ae2.api.orientation.BlockOrientation;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Map;
 
 /**
  * External structure-shape responsibility. Definitions are immutable; transformed shapes must
@@ -23,8 +23,12 @@ public interface MachineStructure {
         // External render/preview consumers use this preserved visual flag.
     boolean hideWorldBlocks();
 
-    /** Presentation of local pattern cells, owned by this immutable shape declaration. */
-    default Map<BlockPos, StructureDisplay> displays() { return Map.of(); }
+    /**
+     * Presentation of local pattern cells, owned by this immutable shape declaration.
+     */
+    default BlockPos2ObjectMap<StructureDisplay> displays() {
+        return BlockPos2ObjectMap.emptyMap();
+    }
 
     MachineStructure transform(StructureTransform rotation);
 
@@ -44,7 +48,9 @@ public interface MachineStructure {
         return false;
     }
 
-    /** Unknown shapes retain their exact existing virtual operations as cooperative callbacks. */
+    /**
+     * Unknown shapes retain their exact existing virtual operations as cooperative callbacks.
+     */
     default StructureOperation<MachineStructure> beginTransform(StructureTransform rotation) {
         return StructureOperation.call(() -> transform(rotation));
     }

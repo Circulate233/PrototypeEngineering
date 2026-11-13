@@ -10,7 +10,9 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 
-/** Exact controller or external anchor captured at the construction owner's boundary. */
+/**
+ * Exact controller or external anchor captured at the construction owner's boundary.
+ */
 public record ConstructionTarget(World world, BlockPos position, ResourceLocation binding, ResourceLocation structure,
                                  LocalizationEnum name, BlockOrientation orientation, boolean formed,
                                  @Nullable MachineControllerHost controller, IBlockState anchorState) {
@@ -36,7 +38,6 @@ public record ConstructionTarget(World world, BlockPos position, ResourceLocatio
         if (controller != null)
             return world.getTileEntity(position) == controller && !controller.blockEntity().isInvalid()
                 && controller.type().id().equals(binding) && controller.orientation() == orientation;
-        return world.getBlockState(position).equals(anchorState)
-            && StructureConstructionRegistry.INSTANCE.find(anchorState) != null;
+        return world.getBlockState(position).equals(anchorState);
     }
 }

@@ -6,29 +6,29 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistr
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
+import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
+import com.circulation.prototype_eng.api.research.ResearchPermissionContext;
+import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
 import com.circulation.prototype_eng.api.research.ResearchRegistrationEvent;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchServerConfiguration;
 import com.circulation.prototype_eng.api.research.ResearchServerConfigurationEvent;
-import com.circulation.prototype_eng.api.research.ResearchPermissionContext;
-import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
 import com.circulation.prototype_eng.api.research.ResearchUnlockQuery;
-import com.circulation.prototype_eng.api.research.TeamResearchView;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
+import com.circulation.prototype_eng.api.research.TeamResearchView;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
-import com.circulation.prototype_eng.api.research.reward.RewardChild;
-import com.circulation.prototype_eng.api.research.reward.RewardEventKey;
 import com.circulation.prototype_eng.api.research.reward.ResearchRewardContext;
+import com.circulation.prototype_eng.api.research.reward.RewardChild;
 import com.circulation.prototype_eng.api.research.reward.RewardEventAction;
-import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
+import com.circulation.prototype_eng.api.research.reward.RewardEventKey;
 import com.circulation.prototype_eng.integration.crafttweaker.network.ZenNetworkRecipeCallback;
 import com.circulation.prototype_eng.integration.crafttweaker.network.ZenNetworkRecipeContext;
-import com.circulation.prototype_eng.integration.crafttweaker.network.ZenNetworkRequirements;
 import com.circulation.prototype_eng.integration.crafttweaker.network.ZenNetworkRecipes;
-import com.circulation.prototype_eng.integration.crafttweaker.resource.ZenComputingResource;
-import com.circulation.prototype_eng.integration.crafttweaker.resource.ZenComputingResources;
+import com.circulation.prototype_eng.integration.crafttweaker.network.ZenNetworkRequirements;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipe;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRequirement;
+import com.circulation.prototype_eng.integration.crafttweaker.resource.ZenComputingResource;
+import com.circulation.prototype_eng.integration.crafttweaker.resource.ZenComputingResources;
 import crafttweaker.api.data.IData;
 import crafttweaker.zenscript.expand.ExpandAnyDict;
 import crafttweaker.zenscript.expand.ExpandBool;
@@ -43,11 +43,11 @@ import org.junit.jupiter.api.Test;
 import stanhebben.zenscript.ZenModule;
 import stanhebben.zenscript.ZenParsedFile;
 import stanhebben.zenscript.ZenTokener;
+import stanhebben.zenscript.annotations.ZenClass;
+import stanhebben.zenscript.annotations.ZenMethod;
 import stanhebben.zenscript.impl.GenericCompileEnvironment;
 import stanhebben.zenscript.impl.GenericErrorLogger;
 import stanhebben.zenscript.impl.GenericRegistry;
-import stanhebben.zenscript.annotations.ZenClass;
-import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -57,9 +57,16 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ZenResearchNetworkBridgeTest {
+    private static ZenResearch definitionWrapper() {
+        return ZenResearch.create("ct_research:late", 1, false, "ITEM_ONLY", 0,
+            new ZenResearchStage[]{ZenResearchStage.create(1, 1, 0, ZenResearchFormula.create())}, ZenResearch.alwaysAllowed());
+    }
+
     @Test
     void realCompilerRegistersResearchAndPermissionsThenAdmitsQueueAndRetainsExactRecipeGates() throws Exception {
         Harness.recipe = ZenRecipe.create("ct_research:recipe", "old", 5, new ZenRequirement[0]);
@@ -71,7 +78,8 @@ class ZenResearchNetworkBridgeTest {
             ZenResearchStartContext.class, ZenResearchReward.class, ZenResearchRewardCallback.class,
             ZenResearchRewardEvent.class, ZenResearchPermissionCallback.class, ZenResearchPermissionContext.class,
             ZenResearchServer.class, ZenNetworkRecipeCallback.class, ZenNetworkRecipeContext.class,
-            ZenNetworkRequirements.class, ZenRecipe.class, ZenRequirement.class, IData.class, Harness.class)) registry.registerNativeClass(type);
+            ZenNetworkRequirements.class, ZenRecipe.class, ZenRequirement.class, IData.class, Harness.class))
+            registry.registerNativeClass(type);
         for (var expansion : List.of(ExpandAnyDict.class, ExpandDataStringDict.class, ExpandInt.class, ExpandBool.class, ExpandString.class))
             registry.registerExpansion(expansion);
         var classes = new Object2ObjectOpenHashMap<String, byte[]>();
@@ -104,14 +112,18 @@ class ZenResearchNetworkBridgeTest {
         var parsed = new ZenParsedFile("research.zs", "ResearchBridgeScript", new ZenTokener(new StringReader(script), environment, "research.zs", false), global);
         ZenModule.compileScripts("research.zs", List.of(parsed), global, false);
         assertEquals("", output.toString(StandardCharsets.UTF_8));
-        ZenModule.classes.clear(); ZenModule.loadedClasses.clear();
+        ZenModule.classes.clear();
+        ZenModule.loadedClasses.clear();
         Objects.requireNonNull(new ZenModule(classes, getClass().getClassLoader()).getMain()).run();
         var resources = new NetworkResourceRegistry();
-        DefinitionRegistrations.dispatch(new NetworkResourceRegistrationEvent(resources)); resources.freeze();
+        DefinitionRegistrations.dispatch(new NetworkResourceRegistrationEvent(resources));
+        resources.freeze();
         var research = new ResearchRegistry();
-        DefinitionRegistrations.dispatch(new ResearchRegistrationEvent(research)); research.freeze(resources);
+        DefinitionRegistrations.dispatch(new ResearchRegistrationEvent(research));
+        research.freeze(resources);
         var configuration = new ResearchServerConfiguration();
-        DefinitionRegistrations.dispatch(new ResearchServerConfigurationEvent(configuration)); configuration.freeze();
+        DefinitionRegistrations.dispatch(new ResearchServerConfigurationEvent(configuration));
+        configuration.freeze();
         var definition = research.require(new ResourceLocation("ct_research:research"));
         var compute = resources.require(new ResourceLocation("ct_research:compute"));
         assertEquals(3000000000L, definition.totalResourceDemandForLevel(1).getLong(compute));
@@ -146,17 +158,20 @@ class ZenResearchNetworkBridgeTest {
         assertThrows(IllegalStateException.class, () -> definitionWrapper().register());
     }
 
-    private static ZenResearch definitionWrapper() {
-        return ZenResearch.create("ct_research:late", 1, false, "ITEM_ONLY", 0,
-            new ZenResearchStage[]{ZenResearchStage.create(1, 1, 0, ZenResearchFormula.create())}, ZenResearch.alwaysAllowed());
-    }
-
     @SuppressWarnings("unused") // Called by the real ZenScript compiler fixture.
     @ZenClass("tests.prototype_eng.ResearchHarness")
     public static final class Harness {
         private static ZenRecipe recipe;
         private static ZenNetworkRecipeCallback extension;
-        @ZenMethod public static ZenRecipe recipe() { return Objects.requireNonNull(recipe); }
-        @ZenMethod public static void extension(ZenNetworkRecipeCallback value) { extension = Objects.requireNonNull(value); }
+
+        @ZenMethod
+        public static ZenRecipe recipe() {
+            return Objects.requireNonNull(recipe);
+        }
+
+        @ZenMethod
+        public static void extension(ZenNetworkRecipeCallback value) {
+            extension = Objects.requireNonNull(value);
+        }
     }
 }

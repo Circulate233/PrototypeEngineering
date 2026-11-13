@@ -120,7 +120,7 @@ B 新增 23 项行为（3 suites），最终受影响正常 Gradle 187 tests / 2
 
 客户端 Java 入口为 `StructurePreviews.client()`，沿 ClientProxy 惰性创建服务并注册实际 ClientTick END / RenderWorldLast 适配器；独立 `StructurePreviews(ClientStructureCatalog)` 供纯逻辑消费。仅使用服务端已完整发布的 StructureCatalogView，不读取本地 JSON、定义工厂或 matcher。调用 `request(id, settings)` 后按 `Request.advance(maxSteps)` 增量展开，只有 READY 交付完整不可变 model；BUILDING 不泄露半成品，旧代/关闭后的请求为 STALE，异常保留 FAILED 与原 cause。默认服务使用按权威代和设置的 32 项 LRU；原单参 StructurePreviewCache 构造保持无限制缓存契约。
 
-StructurePreviewSettings 保存根朝向、按 StructurePreviewPath 子边 occurrence 路径选择的切片数，以及 occurrence/cell-visit 上限；未选择使用服务端 min，选择夹在 min/max 内。展开保持模板/切片层级及每次子边 occurrence，不能以共享 node/ID 合并重复实例；全部相对坐标按根朝向旋转。零片 children 沿 base - sliceOffset，所有层仅排除固定控制器原点，坐标重叠以遍历后项覆盖。OPAQUE occurrence 明确记录，不猜几何。Model 同时交付 cells、包围盒、occurrences、LocalizationEnum 名字和全结构 BOM；Layer 仅筛选一个相对 Y 平面，不改变 BOM。BOM 以完整冻结 StructureDisplay（候选块/meta/NBT/tileNbt/key）等价值累计 long，fastutil addTo；缺表示以 null 行明确未知，不合并只有相同展示 key 的不同候选。Builder 自己拥有私有列表，单 owner 构造后一次 freeze 为零复制只读结果，冻结后拒绝任何追加。
+StructurePreviewSettings 保存根朝向、按 StructurePreviewPath 子边 occurrence 路径选择的切片数，以及 occurrence/cell-visit 上限；未选择使用服务端 min，选择夹在 min/max 内。展开保持模板/切片层级及每次子边 occurrence，不能以共享 node/ID 合并重复实例；全部相对坐标按根朝向旋转。零片 children 沿 base - sliceOffset，所有层仅排除固定控制器原点，坐标重叠以遍历后项覆盖。OPAQUE occurrence 明确记录，不猜几何。Model 同时交付 cells、包围盒、occurrences、LocalizationEnum 名字和全结构 BOM；Layer 仅筛选一个相对 Y 平面，不改变 BOM。BOM 以完整冻结 StructureDisplay（候选块/meta/NBT/tileNbt/key）等价值累计 long，fastutil addTo；缺表示以 null 行明确未知，不合并只有相同展示 key 的不同候选。Builder 自己拥有私有列表，构造完成后直接移交列表，生产者和消费者按契约不再修改；不另设owner/frozen守卫。
 
 `project(id, settings, anchor, options)` / `moveProjection(anchor)` / `stopProjection()` 已接实际世界投影意图；Style 提供 BOX_OUTLINE、TRANSLUCENT_BOX、BOX_AND_OUTLINE。原生实现以 CPU BufferBuilder 绘制单位盒轮廓或半透明盒，保存/恢复使用的 GL 状态，支持距离、相对层、每 tick 展开/观察与每 frame 访问额度及隐藏已观察 DISPLAY_MATCH。保留普通白色轮廓和未加载黄色轮廓。展示观察为 DISPLAY_MATCH/MISSING/DIFFERENT/UNLOADED/UNKNOWN：比较权威 display 的代表 state；不运行 matcher，也不证明成型或全量匹配。缺注册 ID 先 containsKey，禁止 Forge 默认 AIR 回退冒充有效代表；观察使用 isBlockLoaded(position, false)，不强加载或将 EmptyChunk 当已加载；NBT/tileNbt 无法代表性验证时明确 UNKNOWN。
 
@@ -144,7 +144,7 @@ C 新增 26 项纯行为（2 suites），focused 26 tests / 2 suites、扩大受
 
 ## D2：AEBaseGui、交互、JEI 与 owned TESR
 
-`StructurePreviewGui<C extends AEBaseContainer>` 直接继承 `AEBaseGui<C>`，父界面构造器接收 `AEBaseGui<C>`；独立入口 `standalone(...)` 返回 `StructurePreviewGui<StructurePreviewContainer>`。子界面必须保留父容器的类型参数，禁止固定成 `AEBaseContainer` 或使用原始类型，否则调用方会失去父容器类型检查。公开 StructurePreviewScreens 与 concrete StructurePreviewScene/Panel 供 MachineGui 及不继承默认页的 RecipePoolJeiPage 组合。机器子页复用准确原 Container/window；HEI embedded wrapper 和机器独立 structure category 都接实际目录/机器关联。预览通过AE原生子页接口打开和返回，即时父页包括HEI RecipesGui。GuiOpen和初始化事件沿Minecraft原生流程，不再注入全局关屏、输入和更新，也不维护失效界面黑名单。viewer阻止库存点击/AE滚轮/MouseTweaks和HEI槽位，原Slot/x/y/enabled快照在取消和返回重入中恢复；Back/Esc/背包等待已消费按下释放，embedded按准确panel/host刷新drag并跨普通关屏消费准确button的一次up，新同button down撤销旧up凭据。
+`GuiStructurePreview<C extends AEBaseContainer>` 直接继承 `AEBaseGui<C>`，父界面构造器接收 `AEBaseGui<C>`；独立入口 `standalone(...)` 返回 `GuiStructurePreview<ContainerStructurePreview>`。子界面必须保留父容器的类型参数，禁止固定成 `AEBaseContainer` 或使用原始类型，否则调用方会失去父容器类型检查。公开 StructurePreviewScreens 与 concrete StructurePreviewScene/Panel 供 GuiMachine 及不继承默认页的 RecipePoolJeiPage 组合。机器子页复用准确原 Container/window；HEI embedded wrapper 和机器独立 structure category 都接实际目录/机器关联。预览通过AE原生子页接口打开和返回，即时父页包括HEI RecipesGui。GuiOpen和初始化事件沿Minecraft原生流程，不再注入全局关屏、输入和更新，也不维护失效界面黑名单。viewer阻止库存点击/AE滚轮/MouseTweaks和HEI槽位，原Slot/x/y/enabled快照在取消和返回重入中恢复；Back/Esc/背包等待已消费按下释放，embedded按准确panel/host刷新drag并跨普通关屏消费准确button的一次up，新同button down撤销旧up凭据。
 
 相机轨道/平移/缩放/平滑/自转、相对层、同viewport的scissor/ray/点击选择及完整long BOM已接。代表项以完整StructureDisplay选择，切片以StructurePreviewPath的子边occurrence选择，不合并同ID共享节点；层不改变全BOM。View沿Request.advance剩余visits逐cell/BOM/membership/prune续办，完整索引后才publish；观察只保存稀疏已见状态及knownCounts，unknown由完整line.count扣除。native名字缓存按model/代表项/resource与语言重载失效，材料rows按token/count/name/query/sort/filter/scan复用，稳定帧不重建/重排。变更时全BOM排序、单次点击全cell精确拾取与第三方native回调仍是显式CPU边界。mesh与overlay样本游标独立且保留D1准备进展。新ProjectionOrientations直接复用AE rotateClockwiseAround(axis.getOpposite())，适配实际v1.1.0正UP→WEST到预览契约NORTH/UP→EAST；C/D1既有变换未改。
 
@@ -194,11 +194,11 @@ D在原D2 Scene/Panel/AEBaseGui/HEI模型上显式传可选MachineType，形成�
 
 ## 读取与线程
 
-`StructureQuery<T>` 是显式事实描述符。reader 只能在服务端捕获，copier 必须在捕获和交付时隔离可变值；不可变值可 identity copy。第四个构造参数为显式等价比较器，不能默认外部值的 equals 足够。比较器收到非 null 的隔离副本，true 必须保证该描述符的所有消费者无法区分两值，false 可以保守触发重新匹配；null/缺失由框架单独比较。计划通过 descriptor 对象身份保持类型，并拒绝同 ID 的不同 descriptor。查询不能把 World、TileEntity、活动 handler 或执行许可当作事实返回。
+`StructureQuery<T>` 是显式事实描述符。reader 只能在服务端捕获，copier 在捕获时隔离可变世界值；不可变值可 identity copy。谓词读取和比较回调按只读契约直接借用已捕获值，不再次复制。第四个构造参数为显式等价比较器，不能默认外部值的 equals 足够。比较器收到非 null 的已捕获值，且不得修改它们，true 必须保证该描述符的所有消费者无法区分两值，false 可以保守触发重新匹配；null/缺失由框架单独比较。计划通过 descriptor 对象身份保持类型，并拒绝同 ID 的不同 descriptor。查询不能把 World、TileEntity、活动 handler 或执行许可当作事实返回。
 
 `StructureReadPlan` 冻结全部潜在 area/query-position 读取，按声明顺序去重。模板与切片提前声明潜在分支，验证器也必须声明 pattern 之外的读取。潜在范围不是额外的成型条件：某条未使用远端分支未加载，不会提前否决较短的有效结构。
 
-`WorldStructureSource` 复用现有 `MachineLifecycleHost` 校验服务端线程，以 `isAreaLoaded(..., false)` 检查区域；不强加载。`StructureSnapshot.capture` 同步完成读取后不再保留 source。工作线程只消费快照，不能临时回到 world 补未知读取。NBT 在捕获及每次交付时深拷贝。
+`WorldStructureSource` 复用现有 `MachineLifecycleHost` 校验服务端线程，以 `isAreaLoaded(..., false)` 检查区域；不强加载。`StructureSnapshot.capture` 同步完成读取后不再保留 source。工作线程只消费快照，不能临时回到 world 补未知读取。NBT 仅在捕获时深拷贝；读取者必须保持只读。
 
 快照区分三种情况：已捕获的缺失值（如无 TE 的 null）、未加载区域、捕获异常。普通未加载的所需谓词为不匹配；直接读取未声明/不可用位置是调用错误。潜在分支上的 RuntimeException 保留为诊断事实，若实际访问该事实则抛出，绝不转换为空气/null/false；未访问的分支不因此改变结果。JVM Error 立即中断捕获。该错误处理不表示调用者可忽略 `failures()` 诊断或继续使用已失败的真实运行宿主。
 

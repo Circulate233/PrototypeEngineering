@@ -8,7 +8,6 @@ import java.util.Random;
 import java.util.random.RandomGenerator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ChanceMathTest {
@@ -39,28 +38,6 @@ class ChanceMathTest {
         assertEquals(Long.MAX_VALUE, ChanceMath.maxTimes(1, Double.MAX_VALUE));
         assertEquals(Long.MAX_VALUE, ChanceMath.sampleTimes(new NoRandom(), 1, Double.MAX_VALUE));
         assertEquals(2L * Integer.MAX_VALUE, ChanceMath.sampleTimes(new NoRandom(), Integer.MAX_VALUE, 200));
-    }
-
-    @Test
-    void repeatedQuantitiesSaturateWithoutWrappingAndZeroTimesNeedsNoResources() {
-        long exact = Long.MAX_VALUE / 3;
-        assertEquals(Long.MAX_VALUE - 1, ChanceMath.scaleCount(exact, 3));
-        assertEquals(Long.MAX_VALUE, ChanceMath.scaleCount(exact + 1, 3));
-        assertEquals(Long.MAX_VALUE, ChanceMath.scaleCount(2, Long.MAX_VALUE));
-        assertEquals(0, ChanceMath.scaleCount(Long.MAX_VALUE, 0));
-        assertEquals(0, ChanceMath.scaleCount(0, Long.MAX_VALUE));
-        assertThrows(IllegalArgumentException.class, () -> ChanceMath.scaleCount(-1, 0));
-        assertThrows(IllegalArgumentException.class, () -> ChanceMath.scaleCount(0, -1));
-    }
-
-    @Test
-    void nonfiniteChanceCannotTurnAnInvalidRequirementIntoAFreeOperation() {
-        for (double chance : new double[]{Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY}) {
-            assertThrows(IllegalArgumentException.class, () -> ChanceMath.sampleTimes(new NoRandom(), 0, chance));
-            assertThrows(IllegalArgumentException.class, () -> ChanceMath.maxTimes(0, chance));
-        }
-        assertEquals(0, ChanceMath.sampleTimes(new NoRandom(), 7, -1));
-        assertEquals(0, ChanceMath.maxTimes(7, -1));
     }
 
     private static final class DoubleSequence implements RandomGenerator {

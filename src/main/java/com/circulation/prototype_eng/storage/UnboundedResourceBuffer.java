@@ -18,7 +18,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-/** A key-counted output buffer: no slot limit, with long capacity and exact compensation per key. */
+/**
+ * A key-counted output buffer: no slot limit, with long capacity and exact compensation per key.
+ */
 public final class UnboundedResourceBuffer implements ResourceStorage {
     private final AEKey2LongMap totals = new AEKey2LongMap.OpenHashMap();
     private final AEKey2LongMap insertHolds = new AEKey2LongMap.OpenHashMap();
@@ -39,6 +41,17 @@ public final class UnboundedResourceBuffer implements ResourceStorage {
                 publishDestructionDrops();
             }
         });
+    }
+
+    private static ReservationResult reject(ReservationResult.Status status) {
+        return new ReservationResult(status, null);
+    }
+
+    private static void add(AEKey2LongMap map, AEKey key, long delta) {
+        long next = Math.addExact(map.getLong(key), delta);
+        if (next < 0) throw new IllegalStateException("Negative output resource balance");
+        map.addTo(key, delta);
+        if (next == 0) map.removeLong(key);
     }
 
     @Override
@@ -167,7 +180,9 @@ public final class UnboundedResourceBuffer implements ResourceStorage {
         }
     }
 
-    /** Native ME transfers retain refund space around a reentrant external inventory callback. */
+    /**
+     * Native ME transfers retain refund space around a reentrant external inventory callback.
+     */
     @SuppressWarnings("ReturnOfInnerClass") // The receipt retains the exact native compensation token.
     public @Nullable NativeTransferReservation reserveTransfer(AEKey key, long amount, boolean insert) {
         context.requireOrdinaryLock();
@@ -208,7 +223,9 @@ public final class UnboundedResourceBuffer implements ResourceStorage {
         }
     }
 
-    /** A detached list for save/drop ownership; callers retain this context throughout multi-side capture. */
+    /**
+     * A detached list for save/drop ownership; callers retain this context throughout multi-side capture.
+     */
     List<GenericStack> committedContents() {
         context.requireLock();
         var result = new ObjectArrayList<GenericStack>(totals.size());
@@ -218,7 +235,9 @@ public final class UnboundedResourceBuffer implements ResourceStorage {
         return result;
     }
 
-    /** Validate all entries before replacing any part of the live balance. */
+    /**
+     * Validate all entries before replacing any part of the live balance.
+     */
     public void restore(List<GenericStack> contents) {
         Objects.requireNonNull(contents);
         var next = new AEKey2LongMap.OpenHashMap(contents.size());
@@ -271,17 +290,6 @@ public final class UnboundedResourceBuffer implements ResourceStorage {
             context.unlock();
         }
         receiver.accept(contents);
-    }
-
-    private static ReservationResult reject(ReservationResult.Status status) {
-        return new ReservationResult(status, null);
-    }
-
-    private static void add(AEKey2LongMap map, AEKey key, long delta) {
-        long next = Math.addExact(map.getLong(key), delta);
-        if (next < 0) throw new IllegalStateException("Negative output resource balance");
-        map.addTo(key, delta);
-        if (next == 0) map.removeLong(key);
     }
 
     private enum State {RESERVED, APPLIED, EXPOSED, COMPLETED, ROLLED_BACK}

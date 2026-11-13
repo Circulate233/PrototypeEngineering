@@ -19,7 +19,9 @@ import java.util.Set;
  * index cannot discard energy-only or resource-free recipes. Null expresses no opinion; an empty
  * collection rejects the entire scope and must never trigger a global fallback.
  *
- * <p>Results contain only canonical instances from scope. Input groups and scope are immutable.
+ * <p>Results contain only canonical instances from scope. Input groups and scope are borrowed
+ * read-only and must remain unchanged until lookup and validation finish. Implementations and
+ * callers must not mutate them; the framework does not copy them to enforce this contract.
  * Lookup must not execute START, mutate the machine, consume resources or publish world effects.
  * This contract does not bound arbitrary external lookup CPU work or replace scheduler budgets.
  */
@@ -67,9 +69,14 @@ public interface RecipeCandidateIndex {
     interface Cursor {
         boolean advance(RecipeWorkBudget budget);
 
+        /**
+         * Completed opinion borrowed read-only by consumers; its contents remain stable for this cursor.
+         */
         @Nullable Collection<MachineRecipe> result();
 
-        /** Canonical fixed-input ceiling only; a scanner must prove its complete linear input path before using it. */
+        /**
+         * Canonical fixed-input ceiling only; a scanner must prove its complete linear input path before using it.
+         */
         default int inputParallelismLimit(MachineRecipe recipe) {
             return Integer.MAX_VALUE;
         }
@@ -81,7 +88,9 @@ public interface RecipeCandidateIndex {
             return true;
         }
 
-        /** Retained freshness proof. Built-in live cursors charge each inspected binding separately. */
+        /**
+         * Retained freshness proof. Built-in live cursors charge each inspected binding separately.
+         */
         @SuppressWarnings("ReturnOfInnerClass") // The retained proof belongs to this exact cursor observation.
         default Validation beginValidation() {
             return new Validation() {
@@ -108,7 +117,9 @@ public interface RecipeCandidateIndex {
         }
     }
 
-    /** advance returning true means the proof finished; current then returns its captured verdict. */
+    /**
+     * advance returning true means the proof finished; current then returns its captured verdict.
+     */
     interface Validation {
         boolean advance(RecipeWorkBudget budget);
 

@@ -1,6 +1,6 @@
 # 机器 GUI 与 Java 扩展
 
-默认机器界面由 [MachineGui](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/client/gui/MachineGui.java) 直接继承 AE2S 的 `AEBaseGui<MachineContainer>`，默认 [MachineContainer](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/container/MachineContainer.java) 直接继承 `AEBaseContainer`。背景与滚动条组合复用 AE2；没有本项目 GUI 中间基类、ModularUI、编辑器或 GUI DSL。
+默认机器界面由 [GuiMachine](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/client/gui/GuiMachine.java) 直接继承 AE2S 的 `AEBaseGui<ContainerMachine>`，默认 [ContainerMachine](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/container/ContainerMachine.java) 直接继承 `AEBaseContainer`。背景与滚动条组合复用 AE2；没有本项目 GUI 中间基类、ModularUI、编辑器或 GUI DSL。
 
 ## 打开与默认显示
 
@@ -62,6 +62,6 @@ screen factory 的参数是 `(container, playerInventory)`。它通过声明的 
 
 ## ModularUI 排除与当前停止点（2026-11-09）
 
-用户要求撤除MUI。当前MachineGui、ResourceHatchGui、EnergyHatchGui、ResearchGui和StructurePreviewGui均直接继承AEBaseGui；项目没有MUI GUI基类、Widget/Drawable调用或modularui资源命名空间。清理前实际直接/传递依赖已无MUI，现所有Gradle configuration精确排除com.cleanroommc:modularui，避免后续mod依赖重新引入。AE/HEI及必要核心依赖完整保留；after真实9个compile/runtime/processor配置与135个Jar检查、当次3个产物Jar均无MUI，见 `build/staging/mui-removal/`。
+用户要求撤除MUI。当前GuiMachine、GuiResourceHatch、GuiEnergyHatch、GuiResearch和GuiStructurePreview均直接继承AEBaseGui；项目没有MUI GUI基类、Widget/Drawable调用或modularui资源命名空间。清理前实际直接/传递依赖已无MUI，现所有Gradle configuration精确排除com.cleanroommc:modularui，避免后续mod依赖重新引入。AE/HEI及必要核心依赖完整保留；after真实9个compile/runtime/processor配置与135个Jar检查、当次3个产物Jar均无MUI，见 `build/staging/mui-removal/`。
 
 GUI控件和绘制继续用AE或Minecraft标准Java，不引入第二GUI基类或替代UI框架。后续JEI的Arrow/Cycle效果同样用AE/native Java表达，不使用MUI Widget/Drawable、GUI类或modularui命名空间。旧素材来源和许可只保留staging审计；此块不新增尚未迁的decorator。用户已暂停整体目标，本块验证和本地提交后停止，结构WIP继续入口见 `build/staging/structure-async-budget/STOPPED-WIP.md`。

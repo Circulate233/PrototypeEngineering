@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.client.render.gecko;
 
 import ae2.api.orientation.BlockOrientation;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import jdk.incubator.vector.FloatVector;
 import jdk.incubator.vector.VectorSpecies;
 import net.minecraft.util.EnumFacing;
@@ -9,10 +10,11 @@ import software.bernie.geckolib3.geo.render.built.GeoCube;
 
 import javax.vecmath.Matrix3f;
 import javax.vecmath.Matrix4f;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.Objects;
 
-/** The original Gecko affine, pivot, Z/Y/X rotation and reflected-normal conventions. No GL calls. */
+/**
+ * The original Gecko affine, pivot, Z/Y/X rotation and reflected-normal conventions. No GL calls.
+ */
 public final class GeckoBakerMath {
     private static final boolean FORCE_SCALAR = Boolean.getBoolean("prototype_eng.gecko.forceScalarTransform");
     private static final boolean VECTOR_RESOLVED = ModuleLayer.boot().findModule("jdk.incubator.vector").isPresent();
@@ -40,7 +42,9 @@ public final class GeckoBakerMath {
         return ((int) (scaled + (scaled >= 0 ? .5f : -.5f))) & 255;
     }
 
-    /** Read-only cache inputs; writes only position bits into the existing seven-int vertex layout. */
+    /**
+     * Read-only cache inputs; writes only position bits into the existing seven-int vertex layout.
+     */
     static void packPositions(GeckoCubeQuadVertexCache.CubeData cube, Matrix4f matrix,
                               int vertexOffset, int count, int[] out, int outIntOffset) {
         Objects.checkFromIndexSize(vertexOffset, count, cube.vertexCount());
@@ -51,7 +55,9 @@ public final class GeckoBakerMath {
         else packPositionsScalar(cube, matrix, vertexOffset, count, out, outIntOffset);
     }
 
-    /** Concrete scalar callee of the production selection; caller has already validated its ranges. */
+    /**
+     * Concrete scalar callee of the production selection; caller has already validated its ranges.
+     */
     static void packPositionsScalar(GeckoCubeQuadVertexCache.CubeData cube, Matrix4f m,
                                     int offset, int count, int[] out, int outIntOffset) {
         int end = offset + count, o = outIntOffset;
@@ -63,13 +69,17 @@ public final class GeckoBakerMath {
         }
     }
 
-    /** Production callee entered only after the module-resolution gate; no Vector type escapes it. */
+    /**
+     * Production callee entered only after the module-resolution gate; no Vector type escapes it.
+     */
     static void packPositionsVector(GeckoCubeQuadVertexCache.CubeData cube, Matrix4f matrix,
                                     int offset, int count, int[] out, int outIntOffset) {
         VectorPositions.pack(cube, matrix, offset, count, out, outIntOffset);
     }
 
-    /** Lazy initialization keeps unresolved-module scalar launches free of Vector linkage. */
+    /**
+     * Lazy initialization keeps unresolved-module scalar launches free of Vector linkage.
+     */
     private static final class VectorPositions {
         private static final VectorSpecies<Float> SPECIES = FloatVector.SPECIES_PREFERRED;
         private static final int[] STRIDE_INDICES = strideIndices();

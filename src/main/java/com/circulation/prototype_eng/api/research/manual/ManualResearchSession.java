@@ -1,17 +1,10 @@
 package com.circulation.prototype_eng.api.research.manual;
 
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
-import it.unimi.dsi.fastutil.objects.AbstractObject2IntMap;
-import it.unimi.dsi.fastutil.objects.AbstractObject2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
-import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectSet;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
@@ -20,6 +13,8 @@ import java.util.UUID;
 /**
  * Immutable PN manual-research recovery checkpoint. Transitions do not consume inventory, propagate
  * completion or write a checkpoint. All times use one persistent server timeline across dimensions.
+ * Work maps are completed, zero-default maps borrowed read-only for the checkpoint lifetime.
+ * Producers and consumers must not mutate them; transitions allocate only when quantities change.
  */
 @SuppressWarnings("unused")
 public record ManualResearchSession(UUID id, String teamId, TeamResearchQueue.Key queueKey,
@@ -35,7 +30,7 @@ public record ManualResearchSession(UUID id, String teamId, TeamResearchQueue.Ke
         if (teamId.isBlank() || !teamId.equals(teamId.trim()) || lastActivity < 0) {
             throw new IllegalArgumentException("Invalid manual session team or activity time");
         }
-        work = immutableWork(work);
+        validateWork(work);
         if (completionIntent != null && completionIntent.worldTime() > lastActivity) {
             throw new IllegalArgumentException("Manual completion time exceeds last activity");
         }
@@ -91,26 +86,32 @@ public record ManualResearchSession(UUID id, String teamId, TeamResearchQueue.Ke
         return reason == PauseReason.CONTRIBUTOR_TEAM_CHANGED || reason == PauseReason.RESEARCH_INVALIDATED;
     }
 
-    static Object2LongMap<ManualMaterialKey> immutableWork(Object2LongMap<ManualMaterialKey> source) {
-        return Object2LongMaps.unmodifiable(new FrozenWork(source));
+    static void validateWork(Object2LongMap<ManualMaterialKey> source) {
+        for (var entry : Objects.requireNonNull(source).object2LongEntrySet()) {
+            Objects.requireNonNull(entry.getKey());
+            if (entry.getLongValue() < 0) throw new IllegalArgumentException("Negative manual work amount");
+        }
     }
 
     private static void requireExpected(Object2LongMap<ManualMaterialKey> work, MaterialIntent intent) {
-        if (!addWork(work, intent.pendingWork()).equals(intent.expectedWork())) {
-            throw new IllegalArgumentException("Manual expected work differs from accumulated work plus its pending delta");
-        }
-    }
-
-    private static Object2LongMap<ManualMaterialKey> addWork(Object2LongMap<ManualMaterialKey> before, Object2LongMap<ManualMaterialKey> delta) {
-        var result = new Object2LongOpenHashMap<>(before);
-        result.defaultReturnValue(0);
-        for (var entry : delta.object2LongEntrySet()) {
-            if (entry.getLongValue() > Long.MAX_VALUE - result.getLong(entry.getKey())) {
+        var delta = intent.pendingWork();
+        var expected = intent.expectedWork();
+        long keys = work.size();
+        for (var entry : work.object2LongEntrySet()) {
+            var key = entry.getKey();
+            long addition = delta.getOrDefault(key, 0L);
+            if (addition > Long.MAX_VALUE - entry.getLongValue())
                 throw new IllegalArgumentException("Manual work overflows long");
-            }
-            result.addTo(entry.getKey(), entry.getLongValue());
+            if (!expected.containsKey(key) || expected.getLong(key) != entry.getLongValue() + addition)
+                throw new IllegalArgumentException("Manual expected work differs from accumulated work plus its pending delta");
         }
-        return immutableWork(result);
+        for (var entry : delta.object2LongEntrySet()) {
+            if (work.containsKey(entry.getKey())) continue;
+            keys++;
+            if (!expected.containsKey(entry.getKey()) || expected.getLong(entry.getKey()) != entry.getLongValue())
+                throw new IllegalArgumentException("Manual expected work differs from accumulated work plus its pending delta");
+        }
+        if (keys != expected.size()) throw new IllegalArgumentException("Manual expected work has unrelated entries");
     }
 
     /**
@@ -230,14 +231,18 @@ public record ManualResearchSession(UUID id, String teamId, TeamResearchQueue.Ke
         ACTIVE, PAUSED, MATERIAL_COMMIT_PENDING, MATERIAL_COMMITTED, MATERIAL_ABORT_RECEIPT_PENDING,
         MATERIAL_SETTLED_RECEIPT_PENDING, COMPLETION_PENDING, COMPLETION_PROPAGATED, QUEUE_HEAD_REMOVED;
 
-        /** Shared declaration order; callers must not modify this array. */
+        /**
+         * Shared declaration order; callers must not modify this array.
+         */
         public static final Status[] VALUES = values();
     }
 
     public enum PauseReason {
         CONTRIBUTOR_OFFLINE, CONTRIBUTOR_TEAM_CHANGED, SESSION_TIMEOUT, EXPLICIT, WORLD_RESTORED, RESEARCH_INVALIDATED;
 
-        /** Shared declaration order; callers must not modify this array. */
+        /**
+         * Shared declaration order; callers must not modify this array.
+         */
         public static final PauseReason[] VALUES = values();
     }
 
@@ -250,8 +255,8 @@ public record ManualResearchSession(UUID id, String teamId, TeamResearchQueue.Ke
             if (sequence < 0) {
                 throw new IllegalArgumentException("Negative manual material sequence");
             }
-            pendingWork = immutableWork(pendingWork);
-            expectedWork = immutableWork(expectedWork);
+            validateWork(pendingWork);
+            validateWork(expectedWork);
             if (pendingWork.isEmpty() || expectedWork.isEmpty()) {
                 throw new IllegalArgumentException("Empty manual material intent");
             }
@@ -263,93 +268,26 @@ public record ManualResearchSession(UUID id, String teamId, TeamResearchQueue.Ke
         }
     }
 
+    /**
+     * Captures one member-baseline map; the resulting map and its entries are read-only.
+     */
     public record CompletionIntent(long worldTime, Object2IntMap<UUID> baselines) {
         public CompletionIntent {
             if (worldTime < 0) {
                 throw new IllegalArgumentException("Negative manual completion time");
             }
-            baselines = Object2IntMaps.unmodifiable(new FrozenBaselines(baselines));
+            var captured = new Object2IntOpenHashMap<UUID>(baselines.size());
+            captured.defaultReturnValue(-1);
+            for (var entry : baselines.object2IntEntrySet()) {
+                Objects.requireNonNull(entry.getKey());
+                if (entry.getIntValue() < 0) throw new IllegalArgumentException("Negative manual member baseline");
+                captured.put(entry.getKey(), entry.getIntValue());
+            }
+            baselines = captured;
             if (baselines.isEmpty()) {
                 throw new IllegalArgumentException("Manual completion needs frozen member baselines");
             }
         }
     }
 
-    private static final class FrozenWork extends AbstractObject2LongMap<ManualMaterialKey> {
-        private final Object2LongOpenHashMap<ManualMaterialKey> values = new Object2LongOpenHashMap<>();
-        private final ObjectSet<Object2LongMap.Entry<ManualMaterialKey>> entries;
-
-        private FrozenWork(Object2LongMap<ManualMaterialKey> source) {
-            var copy = new ObjectOpenHashSet<Object2LongMap.Entry<ManualMaterialKey>>(source.size());
-            for (var entry : Objects.requireNonNull(source).object2LongEntrySet()) {
-                var key = Objects.requireNonNull(entry.getKey());
-                if (entry.getLongValue() < 0 || values.containsKey(key)) {
-                    throw new IllegalArgumentException("Invalid or duplicate manual work key");
-                }
-                values.put(key, entry.getLongValue());
-                copy.add(new BasicEntry<>(key, entry.getLongValue()));
-            }
-            entries = ObjectSets.unmodifiable(copy);
-        }
-
-        @Override
-        public ObjectSet<Object2LongMap.Entry<ManualMaterialKey>> object2LongEntrySet() {
-            return entries;
-        }
-
-        @Override
-        public long getLong(Object key) {
-            return values.getLong(key);
-        }
-
-        @Override
-        public boolean containsKey(Object key) {
-            return values.containsKey(key);
-        }
-
-        @Override
-        public int size() {
-            return values.size();
-        }
-    }
-
-    private static final class FrozenBaselines extends AbstractObject2IntMap<UUID> {
-        private final Object2IntOpenHashMap<UUID> values = new Object2IntOpenHashMap<>();
-        private final ObjectSet<Object2IntMap.Entry<UUID>> entries;
-
-        private FrozenBaselines(Object2IntMap<UUID> source) {
-            values.defaultReturnValue(-1);
-            defaultReturnValue(-1);
-            var copy = new ObjectOpenHashSet<Object2IntMap.Entry<UUID>>(source.size());
-            for (var entry : Objects.requireNonNull(source).object2IntEntrySet()) {
-                var key = Objects.requireNonNull(entry.getKey());
-                if (entry.getIntValue() < 0 || values.containsKey(key)) {
-                    throw new IllegalArgumentException("Invalid or duplicate manual member baseline");
-                }
-                values.put(key, entry.getIntValue());
-                copy.add(new BasicEntry<>(key, entry.getIntValue()));
-            }
-            entries = ObjectSets.unmodifiable(copy);
-        }
-
-        @Override
-        public ObjectSet<Object2IntMap.Entry<UUID>> object2IntEntrySet() {
-            return entries;
-        }
-
-        @Override
-        public int getInt(Object key) {
-            return values.getInt(key);
-        }
-
-        @Override
-        public boolean containsKey(Object key) {
-            return values.containsKey(key);
-        }
-
-        @Override
-        public int size() {
-            return values.size();
-        }
-    }
 }

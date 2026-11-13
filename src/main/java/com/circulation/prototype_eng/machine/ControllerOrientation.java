@@ -13,7 +13,9 @@ public final class ControllerOrientation {
     private ControllerOrientation() {
     }
 
-    /** Keep the placement front, then project the camera's up vector onto that face for its twist. */
+    /**
+     * Keep the placement front, then project the camera's up vector onto that face for its twist.
+     */
     public static BlockOrientation placement(EnumFacing front, float yaw, float pitch) {
         double yawRadians = Math.toRadians(yaw), pitchRadians = Math.toRadians(pitch);
         double x = -Math.sin(yawRadians) * Math.sin(pitchRadians);

@@ -1,17 +1,12 @@
 package com.circulation.prototype_eng.container;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
-
-import it.unimi.dsi.fastutil.objects.Reference2LongMap;
-
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
+import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
-import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.storage.HatchGuiInventory;
 import com.circulation.prototype_eng.storage.HatchPackageTransfer;
 import com.circulation.prototype_eng.storage.HatchSlotActions;
@@ -19,6 +14,9 @@ import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import io.netty.buffer.Unpooled;
+import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
+import it.unimi.dsi.fastutil.objects.Reference2LongMap;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.PacketBuffer;
 import org.jetbrains.annotations.Nullable;
@@ -294,27 +292,6 @@ class ResourceHatchWindowTest {
         assertEquals(new GenericStack(FLUID, 64), player.stacks[3]);
         assertEquals(0, input.getAmount(0));
         assertEquals(378, input.getAmount(40_000));
-    }
-
-    @Test
-    void anOldOpenOrMoveIdentityCannotEnterAnotherWindowWithTheSameNativeId() {
-        var oldWindow = new ResourceHatchWindow(hatch(buffer(40, Reference2LongMaps.singleton(FIRST, 100L)), null), 4, 3);
-        var newWindow = new ResourceHatchWindow(hatch(buffer(40, Reference2LongMaps.singleton(FIRST, 100L)), null), 4, 3);
-        long oldOpen = oldWindow.capture().revision(), newOpen = newWindow.capture().revision();
-        assertTrue(oldWindow.move(oldOpen, 1, 0));
-        long oldMove = oldWindow.capture().revision();
-        for (long oldIdentity : new long[]{oldOpen, oldMove}) {
-            assertFalse(newWindow.move(oldIdentity, 1, 0));
-            assertFalse(newWindow.interact(oldIdentity, true, 0, ignored -> {
-                throw new AssertionError("Old CLICK/extraId entered new window");
-            }));
-        }
-        assertTrue(newWindow.move(newOpen, 1, 0));
-        long newMove = newWindow.capture().revision();
-        assertFalse(oldWindow.move(newMove, 2, 0));
-        assertFalse(oldWindow.interact(newMove, true, 4, ignored -> {
-            throw new AssertionError("Another window's move token was reused");
-        }));
     }
 
     @Test

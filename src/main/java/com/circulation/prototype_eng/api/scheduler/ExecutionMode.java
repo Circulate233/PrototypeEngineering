@@ -10,6 +10,8 @@ public enum ExecutionMode {
     CONCURRENT,
     PLANNED_PARALLEL;
 
-    /** Shared declaration order; callers must not modify this array. */
+    /**
+     * Shared declaration order; callers must not modify this array.
+     */
     public static final ExecutionMode[] VALUES = values();
 }

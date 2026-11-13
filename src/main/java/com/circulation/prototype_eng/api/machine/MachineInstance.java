@@ -13,15 +13,14 @@ import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
-import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
+import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
 import com.circulation.prototype_eng.api.structure.StructureComponents;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -33,6 +32,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
 
 /**
+ * Published collections are read-only by contract; consumers must not modify them.
  * Per-machine component execution state. The scheduler must give this instance exclusive execution
  * ownership; it may transfer that ownership between threads at a join boundary. A world host attaches
  * one MachineLifecycle before scheduling. Unbound instances support standalone library execution;
@@ -41,9 +41,6 @@ import java.util.function.LongSupplier;
 public class MachineInstance implements PlannedMachineTask {
     private final ReferenceOpenHashSet<MachineWorkSlots> recipeHosts =
         new ReferenceOpenHashSet<>();
-    private List<MachineWorkSlots> recipeHostView = ObjectLists.emptyList();
-    @Nullable
-    private List<RecipeScanner> recipeScannerSnapshot;
     private final ReferenceOpenHashSet<RecipeScanner> recipeScanners =
         new ReferenceOpenHashSet<>();
     private final ReferenceOpenHashSet<RecipeProcess> recipeOccupants =
@@ -54,6 +51,9 @@ public class MachineInstance implements PlannedMachineTask {
     private final MachineAttributes attributes = new MachineAttributes();
     @Nullable
     private final MachineType type;
+    private List<MachineWorkSlots> recipeHostView = ObjectLists.emptyList();
+    @Nullable
+    private List<RecipeScanner> recipeScannerSnapshot;
     private long recipeRosterRevision;
     @Nullable
     private MachineLifecycle lifecycle;
@@ -75,22 +75,28 @@ public class MachineInstance implements PlannedMachineTask {
         this.type = Objects.requireNonNull(type);
     }
 
-    /** All logical hosts share this machine's allowance, including explicitly constructed external hosts. */
+    /**
+     * All logical hosts share this machine's allowance, including explicitly constructed external hosts.
+     */
     public void registerRecipeHost(MachineWorkSlots host) {
         if (Objects.requireNonNull(host).owner() != this) throw new IllegalArgumentException("Foreign recipe host");
         if (!recipeHosts.add(host)) return;
         var hosts = new ObjectArrayList<>(recipeHostView);
         hosts.add(host);
-        recipeHostView = ObjectLists.unmodifiable(hosts);
+        recipeHostView = hosts;
         recipeRosterRevision = Math.incrementExact(recipeRosterRevision);
     }
 
-    /** Immutable registration snapshot; only registering a new host publishes a replacement. */
+    /**
+     * Immutable registration snapshot; only registering a new host publishes a replacement.
+     */
     public List<MachineWorkSlots> recipeHosts() {
         return recipeHostView;
     }
 
-    /** Layout replacements also revoke retained vacancy observations, including empty dynamic layouts. */
+    /**
+     * Layout replacements also revoke retained vacancy observations, including empty dynamic layouts.
+     */
     public final void recordRecipeHostLayoutChange(MachineWorkSlots host) {
         if (!recipeHosts.contains(host)) throw new IllegalArgumentException("Unregistered recipe host");
         recipeRosterRevision = Math.incrementExact(recipeRosterRevision);
@@ -114,7 +120,7 @@ public class MachineInstance implements PlannedMachineTask {
 
     public final List<RecipeScanner> recipeScanners() {
         if (recipeScannerSnapshot == null)
-            recipeScannerSnapshot = ObjectLists.unmodifiable(new ObjectArrayList<>(recipeScanners));
+            recipeScannerSnapshot = new ObjectArrayList<>(recipeScanners);
         return recipeScannerSnapshot;
     }
 
@@ -130,7 +136,9 @@ public class MachineInstance implements PlannedMachineTask {
         return recipeRosterRevision;
     }
 
-    /** Same owner publication as attach/detach; reservations and attached processes count once. */
+    /**
+     * Same owner publication as attach/detach; reservations and attached processes count once.
+     */
     public final void recordRecipeOccupant(RecipeProcess process) {
         if (process.owner() != this) throw new IllegalArgumentException("Foreign recipe occupant");
         if (recipeOccupants.contains(process)) return;
@@ -245,12 +253,16 @@ public class MachineInstance implements PlannedMachineTask {
             ? type.executionMode() : defaultExecutionMode();
     }
 
-    /** Concrete runtimes select their normal scheduler path; explicit declarations remain authoritative. */
+    /**
+     * Concrete runtimes select their normal scheduler path; explicit declarations remain authoritative.
+     */
     protected ExecutionMode defaultExecutionMode() {
         return ExecutionMode.CONCURRENT;
     }
 
-    /** A restored or explicitly replaced scheduling component is authoritative, including legacy null. */
+    /**
+     * A restored or explicitly replaced scheduling component is authoritative, including legacy null.
+     */
     @Nullable
     public ControllerExecutionPolicy executionPolicy() {
         var scheduling = components.get(MachineScheduling.TYPE);
@@ -262,7 +274,9 @@ public class MachineInstance implements PlannedMachineTask {
         return defaultExecutionPolicy();
     }
 
-    /** Ordinary machines retain their execution mode unless a controller policy is explicitly selected. */
+    /**
+     * Ordinary machines retain their execution mode unless a controller policy is explicitly selected.
+     */
     @Nullable
     protected ControllerExecutionPolicy defaultExecutionPolicy() {
         return null;
@@ -298,10 +312,12 @@ public class MachineInstance implements PlannedMachineTask {
                 }
             }
         }
-        return ObjectSets.unmodifiable(keys);
+        return keys;
     }
 
-    /** Controller items are owner-thread state; recipe workers must capture required facts first. */
+    /**
+     * Controller items are owner-thread state; recipe workers must capture required facts first.
+     */
     @SuppressWarnings("unused") // Addon components obtain the native controller inventory.
     public InternalInventory controllerInventory() {
         return lifecycle == null ? InternalInventory.empty() : lifecycle.host().controllerInventory();

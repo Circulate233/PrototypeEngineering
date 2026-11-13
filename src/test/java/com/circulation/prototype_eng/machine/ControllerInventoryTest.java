@@ -7,12 +7,17 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ControllerInventoryTest {
     @Test
     void openSlotsDriveNativeInsertionExtractionAndOrderedTraversalWithoutChangingPhysicalIndices() {
-        var inventory = new ControllerInventory(() -> {});
+        var inventory = new ControllerInventory(() -> {
+        });
         assertEquals(0, inventory.availableSlots());
         assertEquals(16, inventory.size());
         assertFalse(inventory.isItemValid(3, ItemStack.EMPTY));
@@ -36,7 +41,8 @@ class ControllerInventoryTest {
 
     @Test
     void malformedAndOversizedSavedInventoriesAreRejectedBeforeAnyEntryIsRead() {
-        var inventory = new ControllerInventory(() -> {});
+        var inventory = new ControllerInventory(() -> {
+        });
         var malformed = new NBTTagCompound();
         malformed.setString("Inventory", "invalid");
         assertThrows(IllegalArgumentException.class, () -> inventory.readFromNBT(malformed, "Inventory"));

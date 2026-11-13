@@ -9,7 +9,9 @@ import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.Objects;
 
-/** Immutable strategy handle. Its callback and captured state must remain immutable for its lifetime. */
+/**
+ * Immutable strategy handle. Its callback and captured state must remain immutable for its lifetime.
+ */
 @SuppressWarnings("unused")
 @ZenRegister
 @ZenClass("mods.prototype_eng.recipe.InputAllocation")
@@ -24,7 +26,7 @@ public record ZenInputAllocation(InputAllocation value) {
         return new ZenInputAllocation(InputAllocation.custom(ZenRecipeSupport.id(id), context -> {
             var proposed = Objects.requireNonNull(callback.allocate(new ZenAllocationContext(context)), "Allocation returned null");
             var portions = new ObjectArrayList<InputAllocation.Portion>(proposed.length);
-            for (var portion : proposed) portions.add(Objects.requireNonNull(portion).value());
+            for (var portion : proposed) portions.add(portion.value());
             return portions;
         }));
     }

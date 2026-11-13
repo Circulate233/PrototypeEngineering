@@ -8,7 +8,9 @@ import net.minecraft.util.ResourceLocation;
 import java.util.Map;
 import java.util.Objects;
 
-/** Client-owner exact registrations. Closing a replaced handle cannot remove its successor. */
+/**
+ * Client-owner exact registrations. Closing a replaced handle cannot remove its successor.
+ */
 public final class MachineRenderBindings {
     private final Thread owner = Thread.currentThread();
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, Entry<GeckoModelBinding>> machines = new Object2ObjectLinkedOpenHashMap<>();
@@ -115,7 +117,9 @@ public final class MachineRenderBindings {
         }
     }
 
-    /** Identity is the binding epoch; revision is a checked diagnostic sequence, never permission. */
+    /**
+     * Identity is the binding epoch; revision is a checked diagnostic sequence, never permission.
+     */
     public static final class View {
         private final long revision;
         private final Map<ResourceLocation, GeckoModelBinding> machines;

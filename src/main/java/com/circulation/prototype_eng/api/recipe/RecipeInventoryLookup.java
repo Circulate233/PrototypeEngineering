@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
 import net.minecraft.util.ResourceLocation;
 
@@ -14,7 +13,9 @@ import java.util.Iterator;
 import java.util.Objects;
 import java.util.Set;
 
-/** Adapts the public cooperative inventory callback without manufacturing runtime processes. */
+/**
+ * Adapts the public cooperative inventory callback without manufacturing runtime processes.
+ */
 final class RecipeInventoryLookup implements RecipeCandidateIndex.Cursor {
     private final RecipePool pool;
     private final AEKey2LongMap inventory;
@@ -53,7 +54,8 @@ final class RecipeInventoryLookup implements RecipeCandidateIndex.Cursor {
             if (pending == null) {
                 if (!budget.take()) return false;
                 pending = Objects.requireNonNull(matches.next());
-                if (pending.maximumParallelism() > parallelism) throw new IllegalArgumentException("Inventory ceiling exceeds requested parallelism");
+                if (pending.maximumParallelism() > parallelism)
+                    throw new IllegalArgumentException("Inventory ceiling exceeds requested parallelism");
                 pendingGroups = pending.recipe().recipeGroups().iterator();
                 accepted = groups.isEmpty();
             }
@@ -75,7 +77,7 @@ final class RecipeInventoryLookup implements RecipeCandidateIndex.Cursor {
     @Override
     public Collection<MachineRecipe> result() {
         requireComplete();
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     @Override

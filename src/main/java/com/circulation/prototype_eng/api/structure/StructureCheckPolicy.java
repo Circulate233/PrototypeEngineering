@@ -6,7 +6,9 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import java.time.Duration;
 import java.util.Objects;
 
-/** Local structure work policy; a retained attempt never renews its deadline. */
+/**
+ * Local structure work policy; a retained attempt never renews its deadline.
+ */
 public record StructureCheckPolicy(long workUnits, Duration sliceTime, Duration timeout, FinalMode finalMode) {
     public static final StructureCheckPolicy DEFAULT = new StructureCheckPolicy(4096, Duration.ofMillis(5), Duration.ofSeconds(5), FinalMode.COOPERATIVE);
 
@@ -26,7 +28,9 @@ public record StructureCheckPolicy(long workUnits, Duration sliceTime, Duration 
 
     public enum Status {IDLE, YIELD, MATCHED, MISMATCH, UNAVAILABLE, NEEDS_MORE_BUDGET, EXPIRED}
 
-    /** Counts successful units on either thread, including a cooperative tail beyond its soft slice. */
+    /**
+     * Counts successful units on either thread, including a cooperative tail beyond its soft slice.
+     */
     public static final class Work extends RecipeWorkBudget {
         private final PlannedDeadline deadline;
         private final boolean cooperative;
@@ -79,12 +83,16 @@ public record StructureCheckPolicy(long workUnits, Duration sliceTime, Duration 
             return exhausted;
         }
 
-        /** An indivisible live read or installation cannot safely retain only a cross-tick prefix. */
+        /**
+         * An indivisible live read or installation cannot safely retain only a cross-tick prefix.
+         */
         public long atomicMinimum() {
             return atomicMinimum;
         }
 
-        /** A borrowed batch could not read any fact before its local time window ended. */
+        /**
+         * A borrowed batch could not read any fact before its local time window ended.
+         */
         public void atomicTimeInsufficient() {
             atomicTimeInsufficient = true;
         }
@@ -93,7 +101,9 @@ public record StructureCheckPolicy(long workUnits, Duration sliceTime, Duration 
             return atomicTimeInsufficient;
         }
 
-        /** Admission consumes allowance; actual accepted writes/callbacks are recorded separately. */
+        /**
+         * Admission consumes allowance; actual accepted writes/callbacks are recorded separately.
+         */
         public boolean reserveAtomic(long units) {
             if (!take(units)) return false;
             spent -= units;
@@ -104,7 +114,9 @@ public record StructureCheckPolicy(long workUnits, Duration sliceTime, Duration 
             spent = Math.incrementExact(spent);
         }
 
-        /** Borrowed ports must close even after expiry; this cost cannot revoke accepted cleanup. */
+        /**
+         * Borrowed ports must close even after expiry; this cost cannot revoke accepted cleanup.
+         */
         public void recordCleanup() {
             super.take(Math.min(1, remaining()));
             spent = Math.incrementExact(spent);

@@ -17,7 +17,9 @@ import java.util.UUID;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 
-/** A bounded single pending payload; all native packets retain the original Display metadata. */
+/**
+ * A bounded single pending payload; all native packets retain the original Display metadata.
+ */
 public final class ControllerRenderChunks {
     public static final int CHUNK_BYTES = 16 * 1024;
     @SuppressWarnings("unused") // Public allocation bound for native-channel consumers.
@@ -30,9 +32,12 @@ public final class ControllerRenderChunks {
         return split(ControllerRenderSnapshotCodec.encode(snapshot), snapshot.display(), snapshot.catalog());
     }
 
-    /** Independent Data sibling, sharing the exact render allocation/chunk/confirmation mechanics. */
+    /**
+     * Independent Data sibling, sharing the exact render allocation/chunk/confirmation mechanics.
+     */
     public static List<Part> split(MachineDataSnapshot snapshot, ControllerDisplayData display, UUID session) {
-        if (snapshot.generation() != display.generation()) throw new IllegalArgumentException("Foreign machine data attachment");
+        if (snapshot.generation() != display.generation())
+            throw new IllegalArgumentException("Foreign machine data attachment");
         return split(MachineDataSnapshotCodec.encode(snapshot), display, new MachineRenderSnapshot.CatalogToken(session, 0));
     }
 
@@ -42,7 +47,7 @@ public final class ControllerRenderChunks {
         for (int i = 0; i < count; i++)
             parts.add(new Part(display, catalog, bytes.length, i,
                 Arrays.copyOfRange(bytes, i * CHUNK_BYTES, Math.min(bytes.length, (i + 1) * CHUNK_BYTES))));
-        return List.copyOf(parts);
+        return parts;
     }
 
     private static int chunks(int bytes) {
@@ -51,6 +56,9 @@ public final class ControllerRenderChunks {
         return (bytes + CHUNK_BYTES - 1) / CHUNK_BYTES;
     }
 
+    /**
+     * Published payload bytes are borrowed read-only, including byte arrays exposed by encode().
+     */
     public record Part(ControllerDisplayData display, MachineRenderSnapshot.CatalogToken catalog,
                        int totalBytes, int index, byte[] bytes) {
         public Part {
@@ -60,7 +68,6 @@ public final class ControllerRenderChunks {
             int count = chunks(totalBytes);
             if (index < 0 || index >= count || bytes.length != Math.min(CHUNK_BYTES, totalBytes - index * CHUNK_BYTES))
                 throw new IllegalArgumentException("Invalid machine render chunk size/index");
-            bytes = bytes.clone();
         }
 
         public static Part decode(ControllerDisplayData display, NBTTagCompound tag) {
@@ -75,16 +82,13 @@ public final class ControllerRenderChunks {
             return part;
         }
 
-        @Override
-        public byte[] bytes() {
-            return bytes.clone();
-        }
-
         public int count() {
             return chunks(totalBytes);
         }
 
-        /** Render sibling only; native tag writes Display separately from the same frozen part. */
+        /**
+         * Render sibling only; native tag writes Display separately from the same frozen part.
+         */
         public NBTTagCompound encode() {
             var tag = new NBTTagCompound();
             tag.setInteger("Version", 1);
@@ -94,7 +98,7 @@ public final class ControllerRenderChunks {
             tag.setInteger("Total", totalBytes);
             tag.setInteger("Index", index);
             tag.setInteger("Count", count());
-            tag.setByteArray("Bytes", bytes.clone());
+            tag.setByteArray("Bytes", bytes);
             return tag;
         }
     }
@@ -111,7 +115,9 @@ public final class ControllerRenderChunks {
         private boolean retired;
         private long generationFloor;
 
-        /** A sibling's valid native attachment header revokes older data without borrowing its sequence clock. */
+        /**
+         * A sibling's valid native attachment header revokes older data without borrowing its sequence clock.
+         */
         public void observeGeneration(long generation) {
             if (generation <= 0) throw new IllegalArgumentException("Invalid controller attachment generation");
             if (retired || generation <= generationFloor) return;
@@ -127,7 +133,9 @@ public final class ControllerRenderChunks {
             return header;
         }
 
-        /** Metadata-only revocation still establishes a sequence floor; late Render cannot revive it. */
+        /**
+         * Metadata-only revocation still establishes a sequence floor; late Render cannot revive it.
+         */
         public boolean withdraw(ControllerDisplayData display) {
             if (retired) return false;
             if (withdrawnThrough != null && !display.follows(withdrawnThrough)) return false;

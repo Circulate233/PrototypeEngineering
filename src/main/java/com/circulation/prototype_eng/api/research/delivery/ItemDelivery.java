@@ -23,6 +23,8 @@ public final class ItemDelivery {
      * The complete plan must already be durable. checkpoint replaces only the supplied fragment and
      * synchronously persists the owner's complete state; throwing retains that pending checkpoint.
      * After an effect, its commit and confirmation remain owed even if current becomes false.
+     * Each fragments result is a borrowed immutable snapshot. Checkpoint callbacks must replace the
+     * owner's list rather than mutate a previously returned list while this call is iterating it.
      */
     public static Status advance(Supplier<ObjectList<ItemDeliveryFragment>> fragments,
                                  Consumer<ItemDeliveryFragment> checkpoint,
@@ -62,7 +64,7 @@ public final class ItemDelivery {
             }
         }
         // The persisted list order preserves inventory-first planning, independent of UUID sorting.
-        for (var fragment : new ObjectArrayList<>(fragments.get())) {
+        for (var fragment : fragments.get()) {
             if (fragment.status() != ItemDeliveryFragment.Status.PLANNED
                 && fragment.status() != ItemDeliveryFragment.Status.RETRY_PLANNED) continue;
             if (!current.getAsBoolean()) return Status.STALE_CONTEXT;

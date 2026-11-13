@@ -16,8 +16,8 @@ import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy
 import com.circulation.prototype_eng.api.research.ResearchLevelResult;
 import com.circulation.prototype_eng.api.research.ResearchPermissionContext;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
-import com.circulation.prototype_eng.api.research.ResearchServerConfiguration;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
+import com.circulation.prototype_eng.api.research.ResearchServerConfiguration;
 import com.circulation.prototype_eng.api.research.ResearchWorld;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
@@ -50,8 +50,8 @@ import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
 import com.circulation.prototype_eng.research.download.MinecraftResearchDownloadInventory;
 import com.circulation.prototype_eng.research.manual.MinecraftManualResearchInventory;
 import com.circulation.prototype_eng.research.reward.MinecraftItemDeliveryAdapter;
-import com.circulation.prototype_eng.research.reward.RewardItemEntity;
 import com.circulation.prototype_eng.research.reward.RewardDeliveryRecovery;
+import com.circulation.prototype_eng.research.reward.RewardItemEntity;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import com.feed_the_beast.ftblib.lib.data.ForgeTeam;
@@ -168,7 +168,7 @@ public final class ServerResearch {
             throw new IllegalStateException("Database synchronization changed its server identity");
         }
         if (current.world.savePending()) return;
-        var teams = new ObjectArrayList<>(Objects.requireNonNull(network.plan()).teams().keySet());
+        var teams = Objects.requireNonNull(network.plan()).teams().keySet();
         for (var teamId : teams) {
             var plan = network.plan();
             if (plan == null) return;
@@ -347,7 +347,7 @@ public final class ServerResearch {
         var tile = actorWorld.getTileEntity(position);
         int slot = Objects.requireNonNull(hand) == EnumHand.MAIN_HAND ? actor.inventory.currentItem : 40;
         var key = AEItemKey.of(actor.inventory.getStackInSlot(slot));
-        if (!(tile instanceof MachineControllerHost) || key == null) {
+        if (!(tile instanceof MachineControllerHost host) || key == null) {
             result.accept(staleDiskImport());
             return;
         }
@@ -357,7 +357,7 @@ public final class ServerResearch {
             && key.equals(AEItemKey.of(actor.inventory.getStackInSlot(slot)))
             && actorWorld.isBlockModifiable(actor, position) && actor.canPlayerEdit(position, facing, actor.inventory.getStackInSlot(slot));
         ServerTaskSchedulers.forServer(current.server).submit(() -> {
-            if (!ownerCurrent.getAsBoolean() || !(tile instanceof MachineControllerHost host)) {
+            if (!ownerCurrent.getAsBoolean()) {
                 result.accept(staleDiskImport());
                 return;
             }
@@ -967,7 +967,9 @@ public final class ServerResearch {
         return now.equals(members);
     }
 
-    /** Both enqueue failures and asynchronous operation/feedback failures release the original UI owner. */
+    /**
+     * Both enqueue failures and asynchronous operation/feedback failures release the original UI owner.
+     */
     private static void submitLevelAction(Session current, Supplier<ResearchLevelResult> action,
                                           Consumer<ResearchLevelResult> result, Runnable finalized) {
         Objects.requireNonNull(action);

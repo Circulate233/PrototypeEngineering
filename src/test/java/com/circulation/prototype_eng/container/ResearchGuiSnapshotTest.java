@@ -340,8 +340,6 @@ class ResearchGuiSnapshotTest {
         assertThrows(IllegalArgumentException.class, () -> new ResearchGuiSnapshot(page.initialized(), page.savePending(), page.teamStatus(),
             page.personalPermission(), page.teamViewPermission(), page.queuePermission(), page.startPermission(), page.blacklistPermission(),
             page.tab(), page.total(), page.offset(), page.rows(), new Selection(research(12), 2, 0), page.detailTotal(), page.detailOffset(), page.details()));
-        assertThrows(UnsupportedOperationException.class, () -> page.rows().clear());
-        assertThrows(UnsupportedOperationException.class, () -> page.details().clear());
     }
 
     @Test

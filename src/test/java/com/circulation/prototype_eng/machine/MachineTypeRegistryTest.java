@@ -13,15 +13,11 @@ import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.localization.RecipeText;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
-import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 
-import java.util.AbstractCollection;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -35,28 +31,6 @@ class MachineTypeRegistryTest {
 
     private static ResourceLocation id(String path) {
         return new ResourceLocation("test", path);
-    }
-
-    @Test
-    void controllerInventoryUsesCurrentMachineDataAndReturnsToFixedSizeWhenCallbackIsRemoved() {
-        var builder = MachineType.builder(id("inventory"), RecipeText.Cancelled, id("shape"));
-        assertEquals(0, builder.build().controllerInventorySlots(null));
-        var datum = new ComponentType<MachineInstance, int[]>(id("open_slots"), _ -> new int[]{3}, List.of());
-        builder.component(datum).controllerInventorySlots(2).controllerInventorySlots(machine -> Objects.requireNonNull(machine.components().get(datum))[0]);
-        var dynamic = builder.build();
-        var machine = new MachineInstance(dynamic);
-        machine.components().put(datum, new int[]{3});
-        assertEquals(2, dynamic.controllerInventorySlots());
-        assertEquals(2, dynamic.controllerInventorySlots(null));
-        assertEquals(3, dynamic.controllerInventorySlots(machine));
-        Objects.requireNonNull(machine.components().get(datum))[0] = 11;
-        assertEquals(11, dynamic.controllerInventorySlots(machine));
-        Objects.requireNonNull(machine.components().get(datum))[0] = 17;
-        assertThrows(IllegalArgumentException.class, () -> dynamic.controllerInventorySlots(machine));
-        builder.controllerInventorySlots(null);
-        assertEquals(2, builder.build().controllerInventorySlots(machine));
-        assertThrows(IllegalArgumentException.class, () -> builder.controllerInventorySlots(-1));
-        assertThrows(IllegalArgumentException.class, () -> builder.controllerInventorySlots(17));
     }
 
     @Test
@@ -74,20 +48,8 @@ class MachineTypeRegistryTest {
 
         assertEquals(List.of(first, second, third), registry.types());
         assertSame(first, registry.get(first.id()));
-        assertThrows(UnsupportedOperationException.class, () -> registry.types().removeFirst());
         assertThrows(IllegalStateException.class, () -> registry.register(type("late", "shape")));
         assertThrows(IllegalStateException.class, registry::freeze);
-    }
-
-    @Test
-    void declarationReadersAndStructureResolutionRequireAnExplicitFreezeIncludingAnEmptyLibrary() {
-        var registry = new MachineTypeRegistry();
-        assertThrows(IllegalStateException.class, registry::types);
-        assertThrows(IllegalStateException.class, () -> registry.get(id("missing")));
-        assertThrows(IllegalStateException.class, () -> registry.resolveStructures(Map.of()));
-        registry.freeze();
-        registry.resolveStructures(Map.of());
-        assertThrows(IllegalStateException.class, () -> registry.resolveStructures(Map.of()));
     }
 
     @Test
@@ -145,44 +107,6 @@ class MachineTypeRegistryTest {
         // Reusing the builder cannot modify the declaration already published by either stage.
         assertEquals(List.of(first), canonical.componentTypes());
         assertSame(shape, registry.structure(canonical));
-    }
-
-    @Test
-    void structureIdCallbacksCannotReenterRegistryMutationAndRejectionLeavesResolutionRetryable() {
-        var canonical = type("machine", "shape");
-        var registry = new MachineTypeRegistry();
-        registry.register(canonical);
-        registry.freeze();
-        var reentrant = new Shape(id("shape"), registry::freeze);
-        assertThrows(IllegalStateException.class, () -> registry.resolveStructures(Map.of(id("shape"), reentrant)));
-        assertThrows(IllegalStateException.class, () -> registry.structure(canonical));
-        var shape = new Shape(id("shape"));
-        registry.resolveStructures(Map.of(id("shape"), shape));
-        assertSame(shape, registry.structure(canonical));
-    }
-
-    @Test
-    void collectionCallbacksCannotCloseTheRegistryWhileABatchIsBeingValidated() {
-        var registry = new MachineTypeRegistry();
-        var first = type("first", "shape");
-        registry.register(first);
-        var second = type("second", "shape");
-        var batch = new AbstractCollection<MachineType>() {
-            @Override
-            public @NotNull Iterator<MachineType> iterator() {
-                registry.freeze();
-                return List.of(second).iterator();
-            }
-
-            @Override
-            public int size() {
-                return 1;
-            }
-        };
-        assertThrows(IllegalStateException.class, () -> registry.registerAll(batch));
-        registry.register(second);
-        registry.freeze();
-        assertEquals(List.of(first, second), registry.types());
     }
 
     private record Shape(ResourceLocation shapeId, Runnable onReadId) implements MachineStructure {

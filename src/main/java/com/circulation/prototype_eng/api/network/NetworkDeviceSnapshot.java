@@ -12,6 +12,7 @@ import java.util.Objects;
 /**
  * Owner-thread capture of a loaded device. No World, tile or mutable runtime crosses into planning.
  * The host must retain its exact registration separately and recheck it before publishing a plan.
+ * Resource quantities are borrowed zero-default immutable data for this snapshot's lifetime.
  */
 public record NetworkDeviceSnapshot(PersistentMachineIdentity identity, NetworkDeviceRole role, int level,
                                     boolean formed, long loadOrder,
@@ -44,6 +45,6 @@ public record NetworkDeviceSnapshot(PersistentMachineIdentity identity, NetworkD
             || dataCenterResearch.capacity() != dataCenterCapacity || dataCenterResearch.storedResearch().size() != storedResearchCount)) {
             throw new IllegalArgumentException("Data-center contents differ from captured physical metadata");
         }
-        resourcesPerTick = NetworkResourceModifier.copyResources(resourcesPerTick);
+        NetworkResourceModifier.validateResources(resourcesPerTick);
     }
 }

@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.api.machine.workslot;
 
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.util.ResourceLocation;
 
@@ -9,7 +8,9 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
+ * Published collections are read-only by contract; consumers must not modify them.
  * Static work slot metadata; empty allowedRecipeGroups accepts every recipe, including ungrouped recipes.
+ * The supplied group set must remain unchanged for this definition's lifetime.
  */
 public record WorkSlotDefinition(String name, Set<ResourceLocation> allowedRecipeGroups, boolean isCore,
                                  WorkSlotRestartPolicy restartPolicy) {
@@ -19,11 +20,6 @@ public record WorkSlotDefinition(String name, Set<ResourceLocation> allowedRecip
         }
         Objects.requireNonNull(allowedRecipeGroups, "allowedRecipeGroups");
         Objects.requireNonNull(restartPolicy, "restartPolicy");
-        var groups = new ObjectLinkedOpenHashSet<ResourceLocation>(allowedRecipeGroups.size());
-        for (var group : allowedRecipeGroups) {
-            groups.add(Objects.requireNonNull(group, "recipe group"));
-        }
-        allowedRecipeGroups = ObjectSets.unmodifiable(groups);
     }
 
     public WorkSlotDefinition(String name) {

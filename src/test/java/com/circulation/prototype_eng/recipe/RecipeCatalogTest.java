@@ -58,7 +58,6 @@ class RecipeCatalogTest {
         assertSame(shared, result.get(1));
         reverseGroups.clear();
         assertEquals(List.of(first, shared, last), result);
-        assertThrows(UnsupportedOperationException.class, result::clear);
     }
 
     @Test
@@ -91,8 +90,6 @@ class RecipeCatalogTest {
         RecipeCandidateIndex firstIndex = (_, groups, scope) -> {
             assertTrue(groups.isEmpty());
             assertEquals(expected, scope);
-            assertThrows(UnsupportedOperationException.class, () -> groups.add(FIRST_GROUP));
-            assertThrows(UnsupportedOperationException.class, scope::clear);
             observed.add(scope);
             return List.of(last, ungrouped);
         };
@@ -137,25 +134,6 @@ class RecipeCatalogTest {
             return List.of(universal, itemFirst, energy, energy);
         };
         assertEquals(List.of(energy, universal), catalog.candidates(new MachineInstance(), Set.of(FIRST_GROUP), List.of(itemIndex, independent)));
-    }
-
-    @Test
-    void indexInputsAndReturnedCandidatesAreIsolatedFromMutableExternalCollections() {
-        var first = recipe("first", FIRST_GROUP);
-        var second = recipe("second", FIRST_GROUP);
-        var catalog = new RecipeCatalog(List.of(pool("pool", first, second)));
-        var candidates = new ObjectArrayList<>(List.of(second, first, first));
-        var groups = new ObjectLinkedOpenHashSet<>(List.of(FIRST_GROUP));
-        RecipeCandidateIndex index = (_, frozenGroups, scope) -> {
-            assertThrows(UnsupportedOperationException.class, frozenGroups::clear);
-            assertThrows(UnsupportedOperationException.class, scope::clear);
-            groups.clear();
-            return candidates;
-        };
-        var result = catalog.candidates(new MachineInstance(), groups, List.of(index));
-        candidates.clear();
-        assertEquals(List.of(first, second), result);
-        assertEquals(List.of(first, second), catalog.candidates(new MachineInstance(), Set.of(FIRST_GROUP), List.of()));
     }
 
     @Test

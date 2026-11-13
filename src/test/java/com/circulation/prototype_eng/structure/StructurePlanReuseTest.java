@@ -20,6 +20,7 @@ import com.circulation.prototype_eng.api.structure.StructureReadPlan;
 import com.circulation.prototype_eng.api.structure.StructureReadSource;
 import com.circulation.prototype_eng.api.structure.StructureSnapshot;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
@@ -57,7 +58,7 @@ class StructurePlanReuseTest {
 
     private static MachineStructure template(StructurePredicate predicate) {
         return TemplateStructure.create(id("shape"), BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false,
-            new StructurePattern(Map.of(BODY, predicate)), List.of(), List.of());
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(BODY, predicate))), List.of(), List.of());
     }
 
     private static TracedShape traced(Counts counts, boolean reusable) {
@@ -111,7 +112,7 @@ class StructurePlanReuseTest {
             return "body".equals(value);
         });
         var shape = SliceStructure.create(id("slice"), BlockOrientation.NORTH_UP, BODY, false,
-            new StructurePattern(Map.of(BlockPos.ORIGIN, predicate)), 1, 3, BODY, List.of(), List.of());
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(BlockPos.ORIGIN, predicate))), 1, 3, BODY, List.of(), List.of());
         var configuration = configuration(shape);
         var first = Objects.requireNonNull(StructurePlan.beginCreate(configuration, BlockPos.ORIGIN).run());
         var second = Objects.requireNonNull(StructurePlan.beginCreate(configuration, BlockPos.ORIGIN).run());
@@ -143,7 +144,7 @@ class StructurePlanReuseTest {
     void legacyConstructorsAndUnknownChildrenOrValidatorsPreventParentReuse() {
         var legacyTransforms = new AtomicInteger();
         var legacy = new TemplateStructure(id("legacy"), BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false,
-            new StructurePattern(Map.of(BODY, StructurePredicates.test(VALUE, "body"::equals))), List.of(), List.of()) {
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(BODY, StructurePredicates.test(VALUE, "body"::equals)))), List.of(), List.of()) {
             @Override
             public TemplateStructure transform(StructureTransform rotation) {
                 legacyTransforms.incrementAndGet();
@@ -156,7 +157,7 @@ class StructurePlanReuseTest {
         assertEquals(2, legacyTransforms.get());
         var childCounts = new Counts();
         var parent = TemplateStructure.create(id("parent"), BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false,
-            new StructurePattern(Map.of()), List.of(), List.of(traced(childCounts, false)));
+            new StructurePattern(BlockPos2ObjectMap.emptyMap()), List.of(), List.of(traced(childCounts, false)));
         var parentConfiguration = configuration(parent);
         drain(StructurePlan.beginCreate(parentConfiguration, BlockPos.ORIGIN));
         drain(StructurePlan.beginCreate(parentConfiguration, BlockPos.ORIGIN));
@@ -180,7 +181,7 @@ class StructurePlanReuseTest {
             }
         };
         var withValidator = configuration(TemplateStructure.create(id("validated"), BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false,
-            new StructurePattern(Map.of()), List.of(validator), List.of()));
+            new StructurePattern(BlockPos2ObjectMap.emptyMap()), List.of(validator), List.of()));
         drain(StructurePlan.beginCreate(withValidator, BlockPos.ORIGIN));
         drain(StructurePlan.beginCreate(withValidator, BlockPos.ORIGIN));
         assertEquals(2, validatorTransforms.get());

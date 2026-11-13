@@ -16,6 +16,8 @@ import java.util.UUID;
 
 /**
  * Complete immutable save state. Eligibility and selected plans survive forgetting and source consumption.
+ * The children list is borrowed immutable data: callers and consumers must leave it unchanged for
+ * the lifetime of this claim and all checkpoints that retain it. Transitions create new lists.
  */
 public record RewardClaim(Key key, Status status, long eligibleAtWorldTime,
                           Optional<ResourceLocation> selectedGroupId, OptionalLong claimingAtWorldTime,
@@ -26,7 +28,7 @@ public record RewardClaim(Key key, Status status, long eligibleAtWorldTime,
         Objects.requireNonNull(selectedGroupId, "selectedGroupId");
         Objects.requireNonNull(claimingAtWorldTime, "claimingAtWorldTime");
         Objects.requireNonNull(claimedAtWorldTime, "claimedAtWorldTime");
-        children = ObjectLists.unmodifiable(new ObjectArrayList<>(Objects.requireNonNull(children, "children")));
+        Objects.requireNonNull(children, "children");
         boolean selected = status != Status.UNCLAIMED;
         if (eligibleAtWorldTime < 0 || selected != selectedGroupId.isPresent()
             || selected != claimingAtWorldTime.isPresent() || selected == children.isEmpty()
@@ -119,21 +121,27 @@ public record RewardClaim(Key key, Status status, long eligibleAtWorldTime,
     public enum Status {
         UNCLAIMED, CLAIMING, CLAIMED;
 
-        /** Shared declaration order; callers must not modify this array. */
+        /**
+         * Shared declaration order; callers must not modify this array.
+         */
         public static final Status[] VALUES = values();
     }
 
     public enum Kind {
         EVENT, ITEM;
 
-        /** Shared declaration order; callers must not modify this array. */
+        /**
+         * Shared declaration order; callers must not modify this array.
+         */
         public static final Kind[] VALUES = values();
     }
 
     public enum ChildStatus {
         PENDING, COMPLETED, ERROR;
 
-        /** Shared declaration order; callers must not modify this array. */
+        /**
+         * Shared declaration order; callers must not modify this array.
+         */
         public static final ChildStatus[] VALUES = values();
     }
 
@@ -145,25 +153,25 @@ public record RewardClaim(Key key, Status status, long eligibleAtWorldTime,
         }
     }
 
+    /**
+     * Fragments are a completed ordered map borrowed read-only throughout this child's lifetime.
+     */
     public record Child(RewardEventKey key, Kind kind, ChildStatus status,
                         Object2ObjectMap<UUID, ItemDeliveryFragment> fragments) {
         public Child {
             Objects.requireNonNull(key, "key");
             Objects.requireNonNull(kind, "kind");
             Objects.requireNonNull(status, "status");
-            var copy = new Object2ObjectLinkedOpenHashMap<UUID, ItemDeliveryFragment>(fragments.size());
             for (var entry : Objects.requireNonNull(fragments, "fragments").object2ObjectEntrySet()) {
                 var fragment = Objects.requireNonNull(entry.getValue(), "fragment");
                 if (!fragment.id().equals(entry.getKey()) || !fragment.parent().equals(key)
                     || (status == ChildStatus.COMPLETED && fragment.status() != ItemDeliveryFragment.Status.CONFIRMED)) {
                     throw new IllegalArgumentException("Invalid reward child fragment");
                 }
-                copy.put(entry.getKey(), fragment);
             }
-            if ((kind == Kind.EVENT && !copy.isEmpty()) || (kind == Kind.ITEM && copy.isEmpty())) {
+            if ((kind == Kind.EVENT && !fragments.isEmpty()) || (kind == Kind.ITEM && fragments.isEmpty())) {
                 throw new IllegalArgumentException("Fragment plan does not match child kind");
             }
-            fragments = RewardSnapshots.map(copy);
         }
 
         public Child replaceFragment(ItemDeliveryFragment fragment) {

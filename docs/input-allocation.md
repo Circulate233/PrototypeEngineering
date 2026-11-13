@@ -39,13 +39,13 @@ var payload = new ResourceRequirement(inputs, outputs).withInputAllocation(alloc
 
 回调和其捕获状态必须在定义存续期间不可变；它是 owner 上的一次合作回调，不能访问世界、执行 START、预留或改变存储。扫描探针、概率预检及以后重新尝试均可能再次调用它。回调返回正数分配，总额必须准确等于本投影需求；空列表、部分结果、重复/不存在的来源、超出余额/需求或算术溢出会明确报错。普通总量不足在回调前返回既有受阻结果。
 
-`Context` 暴露阶段、投影序号、资源键（FE 为 null）、有效数量与不可变来源列表。每来源包含身份文本、首次快照 revision、当前投影剩余可提量、首次投影前的完整 AEKey 余额，以及独立 FE 的原余额/操作上限。完整资源表由 `beginQuantityCapture` 和后续预算化复制得到，不能通过回调修改；前面投影的预留不会改写首次快照，只影响后面投影的剩余量。来源下标仅用于本次分配返回，不允许保存作后续授权。身份、revision 与余额也都不是运行授权。
+`Context` 暴露阶段、投影序号、资源键（FE 为 null）、有效数量与不可变来源列表。每来源包含本次来源下标、首次快照 revision、当前投影剩余可提量、首次投影前的完整 AEKey 余额，以及独立 FE 的原余额/操作上限。完整资源表由 `beginQuantityCapture` 和后续预算化复制得到，不能通过回调修改；前面投影的预留不会改写首次快照，只影响后面投影的剩余量。来源下标仅用于本次分配返回；实际预留仍使用获取游标持有的 StorageContext 和快照。
 
-数量表统一使用拥有数据的 `ImmutableResourceAmounts`。它沿用 ManualMaterials 中 BasicEntry 快照的防写模式，同时覆盖 primitive 和 boxed entry 视图；迭代器、数组和 stream 不会泄露底层可写 entry。公开 `StorageSnapshot` 和原生 `QuantityCapture` 也共用它。已有不可变表可 O(1) 复用；预算复制用 builder 逐项 addTo，build 只转移所有权，不额外整表遍历；entry 迭代时每项产生一个不可写条目。
+数量表直接使用 AEKey2LongMap。`ImmutableResourceAmounts` 现仅为原生map构建帮助类，build 按契约移交已完成表，不再创建自定义防写map、逐条Entry副本或关闭builder；生产者和消费者都不得再修改交接后的表。`StorageSnapshot` 不在构造时再次复制已经捕获的数据，真实库存快照仍由存储在其读取边界构建。
 
-原生仓在 world 已实际持有该 TileEntity 的最终位置之后、能力返回前，以仓室种类、维度、坐标和输入/输出侧绑定稳定身份。混合仓的两侧不同；同一余额的别名仍共享 context 和身份。`StorageContext.bindSourceIdentity` 只允许首次绑定，推进 revision，使之前捕获的事实失效；不同身份不能重绑，存在活跃预留或 fence 时也不能首次绑定。身份标签绝不替换实际 context 身份、锁顺序或授权证明。
+2026-11-13 防御性编程审查删除了位置标签和整套绑定协议：TE 不保存 allocationLocation/loadedLocation，StorageContext 不再持有 sourceIdentity/sourceIdentityBound，也不因设置诊断标签修改 revision、使库存失效或重新挂载。Java/CT 的分配来源不再暴露 identity 文本；按来源下标和完整冻结库存等实际数据选择。混合仓两侧及同余额别名仍通过真实 context 区分和去重。
 
-NBT 重载、初始变体替换、卸载/重新挂载继续使用原来的旧 context 失效与新 context 构建路径，在同一物理位置重新生成相同标签。已绑定位置或 world 变化会先 invalidate；移动后的标准 validate/重挂载重新建立存储与标签，旧能力引用不能复活。标签不存作运行权限。纯内存来源可在使用前显式绑定自己的稳定名称；未绑定来源使用明确的 `lifetime:` 标签，只承诺本 context 存续期稳定。
+自定义策略的总可用量仅累计到本次需求，避免多仓各自合法的大库存相加溢出而拒绝小额扣料。回调返回数量、实际库存变动与预留仍保留必要的溢出检查。样板总成另有实际参与隔离组匹配的分区 ID，由该存储自身保存恢复，和已删除的诊断标签无关。
 
 ## 原执行协议
 
@@ -57,6 +57,6 @@ NBT 重载、初始变体替换、卸载/重新挂载继续使用原来的旧 co
 
 ## 验证入口
 
-`InputAllocationTest` 包含 23 项行为测试：同步及真实 planned 单工作单位路径的拆分/单来源差异、首个足量来源、别名去重、独立同 key/long 投影、自定义比例与完整快照选择、无效结果/溢出、FE 限额与各阶段、overlay/最终并行量、概率保守预检、陈旧来源拒绝、跨宿主补偿，以及身份绑定/重复身份/重排/重建。复核补充覆盖两种 entry.setValue 被拒后后续投影不变、外部包装表的拥有式复制、两个原生快照出口不可写，以及 4096 槽稀疏原生仓在两种策略下的单单位真实探针/planned 执行。每步实际空槽访问 ≤1；总步数分别容纳原获取、提交和清理历史的真实计费，不使用 hash/getter 或时间阈值判断。能源实体通过位置事实覆写执行 headless 生命周期；资源实体完整配置依赖 AEConfig，纯测试改由既有可配置 BufferedResourceHatch 的保存/加载/退休及标签绑定边界验证，不把它声称为资源实体或实机验收。
+`InputAllocationTest` 覆盖同步及真实 planned 单工作单位路径的拆分/单来源差异、首个足量来源、别名去重、独立同 key/long 投影、自定义比例与完整快照选择、非法分配结果、FE 限额与各阶段、overlay/最终并行量、概率保守预检、陈旧来源拒绝和跨宿主补偿。2026-11-13 删除旧标签协议及防写包装测试，旧标签重建夹具整体删除；真实存档恢复由仓室/能源测试覆盖。大库存案例改为正常小额分配成功，快照保留真实库存后续变化的验证，4096 槽稀疏原生仓的实际探针/planned执行也保留。本轮实际运行结果见 [防御性编程审查](defensive-programming-audit.md)。
 
 2026-11-10 最终关联111 tests/11 suites及完整1744 tests/224 suites均零失败、错误、跳过；22个所属Java与本批其余文件本机全级检查全部零诊断、完整读回一致，MCP build成功。原失败和修复边界见 `build/staging/input-allocation-policy/test-runs/results.md`；统一构建证据见 `build/staging/resumed-goal-plan/unified/third-results/`。

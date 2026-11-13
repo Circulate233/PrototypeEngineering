@@ -34,7 +34,9 @@ public final class RecipeProcessCodecs {
         current = new Snapshot(this, null, codecs);
     }
 
-    /** Compatibility binding for a work-slot codec that does not follow definition replacements. */
+    /**
+     * Compatibility binding for a work-slot codec that does not follow definition replacements.
+     */
     public static RecipeProcessCodecs fixed(Collection<RecipeProcessNbt> codecs) {
         return new RecipeProcessCodecs(codecs, true);
     }
@@ -47,15 +49,20 @@ public final class RecipeProcessCodecs {
         return current == Objects.requireNonNull(expected);
     }
 
-    /** Claims the sole publication capability when a registry adopts this resolver before freezing. */
+    /**
+     * Claims the sole publication capability when a registry adopts this resolver before freezing.
+     */
     public synchronized RegistryBinding bindRegistry(RecipeRegistry registry) {
         Objects.requireNonNull(registry);
-        if (fixed || registryBinding != null) throw new IllegalStateException("Process codec resolver cannot be bound to this registry");
+        if (fixed || registryBinding != null)
+            throw new IllegalStateException("Process codec resolver cannot be bound to this registry");
         registryBinding = new RegistryBinding(this, registry);
         return registryBinding;
     }
 
-    /** Pure preparation; no current binding is modified when validation fails. */
+    /**
+     * Pure preparation; no current binding is modified when validation fails.
+     */
     public synchronized Prepared prepare(Snapshot expected, Collection<RecipeProcessNbt> additions) {
         if (fixed) throw new IllegalStateException("Fixed process codecs cannot be extended");
         if (!isCurrent(expected)) throw new IllegalArgumentException("Foreign or stale process codec snapshot");
@@ -79,17 +86,21 @@ public final class RecipeProcessCodecs {
      * those steps. The ordering is registry, resolver, then network bindings when all are involved.
      */
     public synchronized void install(Prepared prepared) {
-        if (registryBinding != null) throw new IllegalStateException("Bound process codecs publish only with their recipe registry");
+        if (registryBinding != null)
+            throw new IllegalStateException("Bound process codecs publish only with their recipe registry");
         installPrepared(prepared);
     }
 
     private void installPrepared(Prepared prepared) {
-        if (!canInstall(prepared)) throw new IllegalStateException("Foreign, stale or consumed process codec preparation");
+        if (!canInstall(prepared))
+            throw new IllegalStateException("Foreign, stale or consumed process codec preparation");
         prepared.consumed = true;
         current = prepared.next;
     }
 
-    /** Kept privately by the adopting registry; regular resolver callers cannot publish around it. */
+    /**
+     * Kept privately by the adopting registry; regular resolver callers cannot publish around it.
+     */
     public static final class RegistryBinding {
         private final RecipeProcessCodecs resolver;
         private final RecipeRegistry registry;
@@ -100,7 +111,8 @@ public final class RecipeProcessCodecs {
         }
 
         public void install(Prepared prepared) {
-            if (!Thread.holdsLock(registry)) throw new IllegalStateException("Registry publication monitor is required");
+            if (!Thread.holdsLock(registry))
+                throw new IllegalStateException("Registry publication monitor is required");
             synchronized (resolver) {
                 resolver.installPrepared(prepared);
             }
@@ -156,7 +168,9 @@ public final class RecipeProcessCodecs {
         }
     }
 
-    /** Single-use result tied to this resolver and its exact previous snapshot. */
+    /**
+     * Single-use result tied to this resolver and its exact previous snapshot.
+     */
     public static final class Prepared {
         private final RecipeProcessCodecs owner;
         private final Snapshot expected;

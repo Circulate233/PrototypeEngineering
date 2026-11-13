@@ -29,19 +29,21 @@ public record ZenResourceHatchSide(ResourceHatchConfiguration.Side value) {
     @ZenMethod
     public static ZenResourceHatchSide itemEquivalent(int slots, long capacity, ZenResource[] representatives) {
         var types = new ObjectArrayList<AEKeyType>(representatives.length);
-        for (var representative : representatives) types.add(Objects.requireNonNull(representative).key().getType());
+        for (var representative : representatives) types.add(representative.key().getType());
         return new ZenResourceHatchSide(ResourceHatchConfiguration.Side.fromItemEquivalent(slots, capacity, types));
     }
 
     @ZenMethod
     public static ZenResourceHatchSide itemEquivalentWithRatios(int slots, long capacity, ZenResource[] representatives, long[] ratios) {
-        if (representatives.length != ratios.length) throw new IllegalArgumentException("Resource types and ratios must have equal lengths");
+        if (representatives.length != ratios.length)
+            throw new IllegalArgumentException("Resource types and ratios must have equal lengths");
         var types = new ObjectArrayList<AEKeyType>(representatives.length);
         var overrides = new Reference2LongOpenHashMap<AEKeyType>(2);
         for (int i = 0; i < representatives.length; i++) {
             var type = Objects.requireNonNull(representatives[i]).key().getType();
             types.add(type);
-            if (overrides.containsKey(type)) throw new IllegalArgumentException("Duplicate resource type: " + type.getId());
+            if (overrides.containsKey(type))
+                throw new IllegalArgumentException("Duplicate resource type: " + type.getId());
             overrides.put(type, ratios[i]);
         }
         return new ZenResourceHatchSide(ResourceHatchConfiguration.Side.fromItemEquivalent(slots, capacity, types, overrides));
@@ -51,8 +53,9 @@ public record ZenResourceHatchSide(ResourceHatchConfiguration.Side value) {
     public static ZenResourceHatchSide nativeCapacities(int slots, ZenResource[] capacities) {
         var values = new Reference2LongOpenHashMap<AEKeyType>(capacities.length);
         for (var resource : capacities) {
-            var type = Objects.requireNonNull(resource).key().getType();
-            if (values.containsKey(type)) throw new IllegalArgumentException("Duplicate resource type: " + type.getId());
+            var type = resource.key().getType();
+            if (values.containsKey(type))
+                throw new IllegalArgumentException("Duplicate resource type: " + type.getId());
             values.put(type, resource.amount());
         }
         return new ZenResourceHatchSide(new ResourceHatchConfiguration.Side(slots, values));

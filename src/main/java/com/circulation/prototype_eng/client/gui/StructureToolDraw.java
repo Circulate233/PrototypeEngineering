@@ -4,7 +4,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.renderer.GlStateManager;
 
-/** Pixel slices of the original PM tool atlases. */
+/**
+ * Pixel slices of the original PM tool atlases.
+ */
 final class StructureToolDraw {
     private StructureToolDraw() {
     }

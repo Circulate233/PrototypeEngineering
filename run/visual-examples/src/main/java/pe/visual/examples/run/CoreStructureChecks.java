@@ -17,9 +17,13 @@ import java.util.concurrent.TimeUnit;
 
 import static pe.visual.examples.run.CoreCases.*;
 
-/** Frozen capture/evaluation and JSON resolver tests; no World/FML bootstrap. */
+/**
+ * Frozen capture/evaluation and JSON resolver tests; no World/FML bootstrap.
+ */
 final class CoreStructureChecks {
-    private CoreStructureChecks() {}
+    private CoreStructureChecks() {
+    }
+
     static void run() throws java.io.IOException, InterruptedException, java.util.concurrent.ExecutionException, java.util.concurrent.TimeoutException {
         structureOwner = Thread.currentThread();
         int before = customVisits();
@@ -27,13 +31,17 @@ final class CoreStructureChecks {
         factories.register(id("core_custom"), Set.of(), (_, _) -> Objects.requireNonNull(predicate).value());
         factories.freeze();
         var file = java.nio.file.Path.of("scripts", "fixtures", "core_custom.json");
-        if (!java.nio.file.Files.isRegularFile(file)) file = java.nio.file.Path.of("run", "scripts", "fixtures", "core_custom.json");
+        if (!java.nio.file.Files.isRegularFile(file))
+            file = java.nio.file.Path.of("run", "scripts", "fixtures", "core_custom.json");
         var sources = Map.of("core_custom.json", java.nio.file.Files.readString(file));
         var json = StructureJsonLoader.readSources(sources).resolve(new StructureCatalog(List.of()), factories, new NoBlocks());
         NativeChecks.check("core_json_resolution_no_callback", customVisits() == before);
         boolean closed = false;
-        try { factories.register(id("core_late"), Set.of(), (_, _) -> predicate.value()); }
-        catch (IllegalStateException expected) { closed = true; }
+        try {
+            factories.register(id("core_late"), Set.of(), (_, _) -> predicate.value());
+        } catch (IllegalStateException expected) {
+            closed = true;
+        }
         NativeChecks.check("core_json_predicate_freeze", closed);
         var capturedSource = new Source(structureOwner);
         try (var worker = Executors.newSingleThreadExecutor()) {
@@ -53,15 +61,29 @@ final class CoreStructureChecks {
         }
         NativeChecks.check("core_custom_worker_callbacks", customVisits() - before == 6);
     }
+
     private static final class Source implements StructureReadSource {
         private final Thread owner;
         private int brightness = 17;
-        private Source(Thread owner) { this.owner = owner; }
-        @Override public void requireServerThread() {
+
+        private Source(Thread owner) {
+            this.owner = owner;
+        }
+
+        @Override
+        public void requireServerThread() {
             if (Thread.currentThread() != owner) throw new IllegalStateException("Capture/freshness left owner thread");
         }
-        @Override public boolean isAreaLoaded(StructureBounds bounds) { requireServerThread(); return true; }
-        @Override @SuppressWarnings("unchecked") public <T> T read(StructureQuery<T> requested, BlockPos position) {
+
+        @Override
+        public boolean isAreaLoaded(StructureBounds bounds) {
+            requireServerThread();
+            return true;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public <T> T read(StructureQuery<T> requested, BlockPos position) {
             requireServerThread();
             Object fact;
             if (requested == query.value()) fact = new NBTTagInt(brightness);
@@ -74,12 +96,35 @@ final class CoreStructureChecks {
             return (T) fact;
         }
     }
+
     private static final class NoBlocks implements StructureBlockResolver {
-        private IllegalArgumentException unexpected() { return new IllegalArgumentException("Core JSON must not resolve blocks/displays"); }
-        @Override public StructurePredicate block(ResourceLocation id) { throw unexpected(); }
-        @Override public StructurePredicate state(ResourceLocation id, int meta, Map<String, String> nbt) { throw unexpected(); }
-        @Override public StructurePredicate regex(String expression) { throw unexpected(); }
-        @Override public StructureDisplay.BlockOption displayState(ResourceLocation id, int meta, Map<String, String> nbt) { throw unexpected(); }
-        @Override public List<StructureDisplay.BlockOption> displayRegex(String expression) { throw unexpected(); }
+        private IllegalArgumentException unexpected() {
+            return new IllegalArgumentException("Core JSON must not resolve blocks/displays");
+        }
+
+        @Override
+        public StructurePredicate block(ResourceLocation id) {
+            throw unexpected();
+        }
+
+        @Override
+        public StructurePredicate state(ResourceLocation id, int meta, Map<String, String> nbt) {
+            throw unexpected();
+        }
+
+        @Override
+        public StructurePredicate regex(String expression) {
+            throw unexpected();
+        }
+
+        @Override
+        public StructureDisplay.BlockOption displayState(ResourceLocation id, int meta, Map<String, String> nbt) {
+            throw unexpected();
+        }
+
+        @Override
+        public List<StructureDisplay.BlockOption> displayRegex(String expression) {
+            throw unexpected();
+        }
     }
 }

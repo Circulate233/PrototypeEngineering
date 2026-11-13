@@ -3,7 +3,9 @@ package com.circulation.prototype_eng.client.preview;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
-/** Viewer-local Back control: consume the held mouse release before displaying its parent. */
+/**
+ * Viewer-local Back control: consume the held mouse release before displaying its parent.
+ */
 public final class PreviewBackRequest {
     private final BooleanSupplier buttonsReleased;
     private final Runnable back;

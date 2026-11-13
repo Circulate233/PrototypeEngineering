@@ -37,7 +37,9 @@ public final class ServerNetworkRuntime {
         return current.runtime;
     }
 
-    /** Attach external devices to the same session and budgets used by the machine scheduler. */
+    /**
+     * Attach external devices to the same session and budgets used by the machine scheduler.
+     */
     @SuppressWarnings("resource") // Server stop owns the borrowed runtime.
     public static NetworkParticipants participants(MinecraftServer server) {
         requireThread(server);

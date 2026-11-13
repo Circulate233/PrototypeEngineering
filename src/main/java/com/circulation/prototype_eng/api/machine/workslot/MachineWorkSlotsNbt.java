@@ -35,10 +35,6 @@ public final class MachineWorkSlotsNbt {
         }
     }
 
-    public RecipeProcessCodecs processCodecs() {
-        return recipes;
-    }
-
     private static NBTTagCompound writeDefinition(WorkSlotDefinition definition) {
         var entry = new NBTTagCompound();
         entry.setString("Name", definition.name());
@@ -62,6 +58,10 @@ public final class MachineWorkSlotsNbt {
         }
         return new WorkSlotDefinition(StrictNbt.requireString(entry, "Name"), groups, StrictNbt.requireBoolean(entry, "Core"),
             WorkSlotRestartPolicy.valueOf(StrictNbt.requireString(entry, "RestartPolicy")));
+    }
+
+    public RecipeProcessCodecs processCodecs() {
+        return recipes;
     }
 
     public NBTTagCompound encode(MachineWorkSlots host) {

@@ -188,10 +188,11 @@ public final class ResearchStationWork {
         Objects.requireNonNull(site);
         Objects.requireNonNull(deadline);
         boolean present = false;
-        for (var source : sites()) if (source.sameStation(site)) {
-            present = true;
-            break;
-        }
+        for (var source : sites())
+            if (source.sameStation(site)) {
+                present = true;
+                break;
+            }
         if (!present) return true;
         destroyedSite = site;
         if (stored != null && suspendedProcess == null && cleanup == null && cycle == null) {
@@ -594,11 +595,14 @@ public final class ResearchStationWork {
         }
     }
 
+    /**
+     * Sites are borrowed immutable data and must not change while a segment or checkpoint retains them.
+     */
     public record SavedSegment(TeamResearchQueue.Key key, List<ResearchStations.Site> sites,
                                NBTTagCompound processTag) {
         public SavedSegment {
             Objects.requireNonNull(key);
-            sites = ResearchStations.validatedSites(sites);
+            ResearchStations.validatedSites(sites);
             processTag = Objects.requireNonNull(processTag).copy();
         }
 

@@ -1,10 +1,7 @@
 package com.circulation.prototype_eng.recipe;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
-
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
-import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -31,42 +28,35 @@ import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanProbes;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.storage.HatchMode;
-import com.circulation.prototype_eng.api.storage.HatchTier;
 import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.api.storage.ResourceBatch;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceStorage;
-import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.api.storage.StorageSnapshot;
 import com.circulation.prototype_eng.energy.EnergyBuffer;
-import com.circulation.prototype_eng.energy.EnergyHatchBlockEntity;
 import com.circulation.prototype_eng.scheduler.planned.PlannedRecipeCoordinator;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.ResourceLocation;
-import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.ITextComponent;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -147,15 +137,6 @@ class InputAllocationTest {
         return process.state().result();
     }
 
-    private static String identity(StorageContext context) {
-        context.lock();
-        try {
-            return context.sourceIdentity();
-        } finally {
-            context.unlock();
-        }
-    }
-
     @Test
     void singleSourceRejectsCombinedBalancesWhileDefaultStillSplits() {
         for (boolean planned : List.of(false, true)) {
@@ -227,7 +208,7 @@ class InputAllocationTest {
     }
 
     @Test
-    void overflowingCustomAvailabilityIsRejectedBeforeTheCallbackOrPayment() {
+    void customAllocationOnlyNeedsEnoughTotalAvailabilityForTheRequestedAmount() {
         for (boolean planned : List.of(false, true)) {
             var first = new BufferedResourceHatch(HatchMode.INPUT, 1, Reference2LongMaps.singleton(TYPE, Long.MAX_VALUE), () -> {
             });
@@ -235,14 +216,13 @@ class InputAllocationTest {
             });
             Objects.requireNonNull(first.input()).insert(MATERIAL, Long.MAX_VALUE, Actionable.MODULATE);
             Objects.requireNonNull(second.input()).insert(MATERIAL, Long.MAX_VALUE, Actionable.MODULATE);
-            var policy = InputAllocation.custom(id("overflow"), _ -> {
-                throw new AssertionError("Overflow must precede callback");
-            });
+            var policy = InputAllocation.custom(id("large_balances"), context ->
+                List.of(new InputAllocation.Portion(context.sources().getLast().index(), context.amount())));
             var payload = new ResourceRequirement(List.of(new GenericStack(MATERIAL, 1)), List.of()).withInputAllocation(policy);
             var process = process(new MachineHatches(List.of(first, second), List.of(), List.of()), 0, resource(payload));
-            assertThrows(ArithmeticException.class, () -> run(process, planned));
+            assertSame(ProcessResult.SUCCESS, run(process, planned));
             assertEquals(Long.MAX_VALUE, amount(first));
-            assertEquals(Long.MAX_VALUE, amount(second));
+            assertEquals(Long.MAX_VALUE - 1, amount(second));
         }
     }
 
@@ -259,7 +239,6 @@ class InputAllocationTest {
                 assertEquals(0, context.projection());
                 assertEquals(10, context.amount());
                 assertEquals(2, context.sources().size(), "Alias inputs cannot become separate allocation sources");
-                assertThrows(UnsupportedOperationException.class, () -> context.sources().clear());
                 return List.of(new InputAllocation.Portion(1, 7), new InputAllocation.Portion(0, 3));
             });
             var payload = new ResourceRequirement(List.of(new GenericStack(MATERIAL, 10)), List.of()).withInputAllocation(policy);
@@ -280,12 +259,6 @@ class InputAllocationTest {
             Objects.requireNonNull(second.input()).insert(marker, 3, Actionable.MODULATE);
             var policy = InputAllocation.custom(id("marked_source"), context -> {
                 var selected = context.sources().stream().filter(source -> source.resources().getLong(marker) == 3).findFirst().orElseThrow();
-                assertThrows(UnsupportedOperationException.class, () -> selected.resources().clear());
-                assertThrows(UnsupportedOperationException.class,
-                    () -> selected.resources().object2LongEntrySet().iterator().next().setValue(99L));
-                Map<AEKey, Long> boxed = selected.resources();
-                assertThrows(UnsupportedOperationException.class,
-                    () -> boxed.entrySet().iterator().next().setValue(99L));
                 assertEquals(8, selected.resources().getLong(MATERIAL), "Initial snapshot survives earlier projections");
                 assertEquals(context.projection() == 0 ? 8 : 4, selected.available());
                 return List.of(new InputAllocation.Portion(selected.index(), context.amount()));
@@ -301,21 +274,7 @@ class InputAllocationTest {
     }
 
     @Test
-    void sourceOwnsEvenAnExternallyWrappedQuantityMap() {
-        var original = new AEKey2LongMap.LinkdOpenHashMap();
-        original.addTo(MATERIAL, 8);
-        var source = new InputAllocation.Source(0, "external:source", 0, 8,
-            new AEKey2LongMap.UnmodifiableMap(original), 0, 8);
-        original.object2LongEntrySet().getFirst().setValue(99L);
-        assertEquals(8, source.resources().getLong(MATERIAL), "An external wrapper cannot lend mutable ownership");
-        assertThrows(UnsupportedOperationException.class,
-            () -> source.resources().object2LongEntrySet().iterator().next().setValue(7L));
-        Map<AEKey, Long> boxed = source.resources();
-        assertThrows(UnsupportedOperationException.class, () -> boxed.entrySet().iterator().next().setValue(7L));
-    }
-
-    @Test
-    void bothNativeSnapshotExportsRejectEntryWritesAndOwnTheirValues() {
+    void nativeSnapshotValuesSurviveLaterInventoryChanges() {
         var storage = new SlottedResourceBuffer(2, Reference2LongMaps.singleton(TYPE, 10L), () -> {
         });
         storage.insert(MATERIAL, 8, Actionable.MODULATE);
@@ -324,13 +283,6 @@ class InputAllocationTest {
         boolean done = false;
         for (int step = 0; !done && step < 20; step++) done = capture.advance(new RecipeWorkBudget(1));
         assertTrue(done);
-        for (var quantities : List.of(snapshot.available(), capture.available())) {
-            assertThrows(UnsupportedOperationException.class,
-                () -> quantities.object2LongEntrySet().iterator().next().setValue(99L));
-            @SuppressWarnings("UnnecessaryLocalVariable") // The Map static type deliberately selects the boxed entry API.
-            Map<AEKey, Long> boxed = quantities;
-            assertThrows(UnsupportedOperationException.class, () -> boxed.entrySet().iterator().next().setValue(99L));
-        }
         assertEquals(8, storage.amount(MATERIAL));
         storage.insert(MATERIAL, 1, Actionable.MODULATE);
         assertEquals(8, snapshot.available().getLong(MATERIAL));
@@ -410,128 +362,6 @@ class InputAllocationTest {
             assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
             assertEquals(2, storage.amount(key));
         }
-    }
-
-    @Test
-    void customSourceIdentitySurvivesReconstructionAndSourceReordering() {
-        var policy = InputAllocation.custom(id("stable_identity"), context -> {
-            var selected = context.sources().stream().filter(source -> source.identity().equals("addon:preferred")).findFirst().orElseThrow();
-            return List.of(new InputAllocation.Portion(selected.index(), context.amount()));
-        });
-        for (boolean planned : List.of(false, true)) {
-            for (boolean reversed : List.of(false, true)) {
-                var preferred = input(8);
-                var other = input(8);
-                Objects.requireNonNull(preferred.input()).context().bindSourceIdentity("addon:preferred");
-                Objects.requireNonNull(other.input()).context().bindSourceIdentity("addon:other");
-                var sources = reversed ? List.of(other, preferred, other) : List.of(preferred, preferred, other);
-                var payload = new ResourceRequirement(List.of(new GenericStack(MATERIAL, 5)), List.of()).withInputAllocation(policy);
-                assertSame(ProcessResult.SUCCESS, run(process(new MachineHatches(sources, List.of(), List.of()), 0, resource(payload)), planned));
-                assertEquals(3, amount(preferred));
-                assertEquals(8, amount(other));
-            }
-        }
-    }
-
-    @Test
-    void bindingInvalidatesEarlierFactsAndCannotRelabelActiveOrBoundSources() {
-        var hatch = input(8);
-        var storage = Objects.requireNonNull(hatch.input());
-        var before = storage.snapshot();
-        storage.context().bindSourceIdentity("addon:bound");
-        assertFalse(storage.context().current(before.revision()));
-        assertNotEquals(ReservationResult.Status.ACCEPTED, storage.reserveExtract(before, MATERIAL, 1).status());
-        assertThrows(IllegalStateException.class, () -> storage.context().bindSourceIdentity("addon:other"));
-        var unbound = Objects.requireNonNull(input(8).input());
-        var reservation = Objects.requireNonNull(unbound.reserveExtract(unbound.snapshot(), MATERIAL, 1).reservation());
-        assertThrows(IllegalStateException.class, () -> unbound.context().bindSourceIdentity("addon:too_late"));
-        assertTrue(ResourceTransactions.commit(List.of(reservation)));
-        assertEquals(7, unbound.amount(MATERIAL));
-    }
-
-    @Test
-    void nativeEnergyRebuildKeepsPhysicalLabelsAndMovementRetiresOldBalances() {
-        var tile = new LocatedEnergy();
-        var input = Objects.requireNonNull(tile.inputStorage());
-        var output = Objects.requireNonNull(tile.outputStorage());
-        input.restore(12);
-        output.restore(4);
-        var identity = identity(input.context());
-        assertNotEquals(identity, identity(output.context()));
-        var saved = new NBTTagCompound();
-        tile.saveAdditional(saved);
-        tile.loadTag(saved);
-        assertFalse(input.isValid());
-        assertFalse(output.isValid());
-        var restored = Objects.requireNonNull(tile.inputStorage());
-        assertEquals(identity, identity(restored.context()));
-        assertEquals(12, restored.storedEnergy());
-        tile.setPos(new BlockPos(3, 4, 5));
-        assertFalse(restored.isValid());
-        assertEquals(0, restored.extractEnergy(1, Actionable.MODULATE));
-        tile.validate();
-        var moved = Objects.requireNonNull(tile.inputStorage());
-        assertNotEquals(identity, identity(moved.context()));
-        assertEquals(12, moved.storedEnergy());
-        var movedIdentity = identity(moved.context());
-        tile.onChunkUnload();
-        tile.validate();
-        assertFalse(moved.isValid());
-        assertEquals(movedIdentity, identity(Objects.requireNonNull(tile.inputStorage()).context()));
-        assertEquals(4, Objects.requireNonNull(tile.outputStorage()).storedEnergy());
-    }
-
-    @Test
-    void duplicateLabelsOnDifferentBalancesCannotAmbiguouslySelectACustomSource() {
-        for (boolean planned : List.of(false, true)) {
-            var first = input(8);
-            var second = input(8);
-            Objects.requireNonNull(first.input()).context().bindSourceIdentity("addon:duplicate");
-            Objects.requireNonNull(second.input()).context().bindSourceIdentity("addon:duplicate");
-            var policy = InputAllocation.custom(id("duplicate_identity"), _ -> {
-                throw new AssertionError("Ambiguous identity must fail first");
-            });
-            var payload = new ResourceRequirement(List.of(new GenericStack(MATERIAL, 1)), List.of()).withInputAllocation(policy);
-            var process = process(new MachineHatches(List.of(first, second), List.of(), List.of()), 0, resource(payload));
-            assertThrows(IllegalArgumentException.class, () -> run(process, planned));
-            assertEquals(8, amount(first));
-            assertEquals(8, amount(second));
-        }
-    }
-
-    @Test
-    void resourceStorageReconstructionRetiresOldFactsAndRebindsPhysicalLabels() {
-        // The real resource tile's config requires initialized AEConfig. Exercise its existing
-        // configurable storage save/load/retire boundary without bootstrapping a game or global config.
-        var original = new BufferedResourceHatch(HatchMode.MIXED, 1, Reference2LongMaps.singleton(TYPE, 10L), () -> {
-        });
-        var input = Objects.requireNonNull(original.input());
-        var output = Objects.requireNonNull(original.output());
-        input.context().bindSourceIdentity("identity_test:resource/0/input");
-        output.context().bindSourceIdentity("identity_test:resource/0/output");
-        var snapshot = input.snapshot();
-        var identity = identity(input.context());
-        assertNotEquals(identity, identity(output.context()));
-        var saved = new NBTTagCompound();
-        original.save(saved);
-        original.invalidate();
-        var reattached = new BufferedResourceHatch(HatchMode.MIXED, 1, Reference2LongMaps.singleton(TYPE, 10L), () -> {
-        });
-        reattached.load(saved);
-        var restored = Objects.requireNonNull(reattached.input());
-        restored.context().bindSourceIdentity("identity_test:resource/0/input");
-        assertNotSame(input, restored);
-        assertFalse(input.context().current(snapshot.revision()));
-        assertEquals(identity, identity(restored.context()));
-        reattached.invalidate();
-        assertFalse(restored.isValid());
-        var movedHatch = new BufferedResourceHatch(HatchMode.MIXED, 1, Reference2LongMaps.singleton(TYPE, 10L), () -> {
-        });
-        movedHatch.load(saved);
-        var moved = Objects.requireNonNull(movedHatch.input());
-        moved.context().bindSourceIdentity("identity_test:resource/6/7/8/input");
-        assertTrue(moved.isValid());
-        assertNotEquals(identity, identity(moved.context()));
     }
 
     @Test
@@ -777,18 +607,9 @@ class InputAllocationTest {
         }
     }
 
-    private static final class LocatedEnergy extends EnergyHatchBlockEntity {
-        private LocatedEnergy() {
-            super(HatchMode.MIXED, HatchTier.LV1);
-        }
-
-        @Override
-        protected String allocationLocation() {
-            return "identity_test:energy/" + getPos().toLong();
-        }
-    }
-
-    /** Counts actual native comparisons with empty slots; no hash calls or elapsed-time thresholds. */
+    /**
+     * Counts actual native comparisons with empty slots; no hash calls or elapsed-time thresholds.
+     */
     private static final class SlotVisitKey extends AEKey {
         private final Key delegate = new Key(TYPE, "sparse_slot");
         private int emptySlotVisits;

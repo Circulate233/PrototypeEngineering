@@ -9,7 +9,9 @@ import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.Objects;
 
-/** Immutable Java source snapshot. Identity/revision are facts, never authority to reserve a source. */
+/**
+ * Immutable Java source snapshot addressed by its index in this allocation.
+ */
 @SuppressWarnings("unused")
 @ZenRegister
 @ZenClass("mods.prototype_eng.recipe.AllocationSource")
@@ -23,11 +25,6 @@ public final class ZenAllocationSource {
     @ZenGetter("index")
     public int index() {
         return source.index();
-    }
-
-    @ZenGetter("identity")
-    public String identity() {
-        return source.identity();
     }
 
     @ZenGetter("revision")
@@ -49,10 +46,12 @@ public final class ZenAllocationSource {
         return resources.toArray(ZenResource[]::new);
     }
 
-    /** Exact initial snapshot balance, including zero for keys absent from this source. */
+    /**
+     * Exact initial snapshot balance, including zero for keys absent from this source.
+     */
     @ZenMethod
     public long amountOf(ZenResource resource) {
-        return source.resources().getLong(Objects.requireNonNull(resource).key());
+        return source.resources().getLong(resource.key());
     }
 
     @ZenGetter("energyAvailable")

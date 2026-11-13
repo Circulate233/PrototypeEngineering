@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.recipe;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
-
 import ae2.api.config.Actionable;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
@@ -28,6 +26,7 @@ import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
@@ -60,7 +59,9 @@ class RecipePoolLiveScannerTest {
         return SimpleRecipePool.Entry.create(id(path), 2, new GenericStack(input, 1), new GenericStack(OUTPUT, 1), Set.of());
     }
 
-    /** Drives the real retained kernel and source-exit protocol, as in RecipeProbeBudgetTest. */
+    /**
+     * Drives the real retained kernel and source-exit protocol, as in RecipeProbeBudgetTest.
+     */
     private static RecipeScanner.Result step(RecipeScanner.ScanAttempt attempt, int credits) {
         var budget = new RecipeWorkBudget(credits);
         for (var source : attempt.sources()) {

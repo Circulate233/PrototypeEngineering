@@ -3,10 +3,10 @@ package com.circulation.prototype_eng.structure.tool;
 import ae2.api.stacks.AEFluidKey;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.GenericStack;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import it.unimi.dsi.fastutil.booleans.BooleanArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.fluids.FluidUtil;
@@ -15,7 +15,9 @@ import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
 import net.minecraftforge.items.wrapper.PlayerInvWrapper;
 
-/** Mutable copies used only by a single construction preflight; never consumes the live inventory. */
+/**
+ * Mutable copies used only by a single construction preflight; never consumes the live inventory.
+ */
 final class ConstructionInventory {
     private final ObjectArrayList<ItemStack> stacks = new ObjectArrayList<>();
     private final BooleanArrayList writable = new BooleanArrayList();
@@ -26,13 +28,14 @@ final class ConstructionInventory {
     }
 
     ConstructionInventory(Iterable<IItemHandler> inventories) {
-        for (var inventory : inventories) for (int slot = 0; slot < inventory.getSlots(); slot++) {
-            var stack = inventory.getStackInSlot(slot);
-            stacks.add(stack.copy());
-            writable.add(inventory instanceof IItemHandlerModifiable);
-            var take = inventory.extractItem(slot, stack.getCount(), true);
-            extractable.add(ItemStack.areItemsEqual(stack, take) && ItemStack.areItemStackTagsEqual(stack, take) ? take.getCount() : 0);
-        }
+        for (var inventory : inventories)
+            for (int slot = 0; slot < inventory.getSlots(); slot++) {
+                var stack = inventory.getStackInSlot(slot);
+                stacks.add(stack.copy());
+                writable.add(inventory instanceof IItemHandlerModifiable);
+                var take = inventory.extractItem(slot, stack.getCount(), true);
+                extractable.add(ItemStack.areItemsEqual(stack, take) && ItemStack.areItemStackTagsEqual(stack, take) ? take.getCount() : 0);
+            }
     }
 
     static ObjectArrayList<IItemHandler> inventories(EntityPlayer player) {
@@ -72,8 +75,7 @@ final class ConstructionInventory {
                         stacks.set(slot, handler.getContainer());
                         extractable.set(slot, handler.getContainer().getCount());
                         break;
-                    }
-                    else {
+                    } else {
                         stack.shrink(1);
                         stacks.add(handler.getContainer());
                         writable.add(true);

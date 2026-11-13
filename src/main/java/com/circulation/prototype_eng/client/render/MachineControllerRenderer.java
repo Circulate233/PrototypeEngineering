@@ -2,8 +2,8 @@ package com.circulation.prototype_eng.client.render;
 
 import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.PrototypeEngineering;
-import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.data.ComponentData;
+import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.proxy.ClientProxy;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.tileentity.TileEntityRendererDispatcher;
@@ -16,7 +16,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
-/** Public typed native TESR mechanism; a concrete controller supplies its actual client view channel. */
+/**
+ * Public typed native TESR mechanism; a concrete controller supplies its actual client view channel.
+ */
 @SuppressWarnings("resource")
 // Native registered renderers borrow the proxy's managers; the proxy owns their world/resource lifetime.
 public abstract class MachineControllerRenderer<T extends AEBaseTile & MachineControllerHost> extends TileEntitySpecialRenderer<T> {
@@ -63,7 +65,9 @@ public abstract class MachineControllerRenderer<T extends AEBaseTile & MachineCo
 
     protected abstract ClientMachineRenderSnapshots.@Nullable View view(T tile);
 
-    /** Independent host renderers may supply a complete, attachment-validated ordinary data snapshot. */
+    /**
+     * Independent host renderers may supply a complete, attachment-validated ordinary data snapshot.
+     */
     protected ComponentData.@Nullable Snapshot animationData(T tile, ClientMachineRenderSnapshots.View view) {
         return null;
     }
@@ -80,7 +84,9 @@ public abstract class MachineControllerRenderer<T extends AEBaseTile & MachineCo
         return (ClientProxy) PrototypeEngineering.proxy;
     }
 
-    /** Owner-thread native culling hook; the class-token redirects also dispatch it for independent host tiles. */
+    /**
+     * Owner-thread native culling hook; the class-token redirects also dispatch it for independent host tiles.
+     */
     public AxisAlignedBB bounds(T tile) {
         var view = view(tile);
         return view != null && snapshots().current(view) ? models().bounds(tile, view) : new AxisAlignedBB(tile.getPos());

@@ -50,7 +50,8 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
 
     public static NBTTagList encodeWork(Object2LongMap<ManualMaterialKey> work) {
         var list = new NBTTagList();
-        for (var entry : ManualResearchSession.immutableWork(work).object2LongEntrySet()) {
+        ManualResearchSession.validateWork(work);
+        for (var entry : work.object2LongEntrySet()) {
             var tag = new NBTTagCompound();
             tag.setString("Requirement", entry.getKey().requirementId().toString());
             tag.setInteger("Input", entry.getKey().inputIndex());
@@ -72,7 +73,8 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
             }
             amounts.put(key, StrictNbt.requireLong(tag, "Amount"));
         }
-        return ManualResearchSession.immutableWork(amounts);
+        ManualResearchSession.validateWork(amounts);
+        return amounts;
     }
 
     private static NBTTagCompound encodeCompletion(ManualResearchSession.CompletionIntent value) {

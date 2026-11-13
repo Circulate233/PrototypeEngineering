@@ -1,15 +1,13 @@
 package com.circulation.prototype_eng.recipe.requirement;
 
-import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
-
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.recipe.probability.ChanceMath;
-import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
+import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
@@ -34,6 +32,7 @@ import com.circulation.prototype_eng.api.storage.StorageSnapshot;
 import com.circulation.prototype_eng.localization.RecipeText;
 import com.circulation.prototype_eng.recipe.PreparedRequirement;
 import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
@@ -77,7 +76,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             if (resolveInputs) {
                 selection = ResourceInputResolver.resolve(process, requirement, hatches, checkTimes, scaled(inputs, checkTimes));
                 if (selection.result() != ProcessResult.SUCCESS) {
-                    return ReservedRequirement.frozen(selection.result(), reservations);
+                    return new ReservedRequirement(selection.result(), reservations);
                 }
                 inputs = selection.inputs();
             }
@@ -99,7 +98,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                 ProcessResult checked = preflight(hatches, inputs, checkTimes, payload.inputAllocation(), stage, checkedOutputs,
                     !inputs.isEmpty(), needsOutput, payload.voidExcessOutputs(), id);
                 if (checked != ProcessResult.SUCCESS) {
-                    return ReservedRequirement.frozen(checked, reservations);
+                    return new ReservedRequirement(checked, reservations);
                 }
             }
             ProcessResult result = payload.inputAllocation() == InputAllocation.SPLITTABLE
@@ -108,7 +107,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             if (result == ProcessResult.SUCCESS) {
                 result = reserve(hatches, produced, false, needsOutput, payload.voidExcessOutputs(), id, reservations);
             }
-            var reserved = ReservedRequirement.frozen(result, reservations);
+            var reserved = new ReservedRequirement(result, reservations);
             if (result == ProcessResult.SUCCESS && selection != null) {
                 selection.install();
                 return new ResolvedResources(reserved, selection);
@@ -134,7 +133,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
      * Release these before actual reservations: checks do not consume resources and can be shared by
      * later requirements. Exact execution still reserves afresh, so an intervening change cannot overdraw.
      */
-    private static ProcessResult preflight(List<ResourceHatch> hatches, List<GenericStack> inputs,
+    private static ProcessResult preflight(List<? extends ResourceHatch> hatches, List<GenericStack> inputs,
                                            long times, InputAllocation allocation, RecipeStage stage,
                                            AEKey2LongMap outputs, boolean needsInput,
                                            boolean needsOutput, boolean voidExcess, String id) {
@@ -155,7 +154,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         return result;
     }
 
-    private static ProcessResult reserveAllocated(List<ResourceHatch> hatches, List<GenericStack> inputs,
+    private static ProcessResult reserveAllocated(List<? extends ResourceHatch> hatches, List<GenericStack> inputs,
                                                   long times, InputAllocation allocation, RecipeStage stage,
                                                   String id, List<ResourceReservation> reservations) {
         var cursor = new ReservationCursor(hatches, new AEKeyLinkedOpenHashMap(6), true,
@@ -220,7 +219,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         amounts.addTo(key, amount);
     }
 
-    private static ProcessResult reserve(List<ResourceHatch> hatches, AEKey2LongMap quantities,
+    private static ProcessResult reserve(List<? extends ResourceHatch> hatches, AEKey2LongMap quantities,
                                          boolean input, boolean needsStorage, boolean voidExcess, String id,
                                          List<ResourceReservation> reservations) {
         if (!needsStorage) {
@@ -280,6 +279,21 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             }
         }
         return ProcessResult.SUCCESS;
+    }
+
+    private static ResourceRequirement batchResources(RecipeProcess process, ResourceRequirement payload, RecipeStage stage) {
+        var timing = process.crossRecipeTiming();
+        if (timing == null || stage != RecipeStage.TICK || payload.chance().effective(process) != 100) return payload;
+        long times = timing.materialTimes(process);
+        return new ResourceRequirement(payload.inputs(), batchStacks(payload.inputsPerTick(), times), batchStacks(payload.outputsPerTick(), times),
+            payload.outputs(), payload.voidExcessOutputs(), ResourceChance.ALWAYS, payload.randomOutputs(), payload.fuzzyInputs(), payload.dynamicInputs(), payload.inputAllocation());
+    }
+
+    private static List<GenericStack> batchStacks(List<GenericStack> values, long times) {
+        if (times == 0 || values.isEmpty()) return List.of();
+        var result = new ObjectArrayList<GenericStack>(values.size());
+        for (var value : values) result.add(new GenericStack(value.what(), Math.multiplyExact(value.amount(), times)));
+        return result;
     }
 
     @Override
@@ -364,11 +378,11 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             @Override
             public RequirementTransaction acquire() {
                 if (process.hatches() != hatches) {
-                    return ReservedRequirement.frozen(RecipeText.StorageChanged.blocked(), List.of());
+                    return new ReservedRequirement(RecipeText.StorageChanged.blocked(), List.of());
                 }
                 var budget = process.preparationBudget();
                 if (!parallelCapture.current() || chanceCapture != null && !chanceCapture.current())
-                    return ReservedRequirement.frozen(RecipeText.StorageChanged.blocked(), List.of());
+                    return new ReservedRequirement(RecipeText.StorageChanged.blocked(), List.of());
                 if (!attributesReady) {
                     if (!parallelCapture.advance(budget) || chanceCapture != null && !chanceCapture.advance(budget))
                         return new PreparedRequirement(this);
@@ -398,21 +412,6 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         return acquire(process, requirement, RecipeStage.START, requirement.payload().inputs(), ObjectLists.emptyList());
     }
 
-    private static ResourceRequirement batchResources(RecipeProcess process, ResourceRequirement payload, RecipeStage stage) {
-        var timing = process.crossRecipeTiming();
-        if (timing == null || stage != RecipeStage.TICK || payload.chance().effective(process) != 100) return payload;
-        long times = timing.materialTimes(process);
-        return new ResourceRequirement(payload.inputs(), batchStacks(payload.inputsPerTick(), times), batchStacks(payload.outputsPerTick(), times),
-            payload.outputs(), payload.voidExcessOutputs(), ResourceChance.ALWAYS, payload.randomOutputs(), payload.fuzzyInputs(), payload.dynamicInputs(), payload.inputAllocation());
-    }
-
-    private static List<GenericStack> batchStacks(List<GenericStack> values, long times) {
-        if (times == 0 || values.isEmpty()) return List.of();
-        var result = new ObjectArrayList<GenericStack>(values.size());
-        for (var value : values) result.add(new GenericStack(value.what(), Math.multiplyExact(value.amount(), times)));
-        return result;
-    }
-
     @Override
     public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement) {
         return acquire(process, requirement, RecipeStage.TICK, requirement.payload().inputsPerTick(), requirement.payload().outputsPerTick());
@@ -429,7 +428,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
     private static final class ResourceAcquisition {
         private final RecipeProcess process;
         private final RecipeRequirement<ResourceRequirement> requirement;
-        private final List<ResourceHatch> hatches;
+        private final List<? extends ResourceHatch> hatches;
         private final ResourceComputation facts;
         private final List<GenericStack> inputs;
         private final boolean resolves;
@@ -459,7 +458,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         private int verified;
 
         private ResourceAcquisition(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement,
-                                    List<ResourceHatch> hatches, ResourceComputation facts, List<GenericStack> inputs,
+                                    List<? extends ResourceHatch> hatches, ResourceComputation facts, List<GenericStack> inputs,
                                     List<GenericStack> outputs, boolean resolves, boolean random, RecipeStage stage) {
             this.process = process;
             this.requirement = requirement;
@@ -573,7 +572,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                                     continue;
                                 }
                                 if (!facts.knows(entry.getKey())) {
-                                    return ReservedRequirement.frozen(RecipeText.StorageChanged.blocked(), owned);
+                                    return new ReservedRequirement(RecipeText.StorageChanged.blocked(), owned);
                                 }
                                 long old = available.getLong(entry.getKey());
                                 available.addTo(entry.getKey(), Math.min(entry.getLongValue(), Long.MAX_VALUE - old));
@@ -593,7 +592,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                             }
                             selection = choices.selection();
                             if (selection.result() != ProcessResult.SUCCESS) {
-                                return ReservedRequirement.frozen(selection.result(), owned);
+                                return new ReservedRequirement(selection.result(), owned);
                             }
                         }
                         phase++;
@@ -629,7 +628,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                                 return pause(binding, owned);
                             }
                             if (!current.captures.get(verified++).current()) {
-                                return ReservedRequirement.frozen(RecipeText.StorageChanged.blocked(), owned);
+                                return new ReservedRequirement(RecipeText.StorageChanged.blocked(), owned);
                             }
                         }
                         phase = facts.times() != facts.checkTimes() ? 3 : 6;
@@ -654,7 +653,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                         reservation = null;
                         if (result != ProcessResult.SUCCESS) {
                             if (!preflight) {
-                                return ReservedRequirement.frozen(result, owned);
+                                return new ReservedRequirement(result, owned);
                             }
                             phase = 5;
                         } else if (phase == 4) {
@@ -667,14 +666,14 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                             return pause(binding, owned);
                         }
                         if (result != ProcessResult.SUCCESS) {
-                            return ReservedRequirement.frozen(result, owned);
+                            return new ReservedRequirement(result, owned);
                         }
                         phase = 6;
                     } else {
                         if (selection != null && !selection.install(budget)) {
                             return pause(binding, owned);
                         }
-                        var reserved = ReservedRequirement.frozen(ProcessResult.SUCCESS, owned);
+                        var reserved = new ReservedRequirement(ProcessResult.SUCCESS, owned);
                         return selection == null ? reserved : new ResolvedResources(reserved, selection);
                     }
                 }
@@ -726,7 +725,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
     }
 
     private static final class ReservationCursor {
-        private final List<ResourceHatch> hatches;
+        private final List<? extends ResourceHatch> hatches;
         private final AEKey2LongMap quantities;
         private final boolean input;
         private final boolean needsStorage;
@@ -770,7 +769,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         @Nullable
         private InputAllocationPlan plan;
 
-        private ReservationCursor(List<ResourceHatch> hatches, AEKey2LongMap quantities, boolean input,
+        private ReservationCursor(List<? extends ResourceHatch> hatches, AEKey2LongMap quantities, boolean input,
                                   boolean needsStorage, boolean voidExcess, String id) {
             this.hatches = hatches;
             this.quantities = quantities;
@@ -919,7 +918,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                         var amounts = initial != null ? initial.resources() : fullAmounts == null ? InputAllocationPlan.NO_RESOURCES
                             : fullAmounts.build();
                         Objects.requireNonNull(sourceFacts).add(new InputAllocation.Source(capturedSource,
-                            context.sourceIdentity(), initial == null ? snapshot.revision() : initial.revision(),
+                            initial == null ? snapshot.revision() : initial.revision(),
                             Math.min(available, extractable), amounts, 0, extractable));
                     } finally {
                         context.unlock();
@@ -1118,7 +1117,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
      * Owner-only snapshot cursor. Every source/quantity/revision proof is charged where read.
      */
     private static final class SourceCapture {
-        private final List<ResourceHatch> hatches;
+        private final List<? extends ResourceHatch> hatches;
         private ObjectArrayList<ResourceStorage> sources = new ObjectArrayList<>();
         private ObjectArrayList<ResourceStorage.QuantityCapture> captures = new ObjectArrayList<>();
         private ObjectArrayList<AEKey2LongMap> amounts = new ObjectArrayList<>();
@@ -1131,7 +1130,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         private int checked;
         private boolean complete;
 
-        private SourceCapture(List<ResourceHatch> hatches) {
+        private SourceCapture(List<? extends ResourceHatch> hatches) {
             this.hatches = hatches;
         }
 

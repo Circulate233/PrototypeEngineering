@@ -34,7 +34,9 @@ public final class RecipeScanning {
             () -> ThreadLocalRandom.current().nextLong()), limits, _ -> true);
     }
 
-    /** Persistent following keeps the controller's scanner factory and the source's stable resolver. */
+    /**
+     * Persistent following keeps the controller's scanner factory and the source's stable resolver.
+     */
     public static ComponentType<MachineInstance, RecipeScanner> component(ResourceLocation id,
                                                                           RecipeRegistry registry, ScanLimits limits) {
         Objects.requireNonNull(registry, "registry");

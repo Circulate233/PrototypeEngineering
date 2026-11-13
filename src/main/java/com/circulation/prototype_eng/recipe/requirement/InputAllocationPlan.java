@@ -7,20 +7,19 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
 
-/** Budgeted pure proposal over one frozen projection; it owns no storage or reservation. */
+/**
+ * Budgeted pure proposal over one frozen projection; it owns no storage or reservation.
+ */
 final class InputAllocationPlan {
     static final AEKey2LongMap NO_RESOURCES = ImmutableResourceAmounts.empty();
     private final InputAllocation policy;
     private final Facts facts;
     private final long[] amounts;
-    private final ObjectOpenHashSet<String> identities = new ObjectOpenHashSet<>();
     private int source;
     private int portion;
     private long available;
@@ -31,11 +30,13 @@ final class InputAllocationPlan {
     private boolean invoked;
     private boolean complete;
 
-    /** The caller transfers exclusive ownership of sources; only an immutable view escapes. */
+    /**
+     * The caller transfers exclusive ownership of sources; only an immutable view escapes.
+     */
     InputAllocationPlan(InputAllocation policy, RecipeStage stage, int projection, @Nullable AEKey resource,
                         long amount, ObjectArrayList<InputAllocation.Source> sources) {
         this.policy = policy;
-        facts = new Facts(stage, projection, resource, amount, ObjectLists.unmodifiable(sources));
+        facts = new Facts(stage, projection, resource, amount, sources);
         amounts = new long[sources.size()];
         missing = amount;
     }
@@ -44,8 +45,6 @@ final class InputAllocationPlan {
         if (complete) return true;
         while (source < amounts.length) {
             if (!budget.take()) return false;
-            if (policy.kind() == InputAllocation.Kind.CUSTOM && !identities.add(facts.sources().get(source).identity()))
-                throw new IllegalArgumentException("Custom allocation has duplicate source identities: " + policy.id());
             long capacity = facts.sources().get(source).available();
             if (policy.kind() == InputAllocation.Kind.SINGLE_SOURCE) {
                 available = Math.max(available, capacity);
@@ -55,7 +54,7 @@ final class InputAllocationPlan {
                     complete = true;
                     return true;
                 }
-            } else available = Math.addExact(available, capacity);
+            } else available += Math.min(capacity, facts.amount() - available);
             source++;
         }
         if (available < facts.amount() || policy.kind() == InputAllocation.Kind.SINGLE_SOURCE) {
@@ -66,12 +65,11 @@ final class InputAllocationPlan {
         if (!invoked) {
             if (!budget.take()) return false;
             invoked = true;
-            // A user callback and its returned-list freeze form one cooperative boundary. Actual
-            // membership, quantity and duplicate validation below remains individually budgeted.
+            // The callback transfers a stable proposal. Membership and quantity validation remains budgeted.
             var returned = policy.allocate(facts);
             if (returned.size() > amounts.length)
                 throw new IllegalArgumentException("Allocation has more portions than distinct sources: " + policy.id());
-            proposed = List.copyOf(returned);
+            proposed = returned;
         }
         var values = Objects.requireNonNull(proposed);
         while (portion < values.size()) {

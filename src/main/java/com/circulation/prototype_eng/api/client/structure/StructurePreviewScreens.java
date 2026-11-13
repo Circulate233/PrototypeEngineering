@@ -4,7 +4,7 @@ import ae2.api.orientation.BlockOrientation;
 import ae2.client.gui.AEBaseGui;
 import ae2.container.AEBaseContainer;
 import com.circulation.prototype_eng.api.machine.MachineType;
-import com.circulation.prototype_eng.client.gui.StructurePreviewGui;
+import com.circulation.prototype_eng.client.gui.GuiStructurePreview;
 import com.circulation.prototype_eng.client.preview.PreviewScreenTransitions;
 import com.circulation.prototype_eng.client.preview.StructurePreviewPanel;
 import com.circulation.prototype_eng.client.preview.StructurePreviewScreensAnchor;
@@ -15,7 +15,9 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-/** Java opens the same authoritative catalog viewer used by machines, commands and HEI. */
+/**
+ * Java opens the same authoritative catalog viewer used by machines, commands and HEI.
+ */
 public final class StructurePreviewScreens {
     private StructurePreviewScreens() {
     }
@@ -24,7 +26,9 @@ public final class StructurePreviewScreens {
         return open(id, settings, null);
     }
 
-    /** Java callers may supply the exact declaration needed for forming model preview. */
+    /**
+     * Java callers may supply the exact declaration needed for forming model preview.
+     */
     public static boolean open(ResourceLocation id, StructurePreviewSettings settings, @Nullable MachineType machine) {
         var mc = Minecraft.getMinecraft();
         if (mc.player == null || mc.world == null || !mc.player.isEntityAlive() || mc.player.getHealth() <= 0)
@@ -36,8 +40,8 @@ public final class StructurePreviewScreens {
         var view = new StructurePreviewView(service, id, settings, machine);
         view.anchor(StructurePreviewScreensAnchor.current());
         var navigation = PreviewScreenTransitions.capture(service);
-        var screen = mc.currentScreen instanceof AEBaseGui<?> parent ? new StructurePreviewGui<>(parent, view, navigation)
-            : StructurePreviewGui.standalone(mc.player.inventory, view, navigation);
+        var screen = mc.currentScreen instanceof AEBaseGui<?> parent ? new GuiStructurePreview<>(parent, view, navigation)
+            : GuiStructurePreview.standalone(mc.player.inventory, view, navigation);
         return navigation.open(screen);
     }
 
@@ -59,10 +63,12 @@ public final class StructurePreviewScreens {
         var view = new StructurePreviewView(service, machine.structureId(), settings, machine);
         view.anchor(parent.getContainer().getTarget() instanceof TileEntity tile ? tile.getPos() : StructurePreviewScreensAnchor.current());
         var navigation = PreviewScreenTransitions.capture(service);
-        return navigation.open(new StructurePreviewGui<>(parent, view, navigation));
+        return navigation.open(new GuiStructurePreview<>(parent, view, navigation));
     }
 
-    /** Independent custom pool pages can compose this concrete panel without extending the default page. */
+    /**
+     * Independent custom pool pages can compose this concrete panel without extending the default page.
+     */
     @SuppressWarnings("unused") // Public composition entry for addon recipe pages.
     public static @Nullable StructurePreviewPanel panel(MachineType machine, StructurePreviewSettings settings) {
         var service = StructurePreviews.client();

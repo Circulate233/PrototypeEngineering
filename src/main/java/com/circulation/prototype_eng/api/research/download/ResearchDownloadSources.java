@@ -426,7 +426,8 @@ public final class ResearchDownloadSources {
         private Prepared(Plan plan, ObjectList<HeldPlayer> players, @Nullable TeamOwnedResearch team,
                          @Nullable TeamOwnedResearch.Completion teamMutation) {
             this.plan = plan;
-            this.players = ObjectLists.unmodifiable(new ObjectArrayList<>(players));
+            // The acquisition builder transfers its private, completed writer list.
+            this.players = players;
             this.team = team;
             this.teamMutation = teamMutation;
         }

@@ -53,7 +53,9 @@ public final class ServerTaskSchedulers {
         return current.scheduler;
     }
 
-    /** Reads the configured file and queues settings for this exact server session. */
+    /**
+     * Reads the configured file and queues settings for this exact server session.
+     */
     @SuppressWarnings("resource") // The lifecycle owns this borrowed scheduler.
     public static SchedulerConfig.Settings requestReloadFromConfig(MinecraftServer server) {
         var scheduler = forServer(server);
@@ -89,14 +91,17 @@ public final class ServerTaskSchedulers {
         if (current == null) return;
         if (!current.server.isCallingFromMinecraftThread())
             throw new IllegalStateException("Controller data save marking requires its server owner");
-        for (var world : current.server.worlds.clone()) {
+        for (var world : current.server.worlds) {
             if (world == null || world.getMinecraftServer() != current.server) continue;
             for (var tile : new ObjectArrayList<>(world.loadedTileEntityList))
-                if (tile instanceof MachineControllerBlockEntity controller && controller.getWorld() == world) controller.markControllerDataDirty(false);
+                if (tile instanceof MachineControllerBlockEntity controller && controller.getWorld() == world)
+                    controller.markControllerDataDirty(false);
         }
     }
 
-    /** One tick's native save work only; the tile's original tick guard prevents duplicate updates. */
+    /**
+     * One tick's native save work only; the tile's original tick guard prevents duplicate updates.
+     */
     public static void queueControllerDataDirty(MinecraftServer server, MachineControllerBlockEntity controller) {
         var current = session;
         if (current == null || current.server != server)

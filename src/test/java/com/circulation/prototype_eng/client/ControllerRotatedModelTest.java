@@ -1,8 +1,7 @@
 package com.circulation.prototype_eng.client;
 
-import com.circulation.prototype_eng.util.ExternalEnumValues;
-
 import ae2.api.orientation.RelativeSide;
+import com.circulation.prototype_eng.util.ExternalEnumValues;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.IBakedModel;

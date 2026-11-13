@@ -14,7 +14,7 @@ import com.circulation.prototype_eng.api.structure.StructureReadPlan;
 import com.circulation.prototype_eng.api.structure.StructureReadSource;
 import com.circulation.prototype_eng.api.structure.StructureSnapshot;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
@@ -52,13 +52,13 @@ class StructureMatchingTest {
 
     private static TemplateStructure template(String name, BlockPos offset, Map<BlockPos, StructurePredicate> blocks,
                                               List<StructurePredicate> validators, List<MachineStructure> children) {
-        return new TemplateStructure(id(name), BlockOrientation.NORTH_UP, offset, false, new StructurePattern(blocks), validators, children);
+        return new TemplateStructure(id(name), BlockOrientation.NORTH_UP, offset, false, new StructurePattern(new BlockPos2ObjectMap<>(blocks)), validators, children);
     }
 
     private static SliceStructure slice(String name, BlockPos offset, int min, int max, BlockPos step,
                                         StructurePredicate predicate, List<MachineStructure> children) {
         return new SliceStructure(id(name), BlockOrientation.NORTH_UP, offset, false,
-            new StructurePattern(Map.of(BlockPos.ORIGIN, predicate)), min, max, step, List.of(), children);
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(BlockPos.ORIGIN, predicate))), min, max, step, List.of(), children);
     }
 
     @Test
@@ -67,7 +67,7 @@ class StructureMatchingTest {
         var first = new BlockPos(1, 0, 0);
         var second = new BlockPos(2, 0, 0);
         var legacyTemplate = new TemplateStructure(id("legacy_template"), BlockOrientation.NORTH_UP, first, false,
-            new StructurePattern(Map.of(BlockPos.ORIGIN, marker("template"))), List.of(), List.of()) {
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(BlockPos.ORIGIN, marker("template")))), List.of(), List.of()) {
             @Override
             public TemplateStructure transform(StructureTransform rotation) {
                 calls.add("template transform");
@@ -87,7 +87,7 @@ class StructureMatchingTest {
             }
         };
         var legacySlice = new SliceStructure(id("legacy_slice"), BlockOrientation.NORTH_UP, second, false,
-            new StructurePattern(Map.of(BlockPos.ORIGIN, marker("slice"))), 1, 1, first, List.of(), List.of()) {
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(BlockPos.ORIGIN, marker("slice")))), 1, 1, first, List.of(), List.of()) {
             @Override
             public SliceStructure transform(StructureTransform rotation) {
                 calls.add("slice transform");
@@ -126,7 +126,7 @@ class StructureMatchingTest {
             }
         };
         var root = TemplateStructure.create(id("default_parent"), BlockOrientation.NORTH_UP, BlockPos.ORIGIN,
-            false, new StructurePattern(Map.of()), List.of(legacyPredicate), List.of(legacyTemplate, legacySlice));
+            false, new StructurePattern(BlockPos2ObjectMap.emptyMap()), List.of(legacyPredicate), List.of(legacyTemplate, legacySlice));
         var planning = StructurePlan.beginCreate(root, BlockPos.ORIGIN, BlockOrientation.NORTH_UP);
         int slices = 0;
         while (!planning.advance(new RecipeWorkBudget(1))) assertTrue(++slices < 200);
@@ -279,8 +279,8 @@ class StructureMatchingTest {
     }
 
     private static final class Source implements StructureReadSource {
-        final Map<BlockPos, String> values = new Object2ObjectOpenHashMap<>();
-        final Map<BlockPos, RuntimeException> failures = new Object2ObjectOpenHashMap<>();
+        final Map<BlockPos, String> values = new BlockPos2ObjectMap<>();
+        final Map<BlockPos, RuntimeException> failures = new BlockPos2ObjectMap<>();
         final Set<StructureBounds> unloaded = new ObjectOpenHashSet<>();
         final Thread serverThread = Thread.currentThread();
 

@@ -200,7 +200,7 @@ public final class TeamOwnedResearch {
                 }
                 copy.put(entry.getKey(), entry.getIntValue());
             }
-            levels = ResearchSnapshots.levels(copy);
+            levels = copy;
         }
     }
 

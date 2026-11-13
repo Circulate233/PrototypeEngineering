@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.client.preview;
 
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
-import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
 import net.minecraft.client.Minecraft;
@@ -10,8 +9,6 @@ import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.WorldVertexBufferUploader;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -50,14 +47,14 @@ public final class WorldProjectionManager implements AutoCloseable {
     private static Color color(StructureProjectionState.Sample sample, boolean outline, StructureProjectionOptions.Style style) {
         if (outline && style == StructureProjectionOptions.Style.BOX_AND_OUTLINE)
             return sample.status() == StructureProjectionState.Status.UNLOADED
-                ? new Color(1.0f, 0.85f, 0.2f, 0.35f) : new Color(1.0f, 1.0f, 1.0f, 0.28f);
+                ? Color.UNLOADED_OUTLINE : Color.OUTLINE;
         if (!outline && sample.status() != StructureProjectionState.Status.UNLOADED)
-            return sample.cell().display() == null ? new Color(0.78f, 0.78f, 0.78f, 0.22f) : new Color(0.55f, 0.85f, 1.0f, 0.32f);
+            return sample.cell().display() == null ? Color.UNKNOWN_FILL : Color.FILL;
         return switch (sample.status()) {
-            case DISPLAY_MATCH -> new Color(0.2f, 1.0f, 0.2f, 0.2f);
-            case MISSING, DIFFERENT -> new Color(1.0f, 0.2f, 0.2f, 0.55f);
-            case UNLOADED -> new Color(1.0f, 0.85f, 0.2f, 0.25f);
-            case UNKNOWN -> new Color(0.7f, 0.7f, 0.7f, 0.25f);
+            case DISPLAY_MATCH -> Color.MATCH;
+            case MISSING, DIFFERENT -> Color.MISMATCH;
+            case UNLOADED -> Color.UNLOADED;
+            case UNKNOWN -> Color.UNKNOWN;
         };
     }
 
@@ -123,7 +120,7 @@ public final class WorldProjectionManager implements AutoCloseable {
                 return;
             }
             projectionActive = true;
-            state.tick(world, (cell, position) -> observe(world, cell, position));
+            state.tick(world, (model, cell, position) -> PreviewDisplayObservation.observe(world, model, cell, position));
             if (previews.projection() == null) clearProjectionResources();
         } catch (RuntimeException failure) {
             reportFailure(failure);
@@ -153,7 +150,6 @@ public final class WorldProjectionManager implements AutoCloseable {
             }
             return;
         }
-        var originalRound = state.roundToken();
         try {
             var samples = state.frame(minecraft.world);
             if (samples.isEmpty()) return;
@@ -176,20 +172,13 @@ public final class WorldProjectionManager implements AutoCloseable {
             }
             draw(samples, intent.options(), x, y, z);
         } catch (RuntimeException failure) {
-            state.cancelFailedRound(intent, originalRound);
+            state.cancelFailedProjection(intent);
             reportFailure(failure);
         }
     }
 
     private void reportFailure(RuntimeException failure) {
         PrototypeEngineering.LOGGER.error("Cannot present structure projection", failure);
-    }
-
-    private StructureProjectionState.Status observe(World world, StructurePreviewModel.Cell cell, BlockPos position) {
-        var intent = previews.projection();
-        if (intent == null) return StructureProjectionState.Status.UNKNOWN;
-        var request = previews.request(intent.id(), intent.settings());
-        return PreviewDisplayObservation.observe(world, request == null ? null : request.model(), cell, position);
     }
 
     private void draw(List<StructureProjectionState.Sample> samples, StructureProjectionOptions options,
@@ -284,6 +273,14 @@ public final class WorldProjectionManager implements AutoCloseable {
     }
 
     private record Color(float r, float g, float b, float a) {
+        private static final Color OUTLINE = new Color(1.0f, 1.0f, 1.0f, 0.28f);
+        private static final Color UNLOADED_OUTLINE = new Color(1.0f, 0.85f, 0.2f, 0.35f);
+        private static final Color FILL = new Color(0.55f, 0.85f, 1.0f, 0.32f);
+        private static final Color UNKNOWN_FILL = new Color(0.78f, 0.78f, 0.78f, 0.22f);
+        private static final Color MATCH = new Color(0.2f, 1.0f, 0.2f, 0.2f);
+        private static final Color MISMATCH = new Color(1.0f, 0.2f, 0.2f, 0.55f);
+        private static final Color UNLOADED = new Color(1.0f, 0.85f, 0.2f, 0.25f);
+        private static final Color UNKNOWN = new Color(0.7f, 0.7f, 0.7f, 0.25f);
     }
 
     /**

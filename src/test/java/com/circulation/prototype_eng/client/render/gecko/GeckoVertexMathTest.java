@@ -68,7 +68,9 @@ class GeckoVertexMathTest {
         return out.toIntArray();
     }
 
-    /** Independent vecmath position/normal transform over actual loader vertices, before any cache is built. */
+    /**
+     * Independent vecmath position/normal transform over actual loader vertices, before any cache is built.
+     */
     private static int[] reference(GeoBone bone) {
         var boneStack = new GeckoBakerMath.MatrixStack();
         boneStack.translate(bone);

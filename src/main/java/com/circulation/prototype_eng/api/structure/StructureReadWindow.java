@@ -27,7 +27,9 @@ public final class StructureReadWindow<T> implements AutoCloseable {
         return new StructureReadWindow<>(() -> fact);
     }
 
-    /** The callback must neither load chunks nor access the live provider map. */
+    /**
+     * The callback must neither load chunks nor access the live provider map.
+     */
     public static <T> StructureReadWindow<T> joined(Supplier<? extends T> reader) {
         return new StructureReadWindow<>(reader);
     }
@@ -46,7 +48,9 @@ public final class StructureReadWindow<T> implements AutoCloseable {
         closed = true;
     }
 
-    /** Finite loaded references expose block reads, not a World, provider, tile map or load method. */
+    /**
+     * Finite loaded references expose block reads, not a World, provider, tile map or load method.
+     */
     @FunctionalInterface
     public interface BlockStates {
         IBlockState getBlockState(BlockPos position);

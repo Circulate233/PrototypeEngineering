@@ -17,7 +17,9 @@ public abstract class StructureOperation<T> {
     @Nullable
     private T value;
 
-    /** Existing external virtual operations keep their exact behavior at this cooperative boundary. */
+    /**
+     * Existing external virtual operations keep their exact behavior at this cooperative boundary.
+     */
     public static <T> StructureOperation<T> call(Supplier<? extends T> action) {
         Objects.requireNonNull(action);
         return new StructureOperation<>() {
@@ -50,7 +52,9 @@ public abstract class StructureOperation<T> {
         complete = true;
     }
 
-    /** Synchronous convenience uses the same cursor, including the host's first complete check. */
+    /**
+     * Synchronous convenience uses the same cursor, including the host's first complete check.
+     */
     @Nullable
     public final T run() {
         if (!advance(new RecipeWorkBudget(Long.MAX_VALUE)))

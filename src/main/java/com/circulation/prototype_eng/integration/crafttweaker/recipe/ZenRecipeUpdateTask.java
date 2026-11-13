@@ -10,7 +10,9 @@ import stanhebben.zenscript.annotations.ZenMethod;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
-/** Nonblocking observation. Script callback failures remain exceptional in the returned task. */
+/**
+ * Nonblocking observation. Script callback failures remain exceptional in the returned task.
+ */
 @SuppressWarnings("unused") // Discovered and accessed by ZenScript.
 @ZenRegister
 @ZenClass("mods.prototype_eng.recipe.UpdateTask")

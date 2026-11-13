@@ -8,7 +8,9 @@ import java.util.Arrays;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-/** Owner-thread bounded tick window. Recording never formats, sorts or publishes a report. */
+/**
+ * Owner-thread bounded tick window. Recording never formats, sorts or publishes a report.
+ */
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 final class SchedulerMetrics {
@@ -28,12 +30,16 @@ final class SchedulerMetrics {
         fields = new long[FIELD_COUNT][windowTicks];
     }
 
-    /** Mirrors PM's actual tick metadata hook; it does not reset the window or cadence. */
+    /**
+     * Mirrors PM's actual tick metadata hook; it does not reset the window or cadence.
+     */
     void beginTick(String policyLabel) {
         this.policyLabel = Objects.requireNonNull(policyLabel);
     }
 
-    /** One sample for each entered actual tick, including the tick that reports a failure. */
+    /**
+     * One sample for each entered actual tick, including the tick that reports a failure.
+     */
     void record(Sample sample) {
         Objects.requireNonNull(sample);
         long nextTick = Math.addExact(completedTicks, 1);
@@ -55,7 +61,9 @@ final class SchedulerMetrics {
         completedTicks = nextTick;
     }
 
-    /** Reallocation resets samples, while completed actual tick identity survives. */
+    /**
+     * Reallocation resets samples, while completed actual tick identity survives.
+     */
     void resizeIfNeeded(int newWindowTicks) {
         if (newWindowTicks <= 0) throw new IllegalArgumentException("Non-positive scheduler metrics window");
         if (newWindowTicks == windowTicks) return;
@@ -71,7 +79,9 @@ final class SchedulerMetrics {
             stats(7), stats(8), stats(9), stats(10), stats(11));
     }
 
-    /** PM's metrics flag controls periodic logging only. Reports continue collecting while off. */
+    /**
+     * PM's metrics flag controls periodic logging only. Reports continue collecting while off.
+     */
     void maybeLog(int intervalTicks, boolean enabled, Consumer<SchedulerReport> log) {
         if (intervalTicks <= 0) throw new IllegalArgumentException("Non-positive scheduler log interval");
         if (!enabled || sampleCount == 0 || completedTicks == 0 || completedTicks == lastLoggedTick

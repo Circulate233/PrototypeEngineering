@@ -13,7 +13,9 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.relauncher.Side;
 import org.lwjgl.input.Mouse;
 
-/** Only the bounds actually drawn during the current screen frame can consume a wheel event. */
+/**
+ * Only the bounds actually drawn during the current screen frame can consume a wheel event.
+ */
 @Mod.EventBusSubscriber(modid = "prototype_eng", value = Side.CLIENT)
 public final class JeiRecipeInputs {
     private static final ObjectArrayList<Drawn> DRAWN = new ObjectArrayList<>();
@@ -21,7 +23,9 @@ public final class JeiRecipeInputs {
     private JeiRecipeInputs() {
     }
 
-    /** A new native JEI runtime invalidates layouts even if the current screen did not change. */
+    /**
+     * A new native JEI runtime invalidates layouts even if the current screen did not change.
+     */
     public static void reset() {
         DRAWN.clear();
     }

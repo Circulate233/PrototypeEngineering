@@ -1,19 +1,14 @@
 package com.circulation.prototype_eng.api.recipe.process;
 
+import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.component.ComponentMap;
-import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.CrossRecipeBatch;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
-import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
-import com.circulation.prototype_eng.api.storage.ResourceInputGroups;
-import com.circulation.prototype_eng.api.storage.ResourceRecipeObserver;
-import com.circulation.prototype_eng.api.storage.ResourceInputReceipts;
-import ae2.api.stacks.AEKey;
-import ae2.api.stacks.AEKey2LongMap;
-import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
@@ -28,7 +23,12 @@ import com.circulation.prototype_eng.api.recipe.requirement.RequirementContinuat
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementPreparation;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeProcessFactory;
+import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
 import com.circulation.prototype_eng.api.storage.ResourceBatch;
+import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
+import com.circulation.prototype_eng.api.storage.ResourceInputGroups;
+import com.circulation.prototype_eng.api.storage.ResourceInputReceipts;
+import com.circulation.prototype_eng.api.storage.ResourceRecipeObserver;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
@@ -50,9 +50,9 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Consumer;
 import java.util.Random;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -66,19 +66,19 @@ public final class RecipeProcess {
     private final MachineRecipe recipe;
     private final List<RecipeRequirement<?>> orderedRequirements;
     private final long seed;
-    private UUID identity = UUID.randomUUID();
     private final ProbabilityTuning probabilityTuning;
     @Nullable
     private final MachineHatches materialHatches;
-    private @Nullable ResourceInputGroup selectedInputGroup;
-    private @Nullable MachineHatches groupedHatches;
-    private @Nullable ResourceInputGroups.Capture groupCapture;
     private final ObjectArrayList<ResourceRecipeObserver> resourceObservers = new ObjectArrayList<>();
     private final ReferenceOpenHashSet<Object> resourceObserverIdentities = new ReferenceOpenHashSet<>();
     private final ComponentMap<RecipeProcess> components = new ComponentMap<>();
     private final MachineAttributes attributes;
     private final Object2ObjectOpenHashMap<PureFactPath, RecipePureComputation> pureFacts =
         new Object2ObjectOpenHashMap<>();
+    private UUID identity = UUID.randomUUID();
+    private @Nullable ResourceInputGroup selectedInputGroup;
+    private @Nullable MachineHatches groupedHatches;
+    private @Nullable ResourceInputGroups.Capture groupCapture;
     private State state = new State(Lifecycle.NEW, 0, 0, ProcessResult.SUCCESS);
     private boolean ticking;
     private int acquiredTransactions;
@@ -102,32 +102,10 @@ public final class RecipeProcess {
     private byte ownerThreadRequirement;
     @Nullable
     private CrossRecipeBatch.Timing crossRecipeTiming;
-
-    public @Nullable CrossRecipeBatch.Timing crossRecipeTiming() {
-        return crossRecipeTiming;
-    }
-
-    public void crossRecipeTiming(CrossRecipeBatch.Timing timing) {
-        requirePersistenceBoundary();
-        if (crossRecipeTiming != null || state.lifecycle() != Lifecycle.NEW || isMaterialCycle())
-            throw new IllegalStateException("Only new ordinary work may join a cross-recipe batch");
-        crossRecipeTiming = Objects.requireNonNull(timing);
-    }
-
-    /** Framework-only rebase after every START committed, before any member's first TICK. */
-    public void refreshCrossRecipeTiming(CrossRecipeBatch.Timing timing) {
-        if (host != null) host.requireProcessOperation(this);
-        if (crossRecipeTiming == null || !crossRecipeTiming.batch().equals(timing.batch()) || activeSession == null
-            || activeSession.current != null || !state.started() || state.progress() != 0 || state.successfulTicks() != 0
-            || acquiredTransactions != 0)
-            throw new IllegalStateException("Cross-recipe timing can only refresh after START and before work");
-        crossRecipeTiming = Objects.requireNonNull(timing);
-    }
-
-    /** Runtime batch duration never changes the canonical recipe definition or its codec identity. */
-    public int durationTicks() {
-        return crossRecipeTiming == null ? recipe.durationTicks() : crossRecipeTiming.duration();
-    }
+    private @Nullable MachineHatches receiptHatchSource;
+    private @Nullable MachineHatches receiptHatches;
+    private @Nullable RecipeStage committedInputStage;
+    private @Nullable AEKey2LongMap committedInputAmounts;
 
     public RecipeProcess(MachineInstance owner, MachineRecipe recipe, long seed) {
         this(owner, recipe, seed, ProbabilityTuning.defaultTuning());
@@ -288,6 +266,36 @@ public final class RecipeProcess {
         return requirement.type().system().continuedAcquisition(requirement.payload());
     }
 
+    public @Nullable CrossRecipeBatch.Timing crossRecipeTiming() {
+        return crossRecipeTiming;
+    }
+
+    public void crossRecipeTiming(CrossRecipeBatch.Timing timing) {
+        requirePersistenceBoundary();
+        if (crossRecipeTiming != null || state.lifecycle() != Lifecycle.NEW || isMaterialCycle())
+            throw new IllegalStateException("Only new ordinary work may join a cross-recipe batch");
+        crossRecipeTiming = Objects.requireNonNull(timing);
+    }
+
+    /**
+     * Framework-only rebase after every START committed, before any member's first TICK.
+     */
+    public void refreshCrossRecipeTiming(CrossRecipeBatch.Timing timing) {
+        if (host != null) host.requireProcessOperation(this);
+        if (crossRecipeTiming == null || !crossRecipeTiming.batch().equals(timing.batch()) || activeSession == null
+            || activeSession.current != null || !state.started() || state.progress() != 0 || state.successfulTicks() != 0
+            || acquiredTransactions != 0)
+            throw new IllegalStateException("Cross-recipe timing can only refresh after START and before work");
+        crossRecipeTiming = Objects.requireNonNull(timing);
+    }
+
+    /**
+     * Runtime batch duration never changes the canonical recipe definition or its codec identity.
+     */
+    public int durationTicks() {
+        return crossRecipeTiming == null ? recipe.durationTicks() : crossRecipeTiming.duration();
+    }
+
     /**
      * Process-local, unsaved pure facts. Callers must independently prove every frozen input equal.
      */
@@ -360,7 +368,9 @@ public final class RecipeProcess {
         return recipe;
     }
 
-    /** Stable lifecycle identity for exact source receipts, retained by the process codec. */
+    /**
+     * Stable lifecycle identity for exact source receipts, retained by the process codec.
+     */
     public UUID identity() {
         return identity;
     }
@@ -387,11 +397,6 @@ public final class RecipeProcess {
         return Objects.requireNonNull(receiptHatches);
     }
 
-    private @Nullable MachineHatches receiptHatchSource;
-    private @Nullable MachineHatches receiptHatches;
-    private @Nullable RecipeStage committedInputStage;
-    private @Nullable AEKey2LongMap committedInputAmounts;
-
     /**
      * Actual immutable input totals across every source in the most recently successful stage.
      * Published before source inputsCommitted callbacks; empty means that stage consumed no inputs.
@@ -408,9 +413,12 @@ public final class RecipeProcess {
         committedInputAmounts = null;
     }
 
-    /** Native input-view hook; receipt allocation precedes transfer of the native token's ownership. */
+    /**
+     * Native input-view hook; receipt allocation precedes transfer of the native token's ownership.
+     */
     public @Nullable ResourceInputReceipts.Receipt prepareResourceInputReceipt(@Nullable ResourceRecipeObserver observer, AEKey key, long amount) {
-        if (amount <= 0 || probing || activeProbe != null || activeSession == null || activeSession.current == null) return null;
+        if (amount <= 0 || probing || activeProbe != null || activeSession == null || activeSession.current == null)
+            return null;
         var stage = activeSession.current;
         if (stage.inputReceipts == null) stage.inputReceipts = new ResourceInputReceipts.Ledger();
         return stage.inputReceipts.prepare(observer, key, amount);
@@ -438,7 +446,9 @@ public final class RecipeProcess {
         return selectedInputGroup;
     }
 
-    /** Select once before probes/admission; the accepted process never changes inventory groups. */
+    /**
+     * Select once before probes/admission; the accepted process never changes inventory groups.
+     */
     public void selectInputGroup(ResourceInputGroups.Group group) {
         Objects.requireNonNull(group);
         if (materialHatches != null || host != null || acquiredTransactions != 0 || state.started())
@@ -450,7 +460,9 @@ public final class RecipeProcess {
         groupCapture = MachineHatches.get(owner).inputGroups();
     }
 
-    /** Save recovery keeps the exact color/partition; a missing source never falls back to another. */
+    /**
+     * Save recovery keeps the exact color/partition; a missing source never falls back to another.
+     */
     public void restoreInputGroup(ResourceInputGroup group) {
         if (materialHatches != null || selectedInputGroup != null)
             throw new IllegalStateException("Input group already restored");
@@ -1883,18 +1895,18 @@ public final class RecipeProcess {
          * Adds exact owner business acquisitions to this round, for example a material cycle's END
          * grant. A busy fence returns null without taking any participant; the caller still owns
          * their cleanup. On success all participants share the existing source/terminal boundary.
+         * Both input lists are borrowed unchanged for this call, including its callbacks.
          */
         @Nullable
         public static ResourceBatch tryAcquireBatch(List<Stage> stages,
                                                     List<? extends ReversibleTransaction> participants) {
-            var round = new ObjectArrayList<>(stages);
-            if (round.isEmpty()) {
+            if (stages.isEmpty()) {
                 throw new IllegalArgumentException("Recipe round is empty");
             }
             var unique = new ReferenceOpenHashSet<Stage>();
             var reservations = new ObjectArrayList<ResourceReservation>(6);
             var transactions = new ObjectArrayList<ReversibleTransaction>();
-            for (var stage : round) {
+            for (var stage : stages) {
                 stage.requireAcquired();
                 if (!unique.add(stage) || stage.synchronous || stage.batch != null || !stage.acquisition.inventoryComplete()) {
                     throw new IllegalStateException("Recipe stage cannot transfer its acquisition");
@@ -1904,31 +1916,32 @@ public final class RecipeProcess {
             }
             transactions.addAll(Objects.requireNonNull(participants));
             boolean sequential = false;
-            for (var stage : round) if (stage.acquisition.sequential()) {
-                sequential = true;
-                break;
-            }
+            for (var stage : stages)
+                if (stage.acquisition.sequential()) {
+                    sequential = true;
+                    break;
+                }
             var contexts = new ObjectArrayList<StorageContext>();
             if (sequential) {
-                for (var stage : round) {
+                for (var stage : stages) {
                     contexts.addAll(stage.session.process.declaredStorageContexts());
                 }
             }
-            for (var stage : round) {
+            for (var stage : stages) {
                 stage.session.executing = true;
             }
             try {
                 var bound = sequential ? ResourceBatch.tryAcquireSequential(contexts, reservations, transactions)
                     : ResourceBatch.tryAcquire(reservations, transactions);
                 if (bound != null) {
-                    for (var stage : round) {
+                    for (var stage : stages) {
                         stage.batch = bound;
                         stage.acquisition.attachFlatParent(bound);
                     }
                 }
                 return bound;
             } finally {
-                for (var stage : round) {
+                for (var stage : stages) {
                     stage.session.executing = false;
                 }
             }
@@ -1946,7 +1959,9 @@ public final class RecipeProcess {
             return session.process;
         }
 
-        /** A peer rejected this round; rollback must not retry this member in the same tick. */
+        /**
+         * A peer rejected this round; rollback must not retry this member in the same tick.
+         */
         public void deferBatchRound() {
             requireOwner();
             session.stopped = true;
@@ -2600,7 +2615,7 @@ public final class RecipeProcess {
                     if ((cancelled || failure != null) && !stage.acquisition.finishCapturedInventoryWithinBudget(budget))
                         return false;
                     if (!stage.acquisition.inventoryComplete()) return false;
-                    var reservations = stage.acquisition.stableStepReservations();
+                    var reservations = stage.acquisition.stepReservations();
                     while (token < reservations.size()) {
                         if (!budget.take()) return false;
                         var reservation = reservations.get(token++);
@@ -2614,7 +2629,7 @@ public final class RecipeProcess {
                             if (observed instanceof VirtualMachineError fatal) throw fatal;
                         }
                     }
-                    var transactions = stage.acquisition.stableStepTransactions();
+                    var transactions = stage.acquisition.stepTransactions();
                     while (transaction < transactions.size()) {
                         if (!budget.take()) return false;
                         business.add(transactions.get(transaction++));

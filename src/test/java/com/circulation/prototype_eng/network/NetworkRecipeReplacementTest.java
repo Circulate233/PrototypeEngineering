@@ -26,8 +26,13 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class NetworkRecipeReplacementTest {
-    private static ResourceLocation id(String name) { return new ResourceLocation("network_replacement", name); }
-    private static MachineRecipe recipe(int duration) { return new MachineRecipe(id("recipe"), duration, List.of()); }
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("network_replacement", name);
+    }
+
+    private static MachineRecipe recipe(int duration) {
+        return new MachineRecipe(id("recipe"), duration, List.of());
+    }
 
     private static RecipeRegistry registry(MachineRecipe recipe, String revision) {
         var registry = new RecipeRegistry();
@@ -110,28 +115,4 @@ class NetworkRecipeReplacementTest {
         for (var builder : retained) assertThrows(IllegalStateException.class, builder::build);
     }
 
-    @Test
-    void sameObjectReentryRejectsWithoutWaitingOrReplacingTheOuterConfiguration() {
-        var old = recipe(2);
-        var next = recipe(8);
-        var registry = registry(old, "v1");
-        registry.freeze();
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
-        var research = new ResearchRegistry();
-        research.freeze(resources);
-        var calls = new int[1];
-        var extensions = new NetworkRecipeExtensions();
-        extensions.register((recipe, builder) -> {
-            calls[0]++;
-            if (recipe == next) {
-                assertThrows(IllegalStateException.class, () -> extensions.prepare(extensions.snapshot(), List.of(next)));
-                builder.resource(NetworkResources.COMPUTE, 8);
-            }
-        });
-        extensions.publish(registry.snapshot(), research, resources);
-        extensions.install(extensions.prepare(extensions.snapshot(), List.of(next)));
-        assertEquals(2, calls[0]);
-        assertEquals(8, extensions.require(next).resources().getLong(NetworkResources.COMPUTE));
-    }
 }

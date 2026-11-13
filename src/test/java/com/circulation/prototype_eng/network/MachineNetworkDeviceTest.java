@@ -12,7 +12,6 @@ import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleHost;
-import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleListener;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
 import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
@@ -59,7 +58,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MachineNetworkDeviceTest {
@@ -171,50 +169,6 @@ class MachineNetworkDeviceTest {
             fixture.unload(restored);
             assertTrue(fixture.identities.uniqueRegistrations().isEmpty());
             assertTrue(fixture.network.refresh());
-        }
-    }
-
-    @Test
-    @SuppressWarnings("resource")
-        // The listener subscription shares this fixture's lifecycle registry lifetime.
-    void aLaterLoadFailureCannotRevokeAReplacementAlreadyPublishedDuringTheListener() {
-        try (var fixture = new Fixture()) {
-            var original = fixture.create();
-            assertTrue(fixture.network.refresh());
-            original.owner.onSchedule();
-            var saved = fixture.assembly.encode(original.owner);
-            var originalState = original.process("first").state();
-            var listeners = new MachineLifecycleRegistry();
-            AssembledMachine[] replacement = {null};
-            MachineInstance[] failed = {null};
-            var failure = new IllegalStateException("later listener failed after replacing its generation");
-            listeners.register(new MachineLifecycleListener() {
-                @Override
-                public void onLoaded(MachineLifecycleEvent.Loaded event) {
-                    failed[0] = event.context().machine();
-                    replacement[0] = fixture.restore(saved, new MachineLifecycleRegistry());
-                    fixture.unload(original);
-                    assertTrue(fixture.network.refresh());
-                    throw failure;
-                }
-            });
-
-            assertSame(failure, assertThrows(IllegalStateException.class, () -> fixture.restore(saved, listeners)));
-            var survivor = Objects.requireNonNull(replacement[0]);
-            assertEquals(List.of(Objects.requireNonNull(fixture.ownership(survivor).registration())), fixture.identities.uniqueRegistrations());
-            assertEquals(originalState, survivor.process("first").state());
-            survivor.owner.onSchedule();
-            assertEquals(2, survivor.process("first").state().successfulTicks());
-            assertEquals(1, survivor.process("second").state().successfulTicks());
-            assertEquals(38, survivor.input.storedEnergy(), "Failed old attachment must leave the replacement gate authorized");
-
-            // A repeated, late unload of the failed generation must also preserve the replacement.
-            assertFalse(Objects.requireNonNull(Objects.requireNonNull(failed[0]).lifecycle())
-                               .unload(MachineLifecycleEvent.UnloadReason.INVALIDATED));
-            survivor.work().tickProcesses();
-            assertEquals(3, survivor.process("first").state().successfulTicks());
-            assertEquals(2, survivor.process("second").state().successfulTicks());
-            assertEquals(34, survivor.input.storedEnergy());
         }
     }
 

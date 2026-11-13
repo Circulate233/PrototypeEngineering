@@ -38,18 +38,13 @@ final class TransactionGroup implements ReversibleTransaction {
     @Nullable
     private Throwable queryFailure;
 
+    /**
+     * Borrows the fixed participant list until all effects reach their terminal decision.
+     */
     TransactionGroup(List<? extends ReversibleTransaction> transactions) {
-        this(transactions, false);
-    }
-
-    private TransactionGroup(List<? extends ReversibleTransaction> transactions, boolean frozen) {
-        this.transactions = frozen ? transactions : List.copyOf(transactions);
+        this.transactions = transactions;
         terminal = new boolean[transactions.size()];
         uncertain = new boolean[transactions.size()];
-    }
-
-    static TransactionGroup frozen(List<? extends ReversibleTransaction> transactions) {
-        return new TransactionGroup(transactions, true);
     }
 
     /**

@@ -62,8 +62,8 @@ gui.prototype_eng.Input=Input
 gui.prototype_eng.Output=Output
 gui.prototype_eng.Energy=Stored energy
 gui.prototype_eng.ResourceStorage=Resource Hatch
-gui.prototype_eng.InputRate=Input limit (0 = default)
-gui.prototype_eng.OutputRate=Output limit (0 = default)
+gui.prototype_eng.InputRate=Input limit (-1 = default)
+gui.prototype_eng.OutputRate=Output limit (-1 = default)
 gui.prototype_eng.AutoInput=Auto Input
 gui.prototype_eng.AutoOutput=Auto Output
 recipe.prototype_eng.StorageChanged=Storage changed; retrying this recipe stage

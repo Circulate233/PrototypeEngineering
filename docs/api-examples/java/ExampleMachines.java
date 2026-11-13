@@ -60,12 +60,12 @@ public final class ExampleMachines {
     @SubscribeEvent
     public static void machines(MachineTypeRegistrationEvent event) {
         type = MachineType.builder(id("smelter"), Text.MACHINE, SHAPE)
-            .recipePool(POOL)
-            .component(MachineWorkSlots.TYPE)
-            .component(SCANNER)
-            .attribute(StandardMachineAttributes.PROCESS_PARALLELISM, 4)
-            .executionPolicy(ControllerExecutionPolicy.FULL_ASYNC)
-            .build();
+                          .recipePool(POOL)
+                          .component(MachineWorkSlots.TYPE)
+                          .component(SCANNER)
+                          .attribute(StandardMachineAttributes.PROCESS_PARALLELISM, 4)
+                          .executionPolicy(ControllerExecutionPolicy.FULL_ASYNC)
+                          .build();
         event.registry().register(type);
     }
 
@@ -103,10 +103,10 @@ public final class ExampleMachines {
         event.definition(new StructureDefinition(column, Text.COLUMN.getTranslationKey(), Object2ObjectMaps.emptyMap()));
         event.definition(new StructureDefinition(shape, Text.SHAPE.getTranslationKey(), Object2ObjectMaps.emptyMap()));
         var assembly = MachineAssembly.builder(Objects.requireNonNull(type), "machine-v1")
-            .instanceFactory(MultithreadController::new)
-            .workSlots(new MachineWorkSlotsNbt("slots-v1", ObjectList.of(Objects.requireNonNull(recipeCodec))))
-            .recreated(SCANNER)
-            .build();
+                                      .instanceFactory(MultithreadController::new)
+                                      .workSlots(new MachineWorkSlotsNbt("slots-v1", ObjectList.of(Objects.requireNonNull(recipeCodec))))
+                                      .recreated(SCANNER)
+                                      .build();
         event.assembly(assembly);
     }
 

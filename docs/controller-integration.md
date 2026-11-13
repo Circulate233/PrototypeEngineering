@@ -53,7 +53,7 @@ Cleanroom 的正常 dormant 缓存会在 `ForgeChunkManager.storeChunkNBT` 保�
 
 自动配方使用 `RecipeScanning.component`，机器组件声明先 `MachineWorkSlots.TYPE` 后 scanner，装配以工位 codec 保存进程、以 recreated 重建 scanner；只声明工位不扫描。catalog 在装配时解析完整 freeze 的共享目录。空 recipeGroups/槽位白名单统一为全局候选，包含无组配方，显式组仍按交集限制具体工位。扫描系统排在工位处理前，二者都检查成型/退休门限。详细合同与示例见[配方扫描](recipes.md#自动扫描组件声明与恢复)。
 
-控制器非潜行普通激活打开 GUI 0，手持方向工具时交还物品处理。默认 `MachineGui` / `MachineContainer` 直接继承 AE2 基类，保留 PM 可滚动工位进度与真实玩家背包。容器在 owner FIFO、worker join 后重新检查 openContainer/准确 TE，再同步最多七行不可变显示值；屏幕不读取服务器 runtime。默认或自定义容器绑定由 common `MachineGuiRegistry` 提供，client `MachineScreenRegistry` 用明确容器类绑定有类型 factory。自定义界面直接继承 AEBaseGui，不需要默认类或 GUI DSL。完整入口与同步限额见[机器 GUI](machine-gui.md)。
+控制器非潜行普通激活打开 GUI 0，手持方向工具时交还物品处理。默认 `GuiMachine` / `ContainerMachine` 直接继承 AE2 基类，保留 PM 可滚动工位进度与真实玩家背包。容器在 owner FIFO、worker join 后重新检查 openContainer/准确 TE，再同步最多七行不可变显示值；屏幕不读取服务器 runtime。默认或自定义容器绑定由 common `MachineGuiRegistry` 提供，client `MachineScreenRegistry` 用明确容器类绑定有类型 factory。自定义界面直接继承 AEBaseGui，不需要默认类或 GUI DSL。完整入口与同步限额见[机器 GUI](machine-gui.md)。
 
 `prototype_eng:orientation_tool` 保留 PM 的两模式、武器/铁镐斧锹、耐久、附魔、成就和原模型。开启后普通点击 front 扭转、其他面重置 canonical，潜行遍历 24 向；相对操作使用上文 owner FIFO。PM 的 DOWN canonical top=SOUTH 单独保留，配置十项默认值/范围沿用原实现。详细交互、权限与资源见[方向工具](orientation-tool.md)。
 

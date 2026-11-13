@@ -2,12 +2,12 @@ package com.circulation.prototype_eng.client.render;
 
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import org.jetbrains.annotations.Nullable;
+import team.chisel.ctm.Configurations;
 import team.chisel.ctm.api.texture.ICTMTexture;
+import team.chisel.ctm.api.texture.ISubmap;
 import team.chisel.ctm.api.texture.ITextureContext;
 import team.chisel.ctm.api.texture.TextureType;
-import team.chisel.ctm.api.texture.ISubmap;
 import team.chisel.ctm.api.util.TextureInfo;
-import team.chisel.ctm.Configurations;
 import team.chisel.ctm.client.texture.ctx.TextureContextCTM;
 import team.chisel.ctm.client.texture.render.TextureCTM;
 import team.chisel.ctm.client.texture.type.TextureTypeCTM;
@@ -18,9 +18,12 @@ import team.chisel.ctm.client.util.Submap;
 import java.util.Arrays;
 import java.util.List;
 
-/** Full-face 47-state source artwork, using CTM's actual neighbor/state/obscured-face context. */
+/**
+ * Full-face 47-state source artwork, using CTM's actual neighbor/state/obscured-face context.
+ */
 @TextureType("prototype_eng:optifine_full")
-@SuppressWarnings("unchecked") // ITextureType's generic factory conflicts with TextureTypeCTM's native concrete override.
+@SuppressWarnings("unchecked")
+// ITextureType's generic factory conflicts with TextureTypeCTM's native concrete override.
 public final class FullCtmTextureType extends TextureTypeCTM {
     private static final Dir[] SIDES = {Dir.TOP, Dir.RIGHT, Dir.BOTTOM, Dir.LEFT};
     private static final Dir[] CORNERS = {Dir.TOP_RIGHT, Dir.BOTTOM_RIGHT, Dir.BOTTOM_LEFT, Dir.TOP_LEFT};
@@ -60,6 +63,10 @@ public final class FullCtmTextureType extends TextureTypeCTM {
         return tile;
     }
 
+    static Tile select(CTMLogic connections) {
+        return SOURCE_TILES[tile(connections)];
+    }
+
     @Override
     public ICTMTexture<? extends TextureTypeCTM> makeTexture(TextureInfo info) {
         return new FullTexture(this, info);
@@ -75,11 +82,8 @@ public final class FullCtmTextureType extends TextureTypeCTM {
         return 1;
     }
 
-    static Tile select(CTMLogic connections) {
-        return SOURCE_TILES[tile(connections)];
+    record Tile(int sprite, ISubmap uv) {
     }
-
-    record Tile(int sprite, ISubmap uv) {}
 
     private static final class FullTexture extends TextureCTM<FullCtmTextureType> {
         private FullTexture(FullCtmTextureType type, TextureInfo info) {

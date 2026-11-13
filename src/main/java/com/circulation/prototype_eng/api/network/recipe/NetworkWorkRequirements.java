@@ -64,14 +64,16 @@ public final class NetworkWorkRequirements {
         return scaledResources((long) parallelism);
     }
 
-    /** A retimed batch slice may have no work or more than int capacity; the full vector remains exact. */
+    /**
+     * A retimed batch slice may have no work or more than int capacity; the full vector remains exact.
+     */
     public Object2LongMap<NetworkResourceType> scaledResources(long parallelism) {
         if (parallelism < 0) throw new IllegalArgumentException("Work quantity must be nonnegative");
         var scaled = new Object2LongOpenHashMap<NetworkResourceType>(resources.size());
         for (var entry : resources.object2LongEntrySet()) {
             scaled.put(entry.getKey(), Math.multiplyExact(entry.getLongValue(), parallelism));
         }
-        return NetworkResourceModifier.copyResources(scaled);
+        return scaled;
     }
 
     /**

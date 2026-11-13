@@ -62,7 +62,7 @@ public final class ResearchResourceFormula {
         for (var entry : baseDemands.object2LongEntrySet()) {
             result.put(entry.getKey(), exact(entry.getKey(), entry.getLongValue(), demandSlopes.getLong(entry.getKey()), offset));
         }
-        return NetworkResourceModifier.copyResources(result);
+        return result;
     }
 
     /**

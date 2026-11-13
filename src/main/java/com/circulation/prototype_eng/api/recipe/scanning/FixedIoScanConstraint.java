@@ -88,14 +88,16 @@ public final class FixedIoScanConstraint implements RecipeParallelismConstraint 
         var overlays = process.components().get(RecipeOverlays.TYPE);
         for (var requirement : process.orderedRequirements()) {
             var effective = overlays == null ? requirement : overlays.resolve(requirement);
-            if (requirement.type() == RecipeRequirements.RESOURCES && effective.payload() instanceof ResourceRequirement payload) {
+            if (requirement.type() == RecipeRequirements.RESOURCES) {
+                var payload = (ResourceRequirement) effective.payload();
                 if (!payload.chance().equals(ResourceChance.ALWAYS) || payload.randomOutputs() != null
                     || !payload.fuzzyInputs().isEmpty() || !payload.dynamicInputs().isEmpty()) {
                     return ProcessResult.SUCCESS;
                 }
                 resources = resources.merge(new Io(!payload.inputs().isEmpty(), !payload.inputsPerTick().isEmpty(),
                     !payload.outputsPerTick().isEmpty(), !payload.outputs().isEmpty()));
-            } else if (requirement.type() == RecipeRequirements.ENERGY && effective.payload() instanceof EnergyRequirement payload) {
+            } else if (requirement.type() == RecipeRequirements.ENERGY) {
+                var payload = (EnergyRequirement) effective.payload();
                 energy = energy.merge(new Io(payload.input() > 0, payload.inputPerTick() > 0,
                     payload.outputPerTick() > 0, payload.output() > 0));
             } else {
@@ -193,7 +195,8 @@ public final class FixedIoScanConstraint implements RecipeParallelismConstraint 
                     if (!budget.take()) return false;
                     var requirement = requirements.get(requirementCursor++);
                     var effective = overlays == null ? requirement : overlays.resolve(requirement);
-                    if (requirement.type() == RecipeRequirements.RESOURCES && effective.payload() instanceof ResourceRequirement payload) {
+                    if (requirement.type() == RecipeRequirements.RESOURCES) {
+                        var payload = (ResourceRequirement) effective.payload();
                         if (!payload.chance().equals(ResourceChance.ALWAYS) || payload.randomOutputs() != null
                             || !payload.fuzzyInputs().isEmpty() || !payload.dynamicInputs().isEmpty()) {
                             phase = 8;
@@ -201,7 +204,8 @@ public final class FixedIoScanConstraint implements RecipeParallelismConstraint 
                         }
                         resources = resources.merge(new Io(!payload.inputs().isEmpty(), !payload.inputsPerTick().isEmpty(),
                             !payload.outputsPerTick().isEmpty(), !payload.outputs().isEmpty()));
-                    } else if (requirement.type() == RecipeRequirements.ENERGY && effective.payload() instanceof EnergyRequirement payload) {
+                    } else if (requirement.type() == RecipeRequirements.ENERGY) {
+                        var payload = (EnergyRequirement) effective.payload();
                         energy = energy.merge(new Io(payload.input() > 0, payload.inputPerTick() > 0,
                             payload.outputPerTick() > 0, payload.output() > 0));
                     } else {

@@ -11,7 +11,9 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-/** Effective profiles are restored before attempting the current global target. */
+/**
+ * Effective profiles are restored before attempting the current global target.
+ */
 public final class HatchConfigurationNbt {
     private HatchConfigurationNbt() {
     }

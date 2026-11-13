@@ -7,7 +7,9 @@ import stanhebben.zenscript.annotations.ZenGetter;
 
 import java.util.Objects;
 
-/** A refusal or failure retains the core result's published fact and exact session identity. */
+/**
+ * A refusal or failure retains the core result's published fact and exact session identity.
+ */
 @SuppressWarnings("unused") // Discovered and accessed by ZenScript.
 @ZenRegister
 @ZenClass("mods.prototype_eng.recipe.UpdateResult")

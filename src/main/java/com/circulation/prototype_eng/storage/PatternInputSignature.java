@@ -16,7 +16,11 @@ final class PatternInputSignature {
         return true;
     }
 
+    /**
+     * Positive receipt amounts are read-only; an already normalized map can be retained directly.
+     */
     static AEKey2LongMap normalize(AEKey2LongMap amounts) {
+        if (amounts.isEmpty()) return amounts;
         long divisor = 0;
         for (var entry : amounts.object2LongEntrySet()) {
             long value = entry.getLongValue();
@@ -25,6 +29,7 @@ final class PatternInputSignature {
                 divisor = value;
                 value = rest;
             }
+            if (divisor == 1) return amounts;
         }
         var normalized = new AEKey2LongMap.OpenHashMap(amounts.size());
         if (divisor != 0) {

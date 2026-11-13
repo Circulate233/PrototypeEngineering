@@ -4,10 +4,11 @@ import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
-import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import org.jetbrains.annotations.Nullable;
 
-/** Bounded owner callback compares the selected target block state, without granting formation authority. */
+/**
+ * Bounded owner callback compares the selected target block state, without granting formation authority.
+ */
 public final class PreviewDisplayObservation {
     private PreviewDisplayObservation() {
     }
@@ -22,24 +23,10 @@ public final class PreviewDisplayObservation {
         var root = model.generation().entries().get(model.structureId());
         var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
         var actual = world.getBlockState(position);
-        var chosen = model.settings().option(cell);
-        boolean unresolved = false;
-        for (int index = 0; index < display.options().size(); index++) {
-            if (chosen != index) continue;
-            var option = display.options().get(index);
-            if (!ForgeRegistries.BLOCKS.containsKey(option.blockId())) {
-                unresolved = true;
-                continue;
-            }
-            var state = PreviewBlockStates.resolve(option, rotation);
-            if (state == null) {
-                unresolved = true;
-                continue;
-            }
-            if (actual.equals(state))
-                return StructureProjectionState.Status.DISPLAY_MATCH;
-        }
-        if (unresolved) return StructureProjectionState.Status.UNKNOWN;
+        var option = display.options().get(model.settings().option(cell));
+        var state = PreviewBlockStates.resolve(option, rotation);
+        if (state == null) return StructureProjectionState.Status.UNKNOWN;
+        if (actual.equals(state)) return StructureProjectionState.Status.DISPLAY_MATCH;
         return actual.getBlock().isAir(actual, world, position) ? StructureProjectionState.Status.MISSING : StructureProjectionState.Status.DIFFERENT;
     }
 }

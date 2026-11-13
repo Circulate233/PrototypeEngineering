@@ -2,8 +2,8 @@ package com.circulation.prototype_eng.api.client.gui;
 
 import ae2.client.gui.AEBaseGui;
 import ae2.container.AEBaseContainer;
-import com.circulation.prototype_eng.client.gui.MachineGui;
-import com.circulation.prototype_eng.container.MachineContainer;
+import com.circulation.prototype_eng.client.gui.GuiMachine;
+import com.circulation.prototype_eng.container.ContainerMachine;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.util.ResourceLocation;
@@ -38,8 +38,8 @@ public final class MachineScreenRegistry {
         if (factory != null) {
             return Objects.requireNonNull(factory.apply(container, player), "Machine screen factory returned null");
         }
-        if (container instanceof MachineContainer machine) {
-            return new MachineGui(machine, player);
+        if (container instanceof ContainerMachine machine) {
+            return new GuiMachine(machine, player);
         }
         throw new IllegalStateException("Custom machine container has no client screen binding: " + type);
     }

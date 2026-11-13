@@ -4,7 +4,6 @@ import ae2.api.stacks.AEKey;
 import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTBase;
@@ -65,7 +64,7 @@ public final class DynamicInputCandidates {
         for (int index = 0; index < ordered.size() && index < group.maxCandidates(); index++) {
             result.add(ordered.get(index).key());
         }
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     /**
@@ -86,7 +85,7 @@ public final class DynamicInputCandidates {
         for (int index = 0; index < matches.size() && index < group.maxCandidates(); index++) {
             result.add(matches.get(index));
         }
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     private static ObjectArrayList<AEKey> matching(Collection<AEKey> availableKeys, DynamicInputGroup group) {
@@ -281,7 +280,7 @@ public final class DynamicInputCandidates {
             if (!complete) {
                 throw new IllegalStateException("Dynamic candidate enumeration is incomplete");
             }
-            return ObjectLists.unmodifiable(result);
+            return result;
         }
     }
 

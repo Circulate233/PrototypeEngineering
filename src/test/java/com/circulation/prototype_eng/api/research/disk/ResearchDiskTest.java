@@ -161,8 +161,6 @@ class ResearchDiskTest {
         source.clear();
         source.put(id("foreign"), 99);
         encoded.getTagList("entries", 10).getCompoundTagAt(0).setInteger("level", 99);
-        assertThrows(UnsupportedOperationException.class,
-            () -> decoded.entries().object2IntEntrySet().iterator().next().setValue(99));
         var storage = storage(registry, 1, 2);
         var cloud = cloud(registry);
         assertTrue(ResearchDiskImport.precheck(decoded, storage.snapshot(), cloud).accepted());

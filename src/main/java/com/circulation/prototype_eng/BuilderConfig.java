@@ -4,7 +4,9 @@ import net.minecraftforge.common.config.Configuration;
 
 import java.io.File;
 
-/** Server-side construction work limits, independent of a player's tool settings. */
+/**
+ * Server-side construction work limits, independent of a player's tool settings.
+ */
 public final class BuilderConfig {
     private static int interval = 1;
     private static int batch = 8;
@@ -22,7 +24,11 @@ public final class BuilderConfig {
         if (config.hasChanged()) config.save();
     }
 
-    public static int interval() { return interval; }
+    public static int interval() {
+        return interval;
+    }
 
-    public static int batch() { return batch; }
+    public static int batch() {
+        return batch;
+    }
 }

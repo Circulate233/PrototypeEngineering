@@ -1,37 +1,29 @@
 package com.circulation.prototype_eng.machine.data;
 
 import com.circulation.prototype_eng.api.data.ComponentData;
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
 
-/** Complete ordinary data fact. Identities are attachment-local observations, never execution rights. */
+/**
+ * Complete ordinary data fact. Identities are attachment-local observations, never execution rights.
+ * Producers supply unique host/process IDs and slot names. Borrowed lists must remain unchanged;
+ * consumers must not modify them. Network validation is performed by MachineDataSnapshotCodec.
+ */
 public record MachineDataSnapshot(long generation, long revision, @Nullable ComponentData.Snapshot machine,
                                   List<Host> hosts) {
     public MachineDataSnapshot {
-        if (generation <= 0 || revision < 0) throw new IllegalArgumentException("Invalid machine data identity/revision");
-        hosts = List.copyOf(hosts);
-        var hostIds = new LongOpenHashSet(hosts.size());
-        var processIds = new LongOpenHashSet();
-        for (var host : hosts) {
-            if (!hostIds.add(host.identity())) throw new IllegalArgumentException("Duplicate data host identity");
-            for (var slot : host.slots())
-                if (slot.process() != null && !processIds.add(slot.process().identity()))
-                    throw new IllegalArgumentException("Duplicate data process identity");
-        }
+        if (generation <= 0 || revision < 0)
+            throw new IllegalArgumentException("Invalid machine data identity/revision");
+
     }
 
     public record Host(long identity, List<Slot> slots) {
         public Host {
             if (identity <= 0) throw new IllegalArgumentException("Invalid data host identity");
-            slots = List.copyOf(slots);
-            var names = new ObjectOpenHashSet<String>();
-            for (var slot : slots)
-                if (!names.add(slot.name())) throw new IllegalArgumentException("Duplicate data slot name");
+
         }
     }
 

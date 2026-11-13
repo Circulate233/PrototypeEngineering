@@ -1,53 +1,54 @@
 package com.circulation.prototype_eng.storage;
 
 import ae2.api.config.Actionable;
-import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.AEKey2LongMap;
+import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
 import ae2.api.util.AEColor;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
-import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
-import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
-import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
-import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.persistence.AttributeModifierNbt;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
+import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
+import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
+import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayTypes;
+import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
+import com.circulation.prototype_eng.api.recipe.overlay.ResourceRequirementPatch;
+import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
+import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
+import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
+import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
+import com.circulation.prototype_eng.api.recipe.requirement.FuzzyInputGroup;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.recipe.scanning.ResourceRecipeIndex;
 import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
+import com.circulation.prototype_eng.api.storage.ReservationResult;
+import com.circulation.prototype_eng.api.storage.ResourceBatch;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
-import com.circulation.prototype_eng.api.storage.ResourceStorage;
-import com.circulation.prototype_eng.api.storage.ResourceRecipeObserver;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
-import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.storage.ResourceInputGroups;
-import com.circulation.prototype_eng.api.storage.ResourceBatch;
-import com.circulation.prototype_eng.api.storage.ReservationResult;
+import com.circulation.prototype_eng.api.storage.ResourceRecipeObserver;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
-import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
-import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayTypes;
-import com.circulation.prototype_eng.api.recipe.overlay.ResourceRequirementPatch;
-import com.circulation.prototype_eng.api.recipe.requirement.FuzzyInputGroup;
-import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
-import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
-import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
+import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
@@ -56,15 +57,14 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResourceInputGroupsTest {
     private static final KeyType TYPE = new KeyType("grouped_input");
@@ -76,7 +76,8 @@ class ResourceInputGroupsTest {
     private static SlottedResourceBuffer buffer() {
         var capacities = new Reference2LongArrayMap<AEKeyType>();
         capacities.put(TYPE, 1000);
-        return new SlottedResourceBuffer(2, capacities, () -> {});
+        return new SlottedResourceBuffer(2, capacities, () -> {
+        });
     }
 
     private static MachineRecipe recipe(String name, int duration, long start, long perTick) {
@@ -106,6 +107,47 @@ class ResourceInputGroupsTest {
             if (result.status() != RecipeScanner.Status.YIELDED) return result;
         }
         throw new AssertionError("Grouped scanner did not finish: " + result);
+    }
+
+    private static void drain(BooleanSupplier advance) {
+        for (int step = 0; step < 10000; step++) if (advance.getAsBoolean()) return;
+        throw new AssertionError("One-credit source work did not finish");
+    }
+
+    @Test
+    void sharedPrefixDispatchKeepsProviderOrderWithoutMixingAdjacentPartitions() {
+        var broad = new Port(AEColor.RED, "plant", true);
+        var first = new Port(AEColor.BLUE, "plant/z", false);
+        var common = new Port(AEColor.TRANSPARENT);
+        var catalyst = new Port(AEColor.RED, "plant/", true);
+        var later = new Port(AEColor.BLUE, "plant/a", false);
+        var adjacent = new Port(AEColor.TRANSPARENT, "plant0/", true);
+        var other = new Port(AEColor.TRANSPARENT, "plant0/slot", false);
+        broad.input.insert(MATERIAL, 1, Actionable.MODULATE);
+        first.input.insert(MATERIAL, 5, Actionable.MODULATE);
+        common.input.insert(MATERIAL, 1, Actionable.MODULATE);
+        catalyst.input.insert(CATALYST, 1, Actionable.MODULATE);
+        later.input.insert(MATERIAL, 5, Actionable.MODULATE);
+        adjacent.input.insert(CATALYST, 99, Actionable.MODULATE);
+        other.input.insert(MATERIAL, 99, Actionable.MODULATE);
+        var fixture = new Fixture(broad, first, common, catalyst, later, adjacent, other);
+        var recipe = new MachineRecipe(id("prefix_dispatch"), 1,
+            List.of(RecipeRequirements.RESOURCES.requirement(id("prefix_dispatch_io"),
+                new ResourceRequirement(List.of(new GenericStack(MATERIAL, 3), new GenericStack(CATALYST, 1)),
+                    List.of(), List.of(), List.of(), false))));
+        var admitted = scan(fixture, recipe);
+        assertEquals(RecipeScanner.Status.ADMITTED, admitted.status());
+        var process = Objects.requireNonNull(admitted.process());
+        assertEquals(first.inputGroup(), process.selectedInputGroup());
+        process.tick();
+        assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
+        assertEquals(0, broad.input.amount(MATERIAL));
+        assertEquals(3, first.input.amount(MATERIAL));
+        assertEquals(1, common.input.amount(MATERIAL));
+        assertEquals(0, catalyst.input.amount(CATALYST));
+        assertEquals(5, later.input.amount(MATERIAL));
+        assertEquals(99, adjacent.input.amount(CATALYST));
+        assertEquals(99, other.input.amount(MATERIAL));
     }
 
     @Test
@@ -374,23 +416,6 @@ class ResourceInputGroupsTest {
         assertEquals(List.of("attached", "detached", "attached"), red.events);
     }
 
-    private record RejectedStart(int[] reversals) implements RequirementTransaction {
-        @Override
-        public ProcessResult result() {
-            return ProcessResult.SUCCESS;
-        }
-
-        @Override
-        public void commit() {
-            throw new IllegalStateException("Rejected after native resource application");
-        }
-
-        @Override
-        public void rollback() {
-            reversals[0]++;
-        }
-    }
-
     @Test
     void sharedCatalystJoinsEachPatternPartitionButTwoPatternInputBuffersNeverCombine() {
         var first = new Port(AEColor.RED, "provider/pattern0", false);
@@ -479,7 +504,6 @@ class ResourceInputGroupsTest {
         assertEquals(16, amounts.getLong(DYNAMIC));
         assertEquals(3, amounts.size());
         assertTrue(dynamic.receipts.isEmpty(), "Equal observer identities merge distinct physical source receipts once");
-        assertThrows(UnsupportedOperationException.class, () -> amounts.addTo(PRODUCT, 1));
     }
 
     @Test
@@ -503,10 +527,11 @@ class ResourceInputGroupsTest {
         assertFalse(stage.preparationPending());
         drain(() -> stage.finishCapturedInventoryWithinBudget(new RecipeWorkBudget(1)));
         var batch = Objects.requireNonNull(RecipeProcess.Stage.tryAcquireBatch(List.of(stage)));
-        for (var source : batch.sources()) drain(() -> {
-            assertTrue(source.applyWithinBudget(new RecipeWorkBudget(1)));
-            return source.state() == ResourceBatch.SourceState.APPLIED;
-        });
+        for (var source : batch.sources())
+            drain(() -> {
+                assertTrue(source.applyWithinBudget(new RecipeWorkBudget(1)));
+                return source.state() == ResourceBatch.SourceState.APPLIED;
+            });
         assertTrue(red.receipts.isEmpty());
         drain(() -> batch.decision() == ResourceBatch.Decision.OPEN
             ? batch.commitWithinBudget(() -> true, new RecipeWorkBudget(1))
@@ -574,7 +599,6 @@ class ResourceInputGroupsTest {
         assertEquals(4, complete.getLong(MATERIAL));
         assertEquals(1, complete.getLong(CATALYST));
         assertEquals(2, complete.size());
-        assertThrows(UnsupportedOperationException.class, () -> complete.addTo(MATERIAL, 1));
         var tick = Objects.requireNonNull(session.nextStage());
         assertNull(process.committedInputs(RecipeStage.START));
         tick.acquire();
@@ -586,9 +610,11 @@ class ResourceInputGroupsTest {
 
     @Test
     void crossSourceLongOverflowDoesNotRejectLegalNativeReservationsAndExactLongMaxStaysAvailable() {
-        for (long secondAmount : new long[] {1, 2}) {
-            var first = new UnboundedResourceBuffer(() -> {});
-            var second = new UnboundedResourceBuffer(() -> {});
+        for (long secondAmount : new long[]{1, 2}) {
+            var first = new UnboundedResourceBuffer(() -> {
+            });
+            var second = new UnboundedResourceBuffer(() -> {
+            });
             first.insert(MATERIAL, Long.MAX_VALUE - 1, Actionable.MODULATE);
             second.insert(MATERIAL, secondAmount, Actionable.MODULATE);
             var fixture = new Fixture(new PlainPort(first), new PlainPort(second));
@@ -607,7 +633,7 @@ class ResourceInputGroupsTest {
                 }
             });
             var recipe = new MachineRecipe(id("large_native_stage_" + secondAmount), 2,
-                List.of(type.requirement(id("large_inputs"), new long[] {Long.MAX_VALUE - 1, secondAmount})));
+                List.of(type.requirement(id("large_inputs"), new long[]{Long.MAX_VALUE - 1, secondAmount})));
             var process = new RecipeProcess(fixture.machine, recipe, 1);
             assertTrue(fixture.host.start(process));
             var session = Objects.requireNonNull(process.beginTick());
@@ -623,20 +649,48 @@ class ResourceInputGroupsTest {
         }
     }
 
+    private record RejectedStart(int[] reversals) implements RequirementTransaction {
+        @Override
+        public ProcessResult result() {
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public void commit() {
+            throw new IllegalStateException("Rejected after native resource application");
+        }
+
+        @Override
+        public void rollback() {
+            reversals[0]++;
+        }
+    }
+
     private record NativeInputs(List<ResourceReservation> reservations) implements RequirementTransaction {
-        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-        @Override public void commit() {}
-        @Override public void rollback() {}
+        @Override
+        public ProcessResult result() {
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public void commit() {
+        }
+
+        @Override
+        public void rollback() {
+        }
     }
 
     private record PlainPort(ResourceStorage input) implements ResourceHatch {
-        @Override public ResourceStorage output() { return null; }
-        @Override public boolean isValid() { return input.isValid(); }
-    }
+        @Override
+        public ResourceStorage output() {
+            return null;
+        }
 
-    private static void drain(BooleanSupplier advance) {
-        for (int step = 0; step < 10000; step++) if (advance.getAsBoolean()) return;
-        throw new AssertionError("One-credit source work did not finish");
+        @Override
+        public boolean isValid() {
+            return input.isValid();
+        }
     }
 
     private static final class Fixture {
@@ -655,13 +709,13 @@ class ResourceInputGroupsTest {
     private static final class Port implements ResourceHatch, ResourceRecipeObserver {
         private final SlottedResourceBuffer input = buffer();
         private final SlottedResourceBuffer output = buffer();
-        private AEColor color;
-        private Object observer = this;
         private final String partition;
         private final boolean shared;
         private final List<String> events = new ObjectArrayList<>();
         private final List<RecipeStage> committedStages = new ObjectArrayList<>();
         private final List<InputReceipt> receipts = new ObjectArrayList<>();
+        private AEColor color;
+        private Object observer = this;
 
         private Port(AEColor color) {
             this(color, "", false);
@@ -725,5 +779,6 @@ class ResourceInputGroupsTest {
         }
     }
 
-    private record InputReceipt(RecipeStage stage, AEKey2LongMap amounts, AEKey2LongMap allInputs) {}
+    private record InputReceipt(RecipeStage stage, AEKey2LongMap amounts, AEKey2LongMap allInputs) {
+    }
 }

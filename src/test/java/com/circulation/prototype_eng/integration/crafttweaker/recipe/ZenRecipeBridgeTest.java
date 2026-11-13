@@ -9,26 +9,26 @@ import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
-import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
+import com.circulation.prototype_eng.api.recipe.CompositeRecipePool;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarationKey;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarationRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarations;
-import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.RecipeDefinitionManifest;
 import com.circulation.prototype_eng.api.recipe.RecipeDefinitionUpdates;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
-import com.circulation.prototype_eng.api.recipe.CompositeRecipePool;
+import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
+import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
-import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessCodecs;
-import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayPipeline;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
+import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessCodecs;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
+import com.circulation.prototype_eng.api.research.ResearchRegistry;
+import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
 import com.circulation.prototype_eng.integration.crafttweaker.ZenComponentData;
 import com.circulation.prototype_eng.integration.crafttweaker.ZenComponentDataMembers;
-import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
 import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
 import com.circulation.prototype_eng.recipe.RecipeDefinitionManifestCodec;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
@@ -38,8 +38,8 @@ import crafttweaker.zenscript.expand.ExpandBool;
 import crafttweaker.zenscript.expand.ExpandDataStringDict;
 import crafttweaker.zenscript.expand.ExpandInt;
 import crafttweaker.zenscript.expand.ExpandString;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
@@ -51,12 +51,15 @@ import stanhebben.zenscript.ZenModule;
 import stanhebben.zenscript.ZenParsedFile;
 import stanhebben.zenscript.ZenTokener;
 import stanhebben.zenscript.annotations.ZenClass;
+import stanhebben.zenscript.annotations.ZenExpansion;
+import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
+import stanhebben.zenscript.annotations.ZenSetter;
+import stanhebben.zenscript.compiler.IEnvironmentGlobal;
+import stanhebben.zenscript.expression.partial.IPartialExpression;
 import stanhebben.zenscript.impl.GenericCompileEnvironment;
 import stanhebben.zenscript.impl.GenericErrorLogger;
 import stanhebben.zenscript.impl.GenericRegistry;
-import stanhebben.zenscript.compiler.IEnvironmentGlobal;
-import stanhebben.zenscript.expression.partial.IPartialExpression;
 import stanhebben.zenscript.symbols.SymbolType;
 import stanhebben.zenscript.type.ZenTypeNative;
 import stanhebben.zenscript.util.ZenPosition;
@@ -69,11 +72,61 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ZenRecipeBridgeTest {
     private static final TestKeyType KEY_TYPE = new TestKeyType();
     private static final AEKey KEY = new TestKey();
+
+    private static long effectiveEnergy(RecipeProcess process, ZenRequirement target) {
+        return RecipeOverlays.getOrCreate(process).resolve(target.energy(), target.value().path(null)).payload().inputPerTick();
+    }
+
+    private static ZenRecipe peerRecipe(String revision, int duration) {
+        var target = ZenRequirement.energy("bridge:energy", 0, 0, 0, 0, false);
+        var candidate = ZenRequirement.energy("bridge:optional_energy", 0, 0, 0, 0, false);
+        var selection = ZenRequirement.selective("bridge:selection", new ZenRequirement[]{candidate},
+            new ZenSelectiveModifier[]{ZenSelectiveModifier.speedMultiplier("bridge:speed", "speed", 3)});
+        return ZenRecipe.create("bridge:recipe", revision, duration, new ZenRequirement[]{target, selection});
+    }
+
+    private static Compiled compile(String script, String name, Class<?>... expansions) throws Exception {
+        var output = new ByteArrayOutputStream();
+        var environment = new GenericCompileEnvironment();
+        var registry = new GenericRegistry(environment, new GenericErrorLogger(new PrintStream(output, true, StandardCharsets.UTF_8)));
+        // Ordinary JUnit does not apply Mixins. Register one native type using the production helper.
+        var dataType = new WritableDataType();
+        registry.getTypes().getTypeMap().put(ZenComponentData.class, dataType);
+        dataType.complete(registry.getTypes());
+        registry.getRoot().put(dataType.getName(), new SymbolType(dataType), registry.getErrorLogger());
+        for (var type : List.of(ZenResource.class, ZenResourceMatcher.class, ZenMatcher.class, ZenSelectiveCallback.class,
+            ZenSelectiveModifier.class, ZenSelectiveContext.class, ZenOverlayCallback.class, ZenOverlayModifier.class,
+            ZenOverlayContext.class, ZenRequirement.class, ZenRecipe.class, ZenRecipePool.class, ZenRecipeBindings.class,
+            ZenRecipeUpdates.class, ZenRecipeUpdateTask.class, ZenRecipeUpdateResult.class,
+            ZenRecipeUpdateCallback.class, IData.class, Harness.class)) {
+            registry.registerNativeClass(type);
+        }
+        for (var expansion : List.of(ExpandAnyDict.class, ExpandDataStringDict.class, ExpandInt.class, ExpandBool.class, ExpandString.class))
+            registry.registerExpansion(expansion);
+        for (var expansion : expansions) registry.registerExpansion(expansion);
+        var classes = new Object2ObjectOpenHashMap<String, byte[]>();
+        var global = registry.makeGlobalEnvironment(classes);
+        var parsed = new ZenParsedFile(name, "NamedBridgeScript_" + name.replace('.', '_'),
+            new ZenTokener(new StringReader(script), environment, name, false), global);
+        ZenModule.compileScripts(name, List.of(parsed), global, false);
+        // ZenScript 1 caches generated classes globally. Each isolated fixture gets its own module.
+        ZenModule.classes.clear();
+        ZenModule.loadedClasses.clear();
+        return new Compiled(new ZenModule(classes, ZenRecipeBridgeTest.class.getClassLoader()), output.toString(StandardCharsets.UTF_8));
+    }
 
     @Test
     void realZenScriptCapturesNamedCallbacksRegistersHistoryAndRestoresOriginalEffects() throws Exception {
@@ -334,6 +387,28 @@ class ZenRecipeBridgeTest {
     }
 
     @Test
+    void realZenScriptDataExpansionsKeepNativeAndDynamicMemberPrecedence() throws Exception {
+        Harness.data = null;
+        var compiled = compile("""
+            import mods.prototype_eng.data.ComponentData;
+            import tests.prototype_eng.Harness;
+            var data = ComponentData.from({expanded: 3});
+            data.expanded = 9;
+            data.dynamic = 5;
+            Harness.captureData(data, data.asIData(), data.expanded, data.dynamic.asInt() == 5, data.length);
+            """, "component_data_expansion.zs", DataExpansion.class);
+        assertEquals("", compiled.diagnostics());
+        Objects.requireNonNull(compiled.module().getMain()).run();
+        var data = Objects.requireNonNull(Harness.data);
+        assertEquals(3, data.getInt("expanded", 0));
+        assertEquals(9, data.getInt("extensionValue", 0));
+        assertEquals(5, data.getInt("dynamic", 0));
+        assertEquals(9, Harness.scriptCount);
+        assertTrue(Harness.scriptFlag);
+        assertEquals(3, Harness.scriptDefault);
+    }
+
+    @Test
     void realZenScriptUpdatesPublishWithExactSnapshotAndReportManifestFailureWithoutRollback() throws Exception {
         var original = ZenRecipe.create("runtime_bridge:recipe", "v1", 2, new ZenRequirement[0]);
         var registry = new RecipeRegistry();
@@ -397,7 +472,7 @@ class ZenRecipeBridgeTest {
             assertSame(first, RecipeDeclarations.INSTANCE.get(key));
             assertFalse(scheduler.status().faulted());
             updates.stopAccepting();
-            var refused = Harness.publisher.replace(new ZenRecipe[] {
+            var refused = Harness.publisher.replace(new ZenRecipe[]{
                 ZenRecipe.create("runtime_bridge:recipe", "v4", 9, new ZenRequirement[0])
             }, "runtime_bridge:complete", "v4").result();
             assertEquals("REJECTED_SESSION", Objects.requireNonNull(refused).status());
@@ -405,48 +480,26 @@ class ZenRecipeBridgeTest {
         }
     }
 
-    private static long effectiveEnergy(RecipeProcess process, ZenRequirement target) {
-        return RecipeOverlays.getOrCreate(process).resolve(target.energy(), target.value().path(null)).payload().inputPerTick();
-    }
-
-    private static ZenRecipe peerRecipe(String revision, int duration) {
-        var target = ZenRequirement.energy("bridge:energy", 0, 0, 0, 0, false);
-        var candidate = ZenRequirement.energy("bridge:optional_energy", 0, 0, 0, 0, false);
-        var selection = ZenRequirement.selective("bridge:selection", new ZenRequirement[] {candidate},
-            new ZenSelectiveModifier[] {ZenSelectiveModifier.speedMultiplier("bridge:speed", "speed", 3)});
-        return ZenRecipe.create("bridge:recipe", revision, duration, new ZenRequirement[] {target, selection});
-    }
-
-    private static Compiled compile(String script, String name) throws Exception {
-        var output = new ByteArrayOutputStream();
-        var environment = new GenericCompileEnvironment();
-        var registry = new GenericRegistry(environment, new GenericErrorLogger(new PrintStream(output, true, StandardCharsets.UTF_8)));
-        // Ordinary JUnit does not apply Mixins. Register one native type using the production helper.
-        var dataType = new WritableDataType();
-        registry.getTypes().getTypeMap().put(ZenComponentData.class, dataType);
-        dataType.complete(registry.getTypes());
-        registry.getRoot().put(dataType.getName(), new SymbolType(dataType), registry.getErrorLogger());
-        for (var type : List.of(ZenResource.class, ZenResourceMatcher.class, ZenMatcher.class, ZenSelectiveCallback.class,
-            ZenSelectiveModifier.class, ZenSelectiveContext.class, ZenOverlayCallback.class, ZenOverlayModifier.class,
-            ZenOverlayContext.class, ZenRequirement.class, ZenRecipe.class, ZenRecipePool.class, ZenRecipeBindings.class,
-            ZenRecipeUpdates.class, ZenRecipeUpdateTask.class, ZenRecipeUpdateResult.class,
-            ZenRecipeUpdateCallback.class, IData.class, Harness.class)) {
-            registry.registerNativeClass(type);
-        }
-        for (var expansion : List.of(ExpandAnyDict.class, ExpandDataStringDict.class, ExpandInt.class, ExpandBool.class, ExpandString.class))
-            registry.registerExpansion(expansion);
-        var classes = new Object2ObjectOpenHashMap<String, byte[]>();
-        var global = registry.makeGlobalEnvironment(classes);
-        var parsed = new ZenParsedFile(name, "NamedBridgeScript_" + name.replace('.', '_'),
-            new ZenTokener(new StringReader(script), environment, name, false), global);
-        ZenModule.compileScripts(name, List.of(parsed), global, false);
-        // ZenScript 1 caches generated classes globally. Each isolated fixture gets its own module.
-        ZenModule.classes.clear();
-        ZenModule.loadedClasses.clear();
-        return new Compiled(new ZenModule(classes, ZenRecipeBridgeTest.class.getClassLoader()), output.toString(StandardCharsets.UTF_8));
-    }
-
     private record Compiled(ZenModule module, String diagnostics) {
+    }
+
+    @ZenExpansion("mods.prototype_eng.data.ComponentData")
+    @SuppressWarnings("unused") // Methods are resolved by the real ZenScript compiler.
+    public static final class DataExpansion {
+        @ZenGetter("expanded")
+        public static int expanded(ZenComponentData data) {
+            return data.getInt("extensionValue", 0);
+        }
+
+        @ZenSetter("expanded")
+        public static void expanded(ZenComponentData data, int value) {
+            data.setInt("extensionValue", value);
+        }
+
+        @ZenGetter("length")
+        public static int length(ZenComponentData data) {
+            throw new AssertionError("Native data members must take precedence over expansions");
+        }
     }
 
     private static final class WritableDataType extends ZenTypeNative {
@@ -466,7 +519,9 @@ class ZenRecipeBridgeTest {
                             ZenOverlayModifier oldOverlay, ZenOverlayModifier newOverlay) {
     }
 
-    /** Protocol fixture acknowledges actual provider descriptions; it is not native HEI runtime QA. */
+    /**
+     * Protocol fixture acknowledges actual provider descriptions; it is not native HEI runtime QA.
+     */
     private static final class AcknowledgingRenderer implements ClientRecipeDefinitions.Renderer {
         private ClientRecipeDeclarations.Declaration applied;
 
@@ -487,6 +542,7 @@ class ZenRecipeBridgeTest {
     @SuppressWarnings("unused")
     @ZenClass("tests.prototype_eng.Harness")
     public static final class Harness {
+        private static final ObjectArrayList<ZenRecipeUpdateResult> results = new ObjectArrayList<>();
         private static Captured captured;
         private static ZenRecipeBindings earlyNames;
         private static ZenComponentData data;
@@ -499,7 +555,6 @@ class ZenRecipeBridgeTest {
         private static ZenRecipePool combined;
         private static ZenRecipe combinedFirst;
         private static ZenRecipe combinedSecond;
-        private static final ObjectArrayList<ZenRecipeUpdateResult> results = new ObjectArrayList<>();
 
         @ZenMethod
         public static void captureEarly(ZenRecipeBindings names) {

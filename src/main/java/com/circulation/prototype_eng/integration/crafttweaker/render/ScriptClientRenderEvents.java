@@ -8,7 +8,9 @@ import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.relauncher.Side;
 
-/** No optional script types are linked by this client registration subscriber. */
+/**
+ * No optional script types are linked by this client registration subscriber.
+ */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID, value = Side.CLIENT)
 public final class ScriptClientRenderEvents {
     private ScriptClientRenderEvents() {

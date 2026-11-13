@@ -7,7 +7,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Arrays;
 import java.util.Objects;
 
-/** Client-owner display cache; connection and session identity reject stale network messages. */
+/**
+ * Client-owner display cache; connection and session identity reject stale network messages.
+ */
 public final class ClientHatchConfigurations {
     private final Thread owner = Thread.currentThread();
     private @Nullable Object connection;

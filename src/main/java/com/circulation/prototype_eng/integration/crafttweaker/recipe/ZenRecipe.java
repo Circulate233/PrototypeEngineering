@@ -14,7 +14,9 @@ import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.Objects;
 
-/** A concrete recipe/revision binding. Later name declarations never modify this recipe. */
+/**
+ * A concrete recipe/revision binding. Later name declarations never modify this recipe.
+ */
 // ZenScript discovers these entry points through annotations rather than Java call sites.
 @SuppressWarnings("unused")
 @ZenRegister
@@ -25,10 +27,12 @@ public final class ZenRecipe {
 
     public ZenRecipe(MachineRecipe recipe, String revision) {
         this(RecipeProcessNbt.builder(Objects.requireNonNull(recipe), revision)
-            .component(DataComponents.PROCESS, DataComponents.PROCESS_CODEC).build());
+                             .component(DataComponents.PROCESS, DataComponents.PROCESS_CODEC).build());
     }
 
-    /** Addons supply the complete frozen codec, including their components, overlays and validators. */
+    /**
+     * Addons supply the complete frozen codec, including their components, overlays and validators.
+     */
     public ZenRecipe(RecipeProcessNbt codec) {
         this.codec = Objects.requireNonNull(codec);
         definition = new RecipeRegistry.Definition(codec.recipe(), codec.revision());
@@ -41,7 +45,7 @@ public final class ZenRecipe {
 
     @ZenMethod
     public static ZenRecipe withGroups(String id, String revision, int durationTicks, ZenRequirement[] requirements,
-                                        String[] groups, int maxConcurrentThreads) {
+                                       String[] groups, int maxConcurrentThreads) {
         return withSelection(id, revision, durationTicks, requirements, groups, maxConcurrentThreads,
             new ZenParallelismSelection(RecipeParallelismSelection.NONE));
     }
@@ -52,7 +56,7 @@ public final class ZenRecipe {
         var ids = new ObjectArrayList<ResourceLocation>(groups.length);
         for (var group : groups) ids.add(ZenRecipeSupport.id(group));
         return new ZenRecipe(new MachineRecipe(ZenRecipeSupport.id(id), durationTicks, ZenRecipeSupport.requirements(requirements),
-            ids, maxConcurrentThreads, Objects.requireNonNull(selection).value()), revision);
+            ids, maxConcurrentThreads, selection.value()), revision);
     }
 
     @ZenGetter("id")

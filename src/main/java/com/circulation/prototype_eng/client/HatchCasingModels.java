@@ -21,7 +21,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
 
-/** Model-derived membership of the mechanical casing substrate; cached once per state and reload. */
+/**
+ * Model-derived membership of the mechanical casing substrate; cached once per state and reload.
+ */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID, value = Side.CLIENT)
 public final class HatchCasingModels {
     private static final ResourceLocation CASING = new ResourceLocation(Tags.MOD_ID, "block_casing");

@@ -1,12 +1,13 @@
 package com.circulation.prototype_eng.api.recipe.scanning;
 
-import com.circulation.prototype_eng.api.machine.MachineInstance;
-import com.circulation.prototype_eng.api.machine.ParallelControllers;
 import com.circulation.prototype_eng.api.machine.CrossRecipeBatch;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MultithreadController;
+import com.circulation.prototype_eng.api.machine.ParallelControllers;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
+import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlot;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
@@ -19,7 +20,6 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputatio
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.storage.ResourceBatch;
 import com.circulation.prototype_eng.api.storage.ResourceInputGroups;
-import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.localization.RecipeText;
 import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -37,9 +37,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
-import java.util.function.UnaryOperator;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
 
 /**
  * Ordered PM recipe admission with bounded cooperative search. Each logical pass snapshots the
@@ -52,14 +52,19 @@ import java.util.function.Predicate;
  */
 public final class RecipeScanner {
     private final ControllerMode mode;
-    private boolean stablePipeline;
     private final MachineWorkSlots host;
+    private final List<RecipeParallelismConstraint> constraints;
+    private final List<RecipeScanPreparation> preparations;
+    private final Predicate<MachineRecipe> monotonicStart;
+    private final LongSupplier seeds;
+    private final Set<ResourceLocation> groups;
+    private final Object2ObjectOpenHashMap<String, PassState> threadStates = new Object2ObjectOpenHashMap<>();
+    private boolean stablePipeline;
     private RecipeCatalog catalog;
     @Nullable
     private ResourceLocation lastCrossAdmission;
     private int crossOffset;
     private RecipeProcessFactory factory;
-    private final List<RecipeParallelismConstraint> constraints;
     private List<RecipeCandidateIndex> indexes;
     @Nullable
     private RecipeRegistry source;
@@ -72,11 +77,6 @@ public final class RecipeScanner {
     @Nullable
     private Function<RecipeCatalog, List<RecipeCandidateIndex>> indexFactory;
     private boolean started;
-    private final List<RecipeScanPreparation> preparations;
-    private final Predicate<MachineRecipe> monotonicStart;
-    private final LongSupplier seeds;
-    private final Set<ResourceLocation> groups;
-    private final Object2ObjectOpenHashMap<String, PassState> threadStates = new Object2ObjectOpenHashMap<>();
     private List<MachineRecipe> candidates = List.of();
     private int cursor;
     private @Nullable ResourceInputGroups.Capture inputGroups;
@@ -114,6 +114,7 @@ public final class RecipeScanner {
     private Preflight preflight = new Preflight(-1);
     @Nullable
     private PureProgress pureProgress;
+
     /**
      * Safe default for arbitrary wrappers, probability, selectors and external attribute modifiers.
      */
@@ -183,7 +184,9 @@ public final class RecipeScanner {
             List.of(), _ -> false, seeds, List.of(), ControllerMode.CROSS_RECIPE, true);
     }
 
-    /** External factories/preparations keep the controller mode; optional input pruning stays unknown. */
+    /**
+     * External factories/preparations keep the controller mode; optional input pruning stays unknown.
+     */
     public static RecipeScanner multithreaded(MachineWorkSlots host, RecipeCatalog catalog, RecipeProcessFactory factory,
                                               List<RecipeParallelismConstraint> constraints, List<RecipeCandidateIndex> indexes, Predicate<MachineRecipe> monotonicStart,
                                               LongSupplier seeds, List<RecipeScanPreparation> preparations) {
@@ -210,7 +213,9 @@ public final class RecipeScanner {
         return ObjectLists.unmodifiable(result);
     }
 
-    /** Explicit known default factory/preparation/constraint path, with every recipe's local event guard. */
+    /**
+     * Explicit known default factory/preparation/constraint path, with every recipe's local event guard.
+     */
     public boolean supportsStableFixedInputLowerBounds() {
         // An unvisited scanner must not lend an old true guarantee to another scanner's new pass.
         return stablePipeline && (source == null ? catalog : source.snapshot().catalog()).supportsStableFixedInputLowerBounds();
@@ -239,7 +244,9 @@ public final class RecipeScanner {
         return follow(registry, codecs, null);
     }
 
-    /** The optional factory rebuilds external indexes from each exact catalog, including the first. */
+    /**
+     * The optional factory rebuilds external indexes from each exact catalog, including the first.
+     */
     public RecipeScanner follow(RecipeRegistry registry, @Nullable RecipeProcessCodecs codecs,
                                 @Nullable Function<RecipeCatalog, List<RecipeCandidateIndex>> rebuildIndexes) {
         Objects.requireNonNull(registry, "registry");
@@ -260,7 +267,9 @@ public final class RecipeScanner {
         return this;
     }
 
-    /** Pure assembly validation; it never upgrades a fixed or independent scanner's contract. */
+    /**
+     * Pure assembly validation; it never upgrades a fixed or independent scanner's contract.
+     */
     public void validateProcessCodecs(RecipeProcessCodecs actual) {
         Objects.requireNonNull(actual, "actual");
         if (source != null && (requiredCodecs == null || requiredCodecs != actual || source.processCodecs() != actual))
@@ -281,7 +290,9 @@ public final class RecipeScanner {
         if (generationCodecs != null) generationCodecs.require(recipe);
     }
 
-    /** Called only with no active attempt: all retained state is then pure, across every thread. */
+    /**
+     * Called only with no active attempt: all retained state is then pure, across every thread.
+     */
     private void refreshGeneration() {
         if (source == null || generationCurrent()) return;
         var captured = source.snapshot();
@@ -295,7 +306,7 @@ public final class RecipeScanner {
     }
 
     private List<RecipeCandidateIndex> rebuildIndexes(Function<RecipeCatalog, List<RecipeCandidateIndex>> rebuild,
-                                                       RecipeCatalog target) {
+                                                      RecipeCatalog target) {
         boolean previous = scanning;
         scanning = true;
         try {
@@ -368,7 +379,9 @@ public final class RecipeScanner {
         return beginScan(limits, false);
     }
 
-    /** Async discovery is driven by an exclusive scheduler worker, then explicitly returned to this owner. */
+    /**
+     * Async discovery is driven by an exclusive scheduler worker, then explicitly returned to this owner.
+     */
     @SuppressWarnings("ReturnOfInnerClass") // The exact attempt retains this scanner's owner and pending obligations.
     public ScanAttempt beginScan(ScanLimits limits, boolean asynchronousDiscovery) {
         Objects.requireNonNull(limits);
@@ -397,7 +410,8 @@ public final class RecipeScanner {
             if (outcome.status() != Status.EXHAUSTED || !preferredActive)
                 return new Result(outcome.status(), outcome.process(), examined, probes);
             finishPreferred();
-            if (examined == limits.candidates() || probes == limits.probes()) return result(Status.YIELDED, examined, probes);
+            if (examined == limits.candidates() || probes == limits.probes())
+                return result(Status.YIELDED, examined, probes);
         }
     }
 
@@ -437,7 +451,8 @@ public final class RecipeScanner {
             }
         }
         if (candidates.isEmpty()) {
-            if (discovery == null) discovery = catalog.beginCandidates(selection, passGroups(), indexes, captureGeneration());
+            if (discovery == null)
+                discovery = catalog.beginCandidates(selection, passGroups(), indexes, captureGeneration());
             while (!discovery.advance(new RecipeWorkBudget(Long.MAX_VALUE))) {
                 if (workPaused()) return result(Status.PAUSED, 0, 0);
                 if (!discovery.current()) discovery.restartLiveIndexes();
@@ -625,7 +640,8 @@ public final class RecipeScanner {
         return RecipeStageExecutor.probeStart(process);
     }
 
-    @SuppressWarnings("StatementWithEmptyBody") // Drain the same final authorization gate for an explicit synchronous caller.
+    @SuppressWarnings("StatementWithEmptyBody")
+    // Drain the same final authorization gate for an explicit synchronous caller.
     private Result admit(WorkSlot slot, RecipeProcess process, int examined, int probes) {
         if (workPaused()) {
             return result(Status.PAUSED, examined, probes);
@@ -755,17 +771,21 @@ public final class RecipeScanner {
         return mode == ControllerMode.MULTITHREAD ? host.slots().get(selectedThreadIndex).allowedRecipeGroups() : groups;
     }
 
-    /** One exact previous recipe is checked before paying for complete pool discovery. */
+    /**
+     * One exact previous recipe is checked before paying for complete pool discovery.
+     */
     private void preparePreferred() {
         if (mode != ControllerMode.MULTITHREAD || preferredAttempted) return;
         preferredAttempted = true;
         var slot = host.slots().get(selectedThreadIndex);
         var previous = slot.lastCompletedRecipe();
         var recipe = previous == null ? null : catalog.recipe(previous);
-        if (recipe == null || !slot.definition().accepts(recipe) || !Objects.requireNonNull(selection).accepts(host.owner(), recipe)) return;
+        if (recipe == null || !slot.definition().accepts(recipe) || !Objects.requireNonNull(selection).accepts(host.owner(), recipe))
+            return;
         preferredRecipe = recipe;
         preferredActive = true;
-        if (linearFixedInputs(recipe)) preferredInventory = catalog.beginFixedInputCandidates(recipe, host.owner(), passGroups());
+        if (linearFixedInputs(recipe))
+            preferredInventory = catalog.beginFixedInputCandidates(recipe, host.owner(), passGroups());
         candidates = ObjectLists.singleton(recipe);
         cursor = 0;
         crossOffset = 0;
@@ -783,7 +803,8 @@ public final class RecipeScanner {
     private boolean capturePreferred(RecipeWorkBudget budget) {
         if (!preferredActive || preferredInventory == null || preferredInventoryReady) return true;
         if (!preferredInventory.advance(budget)) {
-            if (!preferredInventory.current()) preferredInventory = catalog.beginFixedInputCandidates(Objects.requireNonNull(preferredRecipe), host.owner(), passGroups());
+            if (!preferredInventory.current())
+                preferredInventory = catalog.beginFixedInputCandidates(Objects.requireNonNull(preferredRecipe), host.owner(), passGroups());
             return false;
         }
         preferredInventoryReady = true;
@@ -863,7 +884,9 @@ public final class RecipeScanner {
         private PureProgress progress;
     }
 
-    /** Unpublished host facts may survive a pure yield while the machine roster stays identical. */
+    /**
+     * Unpublished host facts may survive a pure yield while the machine roster stays identical.
+     */
     private static final class Preflight {
         private final long rosterRevision;
         private final ObjectOpenHashSet<ResourceLocation> running = new ObjectOpenHashSet<>();
@@ -900,7 +923,9 @@ public final class RecipeScanner {
         }
     }
 
-    /** Only obligation-free cursors; no admission, START session, worker or source authority. */
+    /**
+     * Only obligation-free cursors; no admission, START session, worker or source authority.
+     */
     private static final class PureProgress {
         private final ScanAttempt saved;
         private final long rosterRevision;
@@ -1537,7 +1562,9 @@ public final class RecipeScanner {
             return probe == null ? null : probe.computation();
         }
 
-        /** Candidate discovery creates no process, acquires no transaction and publishes no machine state. */
+        /**
+         * Candidate discovery creates no process, acquires no transaction and publishes no machine state.
+         */
         @SuppressWarnings("ReturnOfInnerClass") // Returns the original pass whose exclusive worker must be joined.
         public @Nullable RecipeCatalog.CandidatePass discoveryWork() {
             requireOwner();
@@ -1546,7 +1573,8 @@ public final class RecipeScanner {
 
         public void finishDiscovery(RecipeCatalog.CandidatePass expected, boolean completed) {
             requireOwner();
-            if (workerDiscovery != Objects.requireNonNull(expected)) throw new IllegalArgumentException("Different discovery pass");
+            if (workerDiscovery != Objects.requireNonNull(expected))
+                throw new IllegalArgumentException("Different discovery pass");
             workerDiscovery = null;
             workerDiscoveryCompleted = completed;
             if (!expected.current()) {

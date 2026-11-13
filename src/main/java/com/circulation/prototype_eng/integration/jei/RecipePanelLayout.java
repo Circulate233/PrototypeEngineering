@@ -14,11 +14,14 @@ import java.util.List;
 
 /**
  * Stable panel splitting; no resource or explanation is discarded when a pool exceeds JEI's viewport.
+ * Panel groups and candidate cycles are shared read-only for this layout's lifetime.
  */
 public class RecipePanelLayout {
     public static final int COLUMNS = 4;
     public static final int RESOURCE_CAPACITY = 16;
-    /** Retained for source compatibility; explanations no longer paginate. */
+    /**
+     * Retained for source compatibility; explanations no longer paginate.
+     */
     @SuppressWarnings("unused")
     public static final int INFORMATION_CAPACITY = 2;
     private final List<JeiRecipeDisplay.Text> information;
@@ -39,7 +42,8 @@ public class RecipePanelLayout {
 
     public RecipePanelLayout(JeiRecipeDisplay display, JeiRenderOptions options, @Nullable JeiRecipeIngredients ingredients,
                              int inputCapacity, int outputCapacity, boolean repeatInput) {
-        if (inputCapacity <= 0 || outputCapacity <= 0) throw new IllegalArgumentException("Positive panel capacities required");
+        if (inputCapacity <= 0 || outputCapacity <= 0)
+            throw new IllegalArgumentException("Positive panel capacities required");
         this.inputCapacity = inputCapacity;
         this.outputCapacity = outputCapacity;
         this.repeatInput = repeatInput;
@@ -51,7 +55,8 @@ public class RecipePanelLayout {
         information = display.information();
         inputGroups = groups(inputRows, options, ingredients);
         outputGroups = groups(outputRows, options, ingredients);
-        if (repeatInput && inputGroups.size() > inputCapacity) throw new IllegalArgumentException("Repeated inputs must fit one panel");
+        if (repeatInput && inputGroups.size() > inputCapacity)
+            throw new IllegalArgumentException("Repeated inputs must fit one panel");
         pageCount = Math.max(1, Math.max(pages(inputGroups.size(), inputCapacity),
             pages(outputGroups.size(), outputCapacity)));
     }
@@ -71,21 +76,22 @@ public class RecipePanelLayout {
             var candidates = grouped.get(group);
             if (group != null && candidates != null && ingredients != null && ingredients.canCombine(candidates)) {
                 if (candidates.getFirst() == row) {
-                    var cycle = ObjectLists.unmodifiable(candidates);
-                    for (int pick = 0; pick < group.alternativeSlots(); pick++) result.add(cycle);
+                    for (int pick = 0; pick < group.alternativeSlots(); pick++) result.add(candidates);
                 }
             } else {
                 result.add(ObjectArrayList.of(row));
             }
         }
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     private static int pages(int count, int capacity) {
         return count / capacity + (count % capacity == 0 ? 0 : 1);
     }
 
-    /** Safe pool-wide upper bound before exact converters are available during category registration. */
+    /**
+     * Safe pool-wide upper bound before exact converters are available during category registration.
+     */
     @SuppressWarnings("unused") // Public helper retained for custom page layouts.
     public static int maximumSlots(JeiRecipeDisplay display, JeiRecipeDisplay.Role role, JeiRenderOptions options) {
         return maximumSlots(display, role, options, RESOURCE_CAPACITY);
@@ -108,7 +114,17 @@ public class RecipePanelLayout {
     private static List<JeiRecipeDisplay.Resource> flattened(List<List<JeiRecipeDisplay.Resource>> groups) {
         var result = new ObjectArrayList<JeiRecipeDisplay.Resource>();
         for (var group : groups) result.addAll(group);
-        return ObjectLists.unmodifiable(result);
+        return result;
+    }
+
+    private static <T> List<T> panel(List<T> values, int page, int capacity) {
+        long start = (long) page * capacity;
+        if (start >= values.size()) {
+            return ObjectLists.emptyList();
+        }
+        int from = (int) start;
+        int to = (int) Math.min(values.size(), start + capacity);
+        return values.subList(from, to);
     }
 
     public int pageCount() {
@@ -154,15 +170,5 @@ public class RecipePanelLayout {
         if (page < 0 || page >= pageCount) {
             throw new IllegalArgumentException("Recipe panel out of range");
         }
-    }
-
-    private static <T> List<T> panel(List<T> values, int page, int capacity) {
-        long start = (long) page * capacity;
-        if (start >= values.size()) {
-            return ObjectLists.emptyList();
-        }
-        int from = (int) start;
-        int to = (int) Math.min(values.size(), start + capacity);
-        return values.subList(from, to);
     }
 }

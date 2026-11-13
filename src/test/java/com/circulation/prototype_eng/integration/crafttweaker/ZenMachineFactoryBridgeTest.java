@@ -23,8 +23,8 @@ import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeProcessFactory;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
-import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
+import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenParallelismCallback;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenParallelismSelection;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipe;
@@ -38,8 +38,8 @@ import crafttweaker.zenscript.expand.ExpandInt;
 import crafttweaker.zenscript.expand.ExpandString;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import net.minecraft.util.ResourceLocation;
 import net.minecraft.nbt.NBTTagInt;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.junit.jupiter.api.Test;
@@ -60,7 +60,15 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.LongSupplier;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ZenMachineFactoryBridgeTest {
     @Test
@@ -183,24 +191,48 @@ class ZenMachineFactoryBridgeTest {
         private static ZenRecipe external;
         private static ZenRecipePool pool;
         private static ZenRecipePool externalPool;
-        @ZenMethod public static void capture(ZenRecipeBindings value, ZenRecipe declared, ZenRecipePool first, ZenRecipePool second) {
-            names = value; recipe = declared; pool = first; externalPool = second;
+
+        @ZenMethod
+        public static void capture(ZenRecipeBindings value, ZenRecipe declared, ZenRecipePool first, ZenRecipePool second) {
+            names = value;
+            recipe = declared;
+            pool = first;
+            externalPool = second;
         }
-        @ZenMethod public static void machine(ZenMachineType value) { machines.add(value); }
-        @ZenMethod public static ZenRecipe external() { return external; }
-        @ZenMethod public static ZenMachineFactory factory() { return new ZenMachineFactory(AddonOwner::new); }
+
+        @ZenMethod
+        public static void machine(ZenMachineType value) {
+            machines.add(value);
+        }
+
+        @ZenMethod
+        public static ZenRecipe external() {
+            return external;
+        }
+
+        @ZenMethod
+        public static ZenMachineFactory factory() {
+            return new ZenMachineFactory(AddonOwner::new);
+        }
     }
 
     private static final class AddonOwner extends MultithreadController {
         private int creations;
-        private AddonOwner(MachineType type) { super(type); }
 
-        @Override public RecipeScanner createRecipeScanner(MachineWorkSlots host, RecipeCatalog catalog, LongSupplier seeds) {
+        private AddonOwner(MachineType type) {
+            super(type);
+        }
+
+        @Override
+        public RecipeScanner createRecipeScanner(MachineWorkSlots host, RecipeCatalog catalog, LongSupplier seeds) {
             return super.createRecipeScanner(host, catalog, seeds).decorateProcessFactory(delegate -> new RecipeProcessFactory() {
-                @Override public RecipeProcess create(MachineInstance owner, MachineRecipe recipe, long seed, ProbabilityTuning tuning) {
+                @Override
+                public RecipeProcess create(MachineInstance owner, MachineRecipe recipe, long seed, ProbabilityTuning tuning) {
                     throw new AssertionError("Cooperative scanner must keep the owner's beginCreation override");
                 }
-                @Override public Creation beginCreation(MachineInstance owner, MachineRecipe recipe, long seed, ProbabilityTuning tuning) {
+
+                @Override
+                public Creation beginCreation(MachineInstance owner, MachineRecipe recipe, long seed, ProbabilityTuning tuning) {
                     creations++;
                     return delegate.beginCreation(owner, recipe, seed, tuning);
                 }
@@ -209,8 +241,18 @@ class ZenMachineFactoryBridgeTest {
     }
 
     private record Host(MachineType type) implements MachineLifecycleHost {
-        @Override public MachineIdentity identity() { return new MachineIdentity(type.id(), 0, BlockPos.ORIGIN); }
-        @Override public World world() { throw new AssertionError("No Minecraft/Forge bootstrap"); }
-        @Override public void requireServerThread() {}
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(type.id(), 0, BlockPos.ORIGIN);
+        }
+
+        @Override
+        public World world() {
+            throw new AssertionError("No Minecraft/Forge bootstrap");
+        }
+
+        @Override
+        public void requireServerThread() {
+        }
     }
 }

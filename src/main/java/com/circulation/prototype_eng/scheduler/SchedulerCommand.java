@@ -16,7 +16,9 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Function;
 
-/** Actual permission-2 command; settings changes flow through the retained owner tick boundary. */
+/**
+ * Actual permission-2 command; settings changes flow through the retained owner tick boundary.
+ */
 public final class SchedulerCommand extends CommandBase {
     private final Function<MinecraftServer, TaskScheduler> scheduler;
     private final Function<MinecraftServer, SchedulerConfig.Settings> reload;

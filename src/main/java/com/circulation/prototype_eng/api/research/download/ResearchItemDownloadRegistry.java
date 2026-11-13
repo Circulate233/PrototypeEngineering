@@ -23,7 +23,10 @@ public final class ResearchItemDownloadRegistry {
      */
     public void register(AEItemKey material, ResearchItemDownloadEvent event) {
         requireLoading();
-        var key = DownloadValidation.key(Objects.requireNonNull(material, "Download material key").toStack());
+        registerKey(DownloadValidation.key(Objects.requireNonNull(material, "Download material key").getReadOnlyStack()), event);
+    }
+
+    private void registerKey(AEItemKey key, ResearchItemDownloadEvent event) {
         if (registrations.putIfAbsent(key, Objects.requireNonNull(event, "Download event")) != null) {
             throw new IllegalArgumentException("Duplicate research item download material");
         }
@@ -34,7 +37,7 @@ public final class ResearchItemDownloadRegistry {
      */
     public void register(ItemStack material, ResearchItemDownloadEvent event) {
         requireLoading();
-        register(DownloadValidation.key(material), event);
+        registerKey(DownloadValidation.key(material), event);
     }
 
     public boolean isFrozen() {
@@ -46,10 +49,7 @@ public final class ResearchItemDownloadRegistry {
         if (!Objects.requireNonNull(research, "Research registry").isFrozen()) {
             throw new IllegalStateException("Research must freeze before item download events");
         }
-        var events = new Object2ObjectOpenHashMap<AEItemKey, ResearchItemDownloadEvent>(registrations.size());
-        for (var entry : registrations.object2ObjectEntrySet()) {
-            events.put(DownloadValidation.key(entry.getKey().toStack()), entry.getValue());
-        }
+        var events = new Object2ObjectOpenHashMap<>(registrations);
         frozen = new Frozen(research, events);
         registrations.clear();
     }
@@ -60,7 +60,7 @@ public final class ResearchItemDownloadRegistry {
     public ResearchItemDownloadEvaluation evaluate(ResearchItemDownloadContext context) {
         var current = requireFrozen();
         Objects.requireNonNull(context, "Download context").validateFor(current.research);
-        var event = current.events.get(DownloadValidation.key(context.material()));
+        var event = current.events.get(context.materialKey());
         if (event == null) {
             return ResearchItemDownloadEvaluation.noEvent();
         }

@@ -9,11 +9,13 @@ import java.util.function.BiFunction;
 
 /**
  * Stable bottom-up merge traversal; comparisons and moves retain their exact position.
+ * The input list is owned scratch space; callers may consume it only after sorting completes.
  */
 class PureMergeSort<T> {
     private final BiFunction<T, T, Comparison> comparison;
     private ObjectArrayList<T> values;
-    private ObjectArrayList<T> buffer = new ObjectArrayList<>();
+    private ObjectArrayList<T> buffer;
+    private int written;
     private int width = 1;
     private int block;
     private int left;
@@ -21,7 +23,6 @@ class PureMergeSort<T> {
     private int leftEnd;
     private int rightEnd;
     private boolean merging;
-    private boolean clearing;
     private boolean compared;
     @Nullable
     private Comparison current;
@@ -29,32 +30,24 @@ class PureMergeSort<T> {
     PureMergeSort(ObjectArrayList<T> values, BiFunction<T, T, Comparison> comparison) {
         this.values = values;
         this.comparison = comparison;
+        buffer = new ObjectArrayList<>(values.size());
+        buffer.size(values.size());
     }
 
     boolean advance(RecipeWorkBudget budget) {
         while (width < values.size()) {
             if (!merging) {
-                if (clearing || block >= values.size()) {
-                    if (!clearing) {
-                        var previous = values;
-                        values = buffer;
-                        buffer = previous;
-                        clearing = true;
-                    }
-                    // The old buffer is already allocated; clearing element references is metered.
-                    while (!buffer.isEmpty()) {
-                        if (!budget.take()) {
-                            return false;
-                        }
-                        buffer.removeLast();
-                    }
-                    clearing = false;
+                if (block >= values.size()) {
+                    var previous = values;
+                    values = buffer;
+                    buffer = previous;
                     block = 0;
+                    written = 0;
                     width = width > values.size() / 2 ? values.size() : width * 2;
                     continue;
                 }
                 left = block;
-                leftEnd = Math.min(values.size(), block + width);
+                leftEnd = (int) Math.min(values.size(), (long) block + width);
                 right = leftEnd;
                 rightEnd = (int) Math.min(values.size(), (long) block + 2L * width);
                 merging = true;
@@ -73,9 +66,9 @@ class PureMergeSort<T> {
                     return false;
                 }
                 if (right == rightEnd || left < leftEnd && current != null && current.result() <= 0) {
-                    buffer.add(values.get(left++));
+                    buffer.set(written++, values.get(left++));
                 } else {
-                    buffer.add(values.get(right++));
+                    buffer.set(written++, values.get(right++));
                 }
                 current = null;
                 compared = false;

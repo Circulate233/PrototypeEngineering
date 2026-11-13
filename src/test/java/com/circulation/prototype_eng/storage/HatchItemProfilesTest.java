@@ -1,13 +1,12 @@
 package com.circulation.prototype_eng.storage;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
-
 import ae2.api.stacks.AEKeyType;
 import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.api.energy.EnergyHatchConfiguration;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.HatchTier;
 import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
+import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import net.minecraft.nbt.NBTTagCompound;
 import org.junit.jupiter.api.Test;
 

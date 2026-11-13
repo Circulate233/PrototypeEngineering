@@ -2,9 +2,9 @@ package com.circulation.prototype_eng.integration.crafttweaker.recipe;
 
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.GenericStack;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.machine.attribute.AttributeModifier;
 import com.circulation.prototype_eng.api.machine.attribute.NumericAttributeModifier;
+import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.selective.SelectiveModifierDescriptor;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -24,7 +24,7 @@ final class ZenRecipeSupport {
 
     static List<GenericStack> stacks(ZenResource[] values) {
         var result = new ObjectArrayList<GenericStack>(values.length);
-        for (var value : values) result.add(Objects.requireNonNull(value).stack());
+        for (var value : values) result.add(value.stack());
         return result;
     }
 
@@ -38,19 +38,19 @@ final class ZenRecipeSupport {
 
     static List<AEKey> keys(ZenResource[] values) {
         var result = new ObjectArrayList<AEKey>(values.length);
-        for (var value : values) result.add(Objects.requireNonNull(value).key());
+        for (var value : values) result.add(value.key());
         return result;
     }
 
     static List<RecipeRequirement<?>> requirements(ZenRequirement[] values) {
         var result = new ObjectArrayList<RecipeRequirement<?>>(values.length);
-        for (var value : values) result.add(Objects.requireNonNull(value).value());
+        for (var value : values) result.add(value.value());
         return result;
     }
 
     static List<SelectiveModifierDescriptor> modifiers(ZenSelectiveModifier[] values) {
         var result = new ObjectArrayList<SelectiveModifierDescriptor>(values.length);
-        for (var value : values) result.add(Objects.requireNonNull(value).value());
+        for (var value : values) result.add(value.value());
         return result;
     }
 }

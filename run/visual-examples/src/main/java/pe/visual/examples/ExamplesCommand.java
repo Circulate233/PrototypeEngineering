@@ -1,5 +1,8 @@
 package pe.visual.examples;
 
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
+import com.circulation.prototype_eng.util.ExternalEnumValues;
+
 import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.HatchCapabilities;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
@@ -12,6 +15,8 @@ import com.circulation.prototype_eng.api.structure.StructureTransform;
 import ae2.api.orientation.BlockOrientation;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import mcp.MethodsReturnNonnullByDefault;
+import net.minecraft.block.Block;
+import net.minecraft.world.World;
 import net.minecraft.command.CommandBase;
 import net.minecraft.command.CommandException;
 import net.minecraft.command.ICommandSender;
@@ -32,20 +37,47 @@ import java.util.List;
 import javax.annotation.ParametersAreNonnullByDefault;
 import javax.annotation.Nullable;
 
-/** Explicit player-invoked development helpers; build preflights every location and only fills air. */
+/**
+ * Explicit player-invoked development helpers; build preflights every location and only fills air.
+ */
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 public final class ExamplesCommand extends CommandBase {
-    @Override public String getName() { return "pe_examples"; }
-    @Override public String getUsage(ICommandSender sender) {
+    private static boolean canPlace(World world, EntityPlayerMP player, BlockPos position) {
+        return position.getY() >= 0 && position.getY() < world.getHeight() && world.getWorldBorder().contains(position)
+            && world.isBlockLoaded(position) && world.isAirBlock(position) && world.isBlockModifiable(player, position);
+    }
+
+    private static boolean place(World world, BlockPos position, Block block, EntityPlayerMP player, BlockOrientation orientation) {
+        if (!world.setBlockState(position, block.getDefaultState(), 3)) return false;
+        var tile = world.getTileEntity(position);
+        if (tile instanceof ae2.block.IOwnerAwareTile owned) owned.setOwner(player);
+        if (tile instanceof MachineControllerHost host) {
+            host.placedBy(player);
+            if (orientation != BlockOrientation.NORTH_UP) host.transformOrientation(_ -> orientation);
+        }
+        return true;
+    }
+
+    @Override
+    public String getName() {
+        return "pe_examples";
+    }
+
+    @Override
+    public String getUsage(ICommandSender sender) {
         return "/pe_examples kit [boundary|composite|me] | build <machine> <x> <y> <z> [orientation:NORTH_UP] [repeats:1-4] | structure-check <x> <y> <z> <repeats> <matched> | charge/drain <x> <y> <z> [FE] | stock <x> <y> <z> <recipe> [runs:1-16] [candidate:1-64]";
     }
-    @Override public int getRequiredPermissionLevel() { return 2; }
+
+    @Override
+    public int getRequiredPermissionLevel() {
+        return 2;
+    }
 
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] arguments) throws CommandException {
         if (arguments.length == 2 && arguments[0].equals("kit") && arguments[1].equals("me")) {
-            MeAssemblyExamples.giveKit(getCommandSenderAsPlayer(sender));
+            MEAssemblyExamples.giveKit(getCommandSenderAsPlayer(sender));
             return;
         }
         if (arguments.length == 2 && arguments[0].equals("kit") && arguments[1].equals("composite")) {
@@ -55,7 +87,8 @@ public final class ExamplesCommand extends CommandBase {
             for (var name : List.of("input_hatch_4", "output_hatch_4", "energy_input_hatch_4"))
                 give(player, item(new ResourceLocation("prototype_eng", name)), 2);
             for (var block : List.of(Blocks.IRON_BLOCK, Blocks.GOLD_BLOCK, Blocks.GLASS, Blocks.QUARTZ_BLOCK,
-                Blocks.LAPIS_BLOCK, Blocks.EMERALD_BLOCK, Blocks.REDSTONE_BLOCK)) give(player, Item.getItemFromBlock(block), 64);
+                Blocks.LAPIS_BLOCK, Blocks.EMERALD_BLOCK, Blocks.REDSTONE_BLOCK))
+                give(player, Item.getItemFromBlock(block), 64);
             give(player, Item.getItemFromBlock(Blocks.SAND), 16);
             player.inventoryContainer.detectAndSendChanges();
             player.sendMessage(ExampleText.CompositeKit.text());
@@ -69,7 +102,8 @@ public final class ExamplesCommand extends CommandBase {
         }
         if (arguments.length == 2 && arguments[0].equals("kit") && arguments[1].equals("boundary")) {
             EntityPlayerMP player = getCommandSenderAsPlayer(sender);
-            for (var scenario : BoundaryExamples.SCENARIOS) give(player, item(VisualExamples.id(scenario.name() + "_controller")), 1);
+            for (var scenario : BoundaryExamples.SCENARIOS)
+                give(player, item(VisualExamples.id(scenario.name() + "_controller")), 1);
             give(player, item(new ResourceLocation("prototype_eng", "input_hatch_10")), BoundaryExamples.SCENARIOS.size());
             give(player, item(new ResourceLocation("prototype_eng", "output_hatch_10")), BoundaryExamples.SCENARIOS.size());
             give(player, item(new ResourceLocation("prototype_eng", "mixed_hatch_10")), 2);
@@ -91,40 +125,52 @@ public final class ExamplesCommand extends CommandBase {
             var blocks = CompositeStructureExamples.placement(arguments[1], repeats);
             if (blocks == null) blocks = NativeExamples.structure(arguments[1]);
             if (blocks == null) blocks = ExternalHatchExamples.placement(arguments[1]);
-            if (blocks == null && (arguments[1].equals("core_world") || arguments[1].equals("pe_run_tests:core_world"))) blocks = CoreCases.worldPlacement();
+            if (blocks == null && (arguments[1].equals("core_world") || arguments[1].equals("pe_run_tests:core_world")))
+                blocks = CoreCases.worldPlacement();
             if (blocks == null) blocks = RunNetworkRender.placement(arguments[1]);
-            if (blocks == null) blocks = MeAssemblyExamples.placement(arguments[1]);
+            if (blocks == null) blocks = MEAssemblyExamples.placement(arguments[1]);
             if (blocks == null) blocks = CtmGalleryExamples.placement(arguments[1]);
             if (blocks == null) blocks = BoundaryExamples.structure(arguments[1]);
-            if (blocks == null) { sender.sendMessage(ExampleText.UnknownMachine.text(arguments[1])); return; }
-            var rotated = new it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap<BlockPos, net.minecraft.block.Block>();
+            if (blocks == null) {
+                sender.sendMessage(ExampleText.UnknownMachine.text(arguments[1]));
+                return;
+            }
+            var rotated = new BlockPos2ObjectMap<net.minecraft.block.Block>(blocks.size());
             var rotation = StructureTransform.of(orientation);
-            for (var entry : blocks.entrySet()) if (!entry.getKey().equals(BlockPos.ORIGIN)) rotated.put(rotation.apply(entry.getKey()), entry.getValue());
-            rotated.put(BlockPos.ORIGIN, Objects.requireNonNull(blocks.get(BlockPos.ORIGIN)));
+            for (var entries = blocks.fastIterator(); entries.hasNext(); ) {
+                var entry = entries.next();
+                if (entry.getLongKey() != 0L) rotated.put(rotation.apply(entry.getLongKey()), entry.getValue());
+            }
+            var controller = Objects.requireNonNull(blocks.get(0L));
             var origin = parseBlockPos(sender, arguments, 2, false);
             var world = sender.getEntityWorld();
-            for (var offset : rotated.keySet()) {
-                var position = origin.add(offset);
-                if (position.getY() < 0 || position.getY() >= world.getHeight() || !world.getWorldBorder().contains(position)
-                    || !world.isBlockLoaded(position) || !world.isAirBlock(position) || !world.isBlockModifiable(player, position)) {
+            if (!canPlace(world, player, origin)) {
+                sender.sendMessage(ExampleText.BuildBlocked.text(origin.getX(), origin.getY(), origin.getZ()));
+                return;
+            }
+            for (long packed : rotated.longKeySet()) {
+                var position = origin.add(BlockPos2ObjectMap.unpackX(packed), BlockPos2ObjectMap.unpackY(packed), BlockPos2ObjectMap.unpackZ(packed));
+                if (!canPlace(world, player, position)) {
                     sender.sendMessage(ExampleText.BuildBlocked.text(position.getX(), position.getY(), position.getZ()));
                     return;
                 }
             }
             int placed = 0;
-            for (var entry : rotated.entrySet()) {
-                var position = origin.add(entry.getKey());
-                if (!world.setBlockState(position, entry.getValue().getDefaultState(), 3)) {
+            for (var entries = rotated.fastIterator(); entries.hasNext(); ) {
+                var entry = entries.next();
+                long packed = entry.getLongKey();
+                var position = origin.add(BlockPos2ObjectMap.unpackX(packed), BlockPos2ObjectMap.unpackY(packed), BlockPos2ObjectMap.unpackZ(packed));
+                if (!place(world, position, entry.getValue(), player, orientation)) {
                     sender.sendMessage(ExampleText.BuildFailed.text(placed, position.getX(), position.getY(), position.getZ()));
                     return;
                 }
                 placed++;
-                if (world.getTileEntity(position) instanceof ae2.block.IOwnerAwareTile owned) owned.setOwner(player);
-                if (world.getTileEntity(position) instanceof MachineControllerHost host) {
-                    host.placedBy(player);
-                    if (orientation != BlockOrientation.NORTH_UP) host.transformOrientation(_ -> orientation);
-                }
             }
+            if (!place(world, origin, controller, player, orientation)) {
+                sender.sendMessage(ExampleText.BuildFailed.text(placed, origin.getX(), origin.getY(), origin.getZ()));
+                return;
+            }
+            placed++;
             sender.sendMessage(ExampleText.Built.text(arguments[1], placed, origin.getX(), origin.getY(), origin.getZ()));
             return;
         }
@@ -153,17 +199,26 @@ public final class ExamplesCommand extends CommandBase {
         if (arguments.length >= 5 && arguments.length <= 7 && arguments[0].equals("stock")) {
             var position = parseBlockPos(sender, arguments, 1, false);
             var world = sender.getEntityWorld();
-            if (!world.isBlockLoaded(position)) { sender.sendMessage(ExampleText.NoResourceInput.text()); return; }
-            if (world.getTileEntity(position) instanceof com.circulation.prototype_eng.storage.MeResourceHatchBlockEntity
-                || world.getTileEntity(position) instanceof com.circulation.prototype_eng.storage.MePatternAssemblyBlockEntity)
+            if (!world.isBlockLoaded(position)) {
+                sender.sendMessage(ExampleText.NoResourceInput.text());
+                return;
+            }
+            if (world.getTileEntity(position) instanceof com.circulation.prototype_eng.storage.MEResourceHatchBlockEntity
+                || world.getTileEntity(position) instanceof com.circulation.prototype_eng.storage.MEPatternAssemblyBlockEntity)
                 throw new CommandException("ME assembly inputs must enter through the ME network; configure marker targets or submit crafting patterns");
             var hatch = HatchCapabilities.findResource(world.getTileEntity(position), null);
             var input = hatch == null ? null : hatch.input();
-            if (input == null) { sender.sendMessage(ExampleText.NoResourceInput.text()); return; }
+            if (input == null) {
+                sender.sendMessage(ExampleText.NoResourceInput.text());
+                return;
+            }
             String path = arguments[4].startsWith(VisualExamples.MOD_ID + ":")
                 ? arguments[4].substring(VisualExamples.MOD_ID.length() + 1) : arguments[4];
             var recipe = BoundaryExamples.findRecipe(path);
-            if (recipe == null) { sender.sendMessage(ExampleText.UnknownRecipe.text(arguments[4])); return; }
+            if (recipe == null) {
+                sender.sendMessage(ExampleText.UnknownRecipe.text(arguments[4]));
+                return;
+            }
             int runs = arguments.length >= 6 ? parseInt(arguments[5], 1, 16) : 1;
             int candidate = arguments.length == 7 ? parseInt(arguments[6], 1, 64) : 1;
             var amounts = BoundaryExamples.stock(recipe, runs, candidate);
@@ -171,7 +226,8 @@ public final class ExamplesCommand extends CommandBase {
             for (var entry : amounts.object2LongEntrySet()) {
                 long inserted = input.insert(entry.getKey(), entry.getLongValue(), Actionable.MODULATE);
                 if (inserted == entry.getLongValue()) complete++;
-                else sender.sendMessage(ExampleText.StockPartial.text(entry.getKey().getDisplayName(), inserted, entry.getLongValue()));
+                else
+                    sender.sendMessage(ExampleText.StockPartial.text(entry.getKey().getDisplayName(), inserted, entry.getLongValue()));
             }
             sender.sendMessage(ExampleText.Stocked.text(recipe.id(), runs, complete, amounts.size()));
             return;
@@ -180,11 +236,15 @@ public final class ExamplesCommand extends CommandBase {
             boolean drain = arguments[0].equals("drain");
             var position = parseBlockPos(sender, arguments, 1, false);
             var world = sender.getEntityWorld();
-            if (!world.isBlockLoaded(position)) { sender.sendMessage((drain ? ExampleText.NoEnergyOutput : ExampleText.NoEnergy).text()); return; }
+            if (!world.isBlockLoaded(position)) {
+                sender.sendMessage((drain ? ExampleText.NoEnergyOutput : ExampleText.NoEnergy).text());
+                return;
+            }
             var tile = world.getTileEntity(position);
             var energy = tile == null ? null : tile.getCapability(CapabilityEnergy.ENERGY, null);
             if (energy == null || (drain ? !energy.canExtract() : !energy.canReceive())) {
-                sender.sendMessage((drain ? ExampleText.NoEnergyOutput : ExampleText.NoEnergy).text()); return;
+                sender.sendMessage((drain ? ExampleText.NoEnergyOutput : ExampleText.NoEnergy).text());
+                return;
             }
             int requested = arguments.length == 5 ? parseInt(arguments[4], 1, 1_000_000) : 100_000;
             int added = 0;
@@ -202,10 +262,13 @@ public final class ExamplesCommand extends CommandBase {
     private static Item item(ResourceLocation id) {
         return Objects.requireNonNull(ForgeRegistries.ITEMS.getValue(id), "Missing development item " + id);
     }
+
     private static BlockOrientation orientation(String name) throws CommandException {
-        for (var orientation : BlockOrientation.values()) if (orientation.name().equals(name)) return orientation;
+        for (var orientation : ExternalEnumValues.BLOCK_ORIENTATIONS)
+            if (orientation.name().equals(name)) return orientation;
         throw new CommandException("Unknown block orientation " + name);
     }
+
     private static void give(EntityPlayerMP player, Item item, int amount) {
         while (amount > 0) {
             var stack = new ItemStack(item);
@@ -217,12 +280,14 @@ public final class ExamplesCommand extends CommandBase {
 
     @Override
     public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] arguments, @Nullable BlockPos targetPos) {
-        if (arguments.length == 1) return getListOfStringsMatchingLastWord(arguments, "kit", "build", "stock", "charge", "drain", "structure-check");
-        if (arguments.length == 2 && arguments[0].equals("kit")) return getListOfStringsMatchingLastWord(arguments, "boundary", "composite", "me");
+        if (arguments.length == 1)
+            return getListOfStringsMatchingLastWord(arguments, "kit", "build", "stock", "charge", "drain", "structure-check");
+        if (arguments.length == 2 && arguments[0].equals("kit"))
+            return getListOfStringsMatchingLastWord(arguments, "boundary", "composite", "me");
         if (arguments.length == 2 && arguments[0].equals("build")) {
             var names = new ObjectArrayList<String>(List.of("press", "mixer", "sorter"));
             names.add(CtmGalleryExamples.TYPE.toString());
-            for (var name : MeAssemblyExamples.NAMES) names.add(MeAssemblyExamples.id(name).toString());
+            for (var name : MEAssemblyExamples.NAMES) names.add(MEAssemblyExamples.id(name).toString());
             names.addAll(List.of("pe_run_tests:nested_structure", "pe_run_tests:expandable_structure"));
             for (var scenario : BoundaryExamples.SCENARIOS) names.add(scenario.name());
             names.add("pe_run_tests:native_data_fixed");
@@ -235,7 +300,7 @@ public final class ExamplesCommand extends CommandBase {
         }
         if (arguments.length == 6 && arguments[0].equals("build")) {
             var names = new ObjectArrayList<String>();
-            for (var orientation : BlockOrientation.values()) names.add(orientation.name());
+            for (var orientation : ExternalEnumValues.BLOCK_ORIENTATIONS) names.add(orientation.name());
             return getListOfStringsMatchingLastWord(arguments, names);
         }
         if (arguments.length == 7 && arguments[0].equals("build") && CompositeStructureExamples.name(arguments[1]).equals(CompositeStructureExamples.EXPANDABLE))

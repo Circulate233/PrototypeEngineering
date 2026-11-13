@@ -9,7 +9,9 @@ import net.minecraft.util.text.TextComponentString;
 
 import java.util.List;
 
-/** Explicit line breaks and bounded wrapping for the resource chamber help text. */
+/**
+ * Explicit line breaks and bounded wrapping for the resource chamber help text.
+ */
 public final class HatchTooltips {
     private HatchTooltips() {
     }

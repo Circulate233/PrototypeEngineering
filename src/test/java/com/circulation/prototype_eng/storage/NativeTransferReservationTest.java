@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.storage;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
-
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKeyTypes;
 import com.circulation.prototype_eng.api.storage.HatchMode;
@@ -11,6 +9,7 @@ import com.circulation.prototype_eng.energy.EnergyBuffer;
 import com.circulation.prototype_eng.energy.EnergyHatchBlockEntity;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.nbt.NBTTagCompound;
 import org.junit.jupiter.api.Test;
 
@@ -32,9 +31,21 @@ class NativeTransferReservationTest {
         AEKeyTypes.register(TYPE);
     }
 
+    private static NBTTagCompound resourceTag() {
+        var tag = new NBTTagCompound();
+        tag.setString("Mode", "INPUT");
+        tag.setInteger("Tier", 1);
+        tag.setInteger("Slots", 1);
+        var capacities = new NBTTagCompound();
+        capacities.setLong(TYPE.getId().toString(), 50);
+        tag.setTag("Capacities", capacities);
+        return tag;
+    }
+
     @Test
     void resourceExportRefundAndImportActualRemainExactAfterReentrantSameKeyTransfers() {
-        var output = new SlottedResourceBuffer(2, Reference2LongMaps.singleton(TYPE, 50L), () -> {});
+        var output = new SlottedResourceBuffer(2, Reference2LongMaps.singleton(TYPE, 50L), () -> {
+        });
         output.insert(KEY, 90, Actionable.MODULATE);
         output.context().lock();
         try {
@@ -49,7 +60,8 @@ class NativeTransferReservationTest {
         } finally {
             output.context().unlock();
         }
-        var input = new SlottedResourceBuffer(2, Reference2LongMaps.singleton(TYPE, 50L), () -> {});
+        var input = new SlottedResourceBuffer(2, Reference2LongMaps.singleton(TYPE, 50L), () -> {
+        });
         input.insert(KEY, 20, Actionable.MODULATE);
         input.context().lock();
         try {
@@ -68,7 +80,8 @@ class NativeTransferReservationTest {
 
     @Test
     void energyPartialSettlementUsesReservedRightsAfterCallbackChangesBothLimitsToZero() {
-        var input = new EnergyBuffer(100, 80, 80, () -> {});
+        var input = new EnergyBuffer(100, 80, 80, () -> {
+        });
         input.context().lock();
         try {
             var transfer = Objects.requireNonNull(input.reserveTransfer(60, true));
@@ -82,7 +95,8 @@ class NativeTransferReservationTest {
         } finally {
             input.context().unlock();
         }
-        var output = new EnergyBuffer(100, 80, 80, () -> {});
+        var output = new EnergyBuffer(100, 80, 80, () -> {
+        });
         output.restore(80);
         output.context().lock();
         try {
@@ -108,7 +122,8 @@ class NativeTransferReservationTest {
 
     @Test
     void slotScopedTransferRejectsInvalidResultReplayAndRecipeFenceWithoutLosingItsHold() {
-        var buffer = new SlottedResourceBuffer(100_000, Reference2LongMaps.singleton(TYPE, 100L), () -> {});
+        var buffer = new SlottedResourceBuffer(100_000, Reference2LongMaps.singleton(TYPE, 100L), () -> {
+        });
         buffer.context().lock();
         try {
             var transfer = Objects.requireNonNull(buffer.reserveTransfer(99_999, KEY, 40, true));
@@ -165,16 +180,5 @@ class NativeTransferReservationTest {
         energyTile.validate();
         assertSame(energy, energyTile.storage());
         assertFalse(energy.isValid());
-    }
-
-    private static NBTTagCompound resourceTag() {
-        var tag = new NBTTagCompound();
-        tag.setString("Mode", "INPUT");
-        tag.setInteger("Tier", 1);
-        tag.setInteger("Slots", 1);
-        var capacities = new NBTTagCompound();
-        capacities.setLong(TYPE.getId().toString(), 50);
-        tag.setTag("Capacities", capacities);
-        return tag;
     }
 }

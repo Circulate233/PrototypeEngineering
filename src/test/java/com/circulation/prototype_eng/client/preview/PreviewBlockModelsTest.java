@@ -1,9 +1,5 @@
 package com.circulation.prototype_eng.client.preview;
 
-import it.unimi.dsi.fastutil.ints.IntArrayList;
-
-import it.unimi.dsi.fastutil.ints.IntList;
-
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
@@ -14,8 +10,11 @@ import com.circulation.prototype_eng.api.client.structure.StructureProjectionOpt
 import com.circulation.prototype_eng.api.structure.StructureBounds;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
-import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
 import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
+import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -45,7 +44,7 @@ class PreviewBlockModelsTest {
 
     private static StructurePreviewModel model(BlockPos... positions) {
         var node = new StructureCatalogView.Node(ID, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE, BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.of(positions), IntList.of());
-        var view = new StructureCatalogView(UUID.randomUUID(), 0, List.of(node), Map.of(ID, new StructureCatalogView.Entry(0, null, Map.of())));
+        var view = new StructureCatalogView(UUID.randomUUID(), 0, List.of(node), Map.of(ID, new StructureCatalogView.Entry(0, null, BlockPos2ObjectMap.emptyMap())));
         var builder = new StructurePreviewModel.Builder(view, ID, new StructurePreviewSettings(BlockOrientation.NORTH_UP));
         for (var position : positions)
             builder.addCell(new StructurePreviewModel.Cell(position, StructurePreviewPath.ROOT, 0, 0, null, false));
@@ -251,7 +250,7 @@ class PreviewBlockModelsTest {
             assertTrue(previews.project(ID, input.settings(), BlockPos.ORIGIN, options));
             var state = new StructureProjectionState(previews);
             var world = new Object();
-            state.tick(world, (cell, _) -> cell.position().getX() == 4 ? StructureProjectionState.Status.DISPLAY_MATCH : StructureProjectionState.Status.DIFFERENT);
+            state.tick(world, (_, cell, _) -> cell.position().getX() == 4 ? StructureProjectionState.Status.DISPLAY_MATCH : StructureProjectionState.Status.DIFFERENT);
             assertFalse(PreviewBlockModels.staticGeometry(options));
             assertTrue(state.frame(world).isEmpty()); // two filtered cells still exhaust visits
             assertEquals(List.of(new BlockPos(3, 1, 0)), state.frame(world).stream().map(StructureProjectionState.Sample::position).toList());

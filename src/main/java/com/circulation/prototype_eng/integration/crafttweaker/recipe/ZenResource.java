@@ -18,7 +18,9 @@ import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.Objects;
 
-/** AEKey identity and a long quantity; item and fluid conversions do not narrow the stored amount. */
+/**
+ * AEKey identity and a long quantity; item and fluid conversions do not narrow the stored amount.
+ */
 // ZenScript discovers these entry points through annotations rather than Java call sites.
 @SuppressWarnings("unused")
 @ZenRegister
@@ -45,11 +47,14 @@ public final class ZenResource {
         return new ZenResource(key, amount);
     }
 
-    /** Accepts the public ResourceKeyNbt Type/Data format, including addon AEKey types. */
+    /**
+     * Accepts the public ResourceKeyNbt Type/Data format, including addon AEKey types.
+     */
     @ZenMethod
     public static ZenResource fromTag(IData data, long amount) {
         var tag = NBTConverter.from(Objects.requireNonNull(data));
-        if (!(tag instanceof NBTTagCompound compound)) throw new IllegalArgumentException("Resource key requires a compound");
+        if (!(tag instanceof NBTTagCompound compound))
+            throw new IllegalArgumentException("Resource key requires a compound");
         return new ZenResource(new ResourceKeyNbt().decode(compound), amount);
     }
 
@@ -70,7 +75,7 @@ public final class ZenResource {
 
     @ZenMethod
     public boolean sameKey(ZenResource other) {
-        return key().equals(Objects.requireNonNull(other).key());
+        return key().equals(other.key());
     }
 
     @ZenGetter("amount")

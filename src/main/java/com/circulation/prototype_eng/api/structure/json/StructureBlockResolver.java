@@ -16,13 +16,18 @@ public interface StructureBlockResolver {
 
     StructurePredicate state(ResourceLocation id, int meta, Map<String, String> nbt);
 
-    /** Existing resolvers explicitly reject unsupported full-state constraints. */
+    /**
+     * Existing resolvers explicitly reject unsupported full-state constraints.
+     */
     default StructurePredicate state(ResourceLocation id, int meta, Map<String, String> nbt, Map<String, String> properties) {
-        if (!properties.isEmpty()) throw new IllegalArgumentException("Resolver does not support block state properties");
+        if (!properties.isEmpty())
+            throw new IllegalArgumentException("Resolver does not support block state properties");
         return state(id, meta, nbt);
     }
 
-    /** One resolved declaration owns both matching and presentation; native resolvers retain their state facts. */
+    /**
+     * One resolved declaration owns both matching and presentation; native resolvers retain their state facts.
+     */
     default StructurePredicate resolveState(ResourceLocation id, int meta, Map<String, String> nbt, Map<String, String> properties) {
         return StructurePredicates.withDisplay(state(id, meta, nbt, properties),
             new StructureDisplay("state:" + id + "@" + meta, List.of(displayState(id, meta, nbt, properties)), null));
@@ -33,7 +38,8 @@ public interface StructureBlockResolver {
     StructureDisplay.BlockOption displayState(ResourceLocation id, int meta, Map<String, String> nbt);
 
     default StructureDisplay.BlockOption displayState(ResourceLocation id, int meta, Map<String, String> nbt, Map<String, String> properties) {
-        if (!properties.isEmpty()) throw new IllegalArgumentException("Resolver does not support block state properties");
+        if (!properties.isEmpty())
+            throw new IllegalArgumentException("Resolver does not support block state properties");
         return displayState(id, meta, nbt);
     }
 

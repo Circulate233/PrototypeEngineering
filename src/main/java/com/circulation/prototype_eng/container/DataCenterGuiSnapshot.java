@@ -10,7 +10,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.ResourceLocation;
@@ -21,6 +20,7 @@ import java.util.UUID;
 
 /**
  * One bounded database page; team and physical database identity remain part of each action.
+ * Rows are borrowed read-only and must remain unchanged while this snapshot is retained.
  */
 public record DataCenterGuiSnapshot(boolean initialized, boolean savePending, String teamId,
                                     Decision viewPermission, Decision downloadPermission,
@@ -38,17 +38,15 @@ public record DataCenterGuiSnapshot(boolean initialized, boolean savePending, St
         requireTeam(teamId);
         Objects.requireNonNull(viewPermission);
         Objects.requireNonNull(downloadPermission);
-        var copy = new ObjectArrayList<>(Objects.requireNonNull(rows));
-        var ids = new ObjectOpenHashSet<ResourceLocation>(copy.size());
+        var ids = new ObjectOpenHashSet<ResourceLocation>(rows.size());
         boolean selectedPresent = false;
-        for (var row : copy) {
+        for (var row : rows) {
             Objects.requireNonNull(row);
             if (!ids.add(row.id())) throw new IllegalArgumentException("Duplicate database GUI row");
             selectedPresent |= row.selection().equals(selected);
             if (dataCenterId == null && row.storedLevel() != 0)
                 throw new IllegalArgumentException("Offline database has stored rows");
         }
-        rows = ObjectLists.unmodifiable(copy);
         if (total < 0 || offset < 0 || offset % MAX_ROWS != 0 || offset > Math.max(0, total - 1)
             || rows.size() != Math.min(MAX_ROWS, total - offset))
             throw new IllegalArgumentException("Invalid database GUI page");

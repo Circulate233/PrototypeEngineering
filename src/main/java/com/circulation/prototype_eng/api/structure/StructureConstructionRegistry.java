@@ -11,11 +11,20 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 import java.util.function.Function;
 
-/** Associates an ordinary external block state with an already declared construction structure. */
+/**
+ * Associates an ordinary external block state with an already declared construction structure.
+ */
 public final class StructureConstructionRegistry {
     public static final StructureConstructionRegistry INSTANCE = new StructureConstructionRegistry();
     private final Object2ObjectOpenHashMap<IBlockState, Entry> entries = new Object2ObjectOpenHashMap<>();
     private boolean frozen;
+
+    private static BlockOrientation orientation(IBlockState state) {
+        var property = state.getBlock().getBlockState().getProperty("facing");
+        if (property != null && state.getValue(property) instanceof EnumFacing face)
+            return BlockOrientation.get(face, face.getAxis() == EnumFacing.Axis.Y ? EnumFacing.NORTH : EnumFacing.UP);
+        return BlockOrientation.NORTH_UP;
+    }
 
     public synchronized void register(IBlockState anchor, ResourceLocation structure, LocalizationEnum name,
                                       Function<IBlockState, BlockOrientation> orientation) {
@@ -29,13 +38,6 @@ public final class StructureConstructionRegistry {
         register(anchor, structure, name, StructureConstructionRegistry::orientation);
     }
 
-    private static BlockOrientation orientation(IBlockState state) {
-        for (var property : state.getPropertyKeys())
-            if (property.getName().equals("facing") && state.getValue(property) instanceof EnumFacing face)
-                return BlockOrientation.get(face, face.getAxis() == EnumFacing.Axis.Y ? EnumFacing.NORTH : EnumFacing.UP);
-        return BlockOrientation.NORTH_UP;
-    }
-
     public synchronized void freeze(StructureCatalog catalog) {
         for (var entry : entries.values())
             if (!catalog.definitions().containsKey(entry.structure))
@@ -43,9 +45,12 @@ public final class StructureConstructionRegistry {
         frozen = true;
     }
 
-    public synchronized @Nullable Entry find(IBlockState state) { return entries.get(state); }
+    public synchronized @Nullable Entry find(IBlockState state) {
+        return entries.get(state);
+    }
 
-    public record Entry(ResourceLocation structure, LocalizationEnum name, Function<IBlockState, BlockOrientation> orientation) {
+    public record Entry(ResourceLocation structure, LocalizationEnum name,
+                        Function<IBlockState, BlockOrientation> orientation) {
         public Entry {
             Objects.requireNonNull(structure);
             Objects.requireNonNull(name);

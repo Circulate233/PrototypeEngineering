@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.recipe;
 
-import it.unimi.dsi.fastutil.longs.LongArrayList;
-
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
@@ -44,6 +42,7 @@ import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import net.minecraft.util.ResourceLocation;

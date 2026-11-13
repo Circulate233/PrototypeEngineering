@@ -4,25 +4,15 @@ import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 
-import java.util.AbstractList;
 import java.util.List;
 
 /**
- * A stage owns these tokens. Individual requirements must never settle them independently.
+ * A stage owns these tokens. The supplied list is transferred unchanged through settlement;
+ * callers must neither modify it nor settle individual tokens independently.
  */
 record ReservedRequirement(ProcessResult result,
                            List<ResourceReservation> reservations) implements RequirementTransaction {
-    ReservedRequirement {
-        reservations = reservations instanceof FrozenReservations ? reservations : ObjectLists.unmodifiable(new ObjectArrayList<>(reservations));
-    }
-
-    static ReservedRequirement frozen(ProcessResult result, List<ResourceReservation> reservations) {
-        return new ReservedRequirement(result, new FrozenReservations(reservations));
-    }
-
     static void rollbackAfterFailure(List<ResourceReservation> reservations, Throwable failure) {
         try {
             ResourceTransactions.rollback(reservations);
@@ -41,24 +31,4 @@ record ReservedRequirement(ProcessResult result,
     public void rollback() {
     }
 
-    /**
-     * Library-private proof: this original invocation never appends after transferring inventory.
-     */
-    private static final class FrozenReservations extends AbstractList<ResourceReservation> {
-        private final List<ResourceReservation> values;
-
-        private FrozenReservations(List<ResourceReservation> values) {
-            this.values = values;
-        }
-
-        @Override
-        public ResourceReservation get(int index) {
-            return values.get(index);
-        }
-
-        @Override
-        public int size() {
-            return values.size();
-        }
-    }
 }

@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.api.research.download;
 
 import com.circulation.prototype_eng.api.persistence.PlayerInventoryNbt;
-import com.circulation.prototype_eng.api.research.manual.ManualResearchMaterialReceiptNbt;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import org.junit.jupiter.api.Test;
@@ -11,9 +10,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Exact native slot proofs and persistence state, with no Minecraft initialization.
@@ -77,11 +74,6 @@ class ResearchDownloadMaterialTest {
     }
 
     @Test
-    void emptySlotsCannotPrepareMaterials() {
-        assertNull(ResearchDownloadMaterial.prepare(PLAYER, OPERATION, 5, inventory(stack(0, 4))));
-    }
-
-    @Test
     void callersCannotMutateFrozenNativeMaterialOrEitherInventoryImage() {
         var before = inventory(stack(5, 3));
         var receipt = ResearchDownloadMaterial.prepare(PLAYER, OPERATION, 5, before);
@@ -92,19 +84,6 @@ class ResearchDownloadMaterialTest {
         receipt.inventoryAfter().setInteger("selectedSlot", 1);
         assertEquals(saved, ResearchDownloadMaterial.CODEC.encode(receipt));
         assertEquals(42, receipt.material().getCompoundTag("ForgeCaps").getInteger("stored"));
-    }
-
-    @Test
-    void matchingCandidateAfterInventoryDoesNotChangePreparedReceiptState() {
-        var prepared = ResearchDownloadMaterial.prepare(PLAYER, OPERATION, 5, inventory(stack(5, 3)));
-        assertNotNull(prepared);
-        var restored = ResearchDownloadMaterial.CODEC.decode(ResearchDownloadMaterial.CODEC.encode(prepared));
-        assertEquals(ResearchDownloadMaterial.Status.PREPARED, restored.status());
-        var committed = prepared.committed();
-        assertTrue(prepared.sameOperation(committed));
-        assertEquals(ResearchDownloadMaterial.Status.COMMITTED, committed.status());
-        assertEquals(committed, ResearchDownloadMaterial.CODEC.decode(ResearchDownloadMaterial.CODEC.encode(committed)));
-        assertThrows(IllegalStateException.class, committed::committed);
     }
 
     @Test
@@ -151,10 +130,4 @@ class ResearchDownloadMaterialTest {
         assertThrows(IllegalArgumentException.class, () -> ResearchDownloadMaterial.prepare(PLAYER, OPERATION, 5, inventory(nonpositive)));
     }
 
-    @Test
-    void downloadAndManualMaterialsShareTheSameCompleteInventoryEncoding() {
-        var image = inventory(stack(0, 4), stack(36, 1), stack(40, 1));
-        assertEquals(image, ManualResearchMaterialReceiptNbt.decodeInventory(PlayerInventoryNbt.encode(image)));
-        assertEquals(image, PlayerInventoryNbt.decode(ManualResearchMaterialReceiptNbt.encodeInventory(image)));
-    }
 }

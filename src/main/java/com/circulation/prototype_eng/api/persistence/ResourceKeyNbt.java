@@ -35,7 +35,7 @@ public final class ResourceKeyNbt implements NbtCodec<AEKey> {
     public NBTTagCompound encode(AEKey value) {
         Objects.requireNonNull(value, "value");
         var type = Objects.requireNonNull(value.getType(), "resource type");
-        var id = StrictNbt.requireId(Objects.requireNonNull(type.getId(), "resource type ID").toString());
+        var id = type.getId();
         if (resolve(id) != type) {
             throw new IllegalArgumentException("Resource key type does not match its registered type: " + id);
         }
@@ -79,6 +79,7 @@ public final class ResourceKeyNbt implements NbtCodec<AEKey> {
 
     /**
      * Validates the complete list before returning any decoded result.
+     * The completed result is transferred to its caller; retained consumers treat it as read-only.
      */
     public List<GenericStack> readStacks(NBTTagList list) {
         StrictNbt.requireListElements(list, Constants.NBT.TAG_COMPOUND);
@@ -92,7 +93,7 @@ public final class ResourceKeyNbt implements NbtCodec<AEKey> {
             }
             stacks.add(new GenericStack(decode(StrictNbt.requireCompound(entry, "Key")), quantity));
         }
-        return List.copyOf(stacks);
+        return stacks;
     }
 
     private AEKeyType resolve(ResourceLocation id) {

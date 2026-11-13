@@ -1,5 +1,9 @@
 # 集合复制与流调用审查
 
+## 2026-11-13 契约优先
+
+用户明确要求：热路径不为调用方可能违反不可变/生命周期契约而复制集合。Javadoc 声明输入和返回值的只读期限，生产者交接后停止修改；实际从并发变化状态采集快照、排序或维护真实交易账本时才创建所需数据。此前为“安全复用”自造的 FrozenReservations、CanonicalList、FrozenChoices、EntryView 和 builder 关闭协议已删除，不能将这些历史实现继续作为必须保留项。结构读计划/匹配/仓室集合不再额外遍历复制，StructureQuery 在捕获时复制一次，谓词读取和等价比较直接只读消费。具体变更及测试清理见 [本轮审查](defensive-programming-audit.md)。下列较早记录中的副本数量、只读包装和不可变 singleton 描述仅表示当时实现。
+
 ## 2026-11-12 规则与范围
 
 回调的字段、参数和调用点必须直接使用原始类型签名；对象加int的消费者使用fastutil的`ObjectIntBiConsumer<T>`，禁止声明为`BiConsumer<T, Integer>`再在执行时拆箱，也不保留装箱兼容重载。JDK已有的`BooleanSupplier`、`ToIntFunction`等原始类型接口可以直接使用。没有对应接口的双参数返回值回调应声明具名函数接口，例如文本换行的`TextWrapper.apply(Text, int)`，禁止为此建立临时Pair或捕获另一个函数；否则会引入装箱、拆箱或额外对象分配。

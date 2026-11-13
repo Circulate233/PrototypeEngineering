@@ -4,17 +4,19 @@ import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.structure.MachineStructure;
+import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructureMatch;
 import com.circulation.prototype_eng.api.structure.StructureMatchResult;
 import com.circulation.prototype_eng.api.structure.StructureOperation;
 import com.circulation.prototype_eng.api.structure.StructurePattern;
-import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePredicate;
 import com.circulation.prototype_eng.api.structure.StructurePredicateResult;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.api.structure.StructureReadPlan;
 import com.circulation.prototype_eng.api.structure.StructureSnapshot;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
+import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import net.minecraft.util.ResourceLocation;
@@ -22,9 +24,7 @@ import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -88,7 +88,9 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
         }
     }
 
-    /** Explicit default Java factory; ordinary constructor subclasses retain all old virtual hooks. */
+    /**
+     * Explicit default Java factory; ordinary constructor subclasses retain all old virtual hooks.
+     */
     public static SliceStructure create(ResourceLocation id, BlockOrientation orientation, BlockPos offset, boolean hideWorldBlocks, StructurePattern pattern, int minCount, int maxCount, BlockPos sliceOffset, List<StructurePredicate> validators, List<MachineStructure> children) {
         return new SliceStructure(id, orientation, offset, hideWorldBlocks, pattern, minCount, maxCount, sliceOffset, validators, children, true, false, false);
     }
@@ -118,7 +120,7 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
     }
 
     @Override
-    public Map<BlockPos, StructureDisplay> displays() {
+    public BlockPos2ObjectMap<StructureDisplay> displays() {
         return pattern.displays();
     }
 
@@ -148,8 +150,11 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
 
     @Override
     public Geometry previewGeometry() {
+        var positions = new ObjectArrayList<BlockPos>(pattern.blocks().size());
+        for (var iterator = pattern.blocks().longKeySet().iterator(); iterator.hasNext(); )
+            positions.add(BlockPos.fromLong(iterator.nextLong()));
         return new Geometry(Kind.SLICE, offset, minCount, maxCount, sliceOffset,
-            new ObjectArrayList<>(pattern.blocks().keySet()), children);
+            positions, children);
     }
 
     @Override
@@ -215,8 +220,8 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
             if (!pattern.matches(snapshot, current, controller)) {
                 break;
             }
-            for (BlockPos relative : pattern.blocks().keySet()) {
-                BlockPos position = StructurePattern.add(current, relative);
+            for (var iterator = pattern.blocks().longKeySet().iterator(); iterator.hasNext(); ) {
+                BlockPos position = StructurePattern.add(current, iterator.nextLong());
                 if (!position.equals(controller)) {
                     blocks.add(position);
                 }
@@ -242,11 +247,13 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                 matchedChildren.add(result);
             }
         }
-        return new StructureMatch(this, origin, count, List.copyOf(blocks), matchedChildren);
+        return new StructureMatch(this, origin, count, new ObjectArrayList<>(blocks), matchedChildren);
     }
 
     private BlockPos sliceOrigin(BlockPos origin, int index) {
-        return StructurePattern.add(origin, StructurePattern.multiply(sliceOffset, index));
+        return new BlockPos(Math.addExact(origin.getX(), Math.toIntExact((long) sliceOffset.getX() * index)),
+            Math.addExact(origin.getY(), Math.toIntExact((long) sliceOffset.getY() * index)),
+            Math.addExact(origin.getZ(), Math.toIntExact((long) sliceOffset.getZ() * index)));
     }
 
     @Override
@@ -378,7 +385,8 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
         if (!budgeted) return MachineStructure.super.beginMatch(snapshot, anchor, controller);
         var origin = StructurePattern.add(anchor, offset);
         return new StructureOperation<>() {
-            private final ObjectLinkedOpenHashSet<BlockPos> matchedBlocks = new ObjectLinkedOpenHashSet<>();
+            private final ObjectLinkedOpenHashSet<BlockPos> seenBlocks = new ObjectLinkedOpenHashSet<>();
+            private final ObjectArrayList<BlockPos> matchedBlocks = new ObjectArrayList<>();
             private final ObjectArrayList<StructureMatch> matchedChildren = new ObjectArrayList<>();
             @Nullable
             private StructureOperation<StructurePredicateResult> patternWork;
@@ -389,7 +397,7 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
             @Nullable
             private StructureOperation<StructureMatch> freeze;
             @Nullable
-            private Iterator<BlockPos> positions;
+            private LongIterator positions;
             @Nullable
             private BlockPos currentOrigin;
             private int count, validatorIndex, childIndex;
@@ -423,11 +431,11 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                         patternsComplete = true;
                         break;
                     }
-                    if (positions == null) positions = pattern.blocks().keySet().iterator();
+                    if (positions == null) positions = pattern.blocks().longKeySet().iterator();
                     while (positions.hasNext()) {
                         if (!work.take()) return false;
-                        var position = StructurePattern.add(Objects.requireNonNull(currentOrigin), positions.next());
-                        if (!position.equals(controller)) matchedBlocks.add(position);
+                        var position = StructurePattern.add(Objects.requireNonNull(currentOrigin), positions.nextLong());
+                        if (!position.equals(controller) && seenBlocks.add(position)) matchedBlocks.add(position);
                     }
                     patternWork = null;
                     positions = null;

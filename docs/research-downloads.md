@@ -12,7 +12,7 @@
 
 - `ResearchItemDownloadRegistry` 按完整材料 AEItemKey 注册回调。`CommonProxy` 在研究注册表 freeze 后发布 `ResearchItemDownloadRegistrationEvent` 并冻结下载注册；不注册正式配方或游戏数值。
 - `ResearchItemDownloadContext` 提供真实 actor/server/world、准确活动数据库 UUID、队伍、当前 actor world tick、目标等级、冻结单件材料及 operation UUID。回调只运行于主线程真实 actor 能力上下文。
-- `ServerResearch.requestItemDownload` 通过既有 MAIN 队列重捕获请求授权，默认 `ResearchContainer`/`ResearchGui` 的物品下载动作绑定最后绘制的研究、原队伍/数据库、当前选中快捷栏槽和 nonce。Java 平台入口可使用准确的 0..40 槽。
+- `ServerResearch.requestItemDownload` 通过既有 MAIN 队列重捕获请求授权，默认 `ContainerResearch`/`GuiResearch` 的物品下载动作绑定最后绘制的研究、原队伍/数据库、当前选中快捷栏槽和 nonce。Java 平台入口可使用准确的 0..40 槽。
 - `ResearchWorld.requestItemDownload` 持有唯一世界 writer；新 actor+nonce 才运行事件，成功后冻结完整 native Count=1 模板与独立 long 数量，先持久化操作再允许材料效果。相同 nonce 和相同 intent 重试同一操作；不同 intent 返回冲突，不能再运行回调或另建操作。
 - `ResearchWorld.recoverItemDownloads`、`pendingDownloadOperations` 和 `downloadReceipts` 供服务器边界、登录及后续物品/实体加载恢复。`abortItemDownload` 仅在完整 before 库存证明材料未扣时允许明确终止。
 

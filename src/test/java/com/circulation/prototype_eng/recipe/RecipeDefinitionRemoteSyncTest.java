@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.recipe;
 
-import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
-
 import com.circulation.prototype_eng.api.client.jei.ClientRecipeDeclarations;
 import com.circulation.prototype_eng.api.client.jei.RecipeJeiDisplays;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
@@ -14,6 +12,7 @@ import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
 import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
+import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
 import io.netty.buffer.Unpooled;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
@@ -496,7 +495,8 @@ class RecipeDefinitionRemoteSyncTest {
         state.receive(connection, staticNotice);
         assertEquals(staticShows, renderer.staticShows);
         int chunks = (payload.length + RecipeDefinitionManifestPacket.CHUNK_BYTES - 1) / RecipeDefinitionManifestPacket.CHUNK_BYTES;
-        for (int p = 1; p < chunks; p++) state.receive(connection, wire(RecipeDefinitionManifestPacket.part(wanted, payload, p)));
+        for (int p = 1; p < chunks; p++)
+            state.receive(connection, wire(RecipeDefinitionManifestPacket.part(wanted, payload, p)));
         assertEquals(wanted, state.desired());
         assertNull(state.applied());
         declarations.register(key(declarationRevision), snapshot("v1", false), displays());

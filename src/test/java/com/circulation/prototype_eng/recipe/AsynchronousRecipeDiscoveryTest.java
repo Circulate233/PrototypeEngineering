@@ -59,7 +59,8 @@ class AsynchronousRecipeDiscoveryTest {
     }
 
     private static BufferedResourceHatch hatch() {
-        return new BufferedResourceHatch(HatchMode.MIXED, 3, Reference2LongMaps.singleton(TYPE, 100L), () -> { });
+        return new BufferedResourceHatch(HatchMode.MIXED, 3, Reference2LongMaps.singleton(TYPE, 100L), () -> {
+        });
     }
 
     private static MachineRecipe recipe(String path, Key input, long amount, RecipeParallelismSelection selection) {
@@ -84,7 +85,8 @@ class AsynchronousRecipeDiscoveryTest {
             if (discovery != null) attempt.finishDiscovery(discovery, worker(discovery, executor));
             var budget = new RecipeWorkBudget(128);
             for (var source : attempt.sources()) {
-                if (attempt.resolvingSources()) attempt.finishSourceResolution(source, source.resolveWithinBudget(budget));
+                if (attempt.resolvingSources())
+                    attempt.finishSourceResolution(source, source.resolveWithinBudget(budget));
                 else if (source.state() == ResourceBatch.SourceState.RESERVED) source.applyWithinBudget(budget);
             }
             var computation = attempt.computation();
@@ -93,6 +95,24 @@ class AsynchronousRecipeDiscoveryTest {
             if (attempt.finished()) return result;
         }
         throw new AssertionError("Asynchronous discovery did not settle");
+    }
+
+    private static RecipeProcessFactory recordingFactory(RecipeProcessFactory original, Thread owner, List<MachineRecipe> creations) {
+        return new RecipeProcessFactory() {
+            @Override
+            public RecipeProcess create(MachineInstance machine, MachineRecipe recipe, long seed, ProbabilityTuning tuning) {
+                assertSame(owner, Thread.currentThread());
+                creations.add(recipe);
+                return original.create(machine, recipe, seed, tuning);
+            }
+
+            @Override
+            public Creation beginCreation(MachineInstance machine, MachineRecipe recipe, long seed, ProbabilityTuning tuning) {
+                assertSame(owner, Thread.currentThread());
+                creations.add(recipe);
+                return original.beginCreation(machine, recipe, seed, tuning);
+            }
+        };
     }
 
     @Test
@@ -112,7 +132,9 @@ class AsynchronousRecipeDiscoveryTest {
                 }
 
                 @Override
-                public boolean stableFixedInputLowerBounds() { return true; }
+                public boolean stableFixedInputLowerBounds() {
+                    return true;
+                }
             };
             var first = recipe("first", FIRST, 1, selector);
             var second = recipe("second", SECOND, 1, selector);
@@ -212,30 +234,31 @@ class AsynchronousRecipeDiscoveryTest {
         }
     }
 
-    private static RecipeProcessFactory recordingFactory(RecipeProcessFactory original, Thread owner, List<MachineRecipe> creations) {
-        return new RecipeProcessFactory() {
-            @Override
-            public RecipeProcess create(MachineInstance machine, MachineRecipe recipe, long seed, ProbabilityTuning tuning) {
-                assertSame(owner, Thread.currentThread());
-                creations.add(recipe);
-                return original.create(machine, recipe, seed, tuning);
-            }
-
-            @Override
-            public Creation beginCreation(MachineInstance machine, MachineRecipe recipe, long seed, ProbabilityTuning tuning) {
-                assertSame(owner, Thread.currentThread());
-                creations.add(recipe);
-                return original.beginCreation(machine, recipe, seed, tuning);
-            }
-        };
-    }
-
     private record ObservedPool(RecipePool delegate, Thread owner, int[] calls) implements RecipePool {
-        @Override public ResourceLocation id() { return delegate.id(); }
-        @Override public String translationKey() { return delegate.translationKey(); }
-        @Override public List<MachineRecipe> recipes() { return delegate.recipes(); }
-        @Override public List<MachineType> machines() { return delegate.machines(); }
-        @Override public RecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines) { return delegate.freeze(recipes, machines); }
+        @Override
+        public ResourceLocation id() {
+            return delegate.id();
+        }
+
+        @Override
+        public String translationKey() {
+            return delegate.translationKey();
+        }
+
+        @Override
+        public List<MachineRecipe> recipes() {
+            return delegate.recipes();
+        }
+
+        @Override
+        public List<MachineType> machines() {
+            return delegate.machines();
+        }
+
+        @Override
+        public RecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines) {
+            return delegate.freeze(recipes, machines);
+        }
 
         @Override
         public @Nullable RecipeCandidateIndex.Cursor beginCandidates(MachineInstance machine, Set<ResourceLocation> groups) {

@@ -1,12 +1,14 @@
 package com.circulation.prototype_eng.client.render;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectAVLTreeMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayFIFOQueue;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import it.unimi.dsi.fastutil.objects.ObjectArrayFIFOQueue;
 
-/** Packed CPU buffers retain their native byte order across borrow/seal/recycle. */
+/**
+ * Packed CPU buffers retain their native byte order across borrow/seal/recycle.
+ */
 public class DirectVertexBufferPool implements AutoCloseable {
     private final Int2ObjectAVLTreeMap<ObjectArrayFIFOQueue<ByteBuffer>> free = new Int2ObjectAVLTreeMap<>();
     private final long maxRetainedBytes;

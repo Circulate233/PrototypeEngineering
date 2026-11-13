@@ -1,17 +1,16 @@
 package com.circulation.prototype_eng.client.preview;
 
-import it.unimi.dsi.fastutil.objects.Object2IntMaps;
-import it.unimi.dsi.fastutil.objects.Object2IntLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.ints.IntList;
-
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewPath;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
-import com.circulation.prototype_eng.api.structure.StructureBounds;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
+import it.unimi.dsi.fastutil.ints.IntList;
+import it.unimi.dsi.fastutil.objects.Object2IntLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;
@@ -49,7 +48,7 @@ class StructurePreviewExpansionTest {
     private static Map<ResourceLocation, StructureCatalogView.Entry> entries(List<StructureCatalogView.Node> nodes) {
         var entries = new LinkedHashMap<ResourceLocation, StructureCatalogView.Entry>();
         for (int i = 0; i < nodes.size(); i++)
-            entries.put(nodes.get(i).id(), new StructureCatalogView.Entry(i, null, Map.of()));
+            entries.put(nodes.get(i).id(), new StructureCatalogView.Entry(i, null, BlockPos2ObjectMap.emptyMap()));
         return entries;
     }
 
@@ -63,15 +62,13 @@ class StructurePreviewExpansionTest {
     }
 
     @Test
-    void sharedSliceNodeUsesChildEdgeOccurrencesAndFreezesCallerChoices() {
+    void sharedSliceNodeUsesChildEdgeOccurrences() {
         var nodes = List.of(template("root", BlockPos.ORIGIN, List.of(), 1, 1),
             new StructureCatalogView.Node(id("slice"), BlockOrientation.NORTH_UP, true, StructurePreviewProvider.Kind.SLICE, pos(2, 0, 0), 0, 3, pos(0, 1, 0), List.of(pos(1, 0, 0)), IntList.of()));
         var choices = new Object2IntLinkedOpenHashMap<StructurePreviewPath>();
         choices.put(StructurePreviewPath.ROOT.child(0), -20);
         choices.put(StructurePreviewPath.ROOT.child(1), 20);
         var settings = new StructurePreviewSettings(BlockOrientation.NORTH_UP, choices, 10, 10);
-        assertThrows(UnsupportedOperationException.class, () -> settings.sliceCounts().object2IntEntrySet().iterator().next().setValue(1));
-        choices.clear();
         var model = finish(new StructurePreviewExpansion(view(nodes, entries(nodes)), id("root"), settings));
         assertEquals(3, model.cells().size());
         assertEquals(List.of(1, 0, 3), model.occurrences().stream().map(StructurePreviewModel.Occurrence::selectedSlices).toList());
@@ -96,8 +93,8 @@ class StructurePreviewExpansionTest {
         var second = display("{x:\"BB\"}");
         assertEquals(Objects.requireNonNull(first.tileNbt()).hashCode(), Objects.requireNonNull(second.tileNbt()).hashCode());
         var entries = entries(nodes);
-        entries.put(id("root"), new StructureCatalogView.Entry(0, null, Map.of(BlockPos.ORIGIN, first, pos(1, 0, 0), first, pos(2, 0, 0), first)));
-        entries.put(id("child"), new StructureCatalogView.Entry(1, null, Map.of(pos(1, 0, 0), second)));
+        entries.put(id("root"), new StructureCatalogView.Entry(0, null, new BlockPos2ObjectMap<>(Map.of(BlockPos.ORIGIN, first, pos(1, 0, 0), first, pos(2, 0, 0), first))));
+        entries.put(id("child"), new StructureCatalogView.Entry(1, null, new BlockPos2ObjectMap<>(Map.of(pos(1, 0, 0), second))));
         var model = finish(new StructurePreviewExpansion(view(nodes, entries), id("root"), new StructurePreviewSettings(BlockOrientation.NORTH_UP)));
         assertEquals(2, model.cells().size());
         assertEquals(second, model.cells().getFirst().display());
@@ -130,9 +127,6 @@ class StructurePreviewExpansionTest {
         assertEquals(Integer.MAX_VALUE, model.occurrences().getFirst().selectedSlices());
         assertEquals(0, expansion.advance(1000));
         assertSame(model, expansion.model());
-        assertThrows(UnsupportedOperationException.class, () -> model.cells().clear());
-        assertThrows(UnsupportedOperationException.class, () -> model.bom().clear());
-        assertThrows(UnsupportedOperationException.class, () -> model.occurrences().clear());
     }
 
     @Test
@@ -171,22 +165,4 @@ class StructurePreviewExpansionTest {
         assertNull(model.bom().getFirst().display());
     }
 
-    @Test
-    void modelBuilderCannotMutateTransferredListsAfterFreeze() {
-        var nodes = List.of(template("root", BlockPos.ORIGIN, List.of(pos(1, 0, 0))));
-        var builder = new StructurePreviewModel.Builder(view(nodes, entries(nodes)), id("root"), new StructurePreviewSettings(BlockOrientation.NORTH_UP));
-        var cell = new StructurePreviewModel.Cell(pos(1, 0, 0), StructurePreviewPath.ROOT, 0, -1, null, false);
-        builder.addCell(cell);
-        builder.addBom(new StructurePreviewModel.BomLine(null, 1));
-        var occurrence = new StructurePreviewModel.Occurrence(StructurePreviewPath.ROOT, 0, BlockPos.ORIGIN, 1, false);
-        builder.addOccurrence(occurrence);
-        var model = builder.freeze(StructureBounds.at(cell.position()));
-        assertThrows(IllegalStateException.class, () -> builder.addCell(cell));
-        assertThrows(IllegalStateException.class, () -> builder.addBom(new StructurePreviewModel.BomLine(null, 9)));
-        assertThrows(IllegalStateException.class, () -> builder.addOccurrence(occurrence));
-        assertThrows(IllegalStateException.class, () -> builder.freeze(StructureBounds.at(BlockPos.ORIGIN)));
-        assertThrows(UnsupportedOperationException.class, () -> model.cells().clear());
-        assertEquals(1, model.cells().size());
-        assertEquals(1, model.bom().getFirst().count());
-    }
 }

@@ -11,7 +11,9 @@ import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.Objects;
 
-/** Reuse this descriptor instance wherever its detached fact is declared or read. */
+/**
+ * Reuse this descriptor instance wherever its detached fact is declared or read.
+ */
 @ZenRegister
 @ZenClass("mods.prototype_eng.structure.Query")
 @SuppressWarnings("unused") // Script query factory.

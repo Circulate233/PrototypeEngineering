@@ -3,7 +3,9 @@ package com.circulation.prototype_eng.api.scheduler;
 import java.util.Locale;
 import java.util.Objects;
 
-/** Immutable on-demand owner report. Wall-time windows can overlap; none is worker CPU time. */
+/**
+ * Immutable on-demand owner report. Wall-time windows can overlap; none is worker CPU time.
+ */
 public record SchedulerReport(String policyLabel, long completedTicks, int windowTicks, int sampleCount,
                               Stat totalWallNanos, Stat mainWallNanos, Stat concurrentStageWallNanos,
                               Stat joinWallNanos, Stat plannedWallNanos, Stat cleanupWallNanos,
@@ -27,7 +29,9 @@ public record SchedulerReport(String policyLabel, long completedTicks, int windo
         Objects.requireNonNull(affinityGroups);
     }
 
-    /** PM's actual periodic report, with explicit wall scope and no dispatch/CPU equivalence. */
+    /**
+     * PM's actual periodic report, with explicit wall scope and no dispatch/CPU equivalence.
+     */
     public String toLogLine() {
         return "[PE Scheduler] policy=" + policyLabel + " window=" + sampleCount + "/" + windowTicks
             + "t ticks=" + completedTicks + " wall(avg/p95/max) total=" + totalWallNanos.wallMicros() + "µs"
@@ -38,7 +42,9 @@ public record SchedulerReport(String policyLabel, long completedTicks, int windo
             + "/" + customMainTasks.counts() + "/" + customConcurrentTasks.counts() + " groups=" + affinityGroups.counts();
     }
 
-    /** Nonnegative samples summarized with PM's sorted-index p95 selection. */
+    /**
+     * Nonnegative samples summarized with PM's sorted-index p95 selection.
+     */
     public record Stat(long avg, long p95, long max) {
         public Stat {
             if (avg < 0 || p95 < 0 || max < avg || max < p95)

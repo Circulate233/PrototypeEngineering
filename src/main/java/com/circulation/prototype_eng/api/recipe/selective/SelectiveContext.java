@@ -37,7 +37,9 @@ public interface SelectiveContext {
      */
     void putProcessAttributeModifier(ResourceLocation attribute, AttributeModifier modifier);
 
-    /** Adds to process speed through this application's tracked local ownership. */
+    /**
+     * Adds to process speed through this application's tracked local ownership.
+     */
     default void addProcessSpeed(String modifierId, double amount) {
         putProcessAttributeModifier(StandardMachineAttributes.PROCESS_SPEED, SelectiveModifiers.speedAddition(modifierId, amount));
     }

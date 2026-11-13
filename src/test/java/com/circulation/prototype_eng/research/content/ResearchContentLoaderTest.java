@@ -151,20 +151,6 @@ class ResearchContentLoaderTest {
         assertEquals("T", normalized.load(RESEARCH, "zh_cn").content().orElseThrow().title());
     }
 
-    @Test
-    void contentCopiesDescriptionAndExposesImmutableValues() {
-        var source = ObjectArrayList.of(" Line ");
-        var icon = new ResearchContent.Icon(ResearchContent.Kind.ITEM, new ResourceLocation("minecraft", "paper"), 0);
-        var content = new ResearchContent(" Title ", " Summary ", source, icon);
-        source.set(0, "changed");
-        assertEquals(ObjectArrayList.of("Line"), content.description());
-        assertThrows(UnsupportedOperationException.class, () -> content.description().add("mutable"));
-        assertEquals("Title", content.title());
-        assertEquals(" Summary ", content.summary());
-        assertThrows(IllegalArgumentException.class, () -> new ResearchContentLoadResult(RESEARCH,
-            ResearchContentLoadResult.Status.MISSING, Optional.of(content)));
-    }
-
     private ResearchContentLoader loader() {
         return new ResearchContentLoader(configRoot);
     }

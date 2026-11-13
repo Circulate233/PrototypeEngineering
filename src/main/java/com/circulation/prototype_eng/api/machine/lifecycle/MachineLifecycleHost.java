@@ -16,7 +16,9 @@ import java.util.UUID;
 public interface MachineLifecycleHost {
     MachineIdentity identity();
 
-    /** Owner-thread access to physical controller items; non-block hosts are empty by default. */
+    /**
+     * Owner-thread access to physical controller items; non-block hosts are empty by default.
+     */
     default InternalInventory controllerInventory() {
         return InternalInventory.empty();
     }

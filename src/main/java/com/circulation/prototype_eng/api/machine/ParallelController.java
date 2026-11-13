@@ -1,6 +1,8 @@
 package com.circulation.prototype_eng.api.machine;
 
-/** A structure contribution; snapshots are immutable and safe for recipe-discovery workers. */
+/**
+ * A structure contribution; snapshots are immutable and safe for recipe-discovery workers.
+ */
 public interface ParallelController {
     Snapshot snapshot();
 

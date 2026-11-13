@@ -9,6 +9,7 @@ import java.util.Objects;
 
 /**
  * Immutable IO overrides: null inherits the base field, while an empty list explicitly clears it.
+ * Non-null input lists are borrowed and must remain unchanged while this patch or its result is used.
  */
 public record ResourceRequirementPatch(@Nullable List<GenericStack> inputs,
                                        @Nullable List<GenericStack> inputsPerTick,
@@ -16,17 +17,18 @@ public record ResourceRequirementPatch(@Nullable List<GenericStack> inputs,
                                        @Nullable List<GenericStack> outputs,
                                        @Nullable Boolean voidExcessOutputs) {
     public ResourceRequirementPatch {
-        inputs = copy(inputs);
-        inputsPerTick = copy(inputsPerTick);
-        outputsPerTick = copy(outputsPerTick);
-        outputs = copy(outputs);
+        inputs = validate(inputs);
+        inputsPerTick = validate(inputsPerTick);
+        outputsPerTick = validate(outputsPerTick);
+        outputs = validate(outputs);
     }
 
-    private static @Nullable List<GenericStack> copy(@Nullable List<GenericStack> stacks) {
+    private static @Nullable List<GenericStack> validate(@Nullable List<GenericStack> stacks) {
         if (stacks == null) {
             return null;
         }
-        return ResourceRequirement.canonicalStacks(stacks);
+        ResourceRequirement.validateStacks(stacks);
+        return stacks;
     }
 
     /**

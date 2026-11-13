@@ -1,51 +1,47 @@
 package com.circulation.prototype_eng.api.structure;
 
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import net.minecraft.util.math.BlockPos;
-
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Map;
 import java.util.Objects;
 
 /**
  * Immutable sparse PM pattern. Loaded-area checks include gaps between its min/max positions.
+ * The supplied position map is borrowed for the pattern's lifetime and must not be modified.
  */
 public final class StructurePattern {
-    private final Map<BlockPos, StructurePredicate> blocks;
+    private final BlockPos2ObjectMap<StructurePredicate> blocks;
     private final StructureBounds bounds;
     private final boolean planReusable;
-    private volatile Map<BlockPos, StructureDisplay> displays;
+    private volatile BlockPos2ObjectMap<StructureDisplay> displays;
 
-    public StructurePattern(Map<BlockPos, StructurePredicate> blocks) {
-        var copy = new Object2ObjectLinkedOpenHashMap<BlockPos, StructurePredicate>();
+    public StructurePattern(BlockPos2ObjectMap<StructurePredicate> blocks) {
         int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
         int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
         boolean reusable = true;
-        for (var entry : blocks.entrySet()) {
-            var pos = Objects.requireNonNull(entry.getKey()).toImmutable();
+        for (var entries = blocks.fastIterator(); entries.hasNext(); ) {
+            var entry = entries.next();
+            long pos = entry.getLongKey();
+            int x = BlockPos2ObjectMap.unpackX(pos), y = BlockPos2ObjectMap.unpackY(pos), z = BlockPos2ObjectMap.unpackZ(pos);
             var predicate = Objects.requireNonNull(entry.getValue());
-            if (copy.putIfAbsent(pos, predicate) != null) {
-                throw new IllegalArgumentException("Duplicate structure position: " + pos);
-            }
             reusable = reusable && predicate.planReusable();
-            minX = Math.min(minX, pos.getX());
-            minY = Math.min(minY, pos.getY());
-            minZ = Math.min(minZ, pos.getZ());
-            maxX = Math.max(maxX, pos.getX());
-            maxY = Math.max(maxY, pos.getY());
-            maxZ = Math.max(maxZ, pos.getZ());
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            minZ = Math.min(minZ, z);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+            maxZ = Math.max(maxZ, z);
         }
-        this.blocks = Object2ObjectMaps.unmodifiable(copy);
+        this.blocks = blocks;
         planReusable = reusable;
-        bounds = copy.isEmpty() ? StructureBounds.at(BlockPos.ORIGIN)
+        bounds = blocks.isEmpty() ? StructureBounds.at(BlockPos.ORIGIN)
             : new StructureBounds(new BlockPos(minX, minY, minZ), new BlockPos(maxX, maxY, maxZ));
     }
 
-    private StructurePattern(Object2ObjectLinkedOpenHashMap<BlockPos, StructurePredicate> owned, StructureBounds bounds, boolean planReusable) {
-        blocks = Object2ObjectMaps.unmodifiable(owned);
+    private StructurePattern(BlockPos2ObjectMap<StructurePredicate> owned, StructureBounds bounds, boolean planReusable) {
+        blocks = owned;
         this.bounds = bounds;
         this.planReusable = planReusable;
     }
@@ -57,31 +53,38 @@ public final class StructurePattern {
         return new BlockPos(Math.addExact(first.getX(), second.getX()), Math.addExact(first.getY(), second.getY()), Math.addExact(first.getZ(), second.getZ()));
     }
 
-    public static BlockPos multiply(BlockPos vector, int factor) {
-        return new BlockPos(Math.multiplyExact(vector.getX(), factor), Math.multiplyExact(vector.getY(), factor), Math.multiplyExact(vector.getZ(), factor));
+    /**
+     * Adds an already packed relative position without a temporary decoded BlockPos.
+     */
+    public static BlockPos add(BlockPos origin, long offset) {
+        return new BlockPos(Math.addExact(origin.getX(), BlockPos2ObjectMap.unpackX(offset)),
+            Math.addExact(origin.getY(), BlockPos2ObjectMap.unpackY(offset)), Math.addExact(origin.getZ(), BlockPos2ObjectMap.unpackZ(offset)));
     }
 
     public boolean planReusable() {
         return planReusable;
     }
 
-    public Map<BlockPos, StructurePredicate> blocks() {
+    public BlockPos2ObjectMap<StructurePredicate> blocks() {
         return blocks;
     }
 
-    /** Lazy freezing is deliberately separate from matching and cooperative transformation. */
-    public Map<BlockPos, StructureDisplay> displays() {
+    /**
+     * Lazy freezing is deliberately separate from matching and cooperative transformation.
+     */
+    public BlockPos2ObjectMap<StructureDisplay> displays() {
         var result = displays;
         if (result != null) return result;
         synchronized (this) {
             result = displays;
             if (result == null) {
-                var copy = new Object2ObjectLinkedOpenHashMap<BlockPos, StructureDisplay>();
-                blocks.forEach((position, predicate) -> {
-                    var display = predicate.display();
-                    if (display != null) copy.put(position, display);
-                });
-                result = Object2ObjectMaps.unmodifiable(copy);
+                var copy = new BlockPos2ObjectMap<StructureDisplay>();
+                for (var entries = blocks.fastIterator(); entries.hasNext(); ) {
+                    var entry = entries.next();
+                    var display = entry.getValue().display();
+                    if (display != null) copy.put(entry.getLongKey(), display);
+                }
+                result = copy;
                 displays = result;
             }
         }
@@ -99,9 +102,9 @@ public final class StructurePattern {
     @SuppressWarnings("ReturnOfInnerClass") // The cursor retains only its immutable pattern definition.
     public StructureOperation<StructurePattern> beginTransform(StructureTransform rotation) {
         Objects.requireNonNull(rotation);
-        var iterator = blocks.entrySet().iterator();
+        var iterator = blocks.fastIterator();
         return new StructureOperation<>() {
-            private final Object2ObjectLinkedOpenHashMap<BlockPos, StructurePredicate> transformed = new Object2ObjectLinkedOpenHashMap<>();
+            private final BlockPos2ObjectMap<StructurePredicate> transformed = new BlockPos2ObjectMap<>(blocks.size());
             @Nullable
             private BlockPos position;
             @Nullable
@@ -118,7 +121,7 @@ public final class StructurePattern {
                     if (predicate == null) {
                         if (!work.take()) return false;
                         var entry = iterator.next();
-                        position = rotation.apply(entry.getKey());
+                        position = rotation.apply(entry.getLongKey());
                         predicate = entry.getValue().beginTransform(rotation);
                     }
                     if (!predicate.advance(work)) return false;
@@ -152,7 +155,7 @@ public final class StructurePattern {
         Objects.requireNonNull(plan);
         Objects.requireNonNull(origin);
         Objects.requireNonNull(controller);
-        var iterator = blocks.entrySet().iterator();
+        var iterator = blocks.fastIterator();
         return new StructureOperation<>() {
             private boolean area;
             @Nullable
@@ -171,7 +174,7 @@ public final class StructurePattern {
                     if (predicate == null) {
                         if (!work.take()) return false;
                         var entry = iterator.next();
-                        var position = add(origin, entry.getKey());
+                        var position = add(origin, entry.getLongKey());
                         if (position.equals(controller)) continue;
                         predicate = entry.getValue().beginCollectReads(plan, position, controller);
                     }
@@ -193,7 +196,7 @@ public final class StructurePattern {
         Objects.requireNonNull(snapshot);
         Objects.requireNonNull(origin);
         Objects.requireNonNull(controller);
-        var iterator = blocks.entrySet().iterator();
+        var iterator = blocks.fastIterator();
         return new StructureOperation<>() {
             private boolean area;
             @Nullable
@@ -215,7 +218,7 @@ public final class StructurePattern {
                     if (predicate == null) {
                         if (!work.take()) return false;
                         var entry = iterator.next();
-                        var position = add(origin, entry.getKey());
+                        var position = add(origin, entry.getLongKey());
                         if (position.equals(controller)) continue;
                         predicate = entry.getValue().beginMatch(snapshot, position, controller);
                     }

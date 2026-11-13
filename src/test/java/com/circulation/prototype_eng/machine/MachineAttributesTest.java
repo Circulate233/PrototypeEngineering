@@ -152,11 +152,6 @@ class MachineAttributesTest {
         assertEquals(12, child.value(SPEED));
         var snapshot = child.localSnapshot();
         assertEquals(1, snapshot.size());
-        assertThrows(UnsupportedOperationException.class, snapshot::clear);
-        assertThrows(UnsupportedOperationException.class, () -> snapshot.get(SPEED).modifiers().clear());
-        assertThrows(UnsupportedOperationException.class, () -> snapshot.entrySet().iterator().next().setValue(saved));
-        assertThrows(UnsupportedOperationException.class, () -> snapshot.get(SPEED).modifiers().entrySet().iterator().next()
-                                                                        .setValue(new NumericAttributeModifier("add", 99, ADDITION)));
 
         child.setBase(SPEED, 100);
         child.removeModifier(SPEED, "add");

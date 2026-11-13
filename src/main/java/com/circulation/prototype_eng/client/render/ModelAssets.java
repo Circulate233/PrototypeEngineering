@@ -25,7 +25,9 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
-/** Background immutable byte/image reads for one resource epoch; late reads never repopulate a retired epoch. */
+/**
+ * Background immutable byte/image reads for one resource epoch; late reads never repopulate a retired epoch.
+ */
 public class ModelAssets implements IResourceManager, AutoCloseable {
     private final ModelClientThread client;
     private final IResourceManager packs;
@@ -57,7 +59,9 @@ public class ModelAssets implements IResourceManager, AutoCloseable {
         return source.read();
     }
 
-    /** Select/open exact sources on owner; CPU bytes, JSON parsing and image decoding remain on workers. */
+    /**
+     * Select/open exact sources on owner; CPU bytes, JSON parsing and image decoding remain on workers.
+     */
     public void select(List<ResourceLocation> locations) throws IOException {
         client.requireOwner();
         Map<ResourceLocation, Source> captured = new Object2ObjectOpenHashMap<>(locations.size());

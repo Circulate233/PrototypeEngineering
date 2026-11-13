@@ -1,11 +1,10 @@
 package com.circulation.prototype_eng.api.network.resource;
 
-import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
-
 import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import com.circulation.prototype_eng.api.storage.StorageContext;
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
@@ -114,7 +113,7 @@ public final class NetworkComputerComponentInventory {
                 totals.addTo(entry.getKey(), amount);
             }
         });
-        return NetworkResourceModifier.copyResources(totals);
+        return totals;
     }
 
     private static void unlock(List<StorageContext> contexts) {

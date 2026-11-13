@@ -68,7 +68,9 @@ public final class StructurePreviews implements AutoCloseable {
         return catalog.current(model.generation());
     }
 
-    /** Current authoritative names for client command completion; incomplete packets remain private. */
+    /**
+     * Current authoritative names for client command completion; incomplete packets remain private.
+     */
     public @Nullable StructureCatalogView catalogView() {
         requireOpen();
         return catalog.view();
@@ -90,7 +92,9 @@ public final class StructurePreviews implements AutoCloseable {
         return true;
     }
 
-    /** GUI projections may expire without closing their logical preview service. */
+    /**
+     * GUI projections may expire without closing their logical preview service.
+     */
     public boolean projectFor(ResourceLocation id, StructurePreviewSettings settings, BlockPos anchor,
                               StructureProjectionOptions options, long durationMillis) {
         if (durationMillis <= 0 || durationMillis > Long.MAX_VALUE / 1_000_000)
@@ -101,10 +105,13 @@ public final class StructurePreviews implements AutoCloseable {
         return true;
     }
 
-    /** Changes presentation only for the exact active intent and never renews a timed lifetime. */
+    /**
+     * Changes presentation only for the exact active intent and never renews a timed lifetime.
+     */
     public boolean replaceProjection(Projection expected, StructurePreviewSettings settings, StructureProjectionOptions options) {
         requireOpen();
-        if (projection() != expected || request(expected.id(), settings) == null || projection() != expected) return false;
+        if (projection() != expected || request(expected.id(), settings) == null || projection() != expected)
+            return false;
         projection = new Projection(expected.id(), settings, expected.anchor(), options);
         return true;
     }

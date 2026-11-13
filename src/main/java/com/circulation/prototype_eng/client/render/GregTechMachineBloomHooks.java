@@ -10,7 +10,9 @@ import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/** Loaded only through the exact optional native-mod availability guard. */
+/**
+ * Loaded only through the exact optional native-mod availability guard.
+ */
 final class GregTechMachineBloomHooks implements IRenderSetup, IBloomEffect {
     private static final GregTechMachineBloomHooks INSTANCE = new GregTechMachineBloomHooks();
     private static BloomEffectUtil.@Nullable BloomRenderTicket ticket;

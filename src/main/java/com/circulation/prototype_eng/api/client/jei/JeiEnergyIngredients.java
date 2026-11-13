@@ -1,11 +1,11 @@
 package com.circulation.prototype_eng.api.client.jei;
 
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay.Energy;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay.Role;
 import com.circulation.prototype_eng.localization.JeiEnergyText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import mezz.jei.api.gui.IRecipeLayout;
 import mezz.jei.api.ingredients.IIngredientHelper;
 import mezz.jei.api.ingredients.IIngredientRenderer;
@@ -23,7 +23,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-/** PM's FE query ingredient: item icons in the list, transparent recipe slots over the energy widget. */
+/**
+ * PM's FE query ingredient: item icons in the list, transparent recipe slots over the energy widget.
+ */
 @SideOnly(Side.CLIENT)
 public final class JeiEnergyIngredients {
     public static final IIngredientType<Energy> TYPE = () -> Energy.class;
@@ -53,7 +55,9 @@ public final class JeiEnergyIngredients {
         ingredients.setOutputs(TYPE, values(display, Role.OUTPUT));
     }
 
-    /** Custom pages can attach the same transparent focus/tooltip area to their own energy drawing. */
+    /**
+     * Custom pages can attach the same transparent focus/tooltip area to their own energy drawing.
+     */
     public static void slot(IRecipeLayout layout, int index, Energy energy, int x, int y, int width, int height) {
         var group = layout.getIngredientsGroup(TYPE);
         group.init(index, energy.role() == Role.INPUT, SLOT, x, y, width, height, 0, 0);
@@ -114,7 +118,7 @@ public final class JeiEnergyIngredients {
 
         @Override
         public @NotNull List<String> getTooltip(@NotNull Minecraft minecraft, @NotNull Energy ingredient, @NotNull ITooltipFlag flag) {
-            return new ObjectArrayList<>(List.of(HELPER.getDisplayName(ingredient), (ingredient.perTick() ? JeiEnergyText.TickAmount : JeiEnergyText.OnceAmount).getLocal(ingredient.amount())));
+            return ObjectArrayList.of(HELPER.getDisplayName(ingredient), (ingredient.perTick() ? JeiEnergyText.TickAmount : JeiEnergyText.OnceAmount).getLocal(ingredient.amount()));
         }
     }
 }

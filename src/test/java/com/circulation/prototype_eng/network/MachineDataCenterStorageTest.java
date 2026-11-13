@@ -239,7 +239,8 @@ class MachineDataCenterStorageTest {
         private final Object2LongOpenHashMap<NetworkResourceType> supply = new Object2LongOpenHashMap<>();
         private final ComponentType<MachineInstance, MachineNetworkDevice> centerRole = MachineNetworkDevice.component(id("center_role"),
             ownership, (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER, 1,
-                Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), supply, NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
+                Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), NetworkResourceModifier.copyResources(supply),
+                NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
         private final MachineType dataType = MachineType.builder(id("data_machine"), GuiText.ResourceStorage, id("structure"))
                                                         .component(ownership).component(storage).component(dataRole).build();
         private final MachineAssembly dataAssembly = MachineAssembly.builder(dataType, "data-v1").component(ownership, MachineOwnership.CODEC)

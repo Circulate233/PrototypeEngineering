@@ -6,7 +6,9 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 import java.util.Objects;
 
-/** True next-tick client open queue: chat closes after executing its command. */
+/**
+ * True next-tick client open queue: chat closes after executing its command.
+ */
 public final class PreviewClientOpenQueue {
     public static final PreviewClientOpenQueue INSTANCE = new PreviewClientOpenQueue();
     private ObjectArrayList<Runnable> pending = new ObjectArrayList<>();

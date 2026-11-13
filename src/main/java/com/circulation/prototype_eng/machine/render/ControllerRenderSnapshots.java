@@ -16,11 +16,12 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
-/** Pure capture at the joined server boundary, followed by revalidation of the exact owner. */
+/**
+ * Pure capture at the joined server boundary, followed by revalidation of the exact owner.
+ */
 public final class ControllerRenderSnapshots {
     private ControllerRenderSnapshots() {
     }
@@ -68,7 +69,7 @@ public final class ControllerRenderSnapshots {
         for (var binding : bindings) ids.add(binding.type().id());
         var animation = machine.components().get(MachineAnimationState.TYPE);
         var result = new MachineRenderSnapshot(display, new MachineRenderSnapshot.CatalogToken(view.session(), view.sequence()), controller,
-            configuration.definition().id(), occurrences, List.copyOf(positions), ids, animation == null ? null : animation.snapshot());
+            configuration.definition().id(), occurrences, new ObjectArrayList<>(positions), ids, animation == null ? null : animation.snapshot());
         // previewGeometry is an external callback. It can revoke the original configuration/owner.
         if (!current.getAsBoolean() || !host.structureLifecycleCurrent(lifecycle) || host.structureConfiguration() != configuration ||
             lifecycle.structureMatch() != match || lifecycle.formed() != display.formed() || lifecycle.retired())

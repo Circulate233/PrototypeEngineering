@@ -1,8 +1,8 @@
 package com.circulation.prototype_eng.integration.crafttweaker.recipe;
 
 import ae2.api.stacks.GenericStack;
-import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
+import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
 import com.circulation.prototype_eng.api.recipe.requirement.AttributeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.CheckpointRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
@@ -24,7 +24,9 @@ import stanhebben.zenscript.annotations.ZenMethod;
 import java.util.List;
 import java.util.Objects;
 
-/** Each factory produces the existing immutable, typed Java requirement. */
+/**
+ * Each factory produces the existing immutable, typed Java requirement.
+ */
 // ZenScript discovers these entry points through annotations rather than Java call sites.
 @SuppressWarnings("unused")
 @ZenRegister
@@ -34,9 +36,18 @@ public final class ZenRequirement {
     private final @Nullable RecipeRequirement<ResourceRequirement> resource;
     private final @Nullable RecipeRequirement<EnergyRequirement> energy;
 
-    /** Addons retain their immutable Java payload/system; no type-name lookup occurs here. */
+    /**
+     * Addons retain their immutable Java payload/system; no type-name lookup occurs here.
+     */
     public ZenRequirement(RecipeRequirement<?> value) {
         this(value, builtinResource(value), builtinEnergy(value));
+    }
+
+    private ZenRequirement(RecipeRequirement<?> value, @Nullable RecipeRequirement<ResourceRequirement> resource,
+                           @Nullable RecipeRequirement<EnergyRequirement> energy) {
+        this.value = Objects.requireNonNull(value);
+        this.resource = resource;
+        this.energy = energy;
     }
 
     @SuppressWarnings("unchecked")
@@ -47,13 +58,6 @@ public final class ZenRequirement {
     @SuppressWarnings("unchecked")
     private static @Nullable RecipeRequirement<EnergyRequirement> builtinEnergy(RecipeRequirement<?> value) {
         return value.type() == RecipeRequirements.ENERGY ? (RecipeRequirement<EnergyRequirement>) value : null;
-    }
-
-    private ZenRequirement(RecipeRequirement<?> value, @Nullable RecipeRequirement<ResourceRequirement> resource,
-                           @Nullable RecipeRequirement<EnergyRequirement> energy) {
-        this.value = Objects.requireNonNull(value);
-        this.resource = resource;
-        this.energy = energy;
     }
 
     private static ZenRequirement resources(String id, ResourceRequirement payload) {
@@ -76,7 +80,7 @@ public final class ZenRequirement {
     @ZenMethod
     public static ZenRequirement dynamicInput(String id, ZenMatcher matcher, ZenResource pattern, long amount,
                                               ZenResource[] displayedCandidates, int maxCandidates) {
-        var group = new DynamicInputGroup(Objects.requireNonNull(matcher).value(), Objects.requireNonNull(pattern).key(),
+        var group = new DynamicInputGroup(matcher.value(), pattern.key(),
             amount, ZenRecipeSupport.keys(displayedCandidates), maxCandidates);
         return resources(id, new ResourceRequirement(List.of(), List.of(), List.of(), List.of(), false,
             ResourceChance.ALWAYS, null, List.of(), List.of(group)));
@@ -107,17 +111,19 @@ public final class ZenRequirement {
     @ZenMethod
     public static ZenRequirement checkpoint(String id, int time, ZenRequirement child, boolean scaleWithProcess) {
         var value = RecipeRequirements.CHECKPOINT.requirement(ZenRecipeSupport.id(id),
-            new CheckpointRequirement(time, Objects.requireNonNull(child).value(), scaleWithProcess));
+            new CheckpointRequirement(time, child.value(), scaleWithProcess));
         return new ZenRequirement(value, null, null);
     }
 
     @ZenMethod
     public static ZenRequirement attributeAddition(String id, String attribute, String modifierId, double amount,
-                                                    boolean applyAtStart, boolean removeAtEnd) {
+                                                   boolean applyAtStart, boolean removeAtEnd) {
         return attribute(id, attribute, modifierId, amount, "ADDITION", applyAtStart, removeAtEnd);
     }
 
-    /** Operation is the Java API name: ADDITION, MULTIPLY_BASE or MULTIPLY_TOTAL. */
+    /**
+     * Operation is the Java API name: ADDITION, MULTIPLY_BASE or MULTIPLY_TOTAL.
+     */
     @ZenMethod
     public static ZenRequirement attribute(String id, String attribute, String modifierId, double amount, String operation,
                                            boolean applyAtStart, boolean removeAtEnd) {
@@ -127,10 +133,40 @@ public final class ZenRequirement {
         return new ZenRequirement(value, null, null);
     }
 
-    /** Each positive-weight entry may be picked once per output loop; repeated keys remain distinct entries. */
+    /**
+     * Combines resource declarations; names and matchers are captured before the recipe is constructed.
+     */
+    @ZenMethod
+    public static ZenRequirement combineResources(String id, ZenRequirement[] requirements) {
+        var inputs = new ObjectArrayList<GenericStack>(6);
+        var ticksIn = new ObjectArrayList<GenericStack>(6);
+        var ticksOut = new ObjectArrayList<GenericStack>(6);
+        var outputs = new ObjectArrayList<GenericStack>(6);
+        var fuzzy = new ObjectArrayList<FuzzyInputGroup>();
+        var dynamic = new ObjectArrayList<DynamicInputGroup>();
+        for (var requirement : requirements) {
+            var base = requirement.resource().payload();
+            if (!base.chance().equals(ResourceChance.ALWAYS) || base.randomOutputs() != null || base.voidExcessOutputs()
+                || base.inputAllocation() != InputAllocation.SPLITTABLE) {
+                throw new IllegalArgumentException("Combine before applying chance, random outputs, voiding or source allocation");
+            }
+            inputs.addAll(base.inputs());
+            ticksIn.addAll(base.inputsPerTick());
+            ticksOut.addAll(base.outputsPerTick());
+            outputs.addAll(base.outputs());
+            fuzzy.addAll(base.fuzzyInputs());
+            dynamic.addAll(base.dynamicInputs());
+        }
+        return resources(id, new ResourceRequirement(inputs, ticksIn, ticksOut, outputs, false, ResourceChance.ALWAYS, null, fuzzy, dynamic));
+    }
+
+    /**
+     * Each positive-weight entry may be picked once per output loop; repeated keys remain distinct entries.
+     */
     @ZenMethod
     public ZenRequirement randomOutputs(ZenResource[] candidates, int[] weights, int pickCount) {
-        if (candidates.length != weights.length) throw new IllegalArgumentException("Random output weights must match candidates");
+        if (candidates.length != weights.length)
+            throw new IllegalArgumentException("Random output weights must match candidates");
         var entries = new ObjectArrayList<WeightedSampling.Weighted<GenericStack>>(candidates.length);
         for (int i = 0; i < candidates.length; i++)
             entries.add(new WeightedSampling.Weighted<>(Objects.requireNonNull(candidates[i]).stack(), weights[i]));
@@ -155,7 +191,7 @@ public final class ZenRequirement {
 
     @ZenMethod
     public ZenRequirement customInputAllocation(ZenInputAllocation allocation) {
-        return withInputAllocation(Objects.requireNonNull(allocation).value());
+        return withInputAllocation(allocation.value());
     }
 
     private ZenRequirement withInputAllocation(InputAllocation allocation) {
@@ -165,31 +201,6 @@ public final class ZenRequirement {
             return new ZenRequirement(next, null, next);
         }
         throw new IllegalArgumentException("Input allocation requires a resource or energy requirement");
-    }
-
-    /** Combines resource declarations; names and matchers are captured before the recipe is constructed. */
-    @ZenMethod
-    public static ZenRequirement combineResources(String id, ZenRequirement[] requirements) {
-        var inputs = new ObjectArrayList<GenericStack>(6);
-        var ticksIn = new ObjectArrayList<GenericStack>(6);
-        var ticksOut = new ObjectArrayList<GenericStack>(6);
-        var outputs = new ObjectArrayList<GenericStack>(6);
-        var fuzzy = new ObjectArrayList<FuzzyInputGroup>();
-        var dynamic = new ObjectArrayList<DynamicInputGroup>();
-        for (var requirement : requirements) {
-            var base = Objects.requireNonNull(requirement).resource().payload();
-            if (!base.chance().equals(ResourceChance.ALWAYS) || base.randomOutputs() != null || base.voidExcessOutputs()
-                || base.inputAllocation() != InputAllocation.SPLITTABLE) {
-                throw new IllegalArgumentException("Combine before applying chance, random outputs, voiding or source allocation");
-            }
-            inputs.addAll(base.inputs());
-            ticksIn.addAll(base.inputsPerTick());
-            ticksOut.addAll(base.outputsPerTick());
-            outputs.addAll(base.outputs());
-            fuzzy.addAll(base.fuzzyInputs());
-            dynamic.addAll(base.dynamicInputs());
-        }
-        return resources(id, new ResourceRequirement(inputs, ticksIn, ticksOut, outputs, false, ResourceChance.ALWAYS, null, fuzzy, dynamic));
     }
 
     @ZenGetter("id")

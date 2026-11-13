@@ -30,12 +30,21 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RecipeDefinitionUpdatesTest {
-    private static ResourceLocation id(String name) { return new ResourceLocation("definition_updates", name); }
-    private static MachineRecipe recipe(int duration) { return new MachineRecipe(id("recipe"), duration, List.of()); }
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("definition_updates", name);
+    }
+
+    private static MachineRecipe recipe(int duration) {
+        return new MachineRecipe(id("recipe"), duration, List.of());
+    }
 
     private static void await(CountDownLatch latch) {
-        try { assertTrue(latch.await(5, TimeUnit.SECONDS), "Timed out waiting for worker handoff"); }
-        catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS), "Timed out waiting for worker handoff");
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
     }
 
     @Test
@@ -80,7 +89,11 @@ class RecipeDefinitionUpdatesTest {
             scheduler.submit(() -> {
                 future.set(updates.replace(updates.sessionId(), before, List.of(new RecipeRegistry.Definition(next, "v2")), List.of(nextCodec)));
                 entered.countDown();
-                try { await(release); } finally { exited.countDown(); }
+                try {
+                    await(release);
+                } finally {
+                    exited.countDown();
+                }
             }, ExecutionMode.CONCURRENT);
             var check = observer.submit(() -> {
                 await(entered);
@@ -88,10 +101,16 @@ class RecipeDefinitionUpdatesTest {
                     assertSame(before, fixture.registry.snapshot());
                     assertFalse(future.get().isDone());
                     assertThrows(IllegalArgumentException.class, () -> fixture.extensions.require(next));
-                } finally { release.countDown(); }
+                } finally {
+                    release.countDown();
+                }
             });
-            try { scheduler.tick(); check.get(5, TimeUnit.SECONDS); }
-            finally { release.countDown(); }
+            try {
+                scheduler.tick();
+                check.get(5, TimeUnit.SECONDS);
+            } finally {
+                release.countDown();
+            }
             assertEquals(RecipeDefinitionUpdates.Status.PUBLISHED, future.get().join().status());
             assertSame(old, fixture.codecs.snapshot().require(old.id(), "v1").recipe());
         }
@@ -107,7 +126,8 @@ class RecipeDefinitionUpdatesTest {
         RecipeDefinitionUpdates oldUpdates;
         var queued = new AtomicReference<CompletableFuture<RecipeDefinitionUpdates.Result>>();
         try (var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1)) {
-            oldUpdates = new RecipeDefinitionUpdates(fixture.registry, fixture.extensions, scheduler, UUID.randomUUID(), _ -> {});
+            oldUpdates = new RecipeDefinitionUpdates(fixture.registry, fixture.extensions, scheduler, UUID.randomUUID(), _ -> {
+            });
             oldPrepared = fixture.registry.prepareReplacement(expected, List.of(new RecipeRegistry.Definition(next, "v2")));
             scheduler.submit(() -> {
                 queued.set(oldUpdates.submit(oldUpdates.sessionId(), oldPrepared));
@@ -120,7 +140,8 @@ class RecipeDefinitionUpdatesTest {
         assertSame(expected, fixture.registry.snapshot());
         assertThrows(IllegalStateException.class, () -> fixture.registry.install(oldPrepared));
         try (var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1);
-             var updates = new RecipeDefinitionUpdates(fixture.registry, fixture.extensions, scheduler, UUID.randomUUID(), _ -> {})) {
+             var updates = new RecipeDefinitionUpdates(fixture.registry, fixture.extensions, scheduler, UUID.randomUUID(), _ -> {
+             })) {
             assertEquals(RecipeDefinitionUpdates.Status.REJECTED_STALE, updates.submit(updates.sessionId(), oldPrepared).join().status());
             assertEquals(RecipeDefinitionUpdates.Status.REJECTED_SESSION, updates.submit(oldUpdates.sessionId(), oldPrepared).join().status());
             assertEquals(RecipeDefinitionUpdates.Status.REJECTED_SESSION, oldUpdates.submit(oldUpdates.sessionId(), oldPrepared).join().status());
@@ -138,7 +159,9 @@ class RecipeDefinitionUpdatesTest {
         var callbackFailure = fixture.configurationFailure;
         var notificationFailure = new IllegalStateException("notification failed");
         try (var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1);
-             var updates = new RecipeDefinitionUpdates(fixture.registry, fixture.extensions, scheduler, UUID.randomUUID(), _ -> { throw notificationFailure; })) {
+             var updates = new RecipeDefinitionUpdates(fixture.registry, fixture.extensions, scheduler, UUID.randomUUID(), _ -> {
+                 throw notificationFailure;
+             })) {
             var expected = fixture.registry.snapshot();
             for (int i = 0; i < 2; i++) {
                 var result = updates.replace(updates.sessionId(), expected, List.of(new RecipeRegistry.Definition(failed, "bad")), List.of()).join();
@@ -172,10 +195,12 @@ class RecipeDefinitionUpdatesTest {
         independent.freeze();
         var prepared = independent.prepareReplacement(independent.snapshot(), List.of(new RecipeRegistry.Definition(next, "v2")));
         try (var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1);
-             var active = new RecipeDefinitionUpdates(fixture.registry, fixture.extensions, scheduler, UUID.randomUUID(), _ -> {})) {
+             var active = new RecipeDefinitionUpdates(fixture.registry, fixture.extensions, scheduler, UUID.randomUUID(), _ -> {
+             })) {
             assertTrue(active.accepting());
             assertThrows(IllegalStateException.class,
-                () -> new RecipeDefinitionUpdates(independent, fixture.extensions, scheduler, UUID.randomUUID(), _ -> {}));
+                () -> new RecipeDefinitionUpdates(independent, fixture.extensions, scheduler, UUID.randomUUID(), _ -> {
+                }));
             independent.install(prepared);
             assertSame(next, independent.catalog().recipes().getFirst());
         }

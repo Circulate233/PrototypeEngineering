@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.recipe.requirement;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
-
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
@@ -57,6 +55,7 @@ import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
@@ -128,7 +127,6 @@ class PureRecipePreparationTest {
         var storage = Objects.requireNonNull(warehouse.input());
         storage.insert(currentKey, 256, Actionable.MODULATE);
         var requirement = resource("overlay_inputs", stacks, List.of());
-        stacks.clear();
         var slots = host(warehouse);
         var process = process(slots, 0, requirement);
         var overlays = RecipeOverlays.getOrCreate(process);
@@ -146,11 +144,11 @@ class PureRecipePreparationTest {
             unchanged.workPerAdvance(1);
             finish(unchanged);
             assertEquals(RecipeProcess.Lifecycle.NEW, process.state().lifecycle());
+            var replacement = new ObjectArrayList<GenericStack>();
             for (int index = 0; index < 256; index++) {
-                stacks.add(new GenericStack(currentKey, 1));
+                replacement.add(new GenericStack(currentKey, 1));
             }
-            var patch = new ResourceRequirementPatch(stacks, null, null, null, true);
-            stacks.clear();
+            var patch = new ResourceRequirementPatch(replacement, null, null, null, true);
             overlays.put(requirement, "io", RecipeOverlayTypes.RESOURCE_IO, patch).complete();
             assertSame(patch.inputs(), overlays.resolve(requirement).payload().inputs());
             var changed = new PlannedRecipeCoordinator(backend.tasks, List.of(slots), deadline(), new PlannedCancellationToken(), () -> true);

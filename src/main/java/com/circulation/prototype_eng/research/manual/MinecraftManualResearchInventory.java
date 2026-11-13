@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.research.manual;
 
-import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
-
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.persistence.PlayerInventoryNbt;
@@ -11,6 +9,7 @@ import com.circulation.prototype_eng.api.research.manual.ManualResearchMaterialR
 import com.circulation.prototype_eng.api.research.manual.ManualResearchMaterialReceiptNbt;
 import com.circulation.prototype_eng.research.MaterialInventoryEvidence;
 import com.circulation.prototype_eng.research.PlayerDataPersistence;
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -40,9 +39,7 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
     private static final String NAMESPACE = "prototype_eng";
     private static final String STORE = "manual_material_receipts";
     private static final int MAX_RECEIPTS = 1024;
-    private final Thread owner = Thread.currentThread();
     private final EntityPlayerMP player;
-    private final UUID playerId;
     private final InventoryPlayer inventory;
     private final MinecraftServer server;
     private final IntPredicate protectedSlot;
@@ -58,7 +55,6 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
         this.player = Objects.requireNonNull(player);
         Objects.requireNonNull(protectedSlot);
         this.protectedSlot = protectedSlot;
-        playerId = Objects.requireNonNull(player.getUniqueID());
         inventory = Objects.requireNonNull(player.inventory);
         server = Objects.requireNonNull(player.getServerWorld().getMinecraftServer());
         requireOwner();
@@ -92,7 +88,7 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
     @Override
     public UUID playerId() {
         requireOwner();
-        return playerId;
+        return player.getUniqueID();
     }
 
     @Override
@@ -442,7 +438,7 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
     }
 
     private void requirePlayer(ManualResearchMaterialReceipt receipt) {
-        if (!playerId.equals(Objects.requireNonNull(receipt).playerId())) {
+        if (!player.getUniqueID().equals(Objects.requireNonNull(receipt).playerId())) {
             throw new IllegalArgumentException("Material receipt belongs to another player");
         }
     }
@@ -456,10 +452,10 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
 
     private void requireOwner() {
         var world = player.getServerWorld();
-        if (Thread.currentThread() != owner || player instanceof FakePlayer || world.isRemote
+        if (player instanceof FakePlayer
             || world.getMinecraftServer() != server || !server.isCallingFromMinecraftThread()
-            || !playerId.equals(player.getUniqueID()) || player.inventory != inventory
-            || server.getPlayerList().getPlayerByUUID(playerId) != player) {
+            || player.inventory != inventory
+            || server.getPlayerList().getPlayerByUUID(player.getUniqueID()) != player) {
             throw new IllegalStateException("Manual materials require the exact real online player on its server owner thread");
         }
     }

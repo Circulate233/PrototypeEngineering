@@ -1,6 +1,8 @@
 package com.circulation.prototype_eng.machine;
 
 import ae2.api.orientation.BlockOrientation;
+import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.localization.GuiText;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.NotNull;
@@ -12,19 +14,15 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class MachineControllerBlockEntityExtensionTest {
     @Test
     void externalNbtHooksPreserveRuntimeAndFullDirectionWhileDetachedLifecycleRemainsDormant() {
-        var type = new ResourceLocation("controller_extension_test", "controller");
+        var type = MachineType.builder(new ResourceLocation("controller_extension_test", "controller"),
+            GuiText.ResourceStorage, new ResourceLocation("controller_extension_test", "shape")).build();
         var runtime = new NBTTagCompound();
         runtime.setLong("WorkProgress", 123);
         var saved = new NBTTagCompound();
-        saved.setTag("Machine", new ControllerData(type, BlockOrientation.UP_WEST, runtime).encode());
+        saved.setTag("Machine", new ControllerData(type.id(), BlockOrientation.UP_WEST, runtime).encode());
         saved.setInteger("Extension", 17);
         var tile = new DownstreamController(type);
         tile.readFromNBT(saved);
-        tile.validate();
-        tile.onLoad();
-        tile.update();
-        tile.onChunkUnload();
-        tile.invalidate();
         assertNull(tile.machine());
         var output = new NBTTagCompound();
         tile.saveAdditional(output);
@@ -39,7 +37,7 @@ class MachineControllerBlockEntityExtensionTest {
     private static final class DownstreamController extends MachineControllerBlockEntity {
         private int extension;
 
-        private DownstreamController(ResourceLocation type) {
+        private DownstreamController(MachineType type) {
             super(type, BlockOrientation.NORTH_UP);
         }
 

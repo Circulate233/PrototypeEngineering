@@ -6,55 +6,71 @@ import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectAVLTreeMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
-/** Colors and explicit slot partitions stay separate while sharing unpartitioned uncolored storage. */
+/**
+ * Colors and explicit slot partitions stay separate while sharing unpartitioned uncolored storage.
+ * Captures borrow published partition lists. All returned binding/group lists are read-only.
+ */
 public final class ResourceInputGroups {
-    private ResourceInputGroups() {}
+    private ResourceInputGroups() {
+    }
 
     public static Capture capture(MachineHatches root) {
         var bindings = new ObjectArrayList<Binding>();
-        var expanded = new ObjectArrayList<ResourceHatch>();
+        var expanded = new ObjectArrayList<Binding>();
         for (var hatch : root.resources()) {
-            var partitions = List.copyOf(hatch.inputPartitions());
-            bindings.add(new Binding(hatch, hatch.inputGroup(), hatch.sharedInput(), partitions));
+            var partitions = hatch.inputPartitions();
+            var provider = new Binding(hatch, hatch.inputGroup(), hatch.sharedInput(), partitions);
+            bindings.add(provider);
             for (var partition : partitions) {
-                expanded.add(Objects.requireNonNull(partition));
-                if (partition != hatch)
-                    bindings.add(new Binding(partition, partition.inputGroup(), partition.sharedInput(), List.of(partition)));
+                var binding = partition == hatch ? provider
+                    : new Binding(partition, partition.inputGroup(), partition.sharedInput(), null);
+                expanded.add(binding);
+                if (partition != hatch) bindings.add(binding);
             }
         }
         var groups = new Object2ObjectLinkedOpenHashMap<ResourceInputGroup, ObjectArrayList<ResourceHatch>>();
-        for (var hatch : expanded) {
-            if (hatch.sharedInput()) continue;
-            var group = hatch.inputGroup();
+        for (var binding : expanded) {
+            if (binding.shared()) continue;
             // Empty/temporarily absent input views must remain observed by the quantity capture.
             // Their later appearance is a binding change, not evidence that the whole group is empty.
-            groups.computeIfAbsent(group, _ -> new ObjectArrayList<>());
+            groups.computeIfAbsent(binding.group(), _ -> new ObjectArrayList<>());
         }
         if (groups.isEmpty()) groups.put(ResourceInputGroup.TRANSPARENT, new ObjectArrayList<>());
+        var partitioned = new Object2ObjectAVLTreeMap<String, ObjectArrayList<ResourceHatch>>();
         groups.forEach((group, members) -> {
-            for (var hatch : expanded) {
-                var other = hatch.inputGroup();
-                boolean generic = other.partition().isEmpty() && other.color() == AEColor.TRANSPARENT;
-                boolean input = other.equals(group) || generic || hatch.sharedInput() && other.color() == group.color()
-                    && group.partition().startsWith(other.partition());
-                boolean output = (generic || other.partition().isEmpty() && other.color() == group.color()) && hatch.output() != null;
-                if (input || output) members.add(new GroupView(hatch, other, input));
-            }
+            if (!group.partition().isEmpty()) partitioned.put(group.partition(), members);
         });
+        // Distribute in source order. Only shared prefixes visit multiple groups; distinct pattern
+        // slots reach their exact group directly instead of rescanning all slots for every group.
+        for (var binding : expanded) {
+            var other = binding.group();
+            var view = new GroupView(binding.hatch(), other);
+            if (other.partition().isEmpty() && other.color() == AEColor.TRANSPARENT) {
+                for (var members : groups.values()) members.add(view);
+            } else if (binding.shared() && !other.partition().isEmpty()) {
+                for (var entry : partitioned.tailMap(other.partition()).object2ObjectEntrySet()) {
+                    if (!entry.getKey().startsWith(other.partition())) break;
+                    entry.getValue().add(view);
+                }
+            } else {
+                var members = groups.get(other);
+                if (members != null) members.add(view);
+            }
+        }
         var captures = new ObjectArrayList<Group>();
         groups.forEach((key, members) -> captures.add(new Group(key,
             new MachineHatches(members, root.energyInputs(), root.energyOutputs()))));
-        return new Capture(root, ObjectLists.unmodifiable(bindings), ObjectLists.unmodifiable(captures));
+        return new Capture(root, bindings, captures);
     }
 
-    public record Group(ResourceInputGroup id, MachineHatches hatches) {}
+    public record Group(ResourceInputGroup id, MachineHatches hatches) {
+    }
 
     public record Capture(MachineHatches root, List<Binding> bindings, List<Group> groups) {
         public boolean current(MachineHatches actual) {
@@ -69,9 +85,14 @@ public final class ResourceInputGroups {
         }
     }
 
-    public record Binding(ResourceHatch hatch, ResourceInputGroup group, boolean shared, List<? extends ResourceHatch> partitions) {
+    /**
+     * Only providers own a partition list; their already expanded leaf views are not recursive.
+     */
+    public record Binding(ResourceHatch hatch, ResourceInputGroup group, boolean shared,
+                          @Nullable List<? extends ResourceHatch> partitions) {
         boolean current() {
             if (!hatch.inputGroup().equals(group) || hatch.sharedInput() != shared) return false;
+            if (partitions == null) return true;
             var current = hatch.inputPartitions();
             if (current.size() != partitions.size()) return false;
             for (int i = 0; i < current.size(); i++) if (current.get(i) != partitions.get(i)) return false;
@@ -79,35 +100,38 @@ public final class ResourceInputGroups {
         }
     }
 
-    private record GroupView(ResourceHatch source, ResourceInputGroup captured, boolean includeInput)
+    private record GroupView(ResourceHatch source, ResourceInputGroup captured)
         implements ResourceHatch, ResourceRecipeObserver {
         @Override
         public Object observerIdentity() {
-            return includeInput && source instanceof ResourceRecipeObserver observer ? observer.observerIdentity() : this;
+            return source instanceof ResourceRecipeObserver observer ? observer.observerIdentity() : this;
         }
 
         @Override
         public void attached(RecipeProcess process) {
-            if (includeInput && source instanceof ResourceRecipeObserver observer) observer.attached(process);
+            if (source instanceof ResourceRecipeObserver observer) observer.attached(process);
         }
 
         @Override
         public void detached(RecipeProcess process) {
-            if (includeInput && source instanceof ResourceRecipeObserver observer) observer.detached(process);
+            if (source instanceof ResourceRecipeObserver observer) observer.detached(process);
         }
 
         @Override
         public void inputsCommitted(RecipeProcess process, RecipeStage stage, AEKey2LongMap amounts) {
-            if (includeInput && source instanceof ResourceRecipeObserver observer) observer.inputsCommitted(process, stage, amounts);
+            if (source instanceof ResourceRecipeObserver observer)
+                observer.inputsCommitted(process, stage, amounts);
         }
 
         @Override
         public void stageCommitted(RecipeProcess process, RecipeStage stage) {
-            if (includeInput && source instanceof ResourceRecipeObserver observer) observer.stageCommitted(process, stage);
+            if (source instanceof ResourceRecipeObserver observer)
+                observer.stageCommitted(process, stage);
         }
+
         @Override
         public @Nullable ResourceStorage input() {
-            return includeInput ? source.input() : null;
+            return source.input();
         }
 
         @Override
@@ -127,7 +151,7 @@ public final class ResourceInputGroups {
 
         @Override
         public @Nullable Object inputStorageIdentity() {
-            return includeInput ? source.inputStorageIdentity() : null;
+            return source.inputStorageIdentity();
         }
 
         @Override

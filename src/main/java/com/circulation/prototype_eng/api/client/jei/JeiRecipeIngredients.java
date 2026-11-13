@@ -9,8 +9,8 @@ import ae2.api.stacks.GenericStack;
 import ae2.client.gui.me.common.StackSizeRenderer;
 import ae2.core.localization.GuiText;
 import ae2.util.Platform;
-import com.circulation.prototype_eng.localization.JeiText;
 import com.circulation.prototype_eng.client.render.GuiItemLighting;
+import com.circulation.prototype_eng.localization.JeiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
@@ -165,7 +165,9 @@ public class JeiRecipeIngredients {
         }
     }
 
-    /** Same layer order for a key without an exact native query converter. */
+    /**
+     * Same layer order for a key without an exact native query converter.
+     */
     public static void renderFallback(Minecraft minecraft, JeiSlot slot, JeiRecipeDisplay.Resource resource, JeiRenderOptions options) {
         int lighting = GuiItemLighting.capture();
         try {
@@ -238,7 +240,9 @@ public class JeiRecipeIngredients {
         return queryConflicts.contains(resource);
     }
 
-    /** Native alternatives must use one ingredient type; equal keys retain their individual rows. */
+    /**
+     * Native alternatives must use one ingredient type; equal keys retain their individual rows.
+     */
     public boolean canCombine(List<JeiRecipeDisplay.Resource> rows) {
         if (rows.isEmpty()) return false;
         var bucket = converted.get(rows.getFirst());
@@ -275,7 +279,9 @@ public class JeiRecipeIngredients {
         for (var bucket : buckets) bucket.initialize(layout, inputs, outputs, nativeRegistry, options);
     }
 
-    /** Replaces only this page's slots, retaining its single tooltip callback per native type. */
+    /**
+     * Replaces only this page's slots, retaining its single tooltip callback per native type.
+     */
     public void reposition(IRecipeLayout layout, int previousSlots, List<JeiSlot> inputs, List<JeiSlot> outputs, JeiRenderOptions options) {
         for (var bucket : buckets) {
             bucket.reposition(layout, previousSlots, inputs, outputs, nativeRegistry, options);
@@ -294,7 +300,9 @@ public class JeiRecipeIngredients {
         showGroups(layout, inputGroups, outputGroups, inputSlots, outputSlots);
     }
 
-    /** Candidates cycle inside native groups; index() still contains every original candidate. */
+    /**
+     * Candidates cycle inside native groups; index() still contains every original candidate.
+     */
     public void showGroups(IRecipeLayout layout, List<List<JeiRecipeDisplay.Resource>> inputs,
                            List<List<JeiRecipeDisplay.Resource>> outputs, int inputSlots, int outputSlots) {
         if (inputs.size() > inputSlots || outputs.size() > outputSlots) {

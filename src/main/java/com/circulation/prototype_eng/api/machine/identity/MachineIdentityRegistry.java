@@ -5,7 +5,6 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
 
@@ -13,6 +12,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
+ * Published collections are read-only by contract; consumers must not modify them.
  * Server owner-thread registrations of persistent identity for loaded runtime generations.
  * The host checks actual world and tile validity before registration. This registry does not inspect a world,
  * resolve teams, discover network centers, or publish work permission or budgets.
@@ -126,7 +126,7 @@ public final class MachineIdentityRegistry implements AutoCloseable {
                 result.add(registration);
             }
         }
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     /**

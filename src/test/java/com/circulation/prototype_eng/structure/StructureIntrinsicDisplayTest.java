@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.structure;
 
-import it.unimi.dsi.fastutil.objects.Object2IntMaps;
-
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
 import com.circulation.prototype_eng.api.structure.StructureBounds;
@@ -14,24 +12,26 @@ import com.circulation.prototype_eng.api.structure.StructurePlan;
 import com.circulation.prototype_eng.api.structure.StructurePredicate;
 import com.circulation.prototype_eng.api.structure.StructurePredicates;
 import com.circulation.prototype_eng.api.structure.StructureQuery;
-import com.circulation.prototype_eng.api.structure.StructureReadSource;
 import com.circulation.prototype_eng.api.structure.StructureReadPlan;
+import com.circulation.prototype_eng.api.structure.StructureReadSource;
 import com.circulation.prototype_eng.api.structure.StructureSnapshot;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.client.preview.StructurePreviewExpansion;
 import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
 import com.circulation.prototype_eng.structure.tool.BuilderState;
 import com.circulation.prototype_eng.structure.tool.StructureBuildPlan;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;
 
-import java.time.Duration;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -55,7 +55,9 @@ class StructureIntrinsicDisplayTest {
         (_, _) -> fail("Detached test must not read a World"), UnaryOperator.identity(), String::equals);
     private static final BlockPos CELL = new BlockPos(1, 0, 0);
 
-    private static ResourceLocation id(String name) { return new ResourceLocation("intrinsic_test", name); }
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("intrinsic_test", name);
+    }
 
     private static StructureDisplay display(Map<String, String> nbt, Map<String, String> properties, String tile) {
         return new StructureDisplay("declared", List.of(new StructureDisplay.BlockOption(id("block"), 0, nbt, properties)), tile);
@@ -67,7 +69,39 @@ class StructureIntrinsicDisplayTest {
 
     private static TemplateStructure shape(String name, StructurePredicate predicate) {
         return TemplateStructure.create(id(name), BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false,
-            new StructurePattern(Map.of(CELL, predicate)), List.of(), List.of());
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(CELL, predicate))), List.of(), List.of());
+    }
+
+    private static void legacyString(DataOutputStream output, String text) throws IOException {
+        var bytes = text.getBytes(StandardCharsets.UTF_8);
+        output.writeInt(bytes.length);
+        output.write(bytes);
+    }
+
+    private static void legacyPosition(DataOutputStream output, BlockPos position) throws IOException {
+        output.writeInt(position.getX());
+        output.writeInt(position.getY());
+        output.writeInt(position.getZ());
+    }
+
+    private static StructurePattern countingPattern(AtomicInteger calls) {
+        var custom = new StructurePredicate() {
+            @Override
+            public void collectReads(StructureReadPlan.Builder plan, BlockPos position) {
+            }
+
+            @Override
+            public boolean matches(StructureSnapshot snapshot, BlockPos position) {
+                return true;
+            }
+
+            @Override
+            public StructureDisplay display() {
+                calls.incrementAndGet();
+                return StructureIntrinsicDisplayTest.display(Map.of(), Map.of(), null);
+            }
+        };
+        return new StructurePattern(new BlockPos2ObjectMap<>(Map.of(CELL, custom)));
     }
 
     @Test
@@ -88,9 +122,18 @@ class StructureIntrinsicDisplayTest {
         assertNotNull(StructureBuildPlan.expand(wire, shape.id(), BlockOrientation.NORTH_UP, Object2IntMaps.emptyMap()).cells().getFirst().display());
         var plan = new StructurePlan(shape, BlockPos.ORIGIN, BlockOrientation.NORTH_UP);
         var source = new StructureReadSource() {
-            @Override public void requireServerThread() { }
-            @Override public boolean isAreaLoaded(StructureBounds bounds) { return true; }
-            @Override @SuppressWarnings("unchecked") public <T> T read(StructureQuery<T> query, BlockPos position) {
+            @Override
+            public void requireServerThread() {
+            }
+
+            @Override
+            public boolean isAreaLoaded(StructureBounds bounds) {
+                return true;
+            }
+
+            @Override
+            @SuppressWarnings("unchecked")
+            public <T> T read(StructureQuery<T> query, BlockPos position) {
                 assertSame(VALUE, query);
                 return (T) "yes";
             }
@@ -157,9 +200,18 @@ class StructureIntrinsicDisplayTest {
         var plan = new StructurePlan(shape("empty_nbt", declaration), BlockPos.ORIGIN, BlockOrientation.NORTH_UP);
         for (boolean hasTile : List.of(false, true)) {
             var source = new StructureReadSource() {
-                @Override public void requireServerThread() { }
-                @Override public boolean isAreaLoaded(StructureBounds bounds) { return true; }
-                @Override @SuppressWarnings("unchecked") public <T> T read(StructureQuery<T> query, BlockPos position) {
+                @Override
+                public void requireServerThread() {
+                }
+
+                @Override
+                public boolean isAreaLoaded(StructureBounds bounds) {
+                    return true;
+                }
+
+                @Override
+                @SuppressWarnings("unchecked")
+                public <T> T read(StructureQuery<T> query, BlockPos position) {
                     return (T) (query == VALUE ? "yes" : hasTile ? new NBTTagCompound() : null);
                 }
             };
@@ -185,28 +237,16 @@ class StructureIntrinsicDisplayTest {
         assertSame(display, declaration.display());
     }
 
-    private static void legacyString(DataOutputStream output, String text) throws IOException {
-        var bytes = text.getBytes(StandardCharsets.UTF_8);
-        output.writeInt(bytes.length);
-        output.write(bytes);
-    }
-
-    private static void legacyPosition(DataOutputStream output, BlockPos position) throws IOException {
-        output.writeInt(position.getX());
-        output.writeInt(position.getY());
-        output.writeInt(position.getZ());
-    }
-
     @Test
     void unregisteredSameIdChildrenRetainIndependentIntrinsicPropertiesAndExplicitRootOverridesWin() {
         var first = shape("child", known(Map.of("side", "a")));
         var second = TemplateStructure.create(id("child"), BlockOrientation.NORTH_UP, new BlockPos(0, 1, 0), false,
-            new StructurePattern(Map.of(CELL, known(Map.of("side", "b")))), List.of(), List.of());
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(CELL, known(Map.of("side", "b"))))), List.of(), List.of());
         var parent = TemplateStructure.create(id("root"), BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false,
-            new StructurePattern(Map.of(new BlockPos(2, 0, 0), known(Map.of()))), List.of(), List.of(first, second));
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(new BlockPos(2, 0, 0), known(Map.of())))), List.of(), List.of(first, second));
         var override = display(Map.of("override", "yes"), Map.of(), null);
         var view = StructureCatalogCodec.decode(StructureCatalogCodec.encode(StructureCatalogView.capture(
-            new StructureCatalog(List.of(new StructureDefinition(parent, null, Map.of(new BlockPos(2, 0, 0), override)))), UUID.randomUUID(), 0)));
+            new StructureCatalog(List.of(new StructureDefinition(parent, null, new BlockPos2ObjectMap<>(Map.of(new BlockPos(2, 0, 0), override))))), UUID.randomUUID(), 0)));
         assertEquals(1, view.entries().size());
         assertEquals(3, view.nodes().size());
         var expansion = new StructurePreviewExpansion(view, parent.id(), new StructurePreviewSettings(BlockOrientation.NORTH_UP));
@@ -247,7 +287,8 @@ class StructureIntrinsicDisplayTest {
         assertTrue(alternatives.options().stream().anyMatch(option -> option.nbt().equals(Map.of("x", "a", "y", "one"))));
         assertTrue(alternatives.options().stream().anyMatch(option -> option.nbt().equals(Map.of("x", "b"))));
         var parts = new ArrayList<StructurePredicate>();
-        for (String tile : List.of("{x:1}", "{x:2}", "{x:3}")) parts.add(StructurePredicates.test(VALUE, _ -> true, display(Map.of(), Map.of(), tile)));
+        for (String tile : List.of("{x:1}", "{x:2}", "{x:3}"))
+            parts.add(StructurePredicates.test(VALUE, _ -> true, display(Map.of(), Map.of(), tile)));
         var conflict = Objects.requireNonNull(StructurePredicates.all(parts).display());
         assertFalse(conflict.complete());
         assertNull(conflict.tileNbt());
@@ -267,8 +308,9 @@ class StructureIntrinsicDisplayTest {
     void exponentiallyManyNbtChoicesHaveBoundedProjectionAndCachedCompletedRepresentation() {
         var parts = new ArrayList<StructurePredicate>();
         parts.add(known(Map.of()));
-        for (int i = 0; i < 40; i++) parts.add(StructurePredicates.any(List.of(
-            StructurePredicates.nbt(Map.of("key" + i, "a")), StructurePredicates.nbt(Map.of("key" + i, "b")))));
+        for (int i = 0; i < 40; i++)
+            parts.add(StructurePredicates.any(List.of(
+                StructurePredicates.nbt(Map.of("key" + i, "a")), StructurePredicates.nbt(Map.of("key" + i, "b")))));
         var declaration = StructurePredicates.all(parts);
         var display = Objects.requireNonNull(assertTimeout(Duration.ofSeconds(2), declaration::display));
         assertEquals(32, display.options().size());
@@ -292,14 +334,5 @@ class StructureIntrinsicDisplayTest {
         assertEquals(1, transformed.displays().size());
         assertEquals(1, calls.get());
         assertSame(transformed.displays(), transformed.displays());
-    }
-
-    private static StructurePattern countingPattern(AtomicInteger calls) {
-        var custom = new StructurePredicate() {
-            @Override public void collectReads(StructureReadPlan.Builder plan, BlockPos position) { }
-            @Override public boolean matches(StructureSnapshot snapshot, BlockPos position) { return true; }
-            @Override public StructureDisplay display() { calls.incrementAndGet(); return StructureIntrinsicDisplayTest.display(Map.of(), Map.of(), null); }
-        };
-        return new StructurePattern(Map.of(CELL, custom));
     }
 }

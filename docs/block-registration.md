@@ -70,7 +70,7 @@ GUI输入/输出原图采用用户指定的 `prototypemachinery/textures/gui/gui
 
 ## 通用 ME 库存
 
-`MeAssemblyConfig` 从 `config/prototype_eng/me_assemblies.cfg`
+`MEAssemblyConfig` 从 `config/prototype_eng/me_assemblies.cfg`
 读取输入槽数（默认18）与样板页数（默认1）；每页固定36样板。输入总成与接口共用输入槽数配置。输入标记表示期望保有量，真实输入槽按缺口从ME补足；标记清除或换种先尝试把旧材料退还ME，拒收时保留旧材料。输出没有标记或槽数上限，使用无序
 `AEKey2LongMap`，按实际资源类型动态生成可滚动的显示槽。每种资源最多 `Long.MAX_VALUE`，只做必要溢出及事务容量预检。
 

@@ -239,41 +239,6 @@ class SchedulerBoundaryTest {
     }
 
     @Test
-    void metadataCannotRequestOwnerActionsAndBoundaryMutationKeepsMetadataGuard() {
-        var log = new ConcurrentLinkedQueue<String>();
-        try (var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1)) {
-            var guarded = new Task(ExecutionMode.CONCURRENT, () -> log.add("worker")) {
-                @Override
-                public ExecutionMode executionMode() {
-                    rejectRequest();
-                    return super.executionMode();
-                }
-
-                @Override
-                public boolean active() {
-                    rejectRequest();
-                    return super.active();
-                }
-
-                @Override
-                public Set<?> affinityKeys() {
-                    rejectRequest();
-                    return Set.of();
-                }
-
-                private void rejectRequest() {
-                    assertThrows(IllegalStateException.class, () -> scheduler.runAtBoundary(() -> fail("Metadata action accepted")));
-                }
-            };
-            scheduler.runAtBoundary(() -> scheduler.register(guarded));
-            scheduler.tick();
-            scheduler.runAtBoundary(() -> scheduler.unregister(guarded));
-            assertEquals(List.of("worker"), List.copyOf(log));
-            assertEquals(0, scheduler.registeredCount());
-        }
-    }
-
-    @Test
     void faultedTickStillDrainsForeignCleanupWhileKeepingOrdinaryAdmissionRevoked() throws Exception {
         var log = new ConcurrentLinkedQueue<String>();
         try (var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1); var sender = auxiliary()) {

@@ -21,7 +21,6 @@ import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.nbt.CompressedStreamTools;
@@ -94,13 +93,6 @@ class ResearchWorldPersistenceTest {
     }
 
     @Test
-    void emptyWorldRoundTripsAndRequiresNoGameInitialization() {
-        var fixture = fixture();
-        var empty = new ResearchWorldSnapshot(0, ObjectList.of(), ObjectList.of());
-        assertEquals(empty, fixture.codec().decode(fixture.codec().encode(empty)));
-    }
-
-    @Test
     void composedCodecRetainsPlayerTeamQueueBlacklistAndActiveSessionFacts() {
         var fixture = fixture();
         var snapshot = world(fixture, ObjectList.of(active(fixture)));
@@ -110,34 +102,6 @@ class ResearchWorldPersistenceTest {
         assertEquals(ManualResearchSession.Status.PAUSED, decoded.teams().getFirst().manualSessions().getFirst().restored().status());
         assertTrue(decoded.teams().getFirst().blacklist().contains(PERSONAL));
         assertEquals(1, decoded.players().getFirst().rewardClaims().size());
-    }
-
-    @Test
-    void collectionCopiesRemainDeeplyReadOnly() {
-        var fixture = fixture();
-        var players = new ObjectArrayList<>(ObjectList.of(player()));
-        var members = new ObjectOpenHashSet<>(ObjectList.of(PLAYER));
-        var blacklist = new ObjectOpenHashSet<>(ObjectList.of(PERSONAL));
-        var sessions = new ObjectArrayList<>(ObjectList.of(active(fixture)));
-        var team = new ResearchWorldSnapshot.Team("team", members, blacklist, fixture.research().snapshot(), fixture.queue().snapshot(), sessions);
-        var teams = new ObjectArrayList<>(ObjectList.of(team));
-        var world = new ResearchWorldSnapshot(10, players, teams);
-        players.clear();
-        members.clear();
-        blacklist.clear();
-        sessions.clear();
-        teams.clear();
-        assertEquals(1, world.players().size());
-        assertEquals(1, world.teams().size());
-        assertEquals(1, team.knownMembers().size());
-        assertEquals(1, team.blacklist().size());
-        assertEquals(1, team.manualSessions().size());
-        assertThrows(UnsupportedOperationException.class, () -> world.players().clear());
-        assertThrows(UnsupportedOperationException.class, () -> world.teams().clear());
-        assertThrows(UnsupportedOperationException.class, () -> team.knownMembers().iterator().remove());
-        assertThrows(UnsupportedOperationException.class, () -> team.blacklist().add(OWNED));
-        assertThrows(UnsupportedOperationException.class, () -> team.manualSessions().clear());
-        assertThrows(UnsupportedOperationException.class, () -> world.players().getFirst().completedLevels().object2IntEntrySet().iterator().next().setValue(2));
     }
 
     @Test

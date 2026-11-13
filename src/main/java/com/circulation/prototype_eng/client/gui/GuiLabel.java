@@ -3,7 +3,9 @@ package com.circulation.prototype_eng.client.gui;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.renderer.GlStateManager;
 
-/** Bounded single-line text, with the same eight-pixel visible font height as PM's text widgets. */
+/**
+ * Bounded single-line text, with the same eight-pixel visible font height as PM's text widgets.
+ */
 public final class GuiLabel {
     private GuiLabel() {
     }

@@ -1,5 +1,8 @@
 package pe.visual.examples.run;
 
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
+import com.circulation.prototype_eng.util.ExternalEnumValues;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEFluidKey;
 import ae2.api.stacks.AEItemKey;
@@ -12,7 +15,6 @@ import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
-import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import ae2.api.orientation.BlockOrientation;
@@ -54,13 +56,25 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
 
-/** User-triggered setup and assertions against loaded tiles and their actual public ports. */
+/**
+ * User-triggered setup and assertions against loaded tiles and their actual public ports.
+ */
 public final class RunTestsCommand extends CommandBase {
     private static final Logger LOG = LogManager.getLogger("pe_run_tests");
     private final Object2ObjectLinkedOpenHashMap<String, CapturedExternal> externalCaptures = new Object2ObjectLinkedOpenHashMap<>();
-    @Override public String getName() { return "pe_run_tests"; }
-    @Override public int getRequiredPermissionLevel() { return 2; }
-    @Override public String getUsage(ICommandSender sender) {
+
+    @Override
+    public String getName() {
+        return "pe_run_tests";
+    }
+
+    @Override
+    public int getRequiredPermissionLevel() {
+        return 2;
+    }
+
+    @Override
+    public String getUsage(ICommandSender sender) {
         return "/pe_run_tests registered | gallery <x> <y> <z> | inspect/hatch-check/cancel <x> <y> <z> | "
             + "assert-resource <x> <y> <z> <input|output> <item-id|water|lava> <amount> [meta] | "
             + "assert-energy <x> <y> <z> <input|output> <FE> | assert-active <x> <y> <z> <min> <max> [recipe-id] | "
@@ -69,7 +83,8 @@ public final class RunTestsCommand extends CommandBase {
             + "auto <x> <y> <z> <input:boolean> <output:boolean> | fe-rate <x> <y> <z> <input:-1..> <output:-1..>";
     }
 
-    @Override public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
+    @Override
+    public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
         if (args.length == 1 && args[0].equals("registered")) {
             CoreCases.runRegisteredChecks();
             tell(sender, "Registered checks returned successfully. Review pe_run_tests PASS/FAIL log entries.");
@@ -79,8 +94,10 @@ public final class RunTestsCommand extends CommandBase {
         if ((args.length == 2 || args.length == 3) && args[0].equals("external-invalid")) {
             var captured = externalCaptures.get(args[1]);
             if (captured == null) throw new CommandException("No captured external hatch for " + args[1]);
-            var input = captured.hatch().input(); var output = captured.hatch().output();
-            var iron = key("minecraft:iron_ingot", 0); var gold = key("minecraft:gold_nugget", 0);
+            var input = captured.hatch().input();
+            var output = captured.hatch().output();
+            var iron = key("minecraft:iron_ingot", 0);
+            var gold = key("minecraft:gold_nugget", 0);
             boolean retired = !captured.hatch().isValid() && !input.isValid() && !output.isValid()
                 && input.insert(iron, 1, Actionable.MODULATE) == 0 && input.extract(iron, 1, Actionable.MODULATE) == 0
                 && output.insert(gold, 1, Actionable.MODULATE) == 0 && output.extract(gold, 1, Actionable.MODULATE) == 0
@@ -97,9 +114,10 @@ public final class RunTestsCommand extends CommandBase {
                 fresh = next != null && next.isValid() && next.input().context() != input.context() && next.output().context() != output.context();
             }
             String expected = args.length == 3 ? args[2] : "REPLACED";
-            if (!expected.equals("REPLACED") && !expected.equals("REMOVED")) throw new CommandException("Expected REPLACED or REMOVED");
+            if (!expected.equals("REPLACED") && !expected.equals("REMOVED"))
+                throw new CommandException("Expected REPLACED or REMOVED");
             result(sender, "external physical replacement invalidation", sameWorld && retired
-                && (expected.equals("REPLACED") ? fresh : replacement == null),
+                    && (expected.equals("REPLACED") ? fresh : replacement == null),
                 "old tile=" + captured.tile() + " old contexts invalid=" + retired + " replacement=" + replacement + " fresh=" + fresh);
             if (retired && (fresh || replacement == null)) externalCaptures.remove(args[1]);
             return;
@@ -110,14 +128,18 @@ public final class RunTestsCommand extends CommandBase {
         }
         if (args.length == 4 && args[0].equals("gallery-check")) {
             var origin = parseBlockPos(sender, args, 1, false);
-            for (int tier = 1; tier <= 10; tier++) for (int mode = 0; mode < 3; mode++) for (int energy = 0; energy < 2; energy++) {
-                var target = origin.add((tier - 1) * 3, 0, mode * 3 + (energy == 0 ? 0 : 10));
-                if (!sender.getEntityWorld().isBlockLoaded(target)) throw new CommandException("Gallery chunk not loaded at " + target);
-                var tile = sender.getEntityWorld().getTileEntity(target);
-                if (tile == null) throw new CommandException("Gallery hatch missing at " + target);
-                tell(sender, "Gallery target=" + target + " tier=" + tier + " mode=" + mode + " FE=" + (energy == 1));
-                inspectHatch(sender, tile); hatchCheck(sender, tile);
-            }
+            for (int tier = 1; tier <= 10; tier++)
+                for (int mode = 0; mode < 3; mode++)
+                    for (int energy = 0; energy < 2; energy++) {
+                        var target = origin.add((tier - 1) * 3, 0, mode * 3 + (energy == 0 ? 0 : 10));
+                        if (!sender.getEntityWorld().isBlockLoaded(target))
+                            throw new CommandException("Gallery chunk not loaded at " + target);
+                        var tile = sender.getEntityWorld().getTileEntity(target);
+                        if (tile == null) throw new CommandException("Gallery hatch missing at " + target);
+                        tell(sender, "Gallery target=" + target + " tier=" + tier + " mode=" + mode + " FE=" + (energy == 1));
+                        inspectHatch(sender, tile);
+                        hatchCheck(sender, tile);
+                    }
             tell(sender, "All 60 gallery targets visited. Read every PASS/FAIL/PRECONDITION above; completion is not an aggregate PASS.");
             return;
         }
@@ -129,25 +151,30 @@ public final class RunTestsCommand extends CommandBase {
         if (tile == null) throw new CommandException("No tile entity at target");
         switch (args[0]) {
             case "world-query" -> {
-                if (args.length != 5 && args.length != 6) throw new WrongUsageException("world-query x y z MATCHED|MISMATCH [orientation]");
-                if (!args[4].equals("MATCHED") && !args[4].equals("MISMATCH")) throw new CommandException("Expected MATCHED or MISMATCH");
+                if (args.length != 5 && args.length != 6)
+                    throw new WrongUsageException("world-query x y z MATCHED|MISMATCH [orientation]");
+                if (!args[4].equals("MATCHED") && !args[4].equals("MISMATCH"))
+                    throw new CommandException("Expected MATCHED or MISMATCH");
                 var host = controller(tile);
                 BlockOrientation expectedOrientation = args.length == 6 ? orientation(args[5]) : null;
                 boundary(host, sender, _ -> {
                     if (expectedOrientation != null && host.orientation() != expectedOrientation) {
-                        result(sender, "World query actual orientation", false, "actual=" + host.orientation() + " expected=" + expectedOrientation); return;
+                        result(sender, "World query actual orientation", false, "actual=" + host.orientation() + " expected=" + expectedOrientation);
+                        return;
                     }
                     tell(sender, CoreCases.worldSample(world, position, host.orientation(), args[4].equals("MATCHED")));
                 });
             }
             case "external-check" -> {
                 requireLength(args, 4);
-                if (!(tile instanceof ExternalFilteredHatch external)) throw new CommandException("Target is not the external AE tile");
+                if (!(tile instanceof ExternalFilteredHatch external))
+                    throw new CommandException("Target is not the external AE tile");
                 externalCheck(sender, external);
             }
             case "external-capture" -> {
                 requireLength(args, 5);
-                if (!(tile instanceof ExternalFilteredHatch external)) throw new CommandException("Target is not the external AE tile");
+                if (!(tile instanceof ExternalFilteredHatch external))
+                    throw new CommandException("Target is not the external AE tile");
                 var hatch = Objects.requireNonNull(HatchCapabilities.findResource(external, null));
                 externalCaptures.put(args[4], new CapturedExternal(external, hatch, hatch.input().snapshot(), hatch.output().snapshot()));
                 tell(sender, "Captured actual external tile/capability/token contexts as " + args[4] + "; manually remove or replace this physical tile, then external-invalid.");
@@ -155,14 +182,17 @@ public final class RunTestsCommand extends CommandBase {
             case "external-discovered" -> {
                 requireLength(args, 7);
                 var providerPos = parseBlockPos(sender, args, 4, false);
-                if (!world.isBlockLoaded(providerPos)) throw new CommandException("External provider chunk is not loaded");
+                if (!world.isBlockLoaded(providerPos))
+                    throw new CommandException("External provider chunk is not loaded");
                 var provider = world.getTileEntity(providerPos);
-                if (!(provider instanceof ExternalFilteredHatch)) throw new CommandException("Provider is not the external AE tile");
+                if (!(provider instanceof ExternalFilteredHatch))
+                    throw new CommandException("Provider is not the external AE tile");
                 var actual = HatchCapabilities.findResource(provider, null);
                 var host = controller(tile);
                 boundary(host, sender, machine -> {
                     boolean discovered = false;
-                    for (var resource : MachineHatches.get(machine).resources()) if (resource == actual) discovered = true;
+                    for (var resource : MachineHatches.get(machine).resources())
+                        if (resource == actual) discovered = true;
                     result(sender, "actual structure discovers external capability", host.formed() && actual != null && discovered,
                         "formed=" + host.formed() + " provider=" + providerPos + " actual capability=" + actual + " discovered=" + discovered);
                 });
@@ -174,17 +204,19 @@ public final class RunTestsCommand extends CommandBase {
                         + " identity=" + host.savedIdentity() + " mode=" + machine.executionMode());
                     var data = machine.components().get(DataComponents.MACHINE);
                     tell(sender, "ordinary machine data=" + (data == null ? "absent" : data.snapshot()));
-                    for (var recipeHost : machine.recipeHosts()) for (var process : recipeHost.activeProcesses()) {
-                        var processData = process.components().get(DataComponents.PROCESS);
-                        tell(sender, "process=" + process.recipe().id() + " seed=" + process.seed() + " state=" + process.state()
-                            + " ordinary process data=" + (processData == null ? "absent" : processData.snapshot()));
-                    }
+                    for (var recipeHost : machine.recipeHosts())
+                        for (var process : recipeHost.activeProcesses()) {
+                            var processData = process.components().get(DataComponents.PROCESS);
+                            tell(sender, "process=" + process.recipe().id() + " seed=" + process.seed() + " state=" + process.state()
+                                + " ordinary process data=" + (processData == null ? "absent" : processData.snapshot()));
+                        }
                 });
                 else inspectHatch(sender, tile);
             }
             case "assert-resource", "assert-resource-range" -> {
                 boolean range = args[0].equals("assert-resource-range");
-                if (args.length != (range ? 8 : 7) && args.length != (range ? 9 : 8)) throw new WrongUsageException(getUsage(sender));
+                if (args.length != (range ? 8 : 7) && args.length != (range ? 9 : 8))
+                    throw new WrongUsageException(getUsage(sender));
                 var storage = resource(tile, args[4]);
                 long actual = storage.amount(key(args[5], args.length == (range ? 9 : 8) ? parseInt(args[range ? 8 : 7], 0, 32767) : 0));
                 long expected = parseLong(args[6], 0, Long.MAX_VALUE);
@@ -215,10 +247,11 @@ public final class RunTestsCommand extends CommandBase {
                 boundary(controller(tile), sender, machine -> {
                     int count = 0;
                     boolean own = true;
-                    for (var host : machine.recipeHosts()) for (var process : host.activeProcesses()) {
-                        own &= process.owner() == machine && process.host() == host;
-                        if (recipe == null || process.recipe().id().equals(recipe)) count++;
-                    }
+                    for (var host : machine.recipeHosts())
+                        for (var process : host.activeProcesses()) {
+                            own &= process.owner() == machine && process.host() == host;
+                            if (recipe == null || process.recipe().id().equals(recipe)) count++;
+                        }
                     result(sender, "active roster", own && count >= minimum && count <= maximum,
                         "actual=" + count + " range=" + minimum + ".." + maximum + " exact-owner=" + own);
                 });
@@ -233,35 +266,44 @@ public final class RunTestsCommand extends CommandBase {
             }
             case "cancel-check" -> {
                 requireLength(args, 4);
-                var coal = key("minecraft:coal", 0); var water = key("water", 0);
-                var nuggets = key("minecraft:iron_nugget", 0); var diamonds = key("minecraft:diamond", 0);
+                var coal = key("minecraft:coal", 0);
+                var water = key("water", 0);
+                var nuggets = key("minecraft:iron_nugget", 0);
+                var diamonds = key("minecraft:diamond", 0);
                 boundary(controller(tile), sender, machine -> {
                     var data = machine.components().get(DataComponents.MACHINE);
                     if (data == null || NativeRunCases.number(data, "run_paused") != 1) {
-                        tell(sender, "PRECONDITION pause a fresh native four-cycle round before cancel-check"); return;
+                        tell(sender, "PRECONDITION pause a fresh native four-cycle round before cancel-check");
+                        return;
                     }
                     long ticks = 0;
                     int active = 0;
-                    for (var host : machine.recipeHosts()) for (var process : host.activeProcesses()) {
-                        if (!process.recipe().id().getPath().startsWith("native_cycle_")) {
-                            tell(sender, "PRECONDITION cancel-check accepts only native_cycle processes"); return;
+                    for (var host : machine.recipeHosts())
+                        for (var process : host.activeProcesses()) {
+                            if (!process.recipe().id().getPath().startsWith("native_cycle_")) {
+                                tell(sender, "PRECONDITION cancel-check accepts only native_cycle processes");
+                                return;
+                            }
+                            ticks = Math.addExact(ticks, process.state().successfulTicks());
+                            active++;
                         }
-                        ticks = Math.addExact(ticks, process.state().successfulTicks()); active++;
-                    }
                     var hatches = MachineHatches.get(machine);
                     long beforeCoal = resourceAmount(hatches, coal, false), beforeWater = resourceAmount(hatches, water, false);
                     long beforeNuggets = resourceAmount(hatches, nuggets, true), beforeDiamonds = resourceAmount(hatches, diamonds, true);
                     long beforeEnergy = 0;
-                    for (var input : hatches.energyInputs()) beforeEnergy = Math.addExact(beforeEnergy, input.storedEnergy());
+                    for (var input : hatches.energyInputs())
+                        beforeEnergy = Math.addExact(beforeEnergy, input.storedEnergy());
                     boolean preflight = active > 0 && beforeNuggets == ticks && beforeDiamonds == 0;
                     if (!preflight) {
                         tell(sender, "PRECONDITION fresh unfinished round: active=" + active + " successful-ticks=" + ticks
-                            + " nuggets=" + beforeNuggets + " diamonds=" + beforeDiamonds); return;
+                            + " nuggets=" + beforeNuggets + " diamonds=" + beforeDiamonds);
+                        return;
                     }
                     int cancelled = 0;
                     for (var host : machine.recipeHosts()) cancelled = Math.addExact(cancelled, host.cancelAll());
                     long afterEnergy = 0;
-                    for (var input : hatches.energyInputs()) afterEnergy = Math.addExact(afterEnergy, input.storedEnergy());
+                    for (var input : hatches.energyInputs())
+                        afterEnergy = Math.addExact(afterEnergy, input.storedEnergy());
                     boolean retained = cancelled == active && resourceAmount(hatches, coal, false) == beforeCoal
                         && resourceAmount(hatches, water, false) == beforeWater && resourceAmount(hatches, nuggets, true) == beforeNuggets
                         && resourceAmount(hatches, diamonds, true) == 0 && beforeEnergy == afterEnergy;
@@ -308,7 +350,8 @@ public final class RunTestsCommand extends CommandBase {
             }
             case "checkpoint", "restore" -> {
                 requireLength(args, 5);
-                if (!args[4].matches("[a-zA-Z0-9_-]{1,64}")) throw new CommandException("Use a label containing letters, numbers, _ or -");
+                if (!args[4].matches("[a-zA-Z0-9_-]{1,64}"))
+                    throw new CommandException("Use a label containing letters, numbers, _ or -");
                 var host = controller(tile);
                 boundary(host, sender, machine -> checkpoint(sender, host, machine, args[4], args[0].equals("restore")));
             }
@@ -343,12 +386,14 @@ public final class RunTestsCommand extends CommandBase {
             }
             case "profile-status" -> {
                 requireLength(args, 5);
-                if (!(tile instanceof ReconfigurableHatch target)) throw new CommandException("Target has no public reconfiguration status");
+                if (!(tile instanceof ReconfigurableHatch target))
+                    throw new CommandException("Target has no public reconfiguration status");
                 result(sender, "profile status", target.configurationStatus().name().equals(args[4]), "actual=" + target.configurationStatus() + " expected=" + args[4]);
             }
             case "assert-profile" -> {
                 requireLength(args, 8);
-                if (!(tile instanceof ResourceHatchGuiHost host)) throw new CommandException("Target has no public resource profile");
+                if (!(tile instanceof ResourceHatchGuiHost host))
+                    throw new CommandException("Target has no public resource profile");
                 var storage = args[4].equals("input") ? host.storage().input() : args[4].equals("output") ? host.storage().output() : null;
                 if (storage == null) throw new CommandException("Physical resource side does not exist");
                 int slots = parseInt(args[5], 1, 1_000_000);
@@ -361,20 +406,24 @@ public final class RunTestsCommand extends CommandBase {
                 requireLength(args, 6);
                 boolean input = parseBoolean(args[4]), output = parseBoolean(args[5]);
                 if (tile instanceof ResourceHatchSettings settings) {
-                    settings.setAutoInput(input); settings.setAutoOutput(output);
+                    settings.setAutoInput(input);
+                    settings.setAutoOutput(output);
                     result(sender, "resource auto switches", settings.autoInput() == input && settings.autoOutput() == output,
                         "actual=" + settings.autoInput() + "/" + settings.autoOutput());
                 } else if (tile instanceof EnergyHatchGuiHost settings) {
-                    settings.setAutoInput(input); settings.setAutoOutput(output);
+                    settings.setAutoInput(input);
+                    settings.setAutoOutput(output);
                     result(sender, "FE auto switches", settings.autoInput() == input && settings.autoOutput() == output,
                         "actual=" + settings.autoInput() + "/" + settings.autoOutput());
                 } else throw new CommandException("Target has no public auto IO settings");
             }
             case "fe-rate" -> {
                 requireLength(args, 6);
-                if (!(tile instanceof EnergyHatchGuiHost settings)) throw new CommandException("Target has no FE settings");
+                if (!(tile instanceof EnergyHatchGuiHost settings))
+                    throw new CommandException("Target has no FE settings");
                 long input = parseLong(args[4], -1, Long.MAX_VALUE), output = parseLong(args[5], -1, Long.MAX_VALUE);
-                settings.setMaxInputRate(input); settings.setMaxOutputRate(output);
+                settings.setMaxInputRate(input);
+                settings.setMaxOutputRate(output);
                 var port = tile.getCapability(CapabilityEnergy.ENERGY, null);
                 boolean zero = port != null && (input != 0 || port.receiveEnergy(1, true) == 0)
                     && (output != 0 || port.extractEnergy(1, true) == 0);
@@ -397,32 +446,39 @@ public final class RunTestsCommand extends CommandBase {
         captured.setProperty("type", host.type().id().toString());
         captured.setProperty("ticks", Long.toString(NativeRunCases.number(data, "machine_ticks")));
         captured.setProperty("nonce", Objects.toString(data.get("last_tick_nonce"), ""));
-        for (var recipeHost : machine.recipeHosts()) for (var process : recipeHost.activeProcesses()) {
-            var processData = Objects.requireNonNull(process.components().get(DataComponents.PROCESS));
-            String prefix = "process." + process.seed();
-            captured.setProperty(prefix + ".recipe", process.recipe().id().toString());
-            captured.setProperty(prefix + ".revision", Objects.requireNonNull(RecipeRegistry.INSTANCE.snapshot().revision(process.recipe()), "Process has no declared revision"));
-            captured.setProperty(prefix + ".ticks", Long.toString(process.state().successfulTicks()));
-            captured.setProperty(prefix + ".observed", Long.toString(NativeRunCases.number(processData, "observed_ticks")));
-        }
+        for (var recipeHost : machine.recipeHosts())
+            for (var process : recipeHost.activeProcesses()) {
+                var processData = Objects.requireNonNull(process.components().get(DataComponents.PROCESS));
+                String prefix = "process." + process.seed();
+                captured.setProperty(prefix + ".recipe", process.recipe().id().toString());
+                captured.setProperty(prefix + ".revision", Objects.requireNonNull(RecipeRegistry.INSTANCE.snapshot().revision(process.recipe()), "Process has no declared revision"));
+                captured.setProperty(prefix + ".ticks", Long.toString(process.state().successfulTicks()));
+                captured.setProperty(prefix + ".observed", Long.toString(NativeRunCases.number(processData, "observed_ticks")));
+            }
         try {
             if (!restore) {
                 Files.createDirectories(file.getParent());
-                try (var out = Files.newOutputStream(file)) { captured.store(out, "Actual joined PE owner checkpoint; user-triggered only"); }
+                try (var out = Files.newOutputStream(file)) {
+                    captured.store(out, "Actual joined PE owner checkpoint; user-triggered only");
+                }
                 tell(sender, "Recorded " + file.toAbsolutePath() + " " + captured + "; stop/rejoin or unload/reload, then restore same label.");
                 return;
             }
             var expected = new Properties();
-            try (var in = Files.newInputStream(file)) { expected.load(in); }
+            try (var in = Files.newInputStream(file)) {
+                expected.load(in);
+            }
             boolean same = true;
             for (String key : List.of("dimension", "position", "machine", "owner", "type", "nonce"))
                 same &= Objects.equals(expected.getProperty(key), captured.getProperty(key));
             same &= Long.parseLong(captured.getProperty("ticks")) >= Long.parseLong(expected.getProperty("ticks"));
-            for (String key : expected.stringPropertyNames()) if (key.startsWith("process.")) {
-                String actual = captured.getProperty(key);
-                if (key.endsWith(".recipe") || key.endsWith(".revision")) same &= Objects.equals(expected.getProperty(key), actual);
-                else same &= actual != null && Long.parseLong(actual) >= Long.parseLong(expected.getProperty(key));
-            }
+            for (String key : expected.stringPropertyNames())
+                if (key.startsWith("process.")) {
+                    String actual = captured.getProperty(key);
+                    if (key.endsWith(".recipe") || key.endsWith(".revision"))
+                        same &= Objects.equals(expected.getProperty(key), actual);
+                    else same &= actual != null && Long.parseLong(actual) >= Long.parseLong(expected.getProperty(key));
+                }
             result(sender, "save/rejoin or unload/reload", same, "expected=" + expected + " actual=" + captured
                 + " (keep checkpoint processes alive until verification)");
         } catch (IOException failure) {
@@ -433,17 +489,19 @@ public final class RunTestsCommand extends CommandBase {
     private static void gallery(ICommandSender sender, BlockPos origin) throws CommandException {
         var player = getCommandSenderAsPlayer(sender);
         var world = sender.getEntityWorld();
-        var placements = new Object2ObjectLinkedOpenHashMap<BlockPos, Block>();
+        var placements = new BlockPos2ObjectMap<Block>();
         String[] modes = {"input", "output", "mixed"};
-        for (int tier = 1; tier <= 10; tier++) for (int mode = 0; mode < 3; mode++) {
-            String suffix = modes[mode] + "_hatch_" + tier;
-            placements.put(origin.add((tier - 1) * 3, 0, mode * 3), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng", suffix))));
-            placements.put(origin.add((tier - 1) * 3, 0, mode * 3 + 10), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng", "energy_" + suffix))));
-        }
-        for (var position : placements.keySet()) if (position.getY() < 0 || position.getY() >= world.getHeight()
-            || !world.getWorldBorder().contains(position) || !world.isBlockLoaded(position)
-            || !world.isAirBlock(position) || !world.isBlockModifiable(player, position))
-            throw new CommandException("Gallery requires loaded, modifiable air at " + position);
+        for (int tier = 1; tier <= 10; tier++)
+            for (int mode = 0; mode < 3; mode++) {
+                String suffix = modes[mode] + "_hatch_" + tier;
+                placements.put(origin.add((tier - 1) * 3, 0, mode * 3), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng", suffix))));
+                placements.put(origin.add((tier - 1) * 3, 0, mode * 3 + 10), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng", "energy_" + suffix))));
+            }
+        for (var position : placements.keySet())
+            if (position.getY() < 0 || position.getY() >= world.getHeight()
+                || !world.getWorldBorder().contains(position) || !world.isBlockLoaded(position)
+                || !world.isAirBlock(position) || !world.isBlockModifiable(player, position))
+                throw new CommandException("Gallery requires loaded, modifiable air at " + position);
         int placed = 0;
         for (var entry : placements.entrySet()) {
             if (!world.setBlockState(entry.getKey(), entry.getValue().getDefaultState(), 3))
@@ -466,15 +524,20 @@ public final class RunTestsCommand extends CommandBase {
                 + " actual=" + host.storage().output().snapshot().available());
         } else if (tile instanceof EnergyHatchGuiHost host) {
             tell(sender, "FE tier=" + host.tier().level() + " mode=" + host.mode() + " rates=" + host.maxInputRate() + "/" + host.maxOutputRate());
-            if (host.inputStorage() != null) tell(sender, "input=" + host.inputStorage().storedEnergy() + " capacity=" + host.inputStorage().capacity());
-            if (host.outputStorage() != null) tell(sender, "output=" + host.outputStorage().storedEnergy() + " capacity=" + host.outputStorage().capacity());
+            if (host.inputStorage() != null)
+                tell(sender, "input=" + host.inputStorage().storedEnergy() + " capacity=" + host.inputStorage().capacity());
+            if (host.outputStorage() != null)
+                tell(sender, "output=" + host.outputStorage().storedEnergy() + " capacity=" + host.outputStorage().capacity());
         } else throw new CommandException("Target is not a controller or public hatch GUI host");
     }
+
     private static void hatchCheck(ICommandSender sender, TileEntity tile) throws CommandException {
         if (tile instanceof ResourceHatchGuiHost host) {
-            var input = host.storage().input(); var output = host.storage().output();
+            var input = host.storage().input();
+            var output = host.storage().output();
             result(sender, "resource public direction", (input != null) == host.mode().hasInput() && (output != null) == host.mode().hasOutput(), host.mode().toString());
-            if (input != null && output != null) result(sender, "mixed resource independent sides", input.context() != output.context(), "input=" + input.context() + " output=" + output.context());
+            if (input != null && output != null)
+                result(sender, "mixed resource independent sides", input.context() != output.context(), "input=" + input.context() + " output=" + output.context());
             boolean empty = (input == null || input.snapshot().available().isEmpty()) && (output == null || output.snapshot().available().isEmpty());
             var items = tile.getCapability(CapabilityItemHandler.ITEM_HANDLER_CAPABILITY, null);
             var fluids = tile.getCapability(CapabilityFluidHandler.FLUID_HANDLER_CAPABILITY, null);
@@ -483,10 +546,11 @@ public final class RunTestsCommand extends CommandBase {
                 var remaining = items.insertItem(0, iron, true);
                 int filled = fluids.fill(new FluidStack(FluidRegistry.WATER, 1), false);
                 result(sender, "Forge resource simulation direction", (host.mode().hasInput() ? remaining.isEmpty() && filled == 1 : remaining.getCount() == 1 && filled == 0)
-                    && (input == null || input.amount(key("minecraft:iron_ingot", 0)) == 0)
-                    && (input == null || input.amount(key("water", 0)) == 0),
+                        && (input == null || input.amount(key("minecraft:iron_ingot", 0)) == 0)
+                        && (input == null || input.amount(key("water", 0)) == 0),
                     "item remainder=" + remaining.getCount() + " simulated water=" + filled + " real balance unchanged");
-            } else tell(sender, "PRECONDITION external simulation check requires empty hatch with Forge item and fluid ports; reserve probes still run below.");
+            } else
+                tell(sender, "PRECONDITION external simulation check requires empty hatch with Forge item and fluid ports; reserve probes still run below.");
             for (String side : List.of("input", "output")) {
                 var storage = side.equals("input") ? input : output;
                 if (storage == null) continue;
@@ -495,9 +559,11 @@ public final class RunTestsCommand extends CommandBase {
                 rollbackProbe(sender, side + " fluid", storage, key("water", 0));
             }
         } else if (tile instanceof EnergyHatchGuiHost host) {
-            var input = host.inputStorage(); var output = host.outputStorage();
+            var input = host.inputStorage();
+            var output = host.outputStorage();
             result(sender, "FE public direction", (input != null) == host.mode().hasInput() && (output != null) == host.mode().hasOutput(), host.mode().toString());
-            if (input != null && output != null) result(sender, "mixed FE independent sides", input.context() != output.context(), "input=" + input.context() + " output=" + output.context());
+            if (input != null && output != null)
+                result(sender, "mixed FE independent sides", input.context() != output.context(), "input=" + input.context() + " output=" + output.context());
             if (input != null) rollbackEnergy(sender, "input", input);
             if (output != null) rollbackEnergy(sender, "output", output);
             var port = tile.getCapability(CapabilityEnergy.ENERGY, null);
@@ -505,8 +571,10 @@ public final class RunTestsCommand extends CommandBase {
                 && port.canExtract() == host.mode().hasOutput(), "actual=" + port);
         } else throw new CommandException("Target is not a public hatch host");
     }
+
     private static void rollbackProbe(ICommandSender sender, String id, ResourceStorage storage, AEKey key) {
-        var context = storage.context(); context.lock();
+        var context = storage.context();
+        context.lock();
         try {
             long before = storage.amount(key);
             var reservation = storage.reserveInsert(storage.snapshot(), key, 1);
@@ -517,20 +585,33 @@ public final class RunTestsCommand extends CommandBase {
             var token = Objects.requireNonNull(reservation.reservation());
             boolean applied = false;
             try {
-                if (token.canApply()) { token.apply(); applied = true; }
-            } finally { token.rollback(); }
+                if (token.canApply()) {
+                    token.apply();
+                    applied = true;
+                }
+            } finally {
+                token.rollback();
+            }
             result(sender, id + " real reserve/apply/rollback", applied && storage.amount(key) == before
-                && token.resolution() == ResourceReservation.Resolution.ROLLED_BACK,
+                    && token.resolution() == ResourceReservation.Resolution.ROLLED_BACK,
                 "before=" + before + " after=" + storage.amount(key) + " resolution=" + token.resolution());
-        } finally { context.unlock(); }
+        } finally {
+            context.unlock();
+        }
     }
+
     private static void externalCheck(ICommandSender sender, ExternalFilteredHatch tile) throws CommandException {
         var hatch = Objects.requireNonNull(HatchCapabilities.findResource(tile, null));
-        var input = hatch.input(); var output = hatch.output();
-        var iron = key("minecraft:iron_ingot", 0); var gold = key("minecraft:gold_nugget", 0);
-        var diamond = key("minecraft:diamond", 0); var water = key("water", 0); var lava = key("lava", 0);
+        var input = hatch.input();
+        var output = hatch.output();
+        var iron = key("minecraft:iron_ingot", 0);
+        var gold = key("minecraft:gold_nugget", 0);
+        var diamond = key("minecraft:diamond", 0);
+        var water = key("water", 0);
+        var lava = key("lava", 0);
         if (!input.snapshot().available().isEmpty() || !output.snapshot().available().isEmpty()) {
-            tell(sender, "PRECONDITION external-check needs both actual sides empty; finish/extract previous products first"); return;
+            tell(sender, "PRECONDITION external-check needs both actual sides empty; finish/extract previous products first");
+            return;
         }
         boolean rejected = input.insert(diamond, 1, Actionable.MODULATE) == 0 && input.insert(lava, 1, Actionable.MODULATE) == 0
             && output.insert(iron, 1, Actionable.MODULATE) == 0 && output.insert(lava, 1, Actionable.MODULATE) == 0
@@ -549,13 +630,17 @@ public final class RunTestsCommand extends CommandBase {
             && fluidPort.fill(new FluidStack(FluidRegistry.LAVA, 1), false) == 0
             && fluidPort.fill(new FluidStack(FluidRegistry.WATER, 1), false) == 1;
         result(sender, "external Forge item/fluid filter", externalPorts, "actual rejected diamond/lava and accepted iron/water simulation");
-        rollbackProbe(sender, "external input iron", input, iron); rollbackProbe(sender, "external input water", input, water);
-        rollbackProbe(sender, "external output gold", output, gold); rollbackProbe(sender, "external output water", output, water);
+        rollbackProbe(sender, "external input iron", input, iron);
+        rollbackProbe(sender, "external input water", input, water);
+        rollbackProbe(sender, "external output gold", output, gold);
+        rollbackProbe(sender, "external output water", output, water);
         result(sender, "external probes retain both balances", input.snapshot().available().isEmpty() && output.snapshot().available().isEmpty()
             && input.context() != output.context(), "actual input=" + input.snapshot().available() + " output=" + output.snapshot().available());
     }
+
     private static void rollbackEnergy(ICommandSender sender, String id, EnergyHatch storage) {
-        var context = storage.context(); context.lock();
+        var context = storage.context();
+        context.lock();
         try {
             long before = storage.storedEnergy();
             var reservation = storage.reserveReceiveEnergy(storage.energySnapshot(), 1);
@@ -566,13 +651,21 @@ public final class RunTestsCommand extends CommandBase {
             var token = Objects.requireNonNull(reservation.reservation());
             boolean applied = false;
             try {
-                if (token.canApply()) { token.apply(); applied = true; }
-            } finally { token.rollback(); }
+                if (token.canApply()) {
+                    token.apply();
+                    applied = true;
+                }
+            } finally {
+                token.rollback();
+            }
             result(sender, "FE " + id + " real reserve/apply/rollback", applied && storage.storedEnergy() == before
-                && token.resolution() == ResourceReservation.Resolution.ROLLED_BACK,
+                    && token.resolution() == ResourceReservation.Resolution.ROLLED_BACK,
                 "before=" + before + " after=" + storage.storedEnergy() + " resolution=" + token.resolution());
-        } finally { context.unlock(); }
+        } finally {
+            context.unlock();
+        }
     }
+
     private static ResourceStorage resource(TileEntity tile, String side) throws CommandException {
         var hatch = HatchCapabilities.findResource(tile, null);
         if (hatch == null) throw new CommandException("Target has no real resource capability");
@@ -580,6 +673,7 @@ public final class RunTestsCommand extends CommandBase {
         if (storage == null) throw new CommandException("Target has no " + side + " resource side");
         return storage;
     }
+
     private static long resourceAmount(MachineHatches hatches, AEKey key, boolean output) {
         long total = 0;
         for (var hatch : hatches.resources()) {
@@ -588,50 +682,71 @@ public final class RunTestsCommand extends CommandBase {
         }
         return total;
     }
+
     private static EnergyHatch energy(TileEntity tile, String side) throws CommandException {
         if (!(tile instanceof EnergyHatchGuiHost host)) throw new CommandException("Target has no public FE host");
         var storage = side.equals("input") ? host.inputStorage() : side.equals("output") ? host.outputStorage() : null;
         if (storage == null) throw new CommandException("Target has no " + side + " FE side");
         return storage;
     }
+
     private static AEKey key(String name, int meta) throws CommandException {
-        if (name.equals("water") || name.equals("lava")) return Objects.requireNonNull(AEFluidKey.of(name.equals("water") ? FluidRegistry.WATER : FluidRegistry.LAVA));
+        if (name.equals("water") || name.equals("lava"))
+            return Objects.requireNonNull(AEFluidKey.of(name.equals("water") ? FluidRegistry.WATER : FluidRegistry.LAVA));
         var item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(name));
         if (item == null) throw new CommandException("Unknown item " + name);
         return Objects.requireNonNull(AEItemKey.of(new ItemStack(item, 1, meta)));
     }
+
     private static MachineControllerHost controller(TileEntity tile) throws CommandException {
-        if (!(tile instanceof MachineControllerHost host)) throw new CommandException("Target is not a PE controller host");
+        if (!(tile instanceof MachineControllerHost host))
+            throw new CommandException("Target is not a PE controller host");
         return host;
     }
+
     private static void boundary(MachineControllerHost host, ICommandSender sender, java.util.function.Consumer<MachineInstance> action) {
         host.readGuiAtBoundary(() -> {
             var machine = host.machine();
-            if (machine == null) { tell(sender, "PRECONDITION controller has no attached runtime yet"); return; }
+            if (machine == null) {
+                tell(sender, "PRECONDITION controller has no attached runtime yet");
+                return;
+            }
             action.accept(machine);
         });
     }
+
     private static void requireLength(String[] args, int count) throws WrongUsageException {
         if (args.length != count) throw new WrongUsageException("Wrong number of pe_run_tests arguments");
     }
+
     private static BlockOrientation orientation(String name) throws CommandException {
-        for (var orientation : BlockOrientation.values()) if (orientation.name().equals(name)) return orientation;
+        for (var orientation : ExternalEnumValues.BLOCK_ORIENTATIONS)
+            if (orientation.name().equals(name)) return orientation;
         throw new CommandException("Unknown block orientation " + name);
     }
-    private record CapturedExternal(ExternalFilteredHatch tile, ResourceHatch hatch, com.circulation.prototype_eng.api.storage.StorageSnapshot inputSnapshot,
-                                    com.circulation.prototype_eng.api.storage.StorageSnapshot outputSnapshot) { }
+
+    private record CapturedExternal(ExternalFilteredHatch tile, ResourceHatch hatch,
+                                    com.circulation.prototype_eng.api.storage.StorageSnapshot inputSnapshot,
+                                    com.circulation.prototype_eng.api.storage.StorageSnapshot outputSnapshot) {
+    }
+
     public static void tell(ICommandSender sender, String message) {
         LOG.info(message);
         sender.sendMessage(new TextComponentString("[pe_run_tests] " + message));
     }
+
     public static void result(ICommandSender sender, String id, boolean passed, String actual) {
         tell(sender, (passed ? "PASS " : "FAIL ") + id + ": " + actual);
     }
-    @Override public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] args, @Nullable BlockPos targetPos) {
-        if (args.length == 1) return getListOfStringsMatchingLastWord(args, "registered", "gallery", "gallery-check", "inspect", "hatch-check", "assert-resource", "assert-resource-range", "assert-weighted", "assert-energy",
-            "assert-active", "cancel", "cancel-check", "data-arm", "data-verify", "checkpoint", "restore", "assert-owner", "auto", "fe-rate", "pause", "resume", "assert-completed",
-            "profile-resource", "profile-status", "assert-profile", "external-check", "external-capture", "external-invalid", "external-discovered", "world-query");
-        if (args.length == 5 && (args[0].equals("assert-resource") || args[0].equals("assert-energy"))) return getListOfStringsMatchingLastWord(args, "input", "output");
+
+    @Override
+    public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] args, @Nullable BlockPos targetPos) {
+        if (args.length == 1)
+            return getListOfStringsMatchingLastWord(args, "registered", "gallery", "gallery-check", "inspect", "hatch-check", "assert-resource", "assert-resource-range", "assert-weighted", "assert-energy",
+                "assert-active", "cancel", "cancel-check", "data-arm", "data-verify", "checkpoint", "restore", "assert-owner", "auto", "fe-rate", "pause", "resume", "assert-completed",
+                "profile-resource", "profile-status", "assert-profile", "external-check", "external-capture", "external-invalid", "external-discovered", "world-query");
+        if (args.length == 5 && (args[0].equals("assert-resource") || args[0].equals("assert-energy")))
+            return getListOfStringsMatchingLastWord(args, "input", "output");
         return List.of();
     }
 }

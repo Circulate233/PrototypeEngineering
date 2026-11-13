@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.structure;
 
-import it.unimi.dsi.fastutil.booleans.BooleanArrayList;
-
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -40,7 +38,8 @@ import com.circulation.prototype_eng.energy.EnergyBuffer;
 import com.circulation.prototype_eng.localization.RecipeText;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
+import it.unimi.dsi.fastutil.booleans.BooleanArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -116,7 +115,7 @@ class StructureRefreshTest {
             }
         };
         return TemplateStructure.create(id("reusable"), BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false,
-            new StructurePattern(Map.of(FIRST, predicate)), List.of(), List.of());
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(FIRST, predicate))), List.of(), List.of());
     }
 
     private static StructureRefresh.Request parallelRequest(Fixture fixture) {
@@ -153,7 +152,7 @@ class StructureRefreshTest {
 
     private static StructureConfiguration planningFailure(AssertionError failure, Runnable beforeFailure) {
         return new StructureConfiguration(new TemplateStructure(id("legacy_planning_failure"), BlockOrientation.NORTH_UP,
-            BlockPos.ORIGIN, false, new StructurePattern(Map.of(FIRST, StructurePredicates.test(MARKER, "body"::equals))),
+            BlockPos.ORIGIN, false, new StructurePattern(new BlockPos2ObjectMap<>(Map.of(FIRST, StructurePredicates.test(MARKER, "body"::equals)))),
             List.of(), List.of()) {
             @Override
             public StructureOperation<MachineStructure> beginTransform(StructureTransform rotation) {
@@ -292,7 +291,7 @@ class StructureRefreshTest {
             return "body".equals(value);
         });
         fixture.host.configuration = new StructureConfiguration(TemplateStructure.create(id("changing_mismatch"),
-            BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false, new StructurePattern(Map.of(FIRST, predicate)),
+            BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false, new StructurePattern(new BlockPos2ObjectMap<>(Map.of(FIRST, predicate))),
             List.of(), List.of()), BlockOrientation.NORTH_UP);
         var result = fixture.result();
         fixture.host.values.put(FIRST, "changed");
@@ -772,14 +771,14 @@ class StructureRefreshTest {
 
     private static final class Host implements MachineStructureHost {
         private final Thread serverThread = Thread.currentThread();
-        private final Map<BlockPos, String> values = new Object2ObjectOpenHashMap<>();
-        private final Map<BlockPos, StructureHatchBinding> bindings = new Object2ObjectOpenHashMap<>();
-        private final Map<BlockPos, StructureComponentProvider> providers = new Object2ObjectOpenHashMap<>();
+        private final Map<BlockPos, String> values = new BlockPos2ObjectMap<>();
+        private final Map<BlockPos, StructureHatchBinding> bindings = new BlockPos2ObjectMap<>();
+        private final Map<BlockPos, StructureComponentProvider> providers = new BlockPos2ObjectMap<>();
         private final ObjectArrayList<BlockPos> observedReads = new ObjectArrayList<>();
         private BlockPos controllerPosition = BlockPos.ORIGIN;
         private StructureConfiguration configuration = new StructureConfiguration(
             new SliceStructure(id("shape"), BlockOrientation.NORTH_UP, FIRST, false,
-                new StructurePattern(Map.of(BlockPos.ORIGIN, StructurePredicates.test(MARKER, "body"::equals))),
+                new StructurePattern(new BlockPos2ObjectMap<>(Map.of(BlockPos.ORIGIN, StructurePredicates.test(MARKER, "body"::equals)))),
                 1, 3, FIRST, List.of(), List.of()), BlockOrientation.NORTH_UP);
         private boolean present = true;
         private int reads;

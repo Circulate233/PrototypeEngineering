@@ -90,7 +90,9 @@ public abstract class MachineControllerBlock<T extends AEBaseTile & MachineContr
         return getOrientationStrategy().setOrientation(state, orientation.getSide(RelativeSide.FRONT), orientation.getSpin());
     }
 
-    /** The registered controller's representative state, also used by the concrete structure preview. */
+    /**
+     * The registered controller's representative state, also used by the concrete structure preview.
+     */
     public IBlockState previewState(BlockOrientation orientation, boolean formed) {
         return state(getDefaultState(), orientation).withProperty(FORMED, formed);
     }

@@ -9,7 +9,9 @@ import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
 import net.minecraft.nbt.NBTTagCompound;
 import org.jetbrains.annotations.Nullable;
 
-/** Reads item display facts without constructing a tile, world or balance. */
+/**
+ * Reads item display facts without constructing a tile, world or balance.
+ */
 public final class HatchItemProfiles {
     private HatchItemProfiles() {
     }
@@ -65,7 +67,9 @@ public final class HatchItemProfiles {
             out == null ? null : new EnergyHatchConfiguration.Side(Math.max(out.capacity(), output), out.transfer()));
     }
 
-    /** Physical automation directions use the corresponding saved side's ceiling and user setting. */
+    /**
+     * Physical automation directions use the corresponding saved side's ceiling and user setting.
+     */
     public static EnergyRates energyRates(@Nullable NBTTagCompound saved, EnergyHatchConfiguration profile) {
         long input = energyRate(saved, "MaxInRate");
         long output = energyRate(saved, "MaxOutRate");

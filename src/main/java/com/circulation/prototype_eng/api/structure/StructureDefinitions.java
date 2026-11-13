@@ -8,7 +8,9 @@ import net.minecraft.util.math.BlockPos;
 
 import java.util.List;
 
-/** Public construction of the existing budgeted shapes shared by Java and scripting declarations. */
+/**
+ * Public construction of the existing budgeted shapes shared by Java and scripting declarations.
+ */
 public final class StructureDefinitions {
     private StructureDefinitions() {
     }

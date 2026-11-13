@@ -7,12 +7,9 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.util.ResourceLocation;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.AbstractSet;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -21,6 +18,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
+ * Published collections are read-only by contract and must not be modified by consumers.
  * Typed component assembly and ordered phase execution migrated from PM's MachineComponentMap.
  * One owner executes/mutates it at a time. A tick captures its entire dispatch list once, so edits
  * made by callbacks take effect on the next tick. The plain tick aborts on any callback failure;
@@ -168,7 +166,9 @@ public final class ComponentMap<E> {
         components.add(type, new Binding<>(type, component), type.dependencies());
     }
 
-    /** Capture a complete insertion's declared and pending edges before an atomic publication. */
+    /**
+     * Capture a complete insertion's declared and pending edges before an atomic publication.
+     */
     @Nullable
     @SuppressWarnings("ReturnOfInnerClass") // The candidate belongs to this exact component map and graph revision.
     public <C> PreparedPut preparePut(ComponentType<E, C> type, C component, RecipeWorkBudget work) {
@@ -181,7 +181,9 @@ public final class ComponentMap<E> {
         return candidate == null ? null : new PreparedPut(type, candidate);
     }
 
-    /** The caller has admitted every map write and holds its owner until the whole group installs. */
+    /**
+     * The caller has admitted every map write and holds its owner until the whole group installs.
+     */
     public void installPuts(List<PreparedPut> prepared) {
         var candidates = new ObjectArrayList<TopologicalComponentMap.PreparedNode<ComponentType<E, ?>, Binding<E, ?>>>();
         var unique = new ObjectLinkedOpenHashSet<ComponentType<E, ?>>(prepared.size());
@@ -258,9 +260,9 @@ public final class ComponentMap<E> {
         var nodes = components.assemblyIterator();
         while (nodes.hasNext()) {
             var node = nodes.next();
-            result.add(node.component().saved(new FrozenDependencies<>(node.dependencies())));
+            result.add(node.component().saved(node.dependencies()));
         }
-        frozenAssembly = ObjectLists.unmodifiable(result);
+        frozenAssembly = result;
         assemblyCapturedRevision = revision;
         return frozenAssembly;
     }
@@ -272,7 +274,9 @@ public final class ComponentMap<E> {
         return Objects.requireNonNull(orderedBindings(new RecipeWorkBudget(Long.MAX_VALUE)));
     }
 
-    /** Original component dependency order, charged before each current publication visit. */
+    /**
+     * Original component dependency order, charged before each current publication visit.
+     */
     @Nullable
     public List<SavedBinding<E, ?>> orderedBindings(RecipeWorkBudget work) {
         long revision = components.revision();
@@ -286,9 +290,9 @@ public final class ComponentMap<E> {
         if (ordered == null) return null;
         for (var node : ordered) {
             if (!work.take()) return null;
-            result.add(node.component().saved(new FrozenDependencies<>(node.dependencies())));
+            result.add(node.component().saved(node.dependencies()));
         }
-        frozenOrderedBindings = ObjectLists.unmodifiable(result);
+        frozenOrderedBindings = result;
         orderedBindingsRevision = revision;
         return frozenOrderedBindings;
     }
@@ -397,38 +401,19 @@ public final class ComponentMap<E> {
         for (var node : orderWithSystems(components)) {
             node.component().appendEntries(entries);
         }
-        dispatch = ObjectLists.unmodifiable(entries);
+        dispatch = entries;
         dispatchRevision = components.revision();
         return dispatch;
     }
 
     /**
-     * Private proof: TopologicalComponentMap.Node already froze this exact immutable set.
+     * Completed dependency sets are borrowed read-only from the captured component graph.
      */
-    private static final class FrozenDependencies<E> extends AbstractSet<ComponentType<E, ?>> {
-        private final Set<ComponentType<E, ?>> values;
-
-        private FrozenDependencies(Set<ComponentType<E, ?>> values) {
-            this.values = values;
-        }
-
-        @Override
-        public @NotNull Iterator<ComponentType<E, ?>> iterator() {
-            return values.iterator();
-        }
-
-        @Override
-        public int size() {
-            return values.size();
-        }
-    }
-
     public record SavedBinding<E, C>(ComponentType<E, C> type, C component, Set<ComponentType<E, ?>> dependencies) {
         public SavedBinding {
             Objects.requireNonNull(type);
             Objects.requireNonNull(component);
-            dependencies = dependencies instanceof FrozenDependencies<?> ? dependencies
-                : ObjectSets.unmodifiable(new ObjectLinkedOpenHashSet<>(dependencies));
+            Objects.requireNonNull(dependencies);
         }
     }
 
@@ -450,7 +435,9 @@ public final class ComponentMap<E> {
             this.entries = entries;
         }
 
-        /** Transfers a suspended dispatch chunk; reclaim only after its worker has actually exited. */
+        /**
+         * Transfers a suspended dispatch chunk; reclaim only after its worker has actually exited.
+         */
         @SuppressWarnings("ReturnOfInnerClass") // The one-use claim retains this exact captured dispatch.
         public WorkerDispatch delegateWorker(Runnable action) {
             requireBoundary();
@@ -458,44 +445,6 @@ public final class ComponentMap<E> {
                 throw new IllegalStateException("Only the undispatched creator may delegate component work");
             delegated = new WorkerDispatch(Objects.requireNonNull(action));
             return delegated;
-        }
-
-        public final class WorkerDispatch implements Runnable {
-            private final Runnable action;
-            @Nullable
-            private Thread worker;
-            private boolean started;
-            private boolean complete;
-
-            private WorkerDispatch(Runnable action) {
-                this.action = action;
-            }
-
-            @Override
-            public void run() {
-                synchronized (this) {
-                    if (started || complete || delegated != this) throw new IllegalStateException("Dispatch worker claim was consumed");
-                    started = true;
-                    worker = Thread.currentThread();
-                }
-                try {
-                    action.run();
-                } finally {
-                    synchronized (this) {
-                        worker = null;
-                        complete = true;
-                    }
-                }
-            }
-
-            public void reclaim() {
-                if (Thread.currentThread() != creator) throw new IllegalStateException("Only the dispatch creator may reclaim it");
-                synchronized (this) {
-                    if (delegated != this || started && !complete) throw new IllegalStateException("Dispatch worker is still active or foreign");
-                    complete = true;
-                    delegated = null;
-                }
-            }
         }
 
         /**
@@ -583,6 +532,47 @@ public final class ComponentMap<E> {
         }
 
         private enum Phase {PREPARED, NORMAL, ABORTED, FINISHED}
+
+        public final class WorkerDispatch implements Runnable {
+            private final Runnable action;
+            @Nullable
+            private Thread worker;
+            private boolean started;
+            private boolean complete;
+
+            private WorkerDispatch(Runnable action) {
+                this.action = action;
+            }
+
+            @Override
+            public void run() {
+                synchronized (this) {
+                    if (started || complete || delegated != this)
+                        throw new IllegalStateException("Dispatch worker claim was consumed");
+                    started = true;
+                    worker = Thread.currentThread();
+                }
+                try {
+                    action.run();
+                } finally {
+                    synchronized (this) {
+                        worker = null;
+                        complete = true;
+                    }
+                }
+            }
+
+            public void reclaim() {
+                if (Thread.currentThread() != creator)
+                    throw new IllegalStateException("Only the dispatch creator may reclaim it");
+                synchronized (this) {
+                    if (delegated != this || started && !complete)
+                        throw new IllegalStateException("Dispatch worker is still active or foreign");
+                    complete = true;
+                    delegated = null;
+                }
+            }
+        }
     }
 
     /**
@@ -714,7 +704,7 @@ public final class ComponentMap<E> {
                     if (node == null) {
                         if (!budget.take()) return false;
                         node = assembly.next();
-                        captured.add(node.component().saved(new FrozenDependencies<>(node.dependencies())));
+                        captured.add(node.component().saved(node.dependencies()));
                         if (!validate) {
                             node = null;
                             continue;
@@ -730,7 +720,7 @@ public final class ComponentMap<E> {
                     node = null;
                 }
                 if (!validate) {
-                    frozenAssembly = ObjectLists.unmodifiable(captured);
+                    frozenAssembly = captured;
                     assemblyCapturedRevision = revision;
                     phase = 6;
                     return true;
@@ -850,7 +840,7 @@ public final class ComponentMap<E> {
             }
             if (ordered != captured.size()) throw new IllegalStateException("Circular component dependency");
             graphValidatedRevision = revision;
-            frozenAssembly = ObjectLists.unmodifiable(captured);
+            frozenAssembly = captured;
             assemblyCapturedRevision = revision;
             phase = 6;
             return true;
@@ -864,7 +854,7 @@ public final class ComponentMap<E> {
         public List<SavedBinding<E, ?>> result() {
             if (phase != 6 || !current())
                 throw new IllegalStateException("Component binding capture is incomplete or stale");
-            return cachedResult == null ? ObjectLists.unmodifiable(captured) : cachedResult;
+            return cachedResult == null ? captured : cachedResult;
         }
     }
 }

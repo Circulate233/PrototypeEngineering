@@ -27,58 +27,104 @@ import java.util.Objects;
 
 import static pe.visual.examples.run.CoreCases.*;
 
-/** Exercises the script-created canonical requirements through real stage transactions. */
+/**
+ * Exercises the script-created canonical requirements through real stage transactions.
+ */
 final class CoreRecipeChecks {
     private static final org.apache.logging.log4j.Logger LOG = org.apache.logging.log4j.LogManager.getLogger("pe_run_tests");
     private static final RecipeRequirementType<Integer> NUMBER = new RecipeRequirementType<>(id("core_number"), new RecipeRequirementSystem<>() {
-        @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+        @Override
+        public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Integer> requirement) {
             var data = Objects.requireNonNull(process.components().get(DataComponents.PROCESS));
             var before = data.get("number");
             return new RequirementTransaction() {
-                @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                @Override public void commit() { data.set("number", new NBTTagInt(requirement.payload())); }
-                @Override public void rollback() { data.set("number", before); }
+                @Override
+                public ProcessResult result() {
+                    return ProcessResult.SUCCESS;
+                }
+
+                @Override
+                public void commit() {
+                    data.set("number", new NBTTagInt(requirement.payload()));
+                }
+
+                @Override
+                public void rollback() {
+                    data.set("number", before);
+                }
             };
         }
     });
     private static final RecipeRequirement<Integer> TARGET = NUMBER.requirement(id("core_external_target"), 10);
     private static final RecipeOverlayType<Integer, Integer> ADD = new RecipeOverlayType<>(id("core_external_add"), NUMBER, Math::addExact);
     private static final NbtCodec<Integer> INTEGER_CODEC = new NbtCodec<>() {
-        @Override public NBTTagCompound encode(Integer value) { var tag = new NBTTagCompound(); tag.setInteger("value", value); return tag; }
-        @Override public Integer decode(NBTTagCompound tag) { return tag.getInteger("value"); }
+        @Override
+        public NBTTagCompound encode(Integer value) {
+            var tag = new NBTTagCompound();
+            tag.setInteger("value", value);
+            return tag;
+        }
+
+        @Override
+        public Integer decode(NBTTagCompound tag) {
+            return tag.getInteger("value");
+        }
     };
     private static ZenRequirementOverlay currentOverlay = new ZenRequirementOverlay(TARGET, ADD, 5);
     private static ZenRecipe currentRecipe = new ZenRecipe(RecipeProcessNbt.builder(
-        new MachineRecipe(id("core_external"), 2, List.of(TARGET)), "run-v1")
-        .component(DataComponents.PROCESS, DataComponents.PROCESS_CODEC).overlay(ADD, INTEGER_CODEC)
-        .validator(process -> {
-            int expected = RecipeOverlays.getOrCreate(process).resolve(TARGET).payload();
-            if (Objects.requireNonNull(process.components().get(DataComponents.PROCESS)).get("number") instanceof NBTTagInt value && value.getInt() != expected)
-                throw new IllegalArgumentException("External value differs from exact overlay");
-        }).build());
-    private CoreRecipeChecks() {}
-    static ZenRequirement externalRequirement() { return new ZenRequirement(TARGET); }
-    static ZenRequirementOverlay externalOverlay() { return currentOverlay; }
-    static ZenRecipe externalRecipe() { return currentRecipe; }
+                                                                               new MachineRecipe(id("core_external"), 2, List.of(TARGET)), "run-v1")
+                                                                           .component(DataComponents.PROCESS, DataComponents.PROCESS_CODEC).overlay(ADD, INTEGER_CODEC)
+                                                                           .validator(process -> {
+                                                                               int expected = RecipeOverlays.getOrCreate(process).resolve(TARGET).payload();
+                                                                               if (Objects.requireNonNull(process.components().get(DataComponents.PROCESS)).get("number") instanceof NBTTagInt value && value.getInt() != expected)
+                                                                                   throw new IllegalArgumentException("External value differs from exact overlay");
+                                                                           }).build());
+
+    private CoreRecipeChecks() {
+    }
+
+    static ZenRequirement externalRequirement() {
+        return new ZenRequirement(TARGET);
+    }
+
+    static ZenRequirementOverlay externalOverlay() {
+        return currentOverlay;
+    }
+
+    static ZenRecipe externalRecipe() {
+        return currentRecipe;
+    }
 
     static Buffers buffers(long material, long energy) {
-        var input = new BufferedResourceHatch(HatchMode.INPUT, 2, new Reference2LongArrayMap<>(new AEKeyType[]{MATERIAL_TYPE, SECONDARY_TYPE}, new long[]{1000L, 2000L}), () -> {});
-        var output = new BufferedResourceHatch(HatchMode.OUTPUT, 2, new Reference2LongArrayMap<>(new AEKeyType[]{MATERIAL_TYPE, SECONDARY_TYPE}, new long[]{1000L, 2000L}), () -> {});
+        var input = new BufferedResourceHatch(HatchMode.INPUT, 2, new Reference2LongArrayMap<>(new AEKeyType[]{MATERIAL_TYPE, SECONDARY_TYPE}, new long[]{1000L, 2000L}), () -> {
+        });
+        var output = new BufferedResourceHatch(HatchMode.OUTPUT, 2, new Reference2LongArrayMap<>(new AEKeyType[]{MATERIAL_TYPE, SECONDARY_TYPE}, new long[]{1000L, 2000L}), () -> {
+        });
         if (material > 0) Objects.requireNonNull(input.input()).insert(MATERIAL, material, Actionable.MODULATE);
-        var in = new EnergyBuffer(1000, () -> {});
-        var out = new EnergyBuffer(1000, () -> {});
+        var in = new EnergyBuffer(1000, () -> {
+        });
+        var out = new EnergyBuffer(1000, () -> {
+        });
         in.receiveEnergy(energy, Actionable.MODULATE);
         return new Buffers(input, output, in, out, new MachineHatches(List.of(input, output), List.of(in), List.of(out)));
     }
-    record Buffers(BufferedResourceHatch input, BufferedResourceHatch output, EnergyBuffer energyIn, EnergyBuffer energyOut, MachineHatches hatches) {}
-    private static MachineInstance owner(MachineHatches hatches) {
-        var owner = new MachineInstance(); owner.components().put(MachineHatches.TYPE, hatches); return owner;
+
+    record Buffers(BufferedResourceHatch input, BufferedResourceHatch output, EnergyBuffer energyIn,
+                   EnergyBuffer energyOut, MachineHatches hatches) {
     }
+
+    private static MachineInstance owner(MachineHatches hatches) {
+        var owner = new MachineInstance();
+        owner.components().put(MachineHatches.TYPE, hatches);
+        return owner;
+    }
+
     private static RecipeProcess process(String name, Buffers buffers) {
         var process = new RecipeProcess(owner(buffers.hatches()), recipe(name).recipe(), 17);
         process.components().create(DataComponents.PROCESS, process);
         return process;
     }
+
     private static void complete(String id, RecipeProcess process, int ticks) {
         boolean successful = true;
         for (int i = 0; i < ticks; i++) successful &= process.tick() == ProcessResult.SUCCESS;
@@ -112,7 +158,8 @@ final class CoreRecipeChecks {
                 LOG.info("CHECK core_weighted_zero_weight expected=0 actual={} seed={}", output.amount(SECONDARY), test.seed());
                 NativeChecks.check("core_weighted_zero_weight", output.amount(SECONDARY) == 0);
             }
-            if (name.equals("attributes")) NativeChecks.check("core_attribute_end_removal", RecipeParallelism.effective(test) == 1);
+            if (name.equals("attributes"))
+                NativeChecks.check("core_attribute_end_removal", RecipeParallelism.effective(test) == 1);
         }
         for (var name : List.of("partial", "selective")) {
             var buffers = buffers(100, 100);
@@ -137,8 +184,10 @@ final class CoreRecipeChecks {
         complete("core_combined_completed", process("combined", combined), 1);
         NativeChecks.check("core_combined_payment", combined.input().input().amount(MATERIAL) == 75 && combined.output().output().amount(PRODUCT) == 2);
         for (var name : List.of("excess_reject", "void")) {
-            var output = new BufferedResourceHatch(HatchMode.OUTPUT, 1, Reference2LongMaps.singleton(MATERIAL_TYPE, 1L), () -> {});
-            var energy = new EnergyBuffer(2, () -> {});
+            var output = new BufferedResourceHatch(HatchMode.OUTPUT, 1, Reference2LongMaps.singleton(MATERIAL_TYPE, 1L), () -> {
+            });
+            var energy = new EnergyBuffer(2, () -> {
+            });
             var test = new RecipeProcess(owner(new MachineHatches(List.of(output), List.of(), List.of(energy))), recipe(name).recipe(), 17);
             var result = test.tick();
             NativeChecks.check("core_" + name + "_output_capacity", name.equals("void")
@@ -147,8 +196,10 @@ final class CoreRecipeChecks {
         }
         complete("core_checkpoint_completed", process("checkpoint", checkpoint), 2);
         NativeChecks.check("core_checkpoint_once", checkpoint.output().output().amount(PRODUCT) == 2);
-        var longInput = new BufferedResourceHatch(HatchMode.INPUT, 1, Reference2LongMaps.singleton(MATERIAL_TYPE, 2147483650L), () -> {});
-        var longOutput = new BufferedResourceHatch(HatchMode.OUTPUT, 1, Reference2LongMaps.singleton(MATERIAL_TYPE, 2147483650L), () -> {});
+        var longInput = new BufferedResourceHatch(HatchMode.INPUT, 1, Reference2LongMaps.singleton(MATERIAL_TYPE, 2147483650L), () -> {
+        });
+        var longOutput = new BufferedResourceHatch(HatchMode.OUTPUT, 1, Reference2LongMaps.singleton(MATERIAL_TYPE, 2147483650L), () -> {
+        });
         longInput.input().insert(MATERIAL, 2147483649L, Actionable.MODULATE);
         var large = new RecipeProcess(owner(new MachineHatches(List.of(longInput, longOutput), List.of(), List.of())), recipe("long").recipe(), 17);
         NativeChecks.check("core_long_resource_payment", large.tick() == ProcessResult.SUCCESS
@@ -168,8 +219,11 @@ final class CoreRecipeChecks {
         first.input().input().insert(MATERIAL, 7, Actionable.MODULATE);
         second.input().input().insert(MATERIAL, 3, Actionable.MODULATE);
         boolean rejected = false;
-        try { new RecipeProcess(machine, recipe("duplicate").recipe(), 17).tick(); }
-        catch (IllegalArgumentException expected) { rejected = true; }
+        try {
+            new RecipeProcess(machine, recipe("duplicate").recipe(), 17).tick();
+        } catch (IllegalArgumentException expected) {
+            rejected = true;
+        }
         NativeChecks.check("core_custom_duplicate_preflight", rejected && first.input().input().amount(MATERIAL) == 9
             && second.input().input().amount(MATERIAL) == 9 && first.input().input().availableAmount(MATERIAL) == 9
             && second.input().input().availableAmount(MATERIAL) == 9);

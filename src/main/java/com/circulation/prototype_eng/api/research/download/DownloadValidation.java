@@ -39,14 +39,13 @@ final class DownloadValidation {
     }
 
     static AEItemKey key(ItemStack material) {
-        return Objects.requireNonNull(AEItemKey.of(copyStack(material, "Download material key")));
+        validateStack(material, "Download material key");
+        return Objects.requireNonNull(AEItemKey.of(material));
     }
 
     static ItemStack copyStack(ItemStack source, String label) {
         validateStack(source, label);
-        var copy = source.copy();
-        validateStack(copy, label);
-        return copy;
+        return source.copy();
     }
 
     private static void validateStack(ItemStack stack, String label) {

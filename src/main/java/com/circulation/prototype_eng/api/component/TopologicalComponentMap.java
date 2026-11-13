@@ -8,12 +8,9 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.AbstractSet;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +18,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
+ * Published collections are read-only by contract and must not be modified by consumers.
  * PM's soft dependency graph, with a cached Kahn ordering. Missing dependencies become active when
  * installed, including after removal/reinstallation. Independent nodes retain deterministic order.
  * Mutations and reads belong to one execution owner; a volatile revision would not make this graph
@@ -79,7 +77,9 @@ public final class TopologicalComponentMap<K, C> {
         revision++;
     }
 
-    /** Prepare the original declaration/pending merge without granting the new node authority. */
+    /**
+     * Prepare the original declaration/pending merge without granting the new node authority.
+     */
     @Nullable
     PreparedNode<K, C> prepareAdd(K key, C component, Collection<? extends K> dependencies, RecipeWorkBudget work) {
         var merged = new ObjectLinkedOpenHashSet<K>(dependencies.size());
@@ -95,10 +95,12 @@ public final class TopologicalComponentMap<K, C> {
             }
         }
         if (!work.take()) return null;
-        return new PreparedNode<>(new Node<>(key, component, new FrozenDependencies<>(merged)), revision);
+        return new PreparedNode<>(new Node<>(key, component, merged), revision);
     }
 
-    /** All preflight precedes the caller's admitted atomic map writes. */
+    /**
+     * All preflight precedes the caller's admitted atomic map writes.
+     */
     void installPrepared(List<PreparedNode<K, C>> prepared) {
         for (var candidate : prepared) {
             if (candidate.revision() != revision)
@@ -210,8 +212,8 @@ public final class TopologicalComponentMap<K, C> {
 
     Map<K, Set<K>> pendingDependencies() {
         var result = new Object2ObjectLinkedOpenHashMap<K, Set<K>>(pending.size());
-        pending.forEach((key, dependencies) -> result.put(key, ObjectSets.unmodifiable(new ObjectLinkedOpenHashSet<>(dependencies))));
-        return Collections.unmodifiableMap(result);
+        pending.forEach((key, dependencies) -> result.put(key, new ObjectLinkedOpenHashSet<>(dependencies)));
+        return result;
     }
 
     /**
@@ -221,7 +223,9 @@ public final class TopologicalComponentMap<K, C> {
         return Objects.requireNonNull(orderedComponents(new RecipeWorkBudget(Long.MAX_VALUE)));
     }
 
-    /** A publication must complete this original Kahn ordering in its current owner window. */
+    /**
+     * A publication must complete this original Kahn ordering in its current owner window.
+     */
     @Nullable
     public List<Node<K, C>> orderedComponents(RecipeWorkBudget work) {
         if (cachedRevision == revision) {
@@ -278,7 +282,7 @@ public final class TopologicalComponentMap<K, C> {
             throw new IllegalStateException("Circular component dependency: " + remaining);
         }
         if (!work.take()) return null;
-        cached = ObjectLists.unmodifiable(ordered);
+        cached = ordered;
         cachedRevision = revision;
         return cached;
     }
@@ -286,36 +290,14 @@ public final class TopologicalComponentMap<K, C> {
     record PreparedNode<K, C>(Node<K, C> node, long revision) {
     }
 
-    /** Only a private preparation can transfer its completed owned dependency set without copying. */
-    private static final class FrozenDependencies<K> extends AbstractSet<K> {
-        private final Set<K> owned;
-
-        private FrozenDependencies(Set<K> owned) {
-            this.owned = owned;
-        }
-
-        @Override
-        public @NotNull Iterator<K> iterator() {
-            return Collections.unmodifiableSet(owned).iterator();
-        }
-
-        @Override
-        public int size() {
-            return owned.size();
-        }
-    }
-
+    /**
+     * Dependency sets and published node lists are read-only for consumers.
+     */
     public record Node<K, C>(K key, C component, Set<K> dependencies) {
         public Node {
             Objects.requireNonNull(key);
             Objects.requireNonNull(component);
-            if (!(dependencies instanceof FrozenDependencies<?>)) {
-                var copy = new ObjectLinkedOpenHashSet<K>(dependencies.size());
-                for (K dependency : dependencies) {
-                    copy.add(Objects.requireNonNull(dependency));
-                }
-                dependencies = ObjectSets.unmodifiable(copy);
-            }
+            Objects.requireNonNull(dependencies);
         }
     }
 }

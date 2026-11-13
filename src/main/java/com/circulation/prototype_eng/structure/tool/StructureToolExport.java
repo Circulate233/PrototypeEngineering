@@ -29,7 +29,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** Exports the selected world region using the library's existing structure JSON schema. */
+/**
+ * Exports the selected world region using the library's existing structure JSON schema.
+ */
 public final class StructureToolExport {
     public static final int MAX_VOLUME = 64 * 64 * 64;
 
@@ -50,7 +52,7 @@ public final class StructureToolExport {
         }
         var relative = new BlockPos(Math.subtractExact(pos.getX(), origin.getX()), Math.subtractExact(pos.getY(), origin.getY()), Math.subtractExact(pos.getZ(), origin.getZ()));
         return new Cell(rotation.apply(relative), Objects.requireNonNull(state.getBlock().getRegistryName()),
-            state.getBlock().getMetaFromState(state), Map.copyOf(nbt));
+            state.getBlock().getMetaFromState(state), nbt);
     }
 
     public static IBlockState rotateState(IBlockState state, StructureTransform rotation) {
@@ -123,10 +125,15 @@ public final class StructureToolExport {
         }
     }
 
+    /**
+     * Captured NBT values are borrowed read-only.
+     */
     public record Cell(BlockPos position, ResourceLocation block, int meta, Map<String, String> nbt) {
     }
 
-    /** Incremental selection traversal: large exports do not monopolize a server tick. */
+    /**
+     * Incremental selection traversal: large exports do not monopolize a server tick.
+     */
     public static final class Capture {
         private final World world;
         private final BlockPos origin;
@@ -146,7 +153,7 @@ public final class StructureToolExport {
 
         public boolean advance(int budget) {
             for (int i = 0; i < budget && cursor.hasNext(); i++) {
-                var pos = cursor.next().toImmutable();
+                var pos = cursor.next();
                 if (!world.isBlockLoaded(pos))
                     throw new IllegalArgumentException("Selection contains an unloaded block");
                 if ((!includeOrigin && pos.equals(origin)) || world.isAirBlock(pos)) continue;
@@ -155,10 +162,13 @@ public final class StructureToolExport {
             return !cursor.hasNext();
         }
 
+        /**
+         * Call after capture completes; the returned sorted cells are borrowed read-only.
+         */
         public List<Cell> cells() {
             cells.sort(Comparator.comparingInt((Cell cell) -> cell.position().getY()).thenComparingInt(cell -> cell.position().getZ())
                                  .thenComparingInt(cell -> cell.position().getX()));
-            return List.copyOf(cells);
+            return cells;
         }
     }
 }

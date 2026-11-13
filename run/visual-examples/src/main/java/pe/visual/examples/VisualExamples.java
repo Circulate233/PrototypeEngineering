@@ -1,5 +1,6 @@
 package pe.visual.examples;
 
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.stacks.AEFluidKey;
 import ae2.api.stacks.AEItemKey;
@@ -44,7 +45,6 @@ import com.circulation.prototype_eng.block.HatchBlocks;
 import com.circulation.prototype_eng.block.ResourceHatchBlock;
 import com.circulation.prototype_eng.block.EnergyHatchBlock;
 import com.circulation.prototype_eng.structure.TemplateStructure;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.init.Blocks;
 import net.minecraft.block.Block;
@@ -63,7 +63,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** Development-only content. The PE production library remains content-free. */
+/**
+ * Development-only content. The PE production library remains content-free.
+ */
 @Mod(modid = VisualExamples.MOD_ID, name = "PE Visual Examples", version = "1.0.0-dev", dependencies = "required-after:prototype_eng")
 @Mod.EventBusSubscriber(modid = VisualExamples.MOD_ID)
 public final class VisualExamples {
@@ -75,7 +77,10 @@ public final class VisualExamples {
     private static final ComponentType<MachineInstance, RecipeScanner> MIXER_SCAN = scanner("mixer_scan");
     private static final ComponentType<MachineInstance, RecipeScanner> SORTER_SCAN = scanner("sorter_scan");
 
-    public static ResourceLocation id(String path) { return new ResourceLocation(MOD_ID, path); }
+    public static ResourceLocation id(String path) {
+        return new ResourceLocation(MOD_ID, path);
+    }
+
     static ComponentType<MachineInstance, RecipeScanner> scanner(String name) {
         return RecipeScanning.component(id(name), RecipeRegistry.INSTANCE::catalog, new ScanLimits(16, 16));
     }
@@ -94,9 +99,9 @@ public final class VisualExamples {
     private static MachineType machine(String name, ExampleText text, ResourceLocation pool,
                                        ComponentType<MachineInstance, RecipeScanner> scan, boolean dynamic) {
         var builder = MachineType.builder(id(name), text, id(name + "_structure"))
-            .component(MachineWorkSlots.TYPE).component(scan).recipePool(pool)
-            .attribute(StandardMachineAttributes.PROCESS_PARALLELISM, 1)
-            .attribute(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 1);
+                                 .component(MachineWorkSlots.TYPE).component(scan).recipePool(pool)
+                                 .attribute(StandardMachineAttributes.PROCESS_PARALLELISM, 1)
+                                 .attribute(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 1);
         if (!dynamic) builder.workSlot(new WorkSlotDefinition("main"));
         return builder.build();
     }
@@ -142,12 +147,15 @@ public final class VisualExamples {
     private static SimpleRecipePool.Entry simple(String name, int ticks, ItemStack in, long amount, ItemStack out, long output) {
         return SimpleRecipePool.Entry.create(id(name), ticks, item(in, amount), item(out, output), Set.of());
     }
+
     static GenericStack item(ItemStack stack, long amount) {
         return new GenericStack(Objects.requireNonNull(AEItemKey.of(stack)), amount);
     }
+
     static GenericStack fluid(boolean lava, long amount) {
         return new GenericStack(Objects.requireNonNull(AEFluidKey.of(lava ? FluidRegistry.LAVA : FluidRegistry.WATER)), amount);
     }
+
     private static MachineRecipe recipe(String name, int ticks, List<GenericStack> in, List<GenericStack> out, long energy) {
         return new MachineRecipe(id(name), ticks, List.of(
             RecipeRequirements.RESOURCES.requirement(id(name + "_io"), new ResourceRequirement(in, out)),
@@ -164,22 +172,25 @@ public final class VisualExamples {
         ExternalHatchExamples.registerRuntime(event);
         CtmGalleryExamples.registerRuntime(event);
     }
+
     private static void install(MachineRuntimeRegistrationEvent event, String name, ResourceLocation poolId,
                                 ComponentType<MachineInstance, RecipeScanner> scan, boolean energy) {
         install(event, name, poolId, scan, energy, energy, false);
     }
+
     static void install(MachineRuntimeRegistrationEvent event, String name, ResourceLocation poolId,
                         ComponentType<MachineInstance, RecipeScanner> scan, boolean energy, boolean cross, boolean large) {
-        var cells = new Object2ObjectLinkedOpenHashMap<BlockPos, StructurePredicate>();
+        var cells = new BlockPos2ObjectMap<StructurePredicate>();
         var resource = new ObjectArrayList<Block>();
         var energies = new ObjectArrayList<Block>();
         for (var block : HatchBlocks.all()) {
             if (block instanceof ResourceHatchBlock hatch) resource.add(hatch);
             if (block instanceof EnergyHatchBlock hatch) energies.add(hatch);
         }
-        for (var cell : structureBlocks(name, energy, large).entrySet()) {
+        for (var entries = structureBlocks(name, energy, large).fastIterator(); entries.hasNext(); ) {
+            var cell = entries.next();
             var block = cell.getValue();
-            cells.put(cell.getKey(), block instanceof ResourceHatchBlock ? StructurePredicates.blocks(resource)
+            cells.put(cell.getLongKey(), block instanceof ResourceHatchBlock ? StructurePredicates.blocks(resource)
                 : block instanceof EnergyHatchBlock ? StructurePredicates.blocks(energies)
                 : name.equals("boundary_structure") && block == Blocks.GLASS ? StructurePredicates.blocks(List.of(Blocks.GLASS, Blocks.STAINED_GLASS))
                 : StructurePredicates.blocks(List.of(block)));
@@ -187,7 +198,7 @@ public final class VisualExamples {
         var type = Objects.requireNonNull(event.registry().get(id(name)));
         var structure = TemplateStructure.create(id(name + "_structure"), BlockOrientation.NORTH_UP, BlockPos.ORIGIN,
             false, new StructurePattern(cells), List.of(), List.of());
-        event.definition(new StructureDefinition(structure, type.displayName().getTranslationKey(), Map.of()));
+        event.definition(new StructureDefinition(structure, type.displayName().getTranslationKey(), BlockPos2ObjectMap.emptyMap()));
         RecipePool pool = Objects.requireNonNull(RecipeRegistry.INSTANCE.get(poolId));
         var codecs = new ObjectArrayList<RecipeProcessNbt>();
         for (var recipe : pool.recipes()) codecs.add(RecipeProcessNbt.builder(recipe, "visual-v1").build());
@@ -197,32 +208,39 @@ public final class VisualExamples {
         event.assembly(assembly.build());
     }
 
-    /** Concrete placeable representatives shared by the structure declaration and explicit build command. */
-    static Map<BlockPos, Block> structureBlocks(String name, boolean energy, boolean large) {
-        var cells = new Object2ObjectLinkedOpenHashMap<BlockPos, Block>();
+    /**
+     * Concrete placeable representatives shared by the structure declaration and explicit build command.
+     */
+    static BlockPos2ObjectMap<Block> structureBlocks(String name, boolean energy, boolean large) {
+        var cells = new BlockPos2ObjectMap<Block>();
         if (large) {
-            for (int x = -3; x <= 3; x++) for (int y = 0; y <= 4; y++) for (int z = 0; z <= 6; z++) {
-                int edges = (Math.abs(x) == 3 ? 1 : 0) + (y == 0 || y == 4 ? 1 : 0) + (z == 0 || z == 6 ? 1 : 0);
-                if (edges == 0 || x == 0 && y == 0 && z == 0) continue;
-                cells.put(new BlockPos(x, y, z), edges >= 2 ? Blocks.IRON_BLOCK : Blocks.GLASS);
-            }
+            for (int x = -3; x <= 3; x++)
+                for (int y = 0; y <= 4; y++)
+                    for (int z = 0; z <= 6; z++) {
+                        int edges = (Math.abs(x) == 3 ? 1 : 0) + (y == 0 || y == 4 ? 1 : 0) + (z == 0 || z == 6 ? 1 : 0);
+                        if (edges == 0 || x == 0 && y == 0 && z == 0) continue;
+                        cells.put(new BlockPos(x, y, z), edges >= 2 ? Blocks.IRON_BLOCK : Blocks.GLASS);
+                    }
         }
         int tier = name.startsWith("boundary_") ? 10 : 4;
         cells.put(new BlockPos(-1, 0, 0), block("prototype_eng:input_hatch_" + tier));
         cells.put(new BlockPos(1, 0, 0), block("prototype_eng:output_hatch_" + tier));
         if (!large) cells.put(new BlockPos(0, 1, 0), Blocks.IRON_BLOCK);
         if (energy) cells.put(new BlockPos(0, 0, 1), block("prototype_eng:energy_input_hatch_4"));
-        if (name.equals("boundary_energy")) cells.put(new BlockPos(0, 0, 2), block("prototype_eng:energy_output_hatch_4"));
+        if (name.equals("boundary_energy"))
+            cells.put(new BlockPos(0, 0, 2), block("prototype_eng:energy_output_hatch_4"));
         return cells;
     }
 
-    static Block block(String name) { return Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation(name)), name); }
+    static Block block(String name) {
+        return Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation(name)), name);
+    }
 
     @Mod.EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
         event.registerServerCommand(new ExamplesCommand());
         event.registerServerCommand(new RunTestsCommand());
-        event.registerServerCommand(new MeAssemblyExamples.Command());
+        event.registerServerCommand(new MEAssemblyExamples.Command());
         RunNetworkRender.registerUserCommands(event.getServer());
     }
 }

@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.client.render;
 import com.circulation.prototype_eng.api.client.render.MachineRenderPass;
 import com.circulation.prototype_eng.client.render.gecko.GeckoRenderRequest;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayFIFOQueue;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.OpenGlHelper;
 import org.jetbrains.annotations.Nullable;
@@ -15,12 +16,13 @@ import org.lwjgl.opengl.GLContext;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
-import it.unimi.dsi.fastutil.objects.ObjectArrayFIFOQueue;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** Native upload, client-array fallback and two-slot mapped writes; every native operation stays on client owner. */
+/**
+ * Native upload, client-array fallback and two-slot mapped writes; every native operation stays on client owner.
+ */
 public class ReusableModelVboUploader implements AutoCloseable {
     public static final int STRIDE = 28;
     private final ModelClientThread client;
@@ -29,6 +31,7 @@ public class ReusableModelVboUploader implements AutoCloseable {
     private long freeUploadBytes;
     private @Nullable ByteBuffer mergeScratch;
     private boolean closed;
+
     public ReusableModelVboUploader(ModelClientThread client) {
         this.client = client;
     }
@@ -208,6 +211,12 @@ public class ReusableModelVboUploader implements AutoCloseable {
             resident.draw();
             return;
         }
+        boolean vbo = useVbo();
+        var uploaded = vbo ? result.uploaded(pass) : null;
+        if (uploaded != null) {
+            uploaded.draw();
+            return;
+        }
         ByteBuffer bytes;
         int count;
         var builder = result.builders().get(pass);
@@ -221,31 +230,30 @@ public class ReusableModelVboUploader implements AutoCloseable {
             count = bytes.remaining() / STRIDE;
         }
         if (count == 0) return;
-        if (!useVbo()) {
+        if (!vbo) {
             drawClient(bytes, count);
             return;
         }
-        var uploaded = result.uploaded(pass);
-        if (uploaded == null) {
-            int id = borrowUpload();
-            int uploadedBytes = bytes.remaining();
+        int id = borrowUpload();
+        int uploadedBytes = bytes.remaining();
+        try {
+            uploadBuffer(id, bytes);
+        } catch (RuntimeException | Error failure) {
             try {
-                uploadBuffer(id, bytes);
-            } catch (RuntimeException | Error failure) {
-                try {
-                    deleteBuffer(id);
-                } catch (RuntimeException | Error exception) {
-                    failure.addSuppressed(exception);
-                }
-                throw failure;
+                deleteBuffer(id);
+            } catch (RuntimeException | Error exception) {
+                failure.addSuppressed(exception);
             }
-            uploaded = new GpuDraw(this, id, count, () -> recycleUpload(id, uploadedBytes));
-            result.uploaded(pass, uploaded);
+            throw failure;
         }
+        uploaded = new GpuDraw(this, id, count, () -> recycleUpload(id, uploadedBytes));
+        result.uploaded(pass, uploaded);
         uploaded.draw();
     }
 
-    /** Original synchronous multi-result path. Cached/GPU results retain individual VBOs; uncached CPU data merges in bounded chunks. */
+    /**
+     * Original synchronous multi-result path. Cached/GPU results retain individual VBOs; uncached CPU data merges in bounded chunks.
+     */
     public void drawMultiple(List<BuiltModelBuffers.Lease> leases, MachineRenderPass pass) {
         client.requireOwner();
         if (closed || leases.isEmpty()) return;
@@ -530,7 +538,9 @@ public class ReusableModelVboUploader implements AutoCloseable {
             this.capacity = capacity;
         }
 
-        /** Only the task's worker writes this view until it dispatches exactly one finish/abort. */
+        /**
+         * Only the task's worker writes this view until it dispatches exactly one finish/abort.
+         */
         public IntBuffer writerView() {
             return bytes.asIntBuffer();
         }

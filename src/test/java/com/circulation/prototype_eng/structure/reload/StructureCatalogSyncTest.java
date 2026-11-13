@@ -1,9 +1,5 @@
 package com.circulation.prototype_eng.structure.reload;
 
-import it.unimi.dsi.fastutil.ints.IntList;
-
-import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
-
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewCache;
@@ -14,9 +10,12 @@ import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePattern;
 import com.circulation.prototype_eng.api.structure.StructurePredicates;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
+import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
 import com.circulation.prototype_eng.structure.SliceStructure;
 import com.circulation.prototype_eng.structure.TemplateStructure;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import io.netty.buffer.Unpooled;
+import it.unimi.dsi.fastutil.ints.IntList;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;
@@ -47,17 +46,18 @@ class StructureCatalogSyncTest {
 
     private static StructureCatalog catalog() {
         var child = new SliceStructure(id("child"), BlockOrientation.NORTH_UP, new BlockPos(1, 0, 0), true,
-            new StructurePattern(Map.of(new BlockPos(2, 0, 0), StructurePredicates.all(List.of()))), 0, 5, new BlockPos(0, 1, 0), List.of(), List.of());
+            new StructurePattern(new BlockPos2ObjectMap<>(Map.of(new BlockPos(2, 0, 0), StructurePredicates.all(List.of())))), 0, 5, new BlockPos(0, 1, 0), List.of(), List.of());
         var parent = new TemplateStructure(id("parent"), BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false,
-            new StructurePattern(Map.of()), List.of(), List.of(child, child));
+            new StructurePattern(BlockPos2ObjectMap.emptyMap()), List.of(), List.of(child, child));
         var display = new StructureDisplay("bom/key", List.of(new StructureDisplay.BlockOption(id("block"), 3, Map.of("amount", "7"))), "{amount:7}");
-        return new StructureCatalog(List.of(new StructureDefinition(parent, "addon.structure.parent", Map.of()),
-            new StructureDefinition(child, "addon.structure.child", Map.of(new BlockPos(2, 0, 0), display))));
+        return new StructureCatalog(List.of(new StructureDefinition(parent, "addon.structure.parent", BlockPos2ObjectMap.emptyMap()),
+            new StructureDefinition(child, "addon.structure.child", new BlockPos2ObjectMap<>(Map.of(new BlockPos(2, 0, 0), display)))));
     }
 
     private static StructureReloadCoordinator.Publication publication(UUID session, long sequence) {
-        var view = StructureCatalogView.capture(catalog(), session, sequence);
-        return new StructureReloadCoordinator.Publication(view, StructureCatalogCodec.encode(view));
+        var catalog = catalog();
+        var view = StructureCatalogView.capture(catalog, session, sequence);
+        return new StructureReloadCoordinator.Publication(catalog, view, StructureCatalogCodec.encode(view));
     }
 
     private static boolean deliver(ClientStructureCatalog directory, Object connection, StructureReloadCoordinator.Publication publication) {
@@ -87,7 +87,6 @@ class StructureCatalogSyncTest {
         assertEquals("bom/key", display.key());
         assertEquals("7", display.options().getFirst().nbt().get("amount"));
         assertEquals("addon.structure.parent", view.entries().get(id("parent")).translationKey());
-        assertThrows(UnsupportedOperationException.class, () -> view.entries().clear());
     }
 
     @Test
@@ -105,9 +104,9 @@ class StructureCatalogSyncTest {
             var base = publication(session, 1);
             // A valid large translation key produces multiple actual network chunks.
             var entries = new LinkedHashMap<>(base.view().entries());
-            entries.compute(id("parent"), (_, entry) -> new StructureCatalogView.Entry(Objects.requireNonNull(entry).node(), "x".repeat(40000), entry.displays()));
+            entries.compute(id("parent"), (_, entry) -> new StructureCatalogView.Entry(Objects.requireNonNull(entry).node(), "x".repeat(40000), new BlockPos2ObjectMap<>(entry.displays())));
             var view = new StructureCatalogView(session, 1, base.view().nodes(), entries);
-            var next = new StructureReloadCoordinator.Publication(view, StructureCatalogCodec.encode(view));
+            var next = new StructureReloadCoordinator.Publication(base.catalog(), view, StructureCatalogCodec.encode(view));
             byte[] bytes = next.bytes();
             int chunks = (bytes.length + StructureCatalogPacket.CHUNK_BYTES - 1) / StructureCatalogPacket.CHUNK_BYTES;
             assertTrue(chunks > 1);
@@ -218,10 +217,10 @@ class StructureCatalogSyncTest {
     @Test
     void invalidGraphsAndOversizedPresentationFailBeforeTheyCanBeBroadcast() {
         var node = new StructureCatalogView.Node(id("cyclic"), BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE, BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.of(), IntList.of(0));
-        assertThrows(IllegalArgumentException.class, () -> new StructureCatalogView(UUID.randomUUID(), 0, List.of(node), Map.of(id("cyclic"), new StructureCatalogView.Entry(0, null, Map.of()))));
+        assertThrows(IllegalArgumentException.class, () -> new StructureCatalogView(UUID.randomUUID(), 0, List.of(node), Map.of(id("cyclic"), new StructureCatalogView.Entry(0, null, BlockPos2ObjectMap.emptyMap()))));
         var base = publication(UUID.randomUUID(), 0).view();
         var entry = base.entries().get(id("parent"));
-        var tooLarge = new StructureCatalogView(base.session(), 1, base.nodes(), Map.of(id("parent"), new StructureCatalogView.Entry(entry.node(), "x".repeat(65537), Map.of())));
+        var tooLarge = new StructureCatalogView(base.session(), 1, base.nodes(), Map.of(id("parent"), new StructureCatalogView.Entry(entry.node(), "x".repeat(65537), BlockPos2ObjectMap.emptyMap())));
         assertThrows(IllegalArgumentException.class, () -> StructureCatalogCodec.encode(tooLarge));
         byte[] trailing = Arrays.copyOf(publication(UUID.randomUUID(), 0).bytes(), publication(UUID.randomUUID(), 0).bytes().length + 1);
         assertThrows(IllegalArgumentException.class, () -> StructureCatalogCodec.decode(trailing));

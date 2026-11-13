@@ -12,7 +12,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.ObjIntConsumer;
 
-/** Controller-owned item slots. Use only after the machine's workers have joined. */
+/**
+ * Controller-owned item slots. Use only after the machine's workers have joined.
+ */
 public final class ControllerInventory extends BaseInternalInventory {
     public static final int CAPACITY = 16;
     private final Runnable changed;
@@ -34,7 +36,9 @@ public final class ControllerInventory extends BaseInternalInventory {
         return availableSlots;
     }
 
-    /** Closing a slot retains its contents, including through save/load and controller drops. */
+    /**
+     * Closing a slot retains its contents, including through save/load and controller drops.
+     */
     public void setAvailableSlots(int count) {
         availableSlots = requireSlotCount(count);
     }
@@ -48,7 +52,9 @@ public final class ControllerInventory extends BaseInternalInventory {
         return CAPACITY;
     }
 
-    /** Borrowed native stack, including retained contents of closed slots. Do not mutate it directly. */
+    /**
+     * Borrowed native stack, including retained contents of closed slots. Do not mutate it directly.
+     */
     @Override
     public @NotNull ItemStack getStackInSlot(int slot) {
         Objects.checkIndex(slot, CAPACITY);
@@ -56,7 +62,9 @@ public final class ControllerInventory extends BaseInternalInventory {
         return stack == null ? ItemStack.EMPTY : stack;
     }
 
-    /** Native container synchronization and trusted writes; ordinary insertion must use insertItem. */
+    /**
+     * Native container synchronization and trusted writes; ordinary insertion must use insertItem.
+     */
     @Override
     public void setItemDirect(int slot, @NotNull ItemStack stack) {
         Objects.checkIndex(slot, CAPACITY);
@@ -91,14 +99,18 @@ public final class ControllerInventory extends BaseInternalInventory {
         return isAvailable(slot) ? super.extractItem(slot, amount, simulate) : ItemStack.EMPTY;
     }
 
-    /** Visits every open slot in index order, including empty slots, without building a collection. */
+    /**
+     * Visits every open slot in index order, including empty slots, without building a collection.
+     */
     public void forEachAvailable(ObjIntConsumer<? super ItemStack> visitor) {
         Objects.requireNonNull(visitor);
         int count = availableSlots;
         for (int slot = 0; slot < count; slot++) visitor.accept(getStackInSlot(slot), slot);
     }
 
-    /** Visits occupied physical slots, including items retained while a slot is closed. */
+    /**
+     * Visits occupied physical slots, including items retained while a slot is closed.
+     */
     public void forEachStored(ObjIntConsumer<? super ItemStack> visitor) {
         Objects.requireNonNull(visitor);
         if (stacks == null) return;
@@ -121,12 +133,15 @@ public final class ControllerInventory extends BaseInternalInventory {
         else tag.setTag(key, saved);
     }
 
-    /** Parses before replacing storage, so malformed entries cannot partially overwrite an inventory. */
+    /**
+     * Parses before replacing storage, so malformed entries cannot partially overwrite an inventory.
+     */
     public void readFromNBT(NBTTagCompound tag, String key) {
         ItemStack[] replacement = null;
         if (tag.hasKey(key)) {
             var saved = StrictNbt.requireList(tag, key, 10);
-            if (saved.tagCount() > CAPACITY) throw new IllegalArgumentException("Too many controller inventory entries");
+            if (saved.tagCount() > CAPACITY)
+                throw new IllegalArgumentException("Too many controller inventory entries");
             for (int index = 0; index < saved.tagCount(); index++) {
                 var entry = saved.getCompoundTagAt(index);
                 int slot = Objects.checkIndex(StrictNbt.requireInt(entry, "Slot"), CAPACITY);
@@ -134,7 +149,8 @@ public final class ControllerInventory extends BaseInternalInventory {
                 if (stack.isEmpty() || stack.getCount() > Math.min(64, stack.getMaxStackSize()))
                     throw new IllegalArgumentException("Invalid saved controller item");
                 if (replacement == null) replacement = new ItemStack[CAPACITY];
-                if (replacement[slot] != null) throw new IllegalArgumentException("Duplicate controller inventory slot");
+                if (replacement[slot] != null)
+                    throw new IllegalArgumentException("Duplicate controller inventory slot");
                 replacement[slot] = stack;
             }
         }

@@ -10,18 +10,19 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.Locale;
-import java.util.Objects;
 
-/** Parameter conversion only; each registration freezes the public Java resource declaration. */
+/**
+ * Parameter conversion only; each registration freezes the public Java resource declaration.
+ */
 @ZenRegister
 @ZenClass("mods.prototype_eng.render.GeckoBinding")
 @SuppressWarnings("unused") // Public methods are resolved by the real ZenScript compiler.
 public final class ZenGeckoBinding {
+    private final ObjectArrayList<String> layers = new ObjectArrayList<>();
     private ResourceLocation geo;
     private ResourceLocation texture;
     private ResourceLocation animation;
     private String defaultAnimation;
-    private final ObjectArrayList<String> layers = new ObjectArrayList<>();
     private String animationStateKey;
     private String animationLayersStateKey;
     private double offsetX;
@@ -32,15 +33,59 @@ public final class ZenGeckoBinding {
     private boolean global;
     private GeckoStructureBinding.SliceMode sliceMode = GeckoStructureBinding.SliceMode.PER_SLICE;
 
-    @ZenMethod public ZenGeckoBinding geo(String value) { geo = new ResourceLocation(value); return this; }
-    @ZenMethod public ZenGeckoBinding texture(String value) { texture = new ResourceLocation(value); return this; }
-    @ZenMethod public ZenGeckoBinding animation(String value) { animation = new ResourceLocation(value); return this; }
-    @ZenMethod public ZenGeckoBinding defaultAnimation(String value) { defaultAnimation = Objects.requireNonNull(value).trim(); return this; }
-    @ZenMethod public ZenGeckoBinding animationLayer(String value) { if (!value.isBlank()) layers.add(value.trim()); return this; }
-    @ZenMethod public ZenGeckoBinding animationStateKey(String value) { animationStateKey = value; return this; }
-    @ZenMethod public ZenGeckoBinding animationLayersStateKey(String value) { animationLayersStateKey = value; return this; }
-    @ZenMethod public ZenGeckoBinding yOffset(double value) { yOffset = value; return this; }
-    @ZenMethod public ZenGeckoBinding forceGlobalRenderer(boolean value) { global = value; return this; }
+    @ZenMethod
+    public ZenGeckoBinding geo(String value) {
+        geo = new ResourceLocation(value);
+        return this;
+    }
+
+    @ZenMethod
+    public ZenGeckoBinding texture(String value) {
+        texture = new ResourceLocation(value);
+        return this;
+    }
+
+    @ZenMethod
+    public ZenGeckoBinding animation(String value) {
+        animation = new ResourceLocation(value);
+        return this;
+    }
+
+    @ZenMethod
+    public ZenGeckoBinding defaultAnimation(String value) {
+        defaultAnimation = value.trim();
+        return this;
+    }
+
+    @ZenMethod
+    public ZenGeckoBinding animationLayer(String value) {
+        if (!value.isBlank()) layers.add(value.trim());
+        return this;
+    }
+
+    @ZenMethod
+    public ZenGeckoBinding animationStateKey(String value) {
+        animationStateKey = value;
+        return this;
+    }
+
+    @ZenMethod
+    public ZenGeckoBinding animationLayersStateKey(String value) {
+        animationLayersStateKey = value;
+        return this;
+    }
+
+    @ZenMethod
+    public ZenGeckoBinding yOffset(double value) {
+        yOffset = value;
+        return this;
+    }
+
+    @ZenMethod
+    public ZenGeckoBinding forceGlobalRenderer(boolean value) {
+        global = value;
+        return this;
+    }
 
     @ZenMethod
     public ZenGeckoBinding modelOffset(double x, double y, double z) {

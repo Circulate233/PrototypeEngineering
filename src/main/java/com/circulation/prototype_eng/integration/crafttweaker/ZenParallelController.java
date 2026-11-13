@@ -17,7 +17,8 @@ public final class ZenParallelController {
     private final ResourceLocation id;
     private final String translationKey;
     private final int maximum;
-    @Nullable private ResourceLocation model;
+    @Nullable
+    private ResourceLocation model;
     private boolean registered;
 
     private ZenParallelController(String id, String translationKey, int maximum) {

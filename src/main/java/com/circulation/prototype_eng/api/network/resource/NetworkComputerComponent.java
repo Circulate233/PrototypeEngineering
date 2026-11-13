@@ -28,10 +28,11 @@ public interface NetworkComputerComponent {
 
     /**
      * Version proof must be read-only and acquire no additional storage/domain locks, including inside a recipe fence.
+     * The completed zero-default resource map is borrowed unchanged while this capture is retained.
      */
     record Capture(Object2LongMap<NetworkResourceType> resourcesPerItem, BooleanSupplier current) {
         public Capture {
-            resourcesPerItem = NetworkResourceModifier.copyResources(resourcesPerItem);
+            NetworkResourceModifier.validateResources(resourcesPerItem);
             Objects.requireNonNull(current);
         }
     }

@@ -1,15 +1,12 @@
 package com.circulation.prototype_eng.api.structure;
 
-import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.ints.IntList;
-
 import ae2.api.orientation.BlockOrientation;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.ints.IntLists;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
@@ -21,6 +18,7 @@ import java.util.UUID;
 
 /**
  * Complete server-authoritative presentation graph, never a client matching or execution registry.
+ * Collections and their contents are borrowed read-only and must remain unchanged for the view's lifetime.
  */
 @SuppressWarnings("ClassCanBeRecord") // This object is the authoritative completed-generation identity.
 public final class StructureCatalogView {
@@ -35,16 +33,14 @@ public final class StructureCatalogView {
         if (sequence < 0 || nodes.size() > MAX_NODES || entries.size() > MAX_NODES)
             throw new IllegalArgumentException("Invalid catalog view bounds");
         this.sequence = sequence;
-        this.nodes = List.copyOf(nodes);
-        var copy = new Object2ObjectLinkedOpenHashMap<ResourceLocation, Entry>(entries.size());
+        this.nodes = nodes;
         entries.forEach((id, entry) -> {
             Objects.requireNonNull(id);
             Objects.requireNonNull(entry);
             if (entry.node < 0 || entry.node >= nodes.size() || !id.equals(nodes.get(entry.node).id))
                 throw new IllegalArgumentException("Catalog view entry has no matching node: " + id);
-            copy.put(id, entry);
         });
-        this.entries = Object2ObjectMaps.unmodifiable(copy);
+        this.entries = entries;
         validateGraph();
     }
 
@@ -125,13 +121,17 @@ public final class StructureCatalogView {
         return entries;
     }
 
+    /**
+     * All collections are borrowed read-only; positions must be immutable.
+     */
     public record Node(ResourceLocation id, BlockOrientation orientation, boolean hideWorldBlocks,
                        StructurePreviewProvider.Kind kind, BlockPos offset, int minCount, int maxCount,
-                       BlockPos sliceOffset, List<BlockPos> cells, IntList children, Map<BlockPos, StructureDisplay> displays) {
+                       BlockPos sliceOffset, List<BlockPos> cells, IntList children,
+                       BlockPos2ObjectMap<StructureDisplay> displays) {
         public Node(ResourceLocation id, BlockOrientation orientation, boolean hideWorldBlocks,
                     StructurePreviewProvider.Kind kind, BlockPos offset, int minCount, int maxCount,
                     BlockPos sliceOffset, List<BlockPos> cells, IntList children) {
-            this(id, orientation, hideWorldBlocks, kind, offset, minCount, maxCount, sliceOffset, cells, children, Map.of());
+            this(id, orientation, hideWorldBlocks, kind, offset, minCount, maxCount, sliceOffset, cells, children, BlockPos2ObjectMap.emptyMap());
         }
 
         public Node {
@@ -141,21 +141,16 @@ public final class StructureCatalogView {
             offset = Objects.requireNonNull(offset).toImmutable();
             sliceOffset = Objects.requireNonNull(sliceOffset).toImmutable();
             if (minCount < 0 || maxCount < minCount) throw new IllegalArgumentException("Invalid preview count domain");
-            var positions = new ObjectArrayList<BlockPos>(cells.size());
-            for (var position : cells) positions.add(Objects.requireNonNull(position).toImmutable());
-            cells = ObjectLists.unmodifiable(positions);
-            children = IntLists.unmodifiable(new IntArrayList(children));
-            displays = new Entry(0, null, displays).displays();
         }
     }
 
-    public record Entry(int node, @Nullable String translationKey, Map<BlockPos, StructureDisplay> displays) {
+    /**
+     * Display entries are borrowed read-only for the catalog lifetime.
+     */
+    public record Entry(int node, @Nullable String translationKey, BlockPos2ObjectMap<StructureDisplay> displays) {
         public Entry {
             if (translationKey != null && translationKey.isBlank())
                 throw new IllegalArgumentException("Empty preview translation key");
-            var copy = new Object2ObjectLinkedOpenHashMap<BlockPos, StructureDisplay>();
-            displays.forEach((position, display) -> copy.put(Objects.requireNonNull(position).toImmutable(), Objects.requireNonNull(display)));
-            displays = Object2ObjectMaps.unmodifiable(copy);
         }
     }
 }

@@ -20,7 +20,6 @@ import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.ResourceLocation;
@@ -33,6 +32,7 @@ import java.util.UUID;
 
 /**
  * Bounded AE2 GuiSync display pages, detached from research owners and recovery payloads.
+ * Rows and details are borrowed read-only and must remain unchanged while this snapshot is retained.
  */
 public record ResearchGuiSnapshot(boolean initialized, boolean savePending, ResearchPlayerView.TeamStatus teamStatus,
                                   Decision personalPermission, Decision teamViewPermission, Decision queuePermission,
@@ -62,8 +62,6 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         Objects.requireNonNull(startPermission);
         Objects.requireNonNull(blacklistPermission);
         Objects.requireNonNull(tab);
-        rows = frozen(rows);
-        details = frozen(details);
         requirePage(total, offset, rows.size(), MAX_ROWS);
         requirePage(detailTotal, detailOffset, details.size(), MAX_DETAILS);
         if (!initialized && (total != 0 || detailTotal != 0 || selected != null || savePending)) {
@@ -99,7 +97,9 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         }
     }
 
-    /** Older Java display callers cannot infer operation permissions from view permission. */
+    /**
+     * Older Java display callers cannot infer operation permissions from view permission.
+     */
     public ResearchGuiSnapshot(boolean initialized, boolean savePending, ResearchPlayerView.TeamStatus teamStatus,
                                Decision personalPermission, Decision teamViewPermission, Decision queuePermission,
                                Decision startPermission, Decision blacklistPermission, Tab tab, int total, int offset,
@@ -354,12 +354,6 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         return source.subList(offset, offset + Math.min(limit, source.size() - offset));
     }
 
-    private static <T> ObjectList<T> frozen(ObjectList<T> source) {
-        var copy = new ObjectArrayList<>(Objects.requireNonNull(source));
-        for (var row : copy) Objects.requireNonNull(row);
-        return ObjectLists.unmodifiable(copy);
-    }
-
     @Override
     public void writeToPacket(ByteBuf data) {
         var body = Unpooled.buffer(1024, MAX_PACKET_BYTES);
@@ -397,14 +391,18 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
     public enum Tab {
         RESEARCH, QUEUE, REWARDS;
 
-        /** Shared declaration order; callers must not modify this array. */
+        /**
+         * Shared declaration order; callers must not modify this array.
+         */
         public static final Tab[] VALUES = values();
     }
 
     public enum Kind {
         NUMERIC, MATERIAL, REWARD_CHOICE;
 
-        /** Shared declaration order; callers must not modify this array. */
+        /**
+         * Shared declaration order; callers must not modify this array.
+         */
         public static final Kind[] VALUES = values();
     }
 

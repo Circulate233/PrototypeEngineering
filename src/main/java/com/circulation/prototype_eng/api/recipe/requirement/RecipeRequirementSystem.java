@@ -35,7 +35,9 @@ public interface RecipeRequirementSystem<C> {
         return payload;
     }
 
-    /** True only when this system meters its own TICK transaction against the captured batch timeline. */
+    /**
+     * True only when this system meters its own TICK transaction against the captured batch timeline.
+     */
     default boolean crossRecipeRetimesTickIo(C payload) {
         return false;
     }

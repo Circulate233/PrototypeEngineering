@@ -18,20 +18,18 @@ public final class RecipeOverlayPipeline {
 
     /**
      * Include this transaction in the host's stage when its writes must remain compensatable.
+     * The descriptor list and its non-null elements are borrowed for this call. Callers and modifier
+     * callbacks must not modify the list while acquisition is running.
      */
     public static RequirementTransaction acquire(RecipeProcess process, List<RecipeOverlayModifierDescriptor> descriptors) {
         Objects.requireNonNull(process);
-        var instructions = new ObjectArrayList<>(descriptors);
-        for (var descriptor : instructions) {
-            Objects.requireNonNull(descriptor);
-        }
-        if (instructions.isEmpty()) {
+        if (descriptors.isEmpty()) {
             return RequirementTransaction.SUCCESS;
         }
         var transaction = new OverlayTransaction();
         try {
-            for (int ordinal = 0; ordinal < instructions.size(); ordinal++) {
-                var descriptor = instructions.get(ordinal);
+            for (int ordinal = 0; ordinal < descriptors.size(); ordinal++) {
+                var descriptor = descriptors.get(ordinal);
                 var context = new RecipeOverlayContext(process, descriptor.id(), ordinal, transaction.changes);
                 try {
                     descriptor.modifier().apply(context);

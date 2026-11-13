@@ -9,6 +9,8 @@ public enum WorkSlotStatus {
     BLOCKED,
     FAILED;
 
-    /** Shared declaration order; callers must not modify this array. */
+    /**
+     * Shared declaration order; callers must not modify this array.
+     */
     public static final WorkSlotStatus[] VALUES = values();
 }

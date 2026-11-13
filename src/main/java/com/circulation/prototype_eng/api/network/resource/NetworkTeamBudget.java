@@ -177,7 +177,7 @@ public final class NetworkTeamBudget implements AutoCloseable {
                 return null;
             }
         }
-        var reservation = new Reservation(this, operation, NetworkResourceModifier.copyResources(quantities), authorized);
+        var reservation = new Reservation(this, operation, quantities, authorized);
         operations.add(operation);
         for (var entry : quantities.object2LongEntrySet()) {
             available.addTo(entry.getKey(), -entry.getLongValue());

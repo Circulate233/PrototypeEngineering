@@ -29,15 +29,12 @@ import java.util.UUID;
 public final class MinecraftResearchDownloadInventory implements ResearchDownloadInventory {
     static final String STORE = "download_material_receipts";
     private static final String NAMESPACE = "prototype_eng";
-    private final Thread owner = Thread.currentThread();
     private final EntityPlayerMP player;
-    private final UUID playerId;
     private final InventoryPlayer inventory;
     private final MinecraftServer server;
 
     public MinecraftResearchDownloadInventory(EntityPlayerMP player) {
         this.player = Objects.requireNonNull(player);
-        playerId = Objects.requireNonNull(player.getUniqueID());
         inventory = Objects.requireNonNull(player.inventory);
         server = Objects.requireNonNull(player.getServerWorld().getMinecraftServer());
         requireOwner();
@@ -77,10 +74,16 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
         return receipts;
     }
 
+    private static void requireCommitted(ResearchDownloadMaterial receipt) {
+        if (receipt.status() != ResearchDownloadMaterial.Status.COMMITTED) {
+            throw new IllegalStateException("Download material receipt is not committed");
+        }
+    }
+
     @Override
     public UUID playerId() {
         requireOwner();
-        return playerId;
+        return player.getUniqueID();
     }
 
     @Override
@@ -90,7 +93,7 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
         PlayerInventoryNbt.encodedSlot(slot);
         if (hasPending(player)) return null;
         var before = PlayerInventoryNbt.capture(inventory);
-        var captured = ResearchDownloadMaterial.prepare(playerId, operationId, slot, before);
+        var captured = ResearchDownloadMaterial.prepare(player.getUniqueID(), operationId, slot, before);
         if (!matches(before)) throw new IllegalStateException("Download inventory changed during capture");
         return captured;
     }
@@ -98,13 +101,13 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
     @Override
     public @Nullable ResearchDownloadMaterial find(UUID operationId) {
         requireOwner();
-        return readReceipts(player.getEntityData(), playerId).get(Objects.requireNonNull(operationId));
+        return readReceipts(player.getEntityData(), player.getUniqueID()).get(Objects.requireNonNull(operationId));
     }
 
     @Override
     public ObjectList<ResearchDownloadMaterial> operations() {
         requireOwner();
-        return ObjectLists.unmodifiable(new ObjectArrayList<>(readReceipts(player.getEntityData(), playerId).values()));
+        return ObjectLists.unmodifiable(new ObjectArrayList<>(readReceipts(player.getEntityData(), player.getUniqueID()).values()));
     }
 
     @Override
@@ -121,7 +124,7 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
         if (receipt.status() != ResearchDownloadMaterial.Status.PREPARED || !matches(receipt.inventoryBefore())) {
             throw new IllegalStateException("Download preparation lacks its exact before inventory proof");
         }
-        var receipts = readReceipts(player.getEntityData(), playerId);
+        var receipts = readReceipts(player.getEntityData(), player.getUniqueID());
         var existing = receipts.get(receipt.operationId());
         if (existing != null) {
             if (!existing.equals(receipt))
@@ -138,7 +141,7 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
     public boolean consume(ResearchDownloadMaterial requested) {
         requireOwner();
         requirePlayer(requested);
-        var receipts = readReceipts(player.getEntityData(), playerId);
+        var receipts = readReceipts(player.getEntityData(), player.getUniqueID());
         var current = requireReceipt(receipts, requested.operationId());
         if (!current.sameOperation(requested))
             throw new IllegalStateException("Download consumption does not own the recorded material operation");
@@ -181,7 +184,7 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
     @Override
     public void persistCommitted(UUID operationId) {
         requireOwner();
-        var receipts = readReceipts(player.getEntityData(), playerId);
+        var receipts = readReceipts(player.getEntityData(), player.getUniqueID());
         var receipt = requireReceipt(receipts, operationId);
         requireCommitted(receipt);
         publishAndSave(receipts);
@@ -200,7 +203,7 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
     private void remove(UUID operationId, ResearchDownloadMaterial.Status status) {
         requireOwner();
         Objects.requireNonNull(operationId);
-        var receipts = readReceipts(player.getEntityData(), playerId);
+        var receipts = readReceipts(player.getEntityData(), player.getUniqueID());
         var receipt = receipts.get(operationId);
         if (receipt != null) {
             if (receipt.status() != status)
@@ -246,7 +249,7 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
         var expectedReceipts = receipts.isEmpty() ? new NBTTagCompound() : store;
         PlayerDataPersistence.persist(player, this::requireOwner,
             saved -> MaterialInventoryEvidence.verify(saved, expectedInventory, STORE, expectedReceipts));
-        if (!expectedInventory.equals(PlayerInventoryNbt.capture(inventory)) || !receipts.equals(readReceipts(player.getEntityData(), playerId))) {
+        if (!expectedInventory.equals(PlayerInventoryNbt.capture(inventory)) || !receipts.equals(readReceipts(player.getEntityData(), player.getUniqueID()))) {
             throw new IllegalStateException("Download material evidence changed during its player persistence barrier");
         }
     }
@@ -258,22 +261,16 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
         return receipt;
     }
 
-    private static void requireCommitted(ResearchDownloadMaterial receipt) {
-        if (receipt.status() != ResearchDownloadMaterial.Status.COMMITTED) {
-            throw new IllegalStateException("Download material receipt is not committed");
-        }
-    }
-
     private void requirePlayer(ResearchDownloadMaterial receipt) {
-        if (!playerId.equals(Objects.requireNonNull(receipt).playerId()))
+        if (!player.getUniqueID().equals(Objects.requireNonNull(receipt).playerId()))
             throw new IllegalArgumentException("Download receipt belongs to another player");
     }
 
     private void requireOwner() {
         var world = player.getServerWorld();
-        if (Thread.currentThread() != owner || player instanceof FakePlayer || world.isRemote || world.getMinecraftServer() != server
-            || !server.isCallingFromMinecraftThread() || !playerId.equals(player.getUniqueID()) || player.inventory != inventory
-            || server.getPlayerList().getPlayerByUUID(playerId) != player) {
+        if (player instanceof FakePlayer || world.getMinecraftServer() != server
+            || !server.isCallingFromMinecraftThread() || player.inventory != inventory
+            || server.getPlayerList().getPlayerByUUID(player.getUniqueID()) != player) {
             throw new IllegalStateException("Download materials require the exact real online player on its server owner thread");
         }
     }

@@ -1,8 +1,5 @@
 package com.circulation.prototype_eng.recipe;
 
-import it.unimi.dsi.fastutil.booleans.BooleanList;
-import it.unimi.dsi.fastutil.booleans.BooleanArrayList;
-
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKeyType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -29,6 +26,8 @@ import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
+import it.unimi.dsi.fastutil.booleans.BooleanArrayList;
+import it.unimi.dsi.fastutil.booleans.BooleanList;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;

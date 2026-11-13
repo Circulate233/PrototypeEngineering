@@ -13,7 +13,9 @@ import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
-/** Owns both independent FE sides, including their all-or-nothing replacement. */
+/**
+ * Owns both independent FE sides, including their all-or-nothing replacement.
+ */
 public final class EnergyHatchStorage {
     private final EnergyHatchConfiguration configuration;
     private final @Nullable EnergyBuffer input;
@@ -57,12 +59,6 @@ public final class EnergyHatchStorage {
         return configuration;
     }
 
-    public void bindSourceIdentities(@Nullable String location) {
-        if (location == null) return;
-        if (input != null) input.context().bindSourceIdentity(location + "/input");
-        if (output != null) output.context().bindSourceIdentity(location + "/output");
-    }
-
     public void invalidate() {
         locked(() -> contexts.forEach(StorageContext::invalidate));
     }
@@ -98,7 +94,7 @@ public final class EnergyHatchStorage {
     }
 
     public HatchReplacement replace(EnergyHatchConfiguration target, long inputRate, long outputRate,
-                                    @Nullable String location, Runnable changed, BooleanSupplier current,
+                                    Runnable changed, BooleanSupplier current,
                                     Function<EnergyHatchStorage, Runnable> preparePublication) {
         if (target.mode() != configuration.mode())
             throw new IllegalArgumentException("Cannot change physical hatch direction");
@@ -117,7 +113,6 @@ public final class EnergyHatchStorage {
                 return new HatchReplacement(HatchReconfigurationStatus.BLOCKED_CAPACITY, capture.versions);
             var changes = new HatchStorageChanges(changed);
             var candidate = new EnergyHatchStorage(target, inputRate, outputRate, capture.input, capture.output, changes);
-            candidate.bindSourceIdentities(location);
             var publish = preparePublication.apply(candidate);
             return fence.access(() -> {
                 if (!current.getAsBoolean() || !HatchReplacement.current(capture.versions))

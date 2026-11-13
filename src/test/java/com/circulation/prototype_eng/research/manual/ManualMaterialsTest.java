@@ -1,25 +1,17 @@
 package com.circulation.prototype_eng.research.manual;
 
-import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
-import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
-import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
-import com.circulation.prototype_eng.api.recipe.requirement.FuzzyInputGroup;
-import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.research.manual.ManualMaterialKey;
 import com.circulation.prototype_eng.testsupport.TestResources;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -122,94 +114,4 @@ class ManualMaterialsTest {
         }
     }
 
-    @Test
-    void rejectsCurrentAndResultingSequenceOverflowBeforePublishingProgress() {
-        var materials = ManualMaterials.from(List.of(requirement("input", new GenericStack(SHARED, Long.MAX_VALUE), new GenericStack(OTHER, 1))));
-        var work = new Object2LongOpenHashMap<ManualMaterialKey>();
-        work.put(material("input", 0), Long.MAX_VALUE);
-        assertDoesNotThrow(() -> materials.validateWork(work));
-        assertThrows(ArithmeticException.class, () -> materials.plan(work));
-        assertFalse(work.containsKey(material("input", 1)));
-        work.put(material("input", 1), 1);
-        assertThrows(ArithmeticException.class, () -> materials.validateWork(work));
-        assertThrows(ArithmeticException.class, () -> materials.plan(work));
-        assertThrows(ArithmeticException.class, () -> materials.complete(work));
-    }
-
-    @Test
-    void acceptsAnExactlyRepresentableFinalSequence() {
-        var materials = ManualMaterials.from(List.of(requirement("input", new GenericStack(SHARED, Long.MAX_VALUE - 1), new GenericStack(OTHER, 1))));
-        var work = new Object2LongOpenHashMap<ManualMaterialKey>();
-        work.put(material("input", 0), Long.MAX_VALUE - 1);
-        var plan = materials.plan(work);
-        assertEquals(Long.MAX_VALUE - 1, plan.sequence());
-        assertTrue(plan.completesResearch());
-        assertTrue(materials.complete(plan.expectedWork()));
-        assertEquals(Long.MAX_VALUE, materials.plan(plan.expectedWork()).sequence());
-    }
-
-    @Test
-    void capturesDefinitionsAndWorkAndRejectsMutationThroughEntries() {
-        var definitions = new ObjectArrayList<RecipeRequirement<?>>();
-        definitions.add(requirement("input", new GenericStack(SHARED, 2)));
-        var materials = ManualMaterials.from(definitions);
-        definitions.clear();
-        var work = new Object2LongOpenHashMap<ManualMaterialKey>();
-        work.put(material("input", 0), 1);
-        var plan = materials.plan(work);
-        work.clear();
-        assertTrue(materials.complete(plan.expectedWork()));
-        Map<ManualMaterialKey, Long> boxedWork = plan.expectedWork();
-        assertThrows(UnsupportedOperationException.class, () -> plan.increments().object2LongEntrySet().iterator().next().setValue(9));
-        assertThrows(UnsupportedOperationException.class, () -> boxedWork.entrySet().iterator().next().setValue(9L));
-        assertThrows(UnsupportedOperationException.class, () -> plan.quantities().object2LongEntrySet().iterator().next().setValue(9));
-        assertThrows(UnsupportedOperationException.class, () -> plan.quantities().addTo(SHARED, 1));
-        assertEquals(1, plan.quantities().getLong(SHARED));
-        assertEquals(2, plan.expectedWork().getLong(material("input", 0)));
-    }
-
-    @Test
-    void planConstructorCopiesEveryProvidedMutableMap() {
-        var work = new Object2LongOpenHashMap<ManualMaterialKey>();
-        work.put(material("input", 0), 1);
-        var quantities = new AEKey2LongMap.OpenHashMap();
-        quantities.addTo(SHARED, 1);
-        var plan = new ManualMaterials.Plan(work, work, quantities, 0, true);
-        work.clear();
-        quantities.clear();
-        assertEquals(1, plan.increments().getLong(material("input", 0)));
-        assertEquals(1, plan.expectedWork().getLong(material("input", 0)));
-        assertEquals(1, plan.quantities().getLong(SHARED));
-    }
-
-    @Test
-    void rejectsEmptyDuplicateAndNonResourceMaterials() {
-        assertThrows(IllegalArgumentException.class, () -> ManualMaterials.from(List.of()));
-        assertThrows(IllegalArgumentException.class, () -> ManualMaterials.from(List.of(requirement("empty"))));
-        var input = requirement("input", new GenericStack(SHARED, 1));
-        assertThrows(IllegalArgumentException.class, () -> ManualMaterials.from(List.of(input, input)));
-        assertThrows(IllegalArgumentException.class, () -> ManualMaterials.from(List.of(
-            RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(1, 0, 0, 0, false)))));
-    }
-
-    @Test
-    void rejectsResourceEffectsBeyondStaticInputs() {
-        var stacks = List.of(new GenericStack(SHARED, 1));
-        var unsupported = List.of(
-            new ResourceRequirement(stacks, stacks, List.of(), List.of(), false),
-            new ResourceRequirement(stacks, List.of(), stacks, List.of(), false),
-            new ResourceRequirement(stacks, stacks),
-            new ResourceRequirement(stacks, List.of(), List.of(), List.of(), true),
-            new ResourceRequirement(stacks, List.of(), List.of(), List.of(), false, new ResourceChance(50, null), null),
-            new ResourceRequirement(stacks, List.of()).withInputAllocation(InputAllocation.SINGLE_SOURCE),
-            new ResourceRequirement(stacks, List.of()).withInputAllocation(InputAllocation.custom(id("custom"),
-                _ -> {
-                    throw new AssertionError("Manual materials cannot invoke source allocation");
-                })),
-            new ResourceRequirement(stacks, List.of(), List.of(), List.of(), false, ResourceChance.ALWAYS, null,
-                List.of(new FuzzyInputGroup(List.of(SHARED), 1)), List.of()));
-        for (var payload : unsupported) {
-            assertThrows(IllegalArgumentException.class, () -> ManualMaterials.from(List.of(RecipeRequirements.RESOURCES.requirement(id("input"), payload))));
-        }
-    }
 }

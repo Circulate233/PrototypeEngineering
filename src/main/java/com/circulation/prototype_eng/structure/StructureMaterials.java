@@ -14,7 +14,9 @@ import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.IFluidBlock;
 import org.jetbrains.annotations.Nullable;
 
-/** The same per-position resource identity is used by previews, pattern imports and construction. */
+/**
+ * The same per-position resource identity is used by previews, pattern imports and construction.
+ */
 public final class StructureMaterials {
     private StructureMaterials() {
     }
@@ -27,12 +29,12 @@ public final class StructureMaterials {
         return fluid;
     }
 
+    @SuppressWarnings("DataFlowIssue") // AEFluidKey.of(Fluid) returns a key for the non-null fluid checked below.
     public static @Nullable GenericStack resource(World world, BlockPos position, IBlockState state,
-                                                   EntityPlayer player, @Nullable String tileNbt) {
+                                                  EntityPlayer player, @Nullable String tileNbt) {
         var fluid = fluid(state);
         if (fluid != null) {
-            var key = AEFluidKey.of(fluid);
-            return key == null ? null : new GenericStack(key, Fluid.BUCKET_VOLUME);
+            return new GenericStack(AEFluidKey.of(fluid), Fluid.BUCKET_VOLUME);
         }
         if (state.getMaterial().isLiquid() || state.getMaterial() == Material.AIR) return null;
         try (var picks = new StructurePickWorld(world, pos -> world.isBlockLoaded(pos, false)

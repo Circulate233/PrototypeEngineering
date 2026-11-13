@@ -4,7 +4,9 @@ import net.minecraft.client.Minecraft;
 
 import java.util.Objects;
 
-/** Full panel bounds and native ingredient inset, with caller supplied skin hooks. */
+/**
+ * Full panel bounds and native ingredient inset, with caller supplied skin hooks.
+ */
 public record JeiSlot(int x, int y, int width, int height, int inset, Skin skin) {
     public static final Skin PLAIN = new Skin() {
     };

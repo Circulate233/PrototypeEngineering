@@ -1,6 +1,8 @@
 package com.circulation.prototype_eng.client.render;
 
-/** Concrete CPU scheduling, sampled animation and native mapped-output choices. */
+/**
+ * Concrete CPU scheduling, sampled animation and native mapped-output choices.
+ */
 public record MachineRenderOptions(int workers, boolean fixedThreads, double animationStepTicks, int sampleSnap,
                                    boolean mappedOutput) {
     public MachineRenderOptions {

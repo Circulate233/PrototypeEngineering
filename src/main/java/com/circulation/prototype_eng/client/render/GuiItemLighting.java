@@ -5,7 +5,9 @@ import net.minecraft.client.renderer.RenderHelper;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 
-/** Restores GUI item lights after AEKey/native renderers disable the individual light sources. */
+/**
+ * Restores GUI item lights after AEKey/native renderers disable the individual light sources.
+ */
 public final class GuiItemLighting {
     private static final int LIGHTING = 1;
     private static final int LIGHT0 = 2;

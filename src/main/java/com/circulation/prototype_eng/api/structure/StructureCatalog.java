@@ -1,8 +1,7 @@
 package com.circulation.prototype_eng.api.structure;
 
-import com.circulation.prototype_eng.util.ExternalEnumValues;
-
 import ae2.api.orientation.BlockOrientation;
+import com.circulation.prototype_eng.util.ExternalEnumValues;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -51,7 +50,9 @@ public final class StructureCatalog {
         return definitions;
     }
 
-    /** Pure completed values only; callers validate canonical identity and eligibility outside this lock. */
+    /**
+     * Pure completed values only; StructureConfiguration validates canonical identity before planning.
+     */
     synchronized @Nullable MachineStructure cachedTransform(MachineStructure definition, BlockOrientation orientation) {
         var orientations = transformed.get(definition);
         return orientations == null ? null : orientations[orientation.ordinal()];

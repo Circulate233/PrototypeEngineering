@@ -37,7 +37,9 @@ public record StructureProjectionOptions(Style style, boolean hideDisplayedMatch
         this(Style.TRANSLUCENT_BOX, true, null, 2048, 2048, 4096, 64.0);
     }
 
-    /** Keeps the same renderer budgets and visual policy when choosing another projection plane. */
+    /**
+     * Keeps the same renderer budgets and visual policy when choosing another projection plane.
+     */
     public StructureProjectionOptions withLayer(@Nullable StructurePreviewModel.Layer nextLayer) {
         return new StructureProjectionOptions(style, hideDisplayedMatches, nextLayer, expansionStepsPerTick,
             scanChecksPerTick, renderVisitsPerFrame, maxDistance, blockModelBuildVisitsPerFrame,

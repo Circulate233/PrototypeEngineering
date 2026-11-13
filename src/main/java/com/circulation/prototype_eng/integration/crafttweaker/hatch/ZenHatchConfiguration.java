@@ -16,7 +16,9 @@ import stanhebben.zenscript.annotations.ZenMethod;
 import java.util.List;
 import java.util.Objects;
 
-/** Values only; startup registration and loaded propagation use the same public Java configuration API. */
+/**
+ * Values only; startup registration and loaded propagation use the same public Java configuration API.
+ */
 @ZenRegister
 @ZenClass("mods.prototype_eng.hatch.Configuration")
 @SuppressWarnings("unused") // ZenScript resolves the registered public factories.
@@ -51,7 +53,7 @@ public record ZenHatchConfiguration(HatchConfigurationUpdates.Target value) {
 
     private static List<HatchConfigurationUpdates.Target> targets(ZenHatchConfiguration[] configurations) {
         var targets = new ObjectArrayList<HatchConfigurationUpdates.Target>(configurations.length);
-        for (var configuration : configurations) targets.add(Objects.requireNonNull(configuration).value());
-        return List.copyOf(targets);
+        for (var configuration : configurations) targets.add(configuration.value());
+        return targets;
     }
 }

@@ -7,16 +7,23 @@ import net.minecraftforge.client.event.GuiScreenEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
-import org.lwjgl.input.Mouse;
 import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
 
 
-/** HEI's wrapper API has no drag/key callbacks: forward only inside the actually drawn preview. */
+/**
+ * HEI's wrapper API has no drag/key callbacks: forward only inside the actually drawn preview.
+ */
 public final class PreviewEmbeddedInput {
     public static final PreviewEmbeddedInput INSTANCE = new PreviewEmbeddedInput();
     private final ObjectArrayList<Active> active = new ObjectArrayList<>();
     private final Drag dragging = new Drag();
+
     private PreviewEmbeddedInput() {
+    }
+
+    private static boolean expired(Active entry) {
+        return !entry.panel.ownerCurrent() || System.currentTimeMillis() - entry.touched > 250;
     }
 
     void mark(GuiScreen host, StructurePreviewPanel panel) {
@@ -38,7 +45,8 @@ public final class PreviewEmbeddedInput {
         for (int index = active.size() - 1; index >= 0; index--) {
             var entry = active.get(index);
             if (entry.host == event.getGui() && fresh(entry)
-                && entry.panel.renderItemTooltip(event.getMouseX(), event.getMouseY(), event.getMouseX() - entry.x, event.getMouseY() - entry.y)) return;
+                && entry.panel.renderItemTooltip(event.getMouseX(), event.getMouseY(), event.getMouseX() - entry.x, event.getMouseY() - entry.y))
+                return;
         }
     }
 
@@ -64,11 +72,9 @@ public final class PreviewEmbeddedInput {
         }
     }
 
-    private static boolean expired(Active entry) {
-        return !entry.panel.ownerCurrent() || System.currentTimeMillis() - entry.touched > 250;
-    }
-
-    /** Called at HEI's actual input entry, which runs even for already-cancelled Forge events. */
+    /**
+     * Called at HEI's actual input entry, which runs even for already-cancelled Forge events.
+     */
     public boolean mouse(GuiScreen screen, int x, int y) {
         int eventButton = Mouse.getEventButton();
         boolean ownedRelease = dragging.consumeRelease(eventButton, Mouse.getEventButtonState());
@@ -118,13 +124,10 @@ public final class PreviewEmbeddedInput {
     private record Active(GuiScreen host, StructurePreviewPanel panel, int x, int y, long touched) {
     }
 
-    /** Pure captured-input state; native panel freshness is checked by the caller before delivery. */
+    /**
+     * Pure captured-input state; native panel freshness is checked by the caller before delivery.
+     */
     static final class Drag {
-        @FunctionalInterface
-        interface PointerAction {
-            boolean test(int x, int y);
-        }
-
         private Object host, panel;
         private int x, y, button = -1;
         private int ownedRelease = -1;
@@ -176,6 +179,11 @@ public final class PreviewEmbeddedInput {
                 return false;
             } // Native display may already have drained the previous release.
             return true;
+        }
+
+        @FunctionalInterface
+        interface PointerAction {
+            boolean test(int x, int y);
         }
     }
 }

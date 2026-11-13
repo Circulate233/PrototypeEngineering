@@ -43,7 +43,9 @@ class ExistingRecipePoolPagesTest {
         ExternalRecipePoolPages.reset();
         ExternalRecipePoolPages.defer(registry, known -> {
             calls[0]++;
-            pages.freeze(List.of(pool), _ -> { throw new AssertionError("External category must not create a page"); },
+            pages.freeze(List.of(pool), _ -> {
+                    throw new AssertionError("External category must not create a page");
+                },
                 displays.snapshot(RecipePoolJeiRegistry.recipesForOwnPages(List.of(pool), known)), known);
         });
         ExternalRecipePoolPages.finish(new Object(), categories);
@@ -90,7 +92,7 @@ class ExistingRecipePoolPagesTest {
         RecipePool simple = new SimpleRecipePool(id("simple"), "pool.title", List.of(first)).withExistingJeiPage("foreign:late");
         RecipePool general = new DefaultRecipePool(id("general"), "pool.title", List.of(first.recipe())).withExistingJeiPage("foreign:late");
         var machine = MachineType.builder(id("machine"), RecipeText.Cancelled, id("shape"))
-            .recipePool(simple.id()).recipePool(general.id()).build();
+                                 .recipePool(simple.id()).recipePool(general.id()).build();
         var registry = new RecipeRegistry();
         registry.register(simple);
         registry.register(general);
@@ -98,7 +100,9 @@ class ExistingRecipePoolPagesTest {
         registry.freeze(List.of(machine));
         var before = registry.snapshot();
         var pages = new RecipePoolJeiRegistry();
-        pages.freeze(before.orderedPools(), _ -> { throw new AssertionError("External pool must not create an owned page"); }, null, Set.of("foreign:late"));
+        pages.freeze(before.orderedPools(), _ -> {
+            throw new AssertionError("External pool must not create an owned page");
+        }, null, Set.of("foreign:late"));
         var prepared = registry.prepareReplacement(before, List.of(new RecipeRegistry.Definition(next.recipe(), "v2")));
         var displays = new RecipeJeiDisplays();
         displays.freeze();

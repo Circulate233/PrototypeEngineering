@@ -164,9 +164,10 @@ public final class SelectiveState implements ProcessAbortListener {
 
     /**
      * Successful removals remain independently verifiable after active decisions have been cleared.
+     * Returns a read-only view valid until this process next advances or restores state.
      */
     public List<AbortReceipt> abortReceipts() {
-        return ObjectLists.unmodifiable(new ObjectArrayList<>(abortReceipts));
+        return abortReceipts;
     }
 
     /**
@@ -238,18 +239,13 @@ public final class SelectiveState implements ProcessAbortListener {
         rethrow(failure);
     }
 
+    /**
+     * The completed reference lists are borrowed unchanged for this receipt's lifetime.
+     */
     public record AbortReceipt(RequirementPath selectionPath, List<ModifierReference> modifiers,
                                List<OverlayReference> overlays) {
         public AbortReceipt {
             Objects.requireNonNull(selectionPath);
-            modifiers = ObjectLists.unmodifiable(new ObjectArrayList<>(modifiers));
-            overlays = ObjectLists.unmodifiable(new ObjectArrayList<>(overlays));
-            for (var reference : modifiers) {
-                Objects.requireNonNull(reference);
-            }
-            for (var reference : overlays) {
-                Objects.requireNonNull(reference);
-            }
             if (modifiers.isEmpty() && overlays.isEmpty()) {
                 throw new IllegalArgumentException("Empty abort receipt");
             }
@@ -258,13 +254,10 @@ public final class SelectiveState implements ProcessAbortListener {
 
     /**
      * The completed START boundary is implicit in this save; pending or provisional state cannot produce it.
+     * Both reference lists are completed values borrowed unchanged for this snapshot's lifetime.
      */
     public record SelectionSnapshot(boolean committed, int index, boolean completed, List<ModifierReference> modifiers,
                                     List<OverlayReference> overlays) {
-        public SelectionSnapshot {
-            modifiers = ObjectLists.unmodifiable(new ObjectArrayList<>(modifiers));
-            overlays = ObjectLists.unmodifiable(new ObjectArrayList<>(overlays));
-        }
     }
 
     public record OverlayReference(RequirementPath path, RecipeRequirement<?> target, String layerId) {

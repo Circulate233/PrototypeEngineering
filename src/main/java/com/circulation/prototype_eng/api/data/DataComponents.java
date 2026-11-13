@@ -3,12 +3,12 @@ package com.circulation.prototype_eng.api.data;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.persistence.MachineComponentCodec;
-import com.circulation.prototype_eng.api.recipe.persistence.ProcessComponentCodec;
-import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
-import com.circulation.prototype_eng.api.recipe.scanning.RecipeProcessFactory;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.persistence.ProcessComponentCodec;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
+import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeProcessFactory;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 
@@ -16,7 +16,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Predicate;
 
-/** Explicit ordinary data components; declarations opt in and bind the matching codec. */
+/**
+ * Explicit ordinary data components; declarations opt in and bind the matching codec.
+ */
 public final class DataComponents {
     public static final ComponentType<MachineInstance, ComponentData> MACHINE =
         new ComponentType<>(new ResourceLocation("prototype_eng", "data"), _ -> new ComponentData(), List.of());
@@ -51,12 +53,16 @@ public final class DataComponents {
     private DataComponents() {
     }
 
-    /** Adds data to fresh candidates without losing the delegate's cooperative creation cursor. */
+    /**
+     * Adds data to fresh candidates without losing the delegate's cooperative creation cursor.
+     */
     public static RecipeProcessFactory withProcessData(RecipeProcessFactory delegate) {
         return withProcessData(delegate, _ -> true);
     }
 
-    /** Explicit codec support avoids adding an unsupported component to addon candidates. */
+    /**
+     * Explicit codec support avoids adding an unsupported component to addon candidates.
+     */
     public static RecipeProcessFactory withProcessData(RecipeProcessFactory delegate,
                                                        Predicate<MachineRecipe> supported) {
         Objects.requireNonNull(delegate);

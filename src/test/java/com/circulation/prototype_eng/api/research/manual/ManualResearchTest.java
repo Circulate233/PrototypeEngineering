@@ -1,8 +1,5 @@
 package com.circulation.prototype_eng.api.research.manual;
 
-import it.unimi.dsi.fastutil.longs.LongArrayList;
-
-
 import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
@@ -23,6 +20,7 @@ import com.circulation.prototype_eng.api.research.reward.RewardEventAction;
 import com.circulation.prototype_eng.api.research.reward.RewardGroup;
 import com.circulation.prototype_eng.research.manual.ManualMaterials;
 import com.circulation.prototype_eng.testsupport.TestResources;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;

@@ -12,7 +12,9 @@ import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
-/** One host's pending value, never a retained world/fence or cross-session permission. */
+/**
+ * One host's pending value, never a retained world/fence or cross-session permission.
+ */
 public final class HatchConfigurationRequest {
     private @Nullable HatchConfiguration target;
     private long generation;
@@ -20,7 +22,9 @@ public final class HatchConfigurationRequest {
     private boolean queued;
     private HatchReplacement last = HatchReplacement.of(HatchReconfigurationStatus.UNCHANGED);
 
-    /** Native host observation. Thread ownership is checked before touching world/position ownership. */
+    /**
+     * Native host observation. Thread ownership is checked before touching world/position ownership.
+     */
     public static Boundary boundary(AEBaseTile tile) {
         var world = Objects.requireNonNull(tile.getWorld(), "Native hatch boundary requires a world");
         var server = world.getMinecraftServer();
@@ -82,7 +86,9 @@ public final class HatchConfigurationRequest {
         });
     }
 
-    /** A fresh host observation for one request. It is neither stored in NBT nor retained as authority. */
+    /**
+     * A fresh host observation for one request. It is neither stored in NBT nor retained as authority.
+     */
     public record Boundary(TaskScheduler scheduler, BooleanSupplier current) {
         public Boundary {
             Objects.requireNonNull(scheduler);

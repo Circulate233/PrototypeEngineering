@@ -2,41 +2,45 @@ package com.circulation.prototype_eng.api.machine;
 
 import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
-import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
+import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
+import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
+import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.process.RequirementPath;
-import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
-import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
-import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
+import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import org.jetbrains.annotations.Nullable;
 
 import java.math.BigInteger;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.Map;
-import java.util.Collections;
 
-/** A closed cross-recipe cohort, with an exact weighted duration and deterministic integer IO shares. */
+/**
+ * Published collections are read-only by contract; consumers must not modify them.
+ * A closed cross-recipe cohort, with an exact weighted duration and deterministic integer IO shares.
+ */
 public final class CrossRecipeBatch {
-    private CrossRecipeBatch() { }
+    private CrossRecipeBatch() {
+    }
 
     public static boolean running(MachineInstance owner) {
-        for (var host : owner.recipeHosts()) for (var slot : host.slots()) {
-            var process = slot.process();
-            if (process != null && process.crossRecipeTiming() != null) return true;
-        }
+        for (var host : owner.recipeHosts())
+            for (var slot : host.slots()) {
+                var process = slot.process();
+                if (process != null && process.crossRecipeTiming() != null) return true;
+            }
         return false;
     }
 
@@ -44,48 +48,54 @@ public final class CrossRecipeBatch {
         if (!(candidate.owner() instanceof CrossRecipeController)) return true;
         if (running(candidate.owner())) return false;
         var signature = signature(candidate);
-        for (var host : candidate.owner().recipeHosts()) for (var slot : host.slots()) {
-            var process = slot.process();
-            if (process != null && process != candidate) {
-                if (!signature.equals(signature(process))) return false;
-                if (signature.requiresOriginalDuration()
-                    && candidate.recipe().durationTicks() != process.recipe().durationTicks()) return false;
+        for (var host : candidate.owner().recipeHosts())
+            for (var slot : host.slots()) {
+                var process = slot.process();
+                if (process != null && process != candidate) {
+                    if (!signature.equals(signature(process))) return false;
+                    if (signature.requiresOriginalDuration()
+                        && candidate.recipe().durationTicks() != process.recipe().durationTicks()) return false;
+                }
             }
-        }
         return true;
     }
 
-    /** Called at the first real work capture, before any host or process has acquired a tick lease. */
+    /**
+     * Called at the first real work capture, before any host or process has acquired a tick lease.
+     */
     public static void prepare(MachineInstance owner) {
         if (!(owner instanceof CrossRecipeController)) return;
         if (running(owner)) {
             Timing expected = null;
-            for (var host : owner.recipeHosts()) for (var slot : host.slots()) {
-                var process = slot.process();
-                if (process == null) continue;
-                var timing = Objects.requireNonNull(process.crossRecipeTiming(), "A running cohort cannot accept untimed work");
-                if (expected != null && (!timing.batch.equals(expected.batch) || timing.duration != expected.duration))
-                    throw new IllegalStateException("Inconsistent restored cross-recipe cohort");
-                expected = timing;
-            }
+            for (var host : owner.recipeHosts())
+                for (var slot : host.slots()) {
+                    var process = slot.process();
+                    if (process == null) continue;
+                    var timing = Objects.requireNonNull(process.crossRecipeTiming(), "A running cohort cannot accept untimed work");
+                    if (expected != null && (!timing.batch.equals(expected.batch) || timing.duration != expected.duration))
+                        throw new IllegalStateException("Inconsistent restored cross-recipe cohort");
+                    expected = timing;
+                }
             return;
         }
         var members = new ObjectArrayList<RecipeProcess>();
         BigInteger work = BigInteger.ZERO;
         long parallels = 0;
         Signature expected = null;
-        for (var host : owner.recipeHosts()) for (var slot : host.slots()) {
-            var process = slot.process();
-            if (process == null) continue;
-            process.requirePersistenceBoundary();
-            var signature = signature(process);
-            if (expected != null && !expected.equals(signature)) throw new IllegalStateException("Incompatible cross-recipe tick IO");
-            expected = signature;
-            int count = RecipeParallelism.effective(process);
-            parallels = Math.addExact(parallels, count);
-            work = work.add(BigInteger.valueOf(process.recipe().durationTicks()).multiply(BigInteger.valueOf(count)));
-            members.add(process);
-        }
+        for (var host : owner.recipeHosts())
+            for (var slot : host.slots()) {
+                var process = slot.process();
+                if (process == null) continue;
+                process.requirePersistenceBoundary();
+                var signature = signature(process);
+                if (expected != null && !expected.equals(signature))
+                    throw new IllegalStateException("Incompatible cross-recipe tick IO");
+                expected = signature;
+                int count = RecipeParallelism.effective(process);
+                parallels = Math.addExact(parallels, count);
+                work = work.add(BigInteger.valueOf(process.recipe().durationTicks()).multiply(BigInteger.valueOf(count)));
+                members.add(process);
+            }
         if (members.isEmpty()) return;
         assign(members, work, parallels, UUID.randomUUID(), false);
     }
@@ -114,7 +124,9 @@ public final class CrossRecipeBatch {
         }
     }
 
-    /** START effects participate in the frozen quantity weights; a cohort then shares one work clock. */
+    /**
+     * START effects participate in the frozen quantity weights; a cohort then shares one work clock.
+     */
     public static void prepareRound(MachineInstance owner) {
         if (!(owner instanceof CrossRecipeController cross)) return;
         boolean allStarted = true;
@@ -122,29 +134,31 @@ public final class CrossRecipeBatch {
         boolean changed = false;
         long parallels = 0;
         double speed = 0;
-        for (var host : owner.recipeHosts()) for (var slot : host.slots()) {
-            var process = slot.process();
-            if (process == null || process.state().lifecycle().isTerminal()) continue;
-            var timing = Objects.requireNonNull(process.crossRecipeTiming());
-            int count = RecipeParallelism.effective(process);
-            changed |= count != timing.parallelism;
-            allStarted &= process.state().started();
-            noWork &= process.state().successfulTicks() == 0 && process.state().progress() == 0;
-            long next = Math.addExact(parallels, count);
-            double value = Math.max(0, process.attributes().value(StandardMachineAttributes.PROCESS_SPEED, 1));
-            speed += (value - speed) * ((double) count / next);
-            parallels = next;
-        }
+        for (var host : owner.recipeHosts())
+            for (var slot : host.slots()) {
+                var process = slot.process();
+                if (process == null || process.state().lifecycle().isTerminal()) continue;
+                var timing = Objects.requireNonNull(process.crossRecipeTiming());
+                int count = RecipeParallelism.effective(process);
+                changed |= count != timing.parallelism;
+                allStarted &= process.state().started();
+                noWork &= process.state().successfulTicks() == 0 && process.state().progress() == 0;
+                long next = Math.addExact(parallels, count);
+                double value = Math.max(0, process.attributes().value(StandardMachineAttributes.PROCESS_SPEED, 1));
+                speed += (value - speed) * ((double) count / next);
+                parallels = next;
+            }
         if (parallels == 0) return;
         if (allStarted && noWork && changed) {
             var members = new ObjectArrayList<RecipeProcess>();
             BigInteger weighted = BigInteger.ZERO;
-            for (var host : owner.recipeHosts()) for (var slot : host.slots()) {
-                var process = slot.process();
-                if (process == null || process.state().lifecycle().isTerminal()) continue;
-                members.add(process);
-                weighted = weighted.add(BigInteger.valueOf(process.recipe().durationTicks()).multiply(BigInteger.valueOf(RecipeParallelism.effective(process))));
-            }
+            for (var host : owner.recipeHosts())
+                for (var slot : host.slots()) {
+                    var process = slot.process();
+                    if (process == null || process.state().lifecycle().isTerminal()) continue;
+                    members.add(process);
+                    weighted = weighted.add(BigInteger.valueOf(process.recipe().durationTicks()).multiply(BigInteger.valueOf(RecipeParallelism.effective(process))));
+                }
             assign(members, weighted, parallels, Objects.requireNonNull(members.getFirst().crossRecipeTiming()).batch, true);
         }
         cross.batchSpeed(speed);
@@ -168,20 +182,24 @@ public final class CrossRecipeBatch {
 
     public static BigInteger energyTotal(long once, long perTick, int originalDuration, int parallelism) {
         return BigInteger.valueOf(perTick).multiply(BigInteger.valueOf(originalDuration)).add(BigInteger.valueOf(once))
-            .multiply(BigInteger.valueOf(parallelism));
+                         .multiply(BigInteger.valueOf(parallelism));
     }
 
-    /** END is admitted only after every remaining member has completed its shared clock. */
+    /**
+     * END is admitted only after every remaining member has completed its shared clock.
+     */
     public static boolean readyToEnd(RecipeProcess process) {
         var timing = process.crossRecipeTiming();
         if (timing == null) return true;
-        for (var host : process.owner().recipeHosts()) for (var slot : host.slots()) {
-            var member = slot.process();
-            if (member == null || member.state().lifecycle().isTerminal()) continue;
-            var other = member.crossRecipeTiming();
-            if (other == null || !other.batch().equals(timing.batch())) throw new IllegalStateException("Cross-recipe cohort changed");
-            if (!member.state().started() || member.state().progress() < other.duration()) return false;
-        }
+        for (var host : process.owner().recipeHosts())
+            for (var slot : host.slots()) {
+                var member = slot.process();
+                if (member == null || member.state().lifecycle().isTerminal()) continue;
+                var other = member.crossRecipeTiming();
+                if (other == null || !other.batch().equals(timing.batch()))
+                    throw new IllegalStateException("Cross-recipe cohort changed");
+                if (!member.state().started() || member.state().progress() < other.duration()) return false;
+            }
         return true;
     }
 
@@ -190,7 +208,8 @@ public final class CrossRecipeBatch {
         var outputs = new AEKey2LongMap.OpenHashMap(6);
         var policies = new ObjectOpenHashSet<TickPolicy>();
         var opaque = new Object2IntOpenHashMap<OpaqueTick>();
-        for (var requirement : process.orderedRequirements()) signature(process, requirement, null, null, inputs, outputs, policies, opaque);
+        for (var requirement : process.orderedRequirements())
+            signature(process, requirement, null, null, inputs, outputs, policies, opaque);
         return new Signature(inputs, outputs, policies, opaque);
     }
 
@@ -222,17 +241,21 @@ public final class CrossRecipeBatch {
             signature(process, child, path, wrapper == null ? requirement.definition() : wrapper, inputs, outputs, policies, opaque);
     }
 
-    /** Recheck effective overlays before creating any new transaction for the cohort. */
+    /**
+     * Recheck effective overlays before creating any new transaction for the cohort.
+     */
     public static void validateTickIo(MachineInstance owner) {
         if (!(owner instanceof CrossRecipeController)) return;
         Signature expected = null;
-        for (var host : owner.recipeHosts()) for (var slot : host.slots()) {
-            var process = slot.process();
-            if (process == null || process.state().lifecycle().isTerminal()) continue;
-            var actual = signature(process);
-            if (expected != null && !expected.equals(actual)) throw new IllegalStateException("Cross-recipe tick IO changed after admission");
-            expected = actual;
-        }
+        for (var host : owner.recipeHosts())
+            for (var slot : host.slots()) {
+                var process = slot.process();
+                if (process == null || process.state().lifecycle().isTerminal()) continue;
+                var actual = signature(process);
+                if (expected != null && !expected.equals(actual))
+                    throw new IllegalStateException("Cross-recipe tick IO changed after admission");
+                expected = actual;
+            }
     }
 
     private static void add(AEKey2LongMap target, List<GenericStack> values) {
@@ -247,15 +270,24 @@ public final class CrossRecipeBatch {
                              Object2IntOpenHashMap<OpaqueTick> opaque) {
         private boolean requiresOriginalDuration() {
             for (var key : opaque.keySet()) if (!key.retimed) return true;
-            for (var policy : policies) if (policy.wrapper != null || !policy.chance.equals(ResourceChance.ALWAYS)) return true;
+            for (var policy : policies)
+                if (policy.wrapper != null || !policy.chance.equals(ResourceChance.ALWAYS)) return true;
             return false;
         }
     }
-    private record OpaqueTick(RecipeRequirementType<?> type, Object key, boolean retimed) { }
-    private record ProbabilisticTick(List<GenericStack> inputs, List<GenericStack> outputs, double chance) { }
-    private record TickPolicy(ResourceChance chance, InputAllocation allocation, boolean voidOutputs, @Nullable RecipeRequirement<?> wrapper) { }
 
-    public record EnergyOffsets(int input, int output) { }
+    private record OpaqueTick(RecipeRequirementType<?> type, Object key, boolean retimed) {
+    }
+
+    private record ProbabilisticTick(List<GenericStack> inputs, List<GenericStack> outputs, double chance) {
+    }
+
+    private record TickPolicy(ResourceChance chance, InputAllocation allocation, boolean voidOutputs,
+                              @Nullable RecipeRequirement<?> wrapper) {
+    }
+
+    public record EnergyOffsets(int input, int output) {
+    }
 
     public record Timing(UUID batch, int duration, int parallelism, int materialOffset,
                          Map<RequirementPath, EnergyOffsets> energyOffsets) {
@@ -271,10 +303,12 @@ public final class CrossRecipeBatch {
                     throw new IllegalArgumentException("Invalid energy rounding offset");
             }
             // JDK's pure-object view also prevents entry.setValue; a set-only wrapper does not.
-            energyOffsets = Collections.unmodifiableMap(owned);
+            energyOffsets = owned;
         }
 
-        /** Nonnegative shares sum exactly to total, including a fractional speed and the final tick. */
+        /**
+         * Nonnegative shares sum exactly to total, including a fractional speed and the final tick.
+         */
         public long portion(BigInteger total, int offset, RecipeProcess.Tick tick) {
             if (duration == 0) return 0;
             long before = (long) Math.min(duration, tick.progressBefore());

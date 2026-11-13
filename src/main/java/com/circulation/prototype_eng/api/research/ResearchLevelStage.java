@@ -1,8 +1,7 @@
 package com.circulation.prototype_eng.api.research;
 
-import java.util.List;
-import ae2.api.stacks.GenericStack;
 import ae2.api.stacks.AEItemKey;
+import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
@@ -23,6 +22,7 @@ import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -81,6 +81,11 @@ public final class ResearchLevelStage {
 
     public static Builder builder(int firstLevel, int lastLevel) {
         return new Builder(firstLevel, lastLevel);
+    }
+
+    private static boolean onlyItems(List<GenericStack> inputs) {
+        for (var stack : inputs) if (!(stack.what() instanceof AEItemKey)) return false;
+        return true;
     }
 
     public int firstLevel() {
@@ -176,11 +181,6 @@ public final class ResearchLevelStage {
                 throw new IllegalArgumentException("Tier-zero research supports only static AEItemKey START inputs with default source allocation: " + requirement.id());
             }
         }
-    }
-
-    private static boolean onlyItems(List<GenericStack> inputs) {
-        for (var stack : inputs) if (!(stack.what() instanceof AEItemKey)) return false;
-        return true;
     }
 
     public static final class Builder {

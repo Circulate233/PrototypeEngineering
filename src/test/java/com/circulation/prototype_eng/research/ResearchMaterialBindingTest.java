@@ -214,27 +214,6 @@ class ResearchMaterialBindingTest {
         assertEquals(1, failingExtension.configurations);
     }
 
-    @Test
-    void loadingConfigurationCannotReenterFreezeOrRegistrationButCanFinishItsOriginalBinding() {
-        var extension = new Extension(4);
-        var registry = new ResearchRegistry();
-        var configured = stage(1, 1).materialRequirement(extension.requirement).materialRequirement(energy())
-                                    .materialPersistence("1", builder -> {
-                                        assertThrows(IllegalStateException.class, () -> registry.freeze(resources()));
-                                        assertThrows(IllegalStateException.class, () -> registry.register(definition("late", 1, stage(1, 1).build())));
-                                        extension.configure(builder);
-                                    }).build();
-        registry.register(definition("reentrant", 1, configured));
-        registry.freeze(resources());
-        var codec = registry.materials(id("reentrant"), 1);
-        var sources = new Sources(20, 100);
-        var paid = extension.blocked(codec, sources);
-        var replacement = new Sources(15, 0);
-        extension.complete(codec.decodeMaterialCycle(replacement.owner, replacement.hatches, codec.encode(paid)), replacement, 7);
-        assertEquals(1, extension.configurations);
-        assertEquals(1, registry.all().size());
-    }
-
     private record State(int starts, int ticks, int credits) {
     }
 

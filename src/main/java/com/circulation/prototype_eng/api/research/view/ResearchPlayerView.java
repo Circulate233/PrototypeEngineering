@@ -1,21 +1,13 @@
 package com.circulation.prototype_eng.api.research.view;
 
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy.Decision;
-import com.circulation.prototype_eng.api.research.ResearchSnapshots;
 import com.circulation.prototype_eng.api.research.manual.ManualMaterialKey;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
 import com.circulation.prototype_eng.api.research.reward.RewardClaim;
-import it.unimi.dsi.fastutil.objects.AbstractObject2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -25,6 +17,8 @@ import java.util.UUID;
 
 /**
  * One player's detached display data; it contains no execution plans or recovery receipts.
+ * Collections are completed immutable data borrowed for the view's lifetime. Maps use zero default
+ * values; producers and consumers must not modify any collection or entry view after handoff.
  */
 public record ResearchPlayerView(UUID playerUuid, long serverTime, boolean savePending,
                                  Decision personalPermission, Object2IntMap<ResourceLocation> personalLevels,
@@ -36,15 +30,17 @@ public record ResearchPlayerView(UUID playerUuid, long serverTime, boolean saveP
         Objects.requireNonNull(personalPermission);
         Objects.requireNonNull(forgetPermission);
         Objects.requireNonNull(adminPermission);
-        personalLevels = levels(personalLevels);
+        validateLevels(personalLevels);
         Objects.requireNonNull(team);
-        claims = list(claims);
+        Objects.requireNonNull(claims);
         if (personalPermission != Decision.ALLOWED && (!personalLevels.isEmpty() || !claims.isEmpty())) {
             throw new IllegalArgumentException("Denied personal view contains private data");
         }
     }
 
-    /** Compatibility constructor: an older detached view grants no new operation permissions. */
+    /**
+     * Compatibility constructor: an older detached view grants no new operation permissions.
+     */
     public ResearchPlayerView(UUID playerUuid, long serverTime, boolean savePending,
                               Decision personalPermission, Object2IntMap<ResourceLocation> personalLevels,
                               Team team, ObjectList<ClaimSummary> claims) {
@@ -52,34 +48,26 @@ public record ResearchPlayerView(UUID playerUuid, long serverTime, boolean saveP
             Decision.TARGET_PLAYER_MISMATCH, Decision.NOT_SERVER_OPERATOR);
     }
 
-    private static Object2IntMap<ResourceLocation> levels(Object2IntMap<ResourceLocation> source) {
+    private static void validateLevels(Object2IntMap<ResourceLocation> source) {
         for (var entry : Objects.requireNonNull(source).object2IntEntrySet()) {
             Objects.requireNonNull(entry.getKey());
             if (entry.getIntValue() < 0) throw new IllegalArgumentException("Negative research view level");
         }
-        return ResearchSnapshots.levels(source);
     }
 
-    private static <T> ObjectList<T> list(ObjectList<T> source) {
-        var copy = new ObjectArrayList<>(Objects.requireNonNull(source));
-        for (var value : copy) Objects.requireNonNull(value);
-        return ObjectLists.unmodifiable(copy);
-    }
-
-    private static <T> ObjectSet<T> set(ObjectSet<T> source) {
-        var copy = new ObjectOpenHashSet<>(Objects.requireNonNull(source));
-        for (var value : copy) Objects.requireNonNull(value);
-        return ObjectSets.unmodifiable(copy);
-    }
-
-    private static <T> Object2LongMap<T> counts(Object2LongMap<T> source) {
-        return Object2LongMaps.unmodifiable(new FrozenCounts<>(source));
+    private static <T> void validateCounts(Object2LongMap<T> source) {
+        for (var entry : source.object2LongEntrySet()) {
+            Objects.requireNonNull(entry.getKey());
+            if (entry.getLongValue() < 0) throw new IllegalArgumentException("Negative research view progress");
+        }
     }
 
     public enum TeamStatus {
         AVAILABLE, MISSING_TEAM, UNAVAILABLE, DENIED;
 
-        /** Shared declaration order; callers must not modify this array. */
+        /**
+         * Shared declaration order; callers must not modify this array.
+         */
         public static final TeamStatus[] VALUES = values();
     }
 
@@ -101,12 +89,12 @@ public record ResearchPlayerView(UUID playerUuid, long serverTime, boolean saveP
             Objects.requireNonNull(blacklistPermission);
             if (!id.equals(id.trim()) || queueEpoch < 0)
                 throw new IllegalArgumentException("Invalid research team view");
-            sharedLevels = levels(sharedLevels);
-            structuralTargets = levels(structuralTargets);
-            blacklist = set(blacklist);
-            queueRows = list(queueRows);
-            numericProgress = counts(numericProgress);
-            manualRows = list(manualRows);
+            validateLevels(sharedLevels);
+            validateLevels(structuralTargets);
+            Objects.requireNonNull(blacklist);
+            Objects.requireNonNull(queueRows);
+            validateCounts(numericProgress);
+            Objects.requireNonNull(manualRows);
             if (viewPermission != Decision.ALLOWED && (!sharedLevels.isEmpty() || !structuralTargets.isEmpty() || !blacklist.isEmpty())) {
                 throw new IllegalArgumentException("Denied team view contains research data");
             }
@@ -135,7 +123,7 @@ public record ResearchPlayerView(UUID playerUuid, long serverTime, boolean saveP
         public ManualRow {
             if (entryId < 1) throw new IllegalArgumentException("Invalid manual research row");
             Objects.requireNonNull(status);
-            work = counts(work);
+            validateCounts(work);
         }
     }
 
@@ -147,46 +135,8 @@ public record ResearchPlayerView(UUID playerUuid, long serverTime, boolean saveP
             Objects.requireNonNull(status);
             Objects.requireNonNull(selectedGroupId);
             if (level < 1) throw new IllegalArgumentException("Invalid research reward summary");
-            choiceGroupIds = list(choiceGroupIds);
+            Objects.requireNonNull(choiceGroupIds);
         }
     }
 
-    /**
-     * Detached entries prevent entry.setValue from changing an allegedly immutable wire snapshot.
-     */
-    private static final class FrozenCounts<T> extends AbstractObject2LongMap<T> {
-        private final Object2LongOpenHashMap<T> values = new Object2LongOpenHashMap<>();
-        private final ObjectSet<Object2LongMap.Entry<T>> entries;
-
-        private FrozenCounts(Object2LongMap<T> source) {
-            var snapshot = new ObjectOpenHashSet<Object2LongMap.Entry<T>>(source.size());
-            for (var entry : Objects.requireNonNull(source).object2LongEntrySet()) {
-                Objects.requireNonNull(entry.getKey());
-                if (entry.getLongValue() < 0) throw new IllegalArgumentException("Negative research view progress");
-                values.put(entry.getKey(), entry.getLongValue());
-                snapshot.add(new BasicEntry<>(entry.getKey(), entry.getLongValue()));
-            }
-            entries = ObjectSets.unmodifiable(snapshot);
-        }
-
-        @Override
-        public ObjectSet<Object2LongMap.Entry<T>> object2LongEntrySet() {
-            return entries;
-        }
-
-        @Override
-        public long getLong(Object key) {
-            return values.getLong(key);
-        }
-
-        @Override
-        public boolean containsKey(Object key) {
-            return values.containsKey(key);
-        }
-
-        @Override
-        public int size() {
-            return values.size();
-        }
-    }
 }

@@ -194,7 +194,9 @@ public final class MachineLifecycle {
         return formed && structureReady && schedulingAllowed();
     }
 
-    /** Temporary inconclusive checks preserve accepted formation, components and every work slot. */
+    /**
+     * Temporary inconclusive checks preserve accepted formation, components and every work slot.
+     */
     public void structureReadiness(boolean ready) {
         enterTransition();
         try {
@@ -332,7 +334,9 @@ public final class MachineLifecycle {
         return refreshStructure(applicable, prepare, new RecipeWorkBudget(Long.MAX_VALUE));
     }
 
-    /** All preparation is budgeted before the indivisible accepted-state and notification tail. */
+    /**
+     * All preparation is budgeted before the indivisible accepted-state and notification tail.
+     */
     public boolean refreshStructure(BooleanSupplier applicable, Supplier<StructureAssembly> prepare, RecipeWorkBudget work) {
         Objects.requireNonNull(applicable);
         Objects.requireNonNull(prepare);
@@ -781,7 +785,9 @@ public final class MachineLifecycle {
             return true;
         }
 
-        /** Transfers one exclusive callback chunk; the scheduler must prove exit before reclaiming it. */
+        /**
+         * Transfers one exclusive callback chunk; the scheduler must prove exit before reclaiming it.
+         */
         @SuppressWarnings("ReturnOfInnerClass") // This exact lifecycle handle owns the one-use worker claim.
         public WorkerAction delegateWorker(Runnable execution) {
             requireOwner();
@@ -792,44 +798,10 @@ public final class MachineLifecycle {
 
         public void finishWorker(WorkerAction expected) {
             requireOwner(true);
-            if (workerAction != Objects.requireNonNull(expected)) throw new IllegalArgumentException("Different worker claim");
+            if (workerAction != Objects.requireNonNull(expected))
+                throw new IllegalArgumentException("Different worker claim");
             expected.reclaim();
             workerAction = null;
-        }
-
-        public final class WorkerAction implements Runnable {
-            private final Runnable execution;
-            private boolean started;
-            private boolean completed;
-
-            private WorkerAction(Runnable execution) {
-                this.execution = execution;
-            }
-
-            private synchronized void reclaim() {
-                if (started && !completed) throw new IllegalStateException("Machine worker has not exited");
-                completed = true; // A stopped dispatch must also consume its unstarted claim.
-            }
-
-            @Override
-            public void run() {
-                synchronized (this) {
-                    if (started || completed || workerAction != this)
-                        throw new IllegalStateException("Machine worker claim was already consumed");
-                    started = true;
-                }
-                callbackWorker = Thread.currentThread();
-                componentScope = true;
-                try {
-                    invoke(execution);
-                } finally {
-                    componentScope = false;
-                    callbackWorker = null;
-                    synchronized (this) {
-                        completed = true;
-                    }
-                }
-            }
         }
 
         private boolean defer(MachineWorkSlots slots) {
@@ -993,11 +965,47 @@ public final class MachineLifecycle {
         }
 
         private void requireReader() {
-            if (Thread.currentThread() == callbackWorker && executing && !finished && lifecycle.scheduledExecution == this) return;
+            if (Thread.currentThread() == callbackWorker && executing && !finished && lifecycle.scheduledExecution == this)
+                return;
             requireOwner();
         }
 
         public record DeferredScan(RecipeScanner scanner, ScanLimits limits) {
+        }
+
+        public final class WorkerAction implements Runnable {
+            private final Runnable execution;
+            private boolean started;
+            private boolean completed;
+
+            private WorkerAction(Runnable execution) {
+                this.execution = execution;
+            }
+
+            private synchronized void reclaim() {
+                if (started && !completed) throw new IllegalStateException("Machine worker has not exited");
+                completed = true; // A stopped dispatch must also consume its unstarted claim.
+            }
+
+            @Override
+            public void run() {
+                synchronized (this) {
+                    if (started || completed || workerAction != this)
+                        throw new IllegalStateException("Machine worker claim was already consumed");
+                    started = true;
+                }
+                callbackWorker = Thread.currentThread();
+                componentScope = true;
+                try {
+                    invoke(execution);
+                } finally {
+                    componentScope = false;
+                    callbackWorker = null;
+                    synchronized (this) {
+                        completed = true;
+                    }
+                }
+            }
         }
     }
 

@@ -76,7 +76,9 @@ public interface NetworkParticipant {
         }
     }
 
-    /** Stable source and affinity identities; no live inventory, world or transaction crosses a worker. */
+    /**
+     * Stable source and affinity identities; no live inventory, world or transaction crosses a worker.
+     */
     record MaterialSource(ResourceLocation id, String affinity) {
         public MaterialSource {
             Objects.requireNonNull(id);
@@ -87,6 +89,11 @@ public interface NetworkParticipant {
         }
     }
 
+    /**
+     * Work types and material sources are borrowed immutable lists. Providers and readers must not
+     * change either list while this snapshot or work derived from it is retained.
+     * Resource quantities follow the same rule and use a zero default return value.
+     */
     record Snapshot(UUID participantId, UUID ownerId, Kind kind, long tick, long epoch, long version,
                     Object2LongMap<NetworkResourceType> resources,
                     List<WorkType> workTypes, List<MaterialSource> materialSources) {
@@ -97,9 +104,7 @@ public interface NetworkParticipant {
             if (tick < 0 || epoch < 0 || version < 0) {
                 throw new IllegalArgumentException("Negative participant snapshot generation");
             }
-            resources = NetworkResourceModifier.copyResources(resources);
-            workTypes = List.copyOf(workTypes);
-            materialSources = List.copyOf(materialSources);
+            NetworkResourceModifier.validateResources(resources);
             var ids = new ObjectOpenHashSet<ResourceLocation>();
             for (var work : workTypes) {
                 if (!ids.add(work.id())) throw new IllegalArgumentException("Duplicate participant work type");
@@ -123,7 +128,9 @@ public interface NetworkParticipant {
         }
     }
 
-    /** Runtime callbacks receive the accepted snapshot's capabilities, never a caller-supplied team id. */
+    /**
+     * Runtime callbacks receive the accepted snapshot's capabilities, never a caller-supplied team id.
+     */
     record Command(UUID participantId, UUID ownerId, long tick, long epoch, long version, UUID planId,
                    WorkType workType, @Nullable MaterialSource materialSource) {
         public Command {

@@ -11,11 +11,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.Set;
 
-/** Resolve category IDs after both modern and legacy plugin registration, before native freezing. */
+/**
+ * Resolve category IDs after both modern and legacy plugin registration, before native freezing.
+ */
 @Pseudo
 @Mixin(targets = "mezz.jei.startup.ModRegistry", remap = false)
 public abstract class ModRegistryRecipePoolPagesMixin {
-    @Shadow @Final private Set<String> recipeCategoryUids;
+    @Shadow
+    @Final
+    private Set<String> recipeCategoryUids;
 
     @Inject(method = "createRecipeRegistry", at = @At("HEAD"), remap = false)
     private void prototype_eng$finishRecipePoolPages(CallbackInfoReturnable<?> callback) {

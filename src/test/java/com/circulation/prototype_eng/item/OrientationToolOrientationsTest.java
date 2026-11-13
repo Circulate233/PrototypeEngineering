@@ -1,10 +1,9 @@
 package com.circulation.prototype_eng.item;
 
-import com.circulation.prototype_eng.util.ExternalEnumValues;
-
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
 import com.circulation.prototype_eng.machine.ControllerOrientation;
+import com.circulation.prototype_eng.util.ExternalEnumValues;
 import net.minecraft.util.EnumFacing;
 import org.junit.jupiter.api.Test;
 

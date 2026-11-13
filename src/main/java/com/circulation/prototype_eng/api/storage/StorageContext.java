@@ -39,8 +39,6 @@ public final class StorageContext {
     // before its RELEASED release publication; replacement claim's acquire observes null/zero.
     @Nullable Thread sourceWorkOwner;
     int sourceScopes;
-    private String sourceIdentity = "lifetime:" + order;
-    private boolean sourceIdentityBound;
     private volatile boolean valid = true;
     @SuppressWarnings("unused") // Mutated through DIRTY to coalesce cross-thread notifications.
     private boolean dirty;
@@ -115,39 +113,6 @@ public final class StorageContext {
 
     public long order() {
         return order;
-    }
-
-    /** Pure diagnostic label read under the same lock as a quantity snapshot. */
-    public String sourceIdentity() {
-        requireLock();
-        return sourceIdentity;
-    }
-
-    /**
-     * Binds a stable host-supplied label once, before capability use. This never changes physical
-     * identity, lock order or permission. Binding advances the ordinary revision, invalidating any
-     * earlier facts; active reservations/fences prevent binding. Unbound in-memory sources retain
-     * an explicitly lifetime-only label. Moving/replacing a host requires a new context.
-     */
-    public void bindSourceIdentity(String identity) {
-        Objects.requireNonNull(identity);
-        if (identity.isBlank()) throw new IllegalArgumentException("Empty storage source identity");
-        lock();
-        try {
-            if (sourceIdentityBound) {
-                if (!sourceIdentity.equals(identity))
-                    throw new IllegalStateException("Storage source identity is already bound");
-                return;
-            }
-            if (!valid || fence() != null || reservedChanges != 0 || deferredMutations != 0)
-                throw new IllegalStateException("Source identity binding requires an idle live storage");
-            requireChange();
-            sourceIdentity = identity;
-            sourceIdentityBound = true;
-            recordChange();
-        } finally {
-            unlock();
-        }
     }
 
     public boolean isValid() {
@@ -240,7 +205,9 @@ public final class StorageContext {
         }
     }
 
-    /** Native synchronous external transfers cannot borrow a recipe fence or a budget capability. */
+    /**
+     * Native synchronous external transfers cannot borrow a recipe fence or a budget capability.
+     */
     public void requireOrdinaryLock() {
         StorageFence.requireOutsideAccess();
         requireLock();
@@ -417,20 +384,26 @@ public final class StorageContext {
         }
     }
 
-    /** Must be checked under the exact old fence before preparing replacement storage. */
+    /**
+     * Must be checked under the exact old fence before preparing replacement storage.
+     */
     public boolean idleForReplacement() {
         requireLock();
         return valid && deferredMutations == 0 && reservedChanges == 0;
     }
 
-    /** Preflight every side before the first one-way retirement. */
+    /**
+     * Preflight every side before the first one-way retirement.
+     */
     public void requireRetirement() {
         requireLock();
         if (!idleForReplacement() || Long.MAX_VALUE - revision <= reservedChanges)
             throw new IllegalStateException("Storage cannot retire with unresolved ownership or exhausted revision");
     }
 
-    /** One-way invalidation. Replacement hosts must create a new context. */
+    /**
+     * One-way invalidation. Replacement hosts must create a new context.
+     */
     public void invalidate() {
         lock();
         try {

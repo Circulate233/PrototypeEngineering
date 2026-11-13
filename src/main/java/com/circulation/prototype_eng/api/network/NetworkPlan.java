@@ -4,17 +4,16 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifie
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
 /**
  * Frozen result of one discovery batch; publication must still prove current runtime ownership.
+ * The planner transfers its completed maps; consumers must not mutate maps or entry views.
  */
 public final class NetworkPlan {
     private final long epoch;
@@ -25,10 +24,9 @@ public final class NetworkPlan {
     NetworkPlan(long epoch, Object2ObjectMap<UUID, NetworkWorkState> workStates,
                 Object2ObjectMap<UUID, String> teamIds, Object2ObjectMap<String, Team> teams) {
         this.epoch = epoch;
-        // JDK wrappers also protect Map.Entry.setValue; the owned backing maps remain fastutil.
-        this.workStates = Collections.unmodifiableMap(new Object2ObjectLinkedOpenHashMap<>(workStates));
-        this.teamIds = Collections.unmodifiableMap(new Object2ObjectLinkedOpenHashMap<>(teamIds));
-        this.teams = Collections.unmodifiableMap(new Object2ObjectLinkedOpenHashMap<>(teams));
+        this.workStates = workStates;
+        this.teamIds = teamIds;
+        this.teams = teams;
     }
 
     public long epoch() {
@@ -47,6 +45,9 @@ public final class NetworkPlan {
         return teams;
     }
 
+    /**
+     * Resource quantities are borrowed zero-default immutable data for this plan's lifetime.
+     */
     public record Team(UUID centerId, int centerLevel, @Nullable UUID dataCenterId,
                        Object2LongMap<NetworkResourceType> resourcesPerTick,
                        @Nullable DataCenterResearchSnapshot dataCenterResearch) {
@@ -58,7 +59,7 @@ public final class NetworkPlan {
             if (dataCenterResearch != null && !dataCenterResearch.dataCenterId().equals(dataCenterId)) {
                 throw new IllegalArgumentException("Selected data-center contents have another identity");
             }
-            resourcesPerTick = NetworkResourceModifier.copyResources(resourcesPerTick);
+            NetworkResourceModifier.validateResources(resourcesPerTick);
         }
 
         public Team(UUID centerId, int centerLevel, @Nullable UUID dataCenterId, Object2LongMap<NetworkResourceType> resourcesPerTick) {

@@ -1,67 +1,30 @@
 package com.circulation.prototype_eng.api.structure;
 
+import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectRBTreeMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayFIFOQueue;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceSet;
 import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.charset.StandardCharsets;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectArrayFIFOQueue;
-import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import it.unimi.dsi.fastutil.objects.Object2ObjectRBTreeMap;
 import java.util.UUID;
 
-/** Definition-time projection of retained facts, never an evaluation of matching callbacks. */
+/**
+ * Definition-time projection of retained facts, never an evaluation of matching callbacks.
+ */
 final class StructurePredicateDisplays {
     private static final int MAX_OPTIONS = 32;
     private static final int MAX_SEARCH_STEPS = 8192;
 
     private StructurePredicateDisplays() {
-    }
-
-    static final class Cache {
-        private boolean resolved;
-        private @Nullable StructureDisplay display;
-
-        synchronized @Nullable StructureDisplay get(StructurePredicate predicate) {
-            if (!resolved) {
-                display = describe(predicate);
-                resolved = true;
-            }
-            return display;
-        }
-    }
-
-    sealed interface Fact permits Material, Nbt, Branch, Unknown {
-    }
-
-    record Material(@Nullable IBlockState exact, @Nullable ReferenceSet<Block> membership,
-                    @Nullable StructureDisplay authored) implements Fact {
-    }
-
-    record Nbt(Map<String, String> expected) implements Fact {
-    }
-
-    record Branch(List<StructurePredicate> children, boolean all) implements Fact {
-    }
-
-    enum Unknown implements Fact { INSTANCE }
-
-    private record Seed(StructureDisplay.BlockOption option, @Nullable IBlockState state) {
-    }
-
-    /** A persistent continuation makes deep AND/OR trees iterative without constructing DNF. */
-    private record Pending(StructurePredicate predicate, @Nullable Pending next) {
-    }
-
-    private record Attempt(@Nullable Pending pending, Map<String, String> nbt, boolean localMaterial,
-                           boolean uncertain, @Nullable String tileNbt, boolean tileConflict) {
     }
 
     static @Nullable StructureDisplay describe(StructurePredicate root) {
@@ -107,7 +70,8 @@ final class StructurePredicateDisplays {
             int steps = 0;
             boolean found = false;
             boolean exhausted = false;
-            search: while (!attempts.isEmpty() && steps++ < MAX_SEARCH_STEPS) {
+            search:
+            while (!attempts.isEmpty() && steps++ < MAX_SEARCH_STEPS) {
                 var attempt = attempts.pop();
                 var pending = attempt.pending;
                 if (pending == null) {
@@ -149,7 +113,8 @@ final class StructurePredicateDisplays {
                     case Nbt(var expected) -> {
                         var merged = merge(attempt.nbt, expected);
                         // Even an empty NBT predicate requires a tile; an empty field map cannot encode that fact.
-                        if (merged != null) attempts.push(new Attempt(pending.next, merged, attempt.localMaterial, attempt.uncertain || expected.isEmpty(), attempt.tileNbt, attempt.tileConflict));
+                        if (merged != null)
+                            attempts.push(new Attempt(pending.next, merged, attempt.localMaterial, attempt.uncertain || expected.isEmpty(), attempt.tileNbt, attempt.tileConflict));
                     }
                     case Material(var exact, var membership, var authored) -> {
                         if (exact != null && !sameState(seed, exact)) continue;
@@ -173,7 +138,8 @@ final class StructurePredicateDisplays {
                             }
                         }
                     }
-                    case Unknown ignored -> attempts.push(new Attempt(pending.next, attempt.nbt, attempt.localMaterial, true, attempt.tileNbt, attempt.tileConflict));
+                    case Unknown ignored ->
+                        attempts.push(new Attempt(pending.next, attempt.nbt, attempt.localMaterial, true, attempt.tileNbt, attempt.tileConflict));
                 }
             }
             if (exhausted || !attempts.isEmpty()) {
@@ -198,12 +164,6 @@ final class StructurePredicateDisplays {
         field(text, tileNbt == null ? "" : tileNbt);
         text.append(";complete=").append(complete);
         return new StructureDisplay("intrinsic:" + UUID.nameUUIDFromBytes(text.toString().getBytes(StandardCharsets.UTF_8)), List.copyOf(options), tileNbt, complete);
-    }
-
-    private record Support(boolean pass, boolean localMaterial) {
-    }
-
-    private record Visit(StructurePredicate predicate, boolean exit) {
     }
 
     private static Support stateSupport(StructurePredicate root, Reference2ObjectOpenHashMap<StructurePredicate, Fact> facts, Seed seed) {
@@ -284,5 +244,52 @@ final class StructurePredicateDisplays {
             if (prior != null && !prior.equals(entry.getValue())) return null;
         }
         return Map.copyOf(merged);
+    }
+
+    enum Unknown implements Fact {INSTANCE}
+
+    sealed interface Fact permits Material, Nbt, Branch, Unknown {
+    }
+
+    static final class Cache {
+        private boolean resolved;
+        private @Nullable StructureDisplay display;
+
+        synchronized @Nullable StructureDisplay get(StructurePredicate predicate) {
+            if (!resolved) {
+                display = describe(predicate);
+                resolved = true;
+            }
+            return display;
+        }
+    }
+
+    record Material(@Nullable IBlockState exact, @Nullable ReferenceSet<Block> membership,
+                    @Nullable StructureDisplay authored) implements Fact {
+    }
+
+    record Nbt(Map<String, String> expected) implements Fact {
+    }
+
+    record Branch(List<StructurePredicate> children, boolean all) implements Fact {
+    }
+
+    private record Seed(StructureDisplay.BlockOption option, @Nullable IBlockState state) {
+    }
+
+    /**
+     * A persistent continuation makes deep AND/OR trees iterative without constructing DNF.
+     */
+    private record Pending(StructurePredicate predicate, @Nullable Pending next) {
+    }
+
+    private record Attempt(@Nullable Pending pending, Map<String, String> nbt, boolean localMaterial,
+                           boolean uncertain, @Nullable String tileNbt, boolean tileConflict) {
+    }
+
+    private record Support(boolean pass, boolean localMaterial) {
+    }
+
+    private record Visit(StructurePredicate predicate, boolean exit) {
     }
 }

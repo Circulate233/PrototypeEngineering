@@ -4,16 +4,13 @@ import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
-import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
+import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import it.unimi.dsi.fastutil.objects.Object2DoubleLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
-import it.unimi.dsi.fastutil.objects.Object2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -23,6 +20,7 @@ import java.util.Set;
 import java.util.function.ToIntFunction;
 
 /**
+ * Published collections are read-only by contract; consumers must not modify them.
  * Immutable machine declaration shared by registration, assembly and later controller bindings.
  * A structure ID permits declaration before Forge block resolution. Neither this definition nor
  * its resolved structure grants world, owner, scheduler or planned-execution authority.
@@ -50,12 +48,12 @@ public final class MachineType {
         id = builder.id;
         displayName = builder.displayName;
         structureId = builder.structureId;
-        componentTypes = ObjectLists.unmodifiable(new ObjectArrayList<>(builder.components.values()));
+        componentTypes = new ObjectArrayList<>(builder.components.values());
         ComponentMap.validateTypes(componentTypes);
-        recipePoolIds = ObjectLists.unmodifiable(new ObjectArrayList<>(builder.recipePools));
-        recipeGroups = ObjectSets.unmodifiable(new ObjectLinkedOpenHashSet<>(builder.recipeGroups));
-        workSlots = ObjectLists.unmodifiable(new ObjectArrayList<>(builder.workSlots.values()));
-        defaultAttributeBases = Object2DoubleMaps.unmodifiable(new Object2DoubleLinkedOpenHashMap<>(builder.attributes));
+        recipePoolIds = new ObjectArrayList<>(builder.recipePools);
+        recipeGroups = builder.recipeGroups;
+        workSlots = new ObjectArrayList<>(builder.workSlots.values());
+        defaultAttributeBases = builder.attributes;
         executionMode = builder.executionMode;
         explicitExecutionMode = builder.explicitExecutionMode;
         executionPolicy = builder.executionPolicy;
@@ -64,19 +62,16 @@ public final class MachineType {
         controllerInventorySize = builder.controllerInventorySize;
     }
 
-    /** Fixed fallback before assembly, and whenever no dynamic size callback is configured. */
-    public int controllerInventorySlots() {
-        return controllerInventorySlots;
+    public static Builder builder(ResourceLocation id, LocalizationEnum displayName, ResourceLocation structureId) {
+        return new Builder(id, displayName, structureId);
     }
 
-    /** Pure owner-thread callback; the returned count must fit the default sixteen-slot grid. */
+    /**
+     * Pure owner-thread callback; the returned count must fit the default sixteen-slot grid.
+     */
     public int controllerInventorySlots(@Nullable MachineInstance machine) {
         return machine == null || controllerInventorySize == null ? controllerInventorySlots
             : ControllerInventory.requireSlotCount(controllerInventorySize.applyAsInt(machine));
-    }
-
-    public static Builder builder(ResourceLocation id, LocalizationEnum displayName, ResourceLocation structureId) {
-        return new Builder(id, displayName, structureId);
     }
 
     public ResourceLocation id() {
@@ -126,12 +121,16 @@ public final class MachineType {
         return executionMode;
     }
 
-    /** Explicit declaration overrides the actual runtime controller's default scheduling choice. */
+    /**
+     * Explicit declaration overrides the actual runtime controller's default scheduling choice.
+     */
     public boolean hasExplicitExecutionMode() {
         return explicitExecutionMode;
     }
 
-    /** Null retains the existing execution-mode selection and the runtime controller's default. */
+    /**
+     * Null retains the existing execution-mode selection and the runtime controller's default.
+     */
     @Nullable
     public ControllerExecutionPolicy executionPolicy() {
         return executionPolicy;
@@ -233,20 +232,27 @@ public final class MachineType {
             return this;
         }
 
-        /** Sets the fixed fallback without removing an installed dynamic callback. Default is zero. */
+        /**
+         * Sets the fixed fallback without removing an installed dynamic callback. Default is zero.
+         */
         @SuppressWarnings("UnusedReturnValue") // Java declarations can chain the same setter used by scripts.
         public Builder controllerInventorySlots(int count) {
             controllerInventorySlots = ControllerInventory.requireSlotCount(count);
             return this;
         }
 
-        /** Null removes the dynamic callback and restores use of the configured fixed count. */
+        /**
+         * Null removes the dynamic callback and restores use of the configured fixed count.
+         */
         @SuppressWarnings("UnusedReturnValue") // Java addons can chain the dynamic setter used by scripts.
         public Builder controllerInventorySlots(@Nullable ToIntFunction<MachineInstance> count) {
             controllerInventorySize = count;
             return this;
         }
 
+        /**
+         * Transfers declaration collections; do not modify this builder after building.
+         */
         public MachineType build() {
             return new MachineType(this);
         }

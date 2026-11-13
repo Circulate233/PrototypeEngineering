@@ -11,18 +11,24 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
-/** PM-compatible loaded propagation through the existing server scheduler boundary. */
+/**
+ * PM-compatible loaded propagation through the existing server scheduler boundary.
+ */
 public final class HatchConfigurationUpdates {
     private HatchConfigurationUpdates() {
     }
 
-    /** Startup script defaults retain precedence when the file configuration is subsequently loaded. */
+    /**
+     * Startup script defaults retain precedence when the file configuration is subsequently loaded.
+     */
     @SuppressWarnings("unused")
     public static void configureDefaults(List<Target> targets) {
         HatchConfig.installTargets(targets);
     }
 
-    /** The report describes this one scan; busy/capacity hosts retain and retry their own pending target. */
+    /**
+     * The report describes this one scan; busy/capacity hosts retain and retry their own pending target.
+     */
     @SuppressWarnings("unused")
     public static CompletableFuture<Report> request(MinecraftServer server, List<Target> targets) {
         if (!server.isCallingFromMinecraftThread())
@@ -79,9 +85,9 @@ public final class HatchConfigurationUpdates {
     public record Outcome(ReconfigurableHatch host, HatchReconfigurationStatus status) {
     }
 
+    /**
+     * The completed outcome list is read-only for all report consumers.
+     */
     public record Report(long revision, HatchReconfigurationStatus status, List<Outcome> hosts) {
-        public Report {
-            hosts = List.copyOf(hosts);
-        }
     }
 }

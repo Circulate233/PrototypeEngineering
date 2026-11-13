@@ -207,7 +207,5 @@ class TeamResearchCompletionTest {
         personal.put(PERSONAL, 2);
         assertThrows(IllegalArgumentException.class, () -> restored.restore(new TeamOwnedResearch.Snapshot("team", personal)));
         assertEquals(2, restored.completedLevel(TEAM));
-        assertThrows(UnsupportedOperationException.class,
-            () -> restored.completedLevelsSnapshot().object2IntEntrySet().iterator().next().setValue(3));
     }
 }

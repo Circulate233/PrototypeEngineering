@@ -23,7 +23,9 @@ public interface AttributeModifier {
         MULTIPLY_BASE,
         MULTIPLY_TOTAL;
 
-        /** Shared declaration order; callers must not modify this array. */
+        /**
+         * Shared declaration order; callers must not modify this array.
+         */
         public static final Operation[] VALUES = values();
     }
 }

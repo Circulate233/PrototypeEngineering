@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.storage;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
-
 import ae2.api.config.Actionable;
 import ae2.api.networking.security.IActionSource;
 import ae2.api.stacks.AEKey;
@@ -15,6 +13,7 @@ import com.circulation.prototype_eng.api.storage.StorageFence;
 import com.circulation.prototype_eng.energy.EnergyHatchBlockEntity;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentString;
@@ -40,7 +39,8 @@ class HatchAutoTransferTest {
     private static final Key KEY = new Key(TYPE, "material");
 
     private static BufferedResourceHatch hatch(HatchMode mode, int slots) {
-        return new BufferedResourceHatch(mode, slots, Reference2LongMaps.singleton(TYPE, 100L), () -> {});
+        return new BufferedResourceHatch(mode, slots, Reference2LongMaps.singleton(TYPE, 100L), () -> {
+        });
     }
 
     private static HatchAutoTransfer.ResourceEndpoint endpoint(MEStorage remote, StorageContext... contexts) {
@@ -120,7 +120,8 @@ class HatchAutoTransferTest {
         var hatch = hatch(HatchMode.OUTPUT, 1);
         var output = Objects.requireNonNull(hatch.output());
         output.insert(KEY, 100, Actionable.MODULATE);
-        var peer = new StorageContext(() -> {});
+        var peer = new StorageContext(() -> {
+        });
         var locked = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         var remote = new Resources();
@@ -129,7 +130,8 @@ class HatchAutoTransferTest {
                 peer.lock();
                 try {
                     locked.countDown();
-                    if (!release.await(5, TimeUnit.SECONDS)) throw new AssertionError("Owner did not release test peer");
+                    if (!release.await(5, TimeUnit.SECONDS))
+                        throw new AssertionError("Owner did not release test peer");
                 } finally {
                     peer.unlock();
                 }
@@ -204,8 +206,10 @@ class HatchAutoTransferTest {
         for (int i = 0; i < 100; i++) original.amounts.addTo(new Key(TYPE, "old_" + i), 1);
         var replacement = new Resources();
         replacement.amounts.addTo(KEY, 3);
-        var firstNeighbor = new TileEntity() {};
-        var nextNeighbor = new TileEntity() {};
+        var firstNeighbor = new TileEntity() {
+        };
+        var nextNeighbor = new TileEntity() {
+        };
         var transfer = new HatchAutoTransfer();
         transfer.observeNeighbor(0, firstNeighbor);
         transfer.beginTick();
@@ -233,7 +237,8 @@ class HatchAutoTransferTest {
         var hatch = hatch(HatchMode.INPUT, 128);
         var input = Objects.requireNonNull(hatch.input());
         for (int slot = 0; slot < input.size(); slot++) input.insert(slot, KEY, 1, Actionable.MODULATE);
-        var neighbor = new TileEntity() {};
+        var neighbor = new TileEntity() {
+        };
         var remote = new Resources();
         for (int i = 0; i < 100; i++) remote.amounts.addTo(new Key(TYPE, "obsolete_" + i), 1);
         var transfer = new HatchAutoTransfer();
@@ -285,7 +290,8 @@ class HatchAutoTransferTest {
             assertEquals(8, output.storedEnergy());
             tile.setMaxOutputRate(0);
         };
-        var peerContexts = List.of(new StorageContext(() -> {}));
+        var peerContexts = List.of(new StorageContext(() -> {
+        }));
         HatchAutoTransfer.energy(input, output, remote, peerContexts, true, true, () -> true);
         assertEquals(4, input.storedEnergy());
         assertEquals(37, output.storedEnergy());
@@ -321,7 +327,9 @@ class HatchAutoTransferTest {
         private final AEKey2LongMap extractAttempts = new AEKey2LongMap.LinkdOpenHashMap();
         private long insertLimit = Long.MAX_VALUE, extractLimit = Long.MAX_VALUE;
         private int insertCalls, enumerations;
-        private Runnable onInsert = () -> {}, onExtract = () -> {};
+        private Runnable onInsert = () -> {
+        }, onExtract = () -> {
+        };
 
         @Override
         public long insert(AEKey key, long requested, Actionable mode, IActionSource source) {
@@ -360,7 +368,9 @@ class HatchAutoTransferTest {
     private static final class Energy implements IEnergyStorage {
         private int amount, calls;
         private int extractLimit, receiveLimit;
-        private Runnable onExtract = () -> {}, onReceive = () -> {};
+        private Runnable onExtract = () -> {
+        }, onReceive = () -> {
+        };
 
         @Override
         public int receiveEnergy(int requested, boolean simulate) {
@@ -385,15 +395,23 @@ class HatchAutoTransferTest {
         }
 
         @Override
-        public int getEnergyStored() { return amount; }
+        public int getEnergyStored() {
+            return amount;
+        }
 
         @Override
-        public int getMaxEnergyStored() { return Integer.MAX_VALUE; }
+        public int getMaxEnergyStored() {
+            return Integer.MAX_VALUE;
+        }
 
         @Override
-        public boolean canExtract() { return true; }
+        public boolean canExtract() {
+            return true;
+        }
 
         @Override
-        public boolean canReceive() { return true; }
+        public boolean canReceive() {
+            return true;
+        }
     }
 }

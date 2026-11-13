@@ -44,7 +44,9 @@ public final class StructureEvaluation {
         return snapshot.equivalent(StructureSnapshot.capture(used, source), used);
     }
 
-    /** Null explicitly denotes an incomplete proof; prefixes from different ticks never prove current. */
+    /**
+     * Null explicitly denotes an incomplete proof; prefixes from different ticks never prove current.
+     */
     @Nullable
     public Boolean isCurrent(StructureReadSource source, RecipeWorkBudget work) {
         var captured = StructureSnapshot.capture(used, source, work);

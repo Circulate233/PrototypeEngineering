@@ -4,11 +4,15 @@
 
 ## 当前检查点
 
+- 2026-11-13 再次全仓复审与统一提交：修复BlockPos Map普通构造器漏复制；清理结构临时坐标、归并排序重复缓冲、分组/样板全表扫描、每帧NBT字符串及剩余Frozen包装，改为Javadoc只读交接。1105份Java均已通过IDEA MCP格式化并逐份检查：1076全级零、5份CTM仍有IDE依赖解析诊断、24份文档/run被排除；完整Gradle build的1883项测试全通过，MCP build及21Java addon编译安装成功。入口[复审](defensive-programming-audit.md#2026-11-13-再次复审与统一格式化)、[集合契约](blockpos-maps.md)，最终证据见[实施进度](implementation-status.md)。本次按用户授权统一提交，日志严格为`Clean and Spoless code`；下一步读取最新实施证据，实际画面/游戏行为由用户复验。不启动游戏、不推送。
+
 - 2026-11-13 构建器六开关与实际策略已接入：完整材料需求/等待材料补充、完整空间需求/忽略世界流体、ME取料/自动AE合成三组；三项从属开关在客户端和服务器校验前置，关前置时清除从属开启状态。严格空间只认空气（可选择将世界流体视为空气），关闭则用原采掘/保护事件挖掘占位；缺料等待保留当前位置，补料后继续，不等待则跳过。直接复用结构选择工具20×13开关及21×14底框阴影，24组完整像素对照全相等；标签和tooltip显式分行。入口[工具布局](structure-tools.md#2026-11-13-构建器预检me与外部结构)，证据builder-policies/见[实施进度](implementation-status.md)。独立17项测试和本轮IDEA全级通过；整仓构建仍受其他进行中的接口重构影响。下一步用户重启复验六开关/前置、草和石块挖掘、世界流体、等待后补料及AE确认；本地提交、不推送/启动游戏，背景与暂存保留。
 
 - 2026-11-13 分组按钮按自动IO基准修正：保留自动IO全部源码、states及40张仓室底图，仅给普通分组增加原底图同款固定底框/阴影，生成42×16三态专图；分组y49与IO y13/31等距。240组中心外像素对照差异0，展开面板无色按钮也复用。入口[隔离组控件](block-registration.md#颜色与样板隔离)，证据hatch-button-consistency/见[实施进度](implementation-status.md)。2Java本机IDEA errorsOnly:false全级零及MCP构建通过，独立输出Gradle build/Spotless与既有4交互测试通过；下一步用户重启复验三态。只本地提交，不推送/启动游戏，保留原重命名/暂存及其他修改。
 
 - 2026-11-13 大小写重命名启动崩溃：用户日志的旧MeResourceHatchBlock来自run/mods/pe_visual_examples-1.0.0-dev.jar，旧Jar为11-12产物，主工程和示例源码已改ME；Windows按旧大小写找到新class后触发JVM wrong name。重新导出当前开发类路径，删除示例一处已移除RewardItemProtection检查，21Java重编译并安装成功；65class/383个PE引用严格大小写均匹配，无旧Me类名。证据stale-example-classpath/见[实施进度](implementation-status.md)。下一步用户重新启动复验；后续主API/类名改动先run/prepare-tests.ps1更新独立addon，直接runClient不会编译它。未启动游戏，示例目录IDEA被排除不可分析，主类全级零/MCP构建通过，本次增量本地提交，原重命名/暂存保持。
+
+- 2026-11-13 构建器底图配套修正：按截图要求，右侧材料树底色/收口与按钮底色/边框分区；下方按钮区直接复用扫描器结构导出区浅底色和2px框角/阴影，保持按钮y154/177、原384×228界面及384×256纹理。树裁剪/输入/平移高度同步136，PNG差异仅右侧x190..377/y145..202，其余像素不变。入口[工具布局](structure-tools.md#2026-11-13-构建器预检me与外部结构)，证据builder-gui-background/见[实施进度](implementation-status.md)。业务功能沿2964ab1；底图分区取代上一条“仅29像素/树144”的首版布局，用户重启复验实际框线、底色和按钮。未启动游戏/推送，现有背景和暂存保持。
 
 - 2026-11-13 构建器批准范围已接入：四按钮放右侧原面板内部、进度条上方，原384×228尺寸保持，树裁剪/输入同步缩至144，底图仅清除29像素旧坐标图标。齐料/位置预检、准确缺料与本次跳过、严格当前规划、ME物品/流体取料及原生缺料合成确认、整轮匹配隐藏/自动取消投影、builder.cfg间隔/批量、流体格命中/图标/每格1B样板、普通外部Java/CT锚点注册均已接线。14项新增行为/真实ZS编译，工作树1996 tests/283 suites及独立候选1994 tests/282 suites全通过，28Java+2语言本机IDEA全级零、MCP指定构建成功。入口[当前构建器](structure-tools.md#2026-11-13-构建器预检me与外部结构)，证据builder-expansion/见[实施进度](implementation-status.md)。下一步用户重启复验按钮上方位置、缺料门槛/跳过、有效无线终端取料、AE确认后补建、完整投影取消、3格流体3000mB导入及外部锚点；本轮不自动替代/推进层，不新增TileNBT写入/合成后自动恢复；本地提交、不推送/启动游戏，背景及现有暂存保留。
 
@@ -18,7 +22,7 @@
 
 - 2026-11-12 隔离组选择器截图反馈：ME资源仓/样板总成的handleAeMouseWheelInput在delta=0前因expanded返回true，AE AppEngClient每个MouseInputEvent.Pre都调用该入口并取消true，导致点击/松开永不到达palette。本轮先检查真实滚轮再拦截展开面板；普通/ME面板与按钮局部禁depth写入/测试和lighting，保存恢复depth、mask、blend函数/开关，修槽物品遮挡及透明帧白像素。普通9×9中心从(2,2)铺满，悬停/按下跟随0/1/2px；ME原9×9不改，原PNG保持。中英提示改隔离组/Isolation group，各17名字独立本地化，中文“隔离组：红/无色”。4项交互（含原生WidgetContainer全部17选择）、定向Spotless、5Java本机IDEA全级零及MCP构建通过。入口[隔离组控件](block-registration.md#颜色与样板隔离)，证据isolation-palette/见[实施进度](implementation-status.md)。boundary_cross审查确认cross_1–4显式fixed(1)，整机4并行和每配方线程上限1为不同约束，未改示例。下一步用户重启复验选择/穿透及全部hover/pressed效果，未启动游戏或推送，背景及原暂存保留。
 
-- 2026-11-12 CPU工作中退出重进后无法发放样板：确认为本仓库`MePatternAssemblyBlockEntity.entry`仅用对象身份匹配；AE2S 1.1.1读档会独立解码任务样板，原生提供者按定义相等识别。本轮保留原实例槽优先，补完整AEItemKey定义匹配，合并判断/倍数预检/实际push共用修复；8项既有存储与恢复回归、定向Spotless、本机IDEA错误/警告/弱警告全零及MCP构建通过。入口[样板总成](block-registration.md#样板总成)，证据pattern-cpu-reload/见[实施进度](implementation-status.md)。下一步用户在CPU尚有待发放工作时退出重进，确认继续供料；未启动游戏或推送，背景及原暂存保留。
+- 2026-11-12 CPU工作中退出重进后无法发放样板：确认为本仓库`MEPatternAssemblyBlockEntity.entry`仅用对象身份匹配；AE2S 1.1.1读档会独立解码任务样板，原生提供者按定义相等识别。本轮保留原实例槽优先，补完整AEItemKey定义匹配，合并判断/倍数预检/实际push共用修复；8项既有存储与恢复回归、定向Spotless、本机IDEA错误/警告/弱警告全零及MCP构建通过。入口[样板总成](block-registration.md#样板总成)，证据pattern-cpu-reload/见[实施进度](implementation-status.md)。下一步用户在CPU尚有待发放工作时退出重进，确认继续供料；未启动游戏或推送，背景及原暂存保留。
 
 - 2026-11-12 仓室基底CTM/按钮透明与玻璃光照：64仓室/123基底与机械壳双向连接，native邻接/转角/遮挡，原图与324叠加面不变；epoch懒缓存避开CTM同LOWEST事件排序。颜色小框0/1/2px色块位移、ME大框固定，修局部透明混合白条。六玻璃补非fullCube与neighbor brightness，保留零opacity和碰撞箱。7专项、完整工作树1981 tests/278 suites及独立候选1979 tests/277 suites全通过，Spotless与MCP build成功；GUI/玻璃Java本机IDEA全级零，3个CTM Java仍有IDE未同步compileOnly的解析诊断，实际javac/Gradle通过。入口[方块与GUI](block-registration.md)、[实机步骤](../run/scripts/README-me-assemblies.md)，证据hatch-casing-ctm/、color-button-press/、decorative-glass-light/见[实施进度](implementation-status.md)。未启动游戏/附加JVM/推送，真实atlas/GL仍由用户复验。
 
@@ -38,9 +42,9 @@
 
 - 2026-11-12 装箱回调检查：材料单格/整类选择和构建树分段改用fastutil `ObjectIntBiConsumer`，JEI换行宽度直接接收int，快照测试改用`BooleanSupplier`。编译器AST覆盖1078份main/test Java，只保留统一任务执行器所需的`StructureWork`布尔Supplier；规则与原因见[分配检查](allocation-performance.md)。相关50项测试、Spotless和MCP build通过，3个修改生产Java、2个直接调用方及1个测试Java的IDEA全级诊断均0；字节码确认调用参数为int。证据primitive-callbacks/。本轮仅本地提交，其他对话同文件修改和原暂存保留。
 
-- 2026-11-12 ME仓室GUI纹理返工：截图指出首版擦除框宽度套用错误，造成mix图右边框缺损和半列升级栏、资源图自动IO按钮残片。10张新增图均从原始`prototypemachinery/textures/gui`或`导出/gui`逐文件恢复后重做；资源图、mix图、样板图分别按原分辨率独立擦除，白名单外像素与原始纹理一致。5张sprite/palette atlas全部像素按原图恢复；item命名输入/接口图改为`gui_resource_bus.png`/`gui_resource_io_bus.png`并更新GUI引用。Gradle build -x test含Spotless及最终MCP定向构建通过，GUI引用Java本机MCP全级零；中途并行预览编译错误已由其负责线程修复，未代改其源码。10张资源及JAR显示一致，旧item资源名无残留。逐图对比与像素清单见`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/gui-artwork-repair/`，入口[纹理规则](block-registration.md)。需用户重启检查真实纹理上传和GUI绘制；未启动Minecraft/推送，本轮目标外既有背景及暂存保持。
+- 2026-11-12 结构预览子界面类型修正：`GuiStructurePreview<C extends AEBaseContainer>`直接继承`AEBaseGui<C>`，父界面构造器接收`AEBaseGui<C>`；独立入口明确返回`GuiStructurePreview<ContainerStructurePreview>`。导航和Mixin只使用有界通配符，不再固定AEBaseContainer或使用原始类型。既有24项导航回归及Spotless通过，4Java本机IDEA全级零、MCP构建成功。入口[结构GUI](structures.md)，证据preview-subscreen-types/。下一步用户复验父页返回和槽位恢复；未开子代理、启动游戏或推送，其他对话改动及暂存独立保留。
 
-- 2026-11-12 结构预览子界面类型修正：`StructurePreviewGui<C extends AEBaseContainer>`直接继承`AEBaseGui<C>`，父界面构造器接收`AEBaseGui<C>`；独立入口明确返回`StructurePreviewGui<StructurePreviewContainer>`。导航和Mixin只使用有界通配符，不再固定AEBaseContainer或使用原始类型。既有24项导航回归及Spotless通过，4Java本机IDEA全级零、MCP构建成功。入口[结构GUI](structures.md)，证据preview-subscreen-types/。下一步用户复验父页返回和槽位恢复；未开子代理、启动游戏或推送，其他对话改动及暂存独立保留。
+- 2026-11-12 ME仓室GUI纹理返工：截图指出首版擦除框宽度套用错误，造成mix图右边框缺损和半列升级栏、资源图自动IO按钮残片。10张新增图均从原始`prototypemachinery/textures/gui`或`导出/gui`逐文件恢复后重做；资源图、mix图、样板图分别按原分辨率独立擦除，白名单外像素与原始纹理一致。5张sprite/palette atlas全部像素按原图恢复；item命名输入/接口图改为`gui_resource_bus.png`/`gui_resource_io_bus.png`并更新GUI引用。Gradle build -x test含Spotless及最终MCP定向构建通过，GUI引用Java本机MCP全级零；中途并行预览编译错误已由其负责线程修复，未代改其源码。10张资源及JAR显示一致，旧item资源名无残留。逐图对比与像素清单见`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/gui-artwork-repair/`，入口[纹理规则](block-registration.md)。需用户重启检查真实纹理上传和GUI绘制；未启动Minecraft/推送，本轮目标外既有背景及暂存保持。
 
 - 2026-11-12 控制器库存：固定槽数默认0或ToIntFunction<MachineInstance>动态返回，无回调按固定值，范围0..16。真实4×4原生槽位、关闭格前景白色覆盖/服务端拒绝、缩小保留物品、TE保存/正常掉落以及读取遍历入口均接通；Java与ZS说明已补。完整1994 tests/275 suites及Spotless通过，16Java本机IDEA全级零、MCP构建成功。入口[机器GUI](machine-gui.md#控制器库存)、[实施进度](implementation-status.md)。下一步用户复验真实物品存取、关闭重开、存档/掉落和白色覆盖；未启动游戏/开子代理/推送，原背景和暂存保留。
 
@@ -50,7 +54,7 @@
 
 - 2026-11-12 排序与集合容量：ResourceLocation直接参与排序，清单校验及同步/预算化要求排序一致；动态候选复用namespace/path字符游标。全仓构造清单含1758正式源码入口，360余处按来源数量、槽数、解码长度或常见6项预分配；31个有序AE数量表改用可指定容量、实现AEKey2LongMap的fastutil实现。独立提交源码完整1961测试通过；包含并发功能的工作树1976项有4项失败，撤去本轮改动对照全部复现。修改Java本机IDEA全级检查及MCP构建、定向Spotless通过；原暂存及并发功能保留。入口[分配规则](allocation-performance.md)、[实施进度](implementation-status.md)，证据collection-capacity/；未启动游戏/开子代理/推送。
 
-- 2026-11-12 枚举缓存完成：22个重复读取的本库枚举公开 VALUES，序号解码/遍历及示例统一复用；外部优先原生缓存，无公共缓存的4类集中到 ExternalEnumValues。必须复用 VALUES，禁止修改共享数组。57Java本机IDEA全级零、MCP指定文件build、编译及独立改动Spotless通过，run示例javac通过。全量24项失败在撤去本轮改动的隔离对照中全部复现，详见[实施进度](implementation-status.md)及 enum-values/test-comparison.json；最新MCP构建受另一对话尚缺的 MePatternAssemblyBlockEntity 阻塞；并发新样板容器的3处枚举调用待该组源码完成后复查；并发仓室内容与用户暂存保留，未启动游戏/推送。
+- 2026-11-12 枚举缓存完成：22个重复读取的本库枚举公开 VALUES，序号解码/遍历及示例统一复用；外部优先原生缓存，无公共缓存的4类集中到 ExternalEnumValues。必须复用 VALUES，禁止修改共享数组。57Java本机IDEA全级零、MCP指定文件build、编译及独立改动Spotless通过，run示例javac通过。全量24项失败在撤去本轮改动的隔离对照中全部复现，详见[实施进度](implementation-status.md)及 enum-values/test-comparison.json；最新MCP构建受另一对话尚缺的 MEPatternAssemblyBlockEntity 阻塞；并发新样板容器的3处枚举调用待该组源码完成后复查；并发仓室内容与用户暂存保留，未启动游戏/推送。
 
 - 2026-11-12 方块/ME总成已完成源码与全量验证：15个AE装饰方块（含素面外壳）、4个通用ME总成及5阶独立染色并行控制器，共24项；物品/气体/流体专仓继续弃用。ME目标补足、无限输出、36槽可配置样板页、五模式、AE2S合并输入/PAT远程返回与全资源仓颜色隔离已接通。真实供料回执/持久化UUID用于锁归属，恢复后按原颜色/分区重新绑定当前结构。完整build含Spotless为1987 tests/274 suites全零；65Java本机MCP全级零，提交候选独立验证及最终MCP构建见[实施进度](implementation-status.md)。入口[方块与ME总成](block-registration.md)、[Java/ZS API](../api.md)，证据`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/me-assemblies/`及同级me-gui/decorative-blocks/parallel-controller。下一步为用户客户端复验GUI、ME网络、CTM/Bloom；未启动游戏或推送，保留背景与原暂存。
 

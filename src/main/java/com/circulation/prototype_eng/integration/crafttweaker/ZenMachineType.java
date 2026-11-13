@@ -15,13 +15,13 @@ import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanning;
 import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
 import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
-import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
-import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipeBindings;
+import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.integration.crafttweaker.network.ZenNetworkConfiguration;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipeBindings;
 import crafttweaker.annotations.ZenRegister;
-import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 import stanhebben.zenscript.annotations.ZenClass;
@@ -31,7 +31,9 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 
-/** Startup machine declaration; referenced structures use the existing Java/JSON structure loader. */
+/**
+ * Startup machine declaration; referenced structures use the existing Java/JSON structure loader.
+ */
 @ZenRegister
 @ZenClass("mods.prototype_eng.MachineType")
 @SuppressWarnings("unused") // Public entry points are resolved by ZenScript's registered type.
@@ -39,7 +41,8 @@ public final class ZenMachineType {
     private final ResourceLocation id;
     private final MachineType.Builder builder;
     private final ObjectArrayList<ZenMachineComponent> components = new ObjectArrayList<>();
-    @Nullable private ZenMachineFactory factory;
+    @Nullable
+    private ZenMachineFactory factory;
     @Nullable
     private ComponentType<MachineInstance, RecipeScanner> scanner;
     @Nullable
@@ -87,7 +90,7 @@ public final class ZenMachineType {
     public ZenMachineType processing(ZenRecipeBindings definitions, int candidates, int probes) {
         open();
         if (scanner != null) throw new IllegalStateException("Recipe processing is already declared");
-        var resolver = Objects.requireNonNull(definitions).resolver();
+        var resolver = definitions.resolver();
         var limits = new ScanLimits(candidates, probes);
         if (factory == null) factory = ZenMachineFactory.multithreaded();
         var registry = RecipeRegistry.INSTANCE;
@@ -113,7 +116,7 @@ public final class ZenMachineType {
     @ZenMethod
     public ZenMachineType component(ZenMachineComponent handle) {
         open();
-        Objects.requireNonNull(handle).declare(builder);
+        handle.declare(builder);
         components.add(handle);
         return this;
     }

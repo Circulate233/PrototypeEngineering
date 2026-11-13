@@ -92,7 +92,9 @@ public final class HatchInventoryPort implements GenericInternalInventory {
             output == null || !output.isSupportedType(key.getType()) ? 0 : output.getMaxAmount(key));
     }
 
-    /** Without a slot, AE requests a capacity estimate: the maximum of either supported side. */
+    /**
+     * Without a slot, AE requests a capacity estimate: the maximum of either supported side.
+     */
     @Override
     public long getCapacity(AEKeyType type) {
         return Math.max(input == null || !input.isSupportedType(type) ? 0 : input.getCapacity(type),

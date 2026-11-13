@@ -18,7 +18,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Ordinary attribute ancestry and whole-machine parallel accounting have different invalidation scopes. */
+/**
+ * Ordinary attribute ancestry and whole-machine parallel accounting have different invalidation scopes.
+ */
 class MachineAttributeCaptureIsolationTest {
     private static final ResourceLocation PARALLEL = StandardMachineAttributes.PROCESS_PARALLELISM;
 

@@ -2,7 +2,9 @@ package com.circulation.prototype_eng.client.preview;
 
 import java.util.Objects;
 
-/** Clipped list viewport; changing the selected requirement resets its independent scroll. */
+/**
+ * Clipped list viewport; changing the selected requirement resets its independent scroll.
+ */
 final class PreviewListScroll {
     private Object identity;
     private int first;

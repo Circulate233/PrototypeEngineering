@@ -4,12 +4,14 @@ import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.recipe.requirement.MachineRecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
-import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
+import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 
 import java.util.function.LongSupplier;
 
-/** Common runtime controller responsibilities; physical attachment and the original scheduler remain shared. */
+/**
+ * Common runtime controller responsibilities; physical attachment and the original scheduler remain shared.
+ */
 public abstract class RecipeController extends MachineInstance {
     protected RecipeController() {
     }

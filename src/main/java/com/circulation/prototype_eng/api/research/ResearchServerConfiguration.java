@@ -2,7 +2,9 @@ package com.circulation.prototype_eng.api.research;
 
 import java.util.Objects;
 
-/** Startup configuration for the existing authoritative research owner, shared by Java and scripts. */
+/**
+ * Startup configuration for the existing authoritative research owner, shared by Java and scripts.
+ */
 public final class ResearchServerConfiguration {
     public static final ResearchServerConfiguration INSTANCE = new ResearchServerConfiguration();
     private ResearchPermissionPolicy permissions = ResearchPermissionPolicy.DEFAULT;

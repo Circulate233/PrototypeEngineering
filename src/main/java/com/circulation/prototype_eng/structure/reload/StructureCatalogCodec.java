@@ -3,9 +3,10 @@ package com.circulation.prototype_eng.structure.reload;
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.EnumFacing;
@@ -23,8 +24,8 @@ import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
-import java.util.UUID;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Bounded binary presentation protocol; it neither serializes nor executes matcher callbacks.
@@ -103,7 +104,7 @@ public final class StructureCatalogCodec {
                 var children = new IntArrayList();
                 int childCount = count(input);
                 for (int c = 0; c < childCount; c++) children.add(input.readInt());
-                nodes.add(new StructureCatalogView.Node(id, orientation, hide, StructurePreviewProvider.Kind.VALUES[kind], offset, min, max, sliceOffset, cells, children, version == 2 ? displays(input, version) : Map.of()));
+                nodes.add(new StructureCatalogView.Node(id, orientation, hide, StructurePreviewProvider.Kind.VALUES[kind], offset, min, max, sliceOffset, cells, children, version == 2 ? displays(input, version) : BlockPos2ObjectMap.emptyMap()));
             }
             var entries = new Object2ObjectLinkedOpenHashMap<ResourceLocation, StructureCatalogView.Entry>();
             int entryCount = count(input);
@@ -122,10 +123,10 @@ public final class StructureCatalogCodec {
         }
     }
 
-    private static void displays(DataOutputStream output, Map<BlockPos, StructureDisplay> displays) throws IOException {
+    private static void displays(DataOutputStream output, BlockPos2ObjectMap<StructureDisplay> displays) throws IOException {
         count(output, displays.size());
-        for (var entry : displays.entrySet()) {
-            position(output, entry.getKey());
+        for (var entry : displays.long2ObjectEntrySet()) {
+            position(output, BlockPos.fromLong(entry.getLongKey()));
             var display = entry.getValue();
             string(output, display.key());
             nullable(output, display.tileNbt());
@@ -140,8 +141,8 @@ public final class StructureCatalogCodec {
         }
     }
 
-    private static Map<BlockPos, StructureDisplay> displays(DataInputStream input, int version) throws IOException {
-        var displays = new Object2ObjectLinkedOpenHashMap<BlockPos, StructureDisplay>();
+    private static BlockPos2ObjectMap<StructureDisplay> displays(DataInputStream input, int version) throws IOException {
+        var displays = new BlockPos2ObjectMap<StructureDisplay>();
         int displayCount = count(input);
         for (int d = 0; d < displayCount; d++) {
             var position = position(input);

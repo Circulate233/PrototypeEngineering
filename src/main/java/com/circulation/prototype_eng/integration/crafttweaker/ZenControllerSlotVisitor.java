@@ -4,7 +4,9 @@ import crafttweaker.annotations.ZenRegister;
 import crafttweaker.api.item.IItemStack;
 import stanhebben.zenscript.annotations.ZenClass;
 
-/** Receives available controller slots in index order. */
+/**
+ * Receives available controller slots in index order.
+ */
 @ZenRegister
 @ZenClass("mods.prototype_eng.ControllerSlotVisitor")
 @FunctionalInterface

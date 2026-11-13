@@ -18,12 +18,16 @@ import java.io.InputStream;
 import java.util.List;
 import java.util.zip.ZipFile;
 
-/** Captures model bytes only: Gecko JSON loaders and ImageIO do not consume Minecraft resource metadata. */
+/**
+ * Captures model bytes only: Gecko JSON loaders and ImageIO do not consume Minecraft resource metadata.
+ */
 final class ModelResourceSources {
     private ModelResourceSources() {
     }
 
-    /** Called on the client owner, before old pack close or in-place resource manager replacement. */
+    /**
+     * Called on the client owner, before old pack close or in-place resource manager replacement.
+     */
     static InputStream capture(IResourceManager manager, ResourceLocation location) throws IOException {
         if (manager.getClass() == SimpleReloadableResourceManager.class) {
             var domains = ((SimpleReloadableResourceManagerAccessor) manager).prototype_eng$domainResourceManagers();

@@ -12,14 +12,17 @@ import net.minecraft.util.ResourceLocation;
 import java.util.List;
 import java.util.Objects;
 
-/** Structural parallelism is sampled with the machine allowance and revalidated at admission. */
+/**
+ * Structural parallelism is sampled with the machine allowance and revalidated at admission.
+ */
 public final class ParallelControllers {
     public static final ComponentType<MachineInstance, ParallelController> TYPE = new ComponentType<>(
         new ResourceLocation(Tags.MOD_ID, "parallel_controller"), _ -> {
-            throw new IllegalStateException("Parallel controller ports are discovered from structures");
-        }, List.of());
+        throw new IllegalStateException("Parallel controller ports are discovered from structures");
+    }, List.of());
 
-    private ParallelControllers() {}
+    private ParallelControllers() {
+    }
 
     public static int limit(MachineInstance machine) {
         var capture = beginLimitCapture(machine);
@@ -77,7 +80,8 @@ public final class ParallelControllers {
         }
 
         public int result() {
-            if (!complete || !current()) throw new IllegalStateException("Parallel limit capture is incomplete or stale");
+            if (!complete || !current())
+                throw new IllegalStateException("Parallel limit capture is incomplete or stale");
             return result;
         }
     }

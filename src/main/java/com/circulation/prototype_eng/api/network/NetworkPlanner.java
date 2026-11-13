@@ -8,12 +8,9 @@ import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 
 import java.util.List;
@@ -30,6 +27,8 @@ public final class NetworkPlanner {
     /**
      * Invoke on the server owner thread after capturing current unique runtimes and active participants.
      * Each owner is resolved once. A provider failure aborts the whole batch; never reuse an older permit.
+     * Both lists are borrowed immutable inputs: keep their contents unchanged while the returned Inputs
+     * is retained or used by a planner, including across worker execution.
      */
     public static Inputs capture(NetworkResourceRegistry resources, long epoch, List<NetworkDeviceSnapshot> devices,
                                  List<NetworkContribution> contributions, OwnerTeamResolver resolver) {
@@ -40,12 +39,10 @@ public final class NetworkPlanner {
             throw new IllegalStateException("Network capture requires frozen computing resources");
         }
         Objects.requireNonNull(resolver);
-        var deviceCopy = new ObjectArrayList<>(devices);
-        var contributionCopy = new ObjectArrayList<>(contributions);
         var owners = new ObjectLinkedOpenHashSet<UUID>();
-        var deviceIds = new ObjectOpenHashSet<UUID>(deviceCopy.size());
-        var participantIds = new ObjectOpenHashSet<UUID>(contributionCopy.size());
-        for (var device : deviceCopy) {
+        var deviceIds = new ObjectOpenHashSet<UUID>(devices.size());
+        var participantIds = new ObjectOpenHashSet<UUID>(contributions.size());
+        for (var device : devices) {
             Objects.requireNonNull(device);
             if (!deviceIds.add(device.identity().machineId())) {
                 throw new IllegalArgumentException("Duplicate device UUID in discovery");
@@ -55,7 +52,7 @@ public final class NetworkPlanner {
             checkResources(resources, device.resourceModifier().flatAdjustments());
             checkResources(resources, device.resourceModifier().multiplierPpmAdjustments());
         }
-        for (var contribution : contributionCopy) {
+        for (var contribution : contributions) {
             Objects.requireNonNull(contribution);
             if (contribution.epoch() != epoch || !participantIds.add(contribution.participantId())) {
                 throw new IllegalArgumentException("Stale or duplicate participant contribution");
@@ -87,7 +84,7 @@ public final class NetworkPlanner {
                 }
             }
         }
-        return new Inputs(epoch, deviceCopy, contributionCopy, resolved);
+        return new Inputs(epoch, devices, contributions, resolved);
     }
 
     /**
@@ -201,16 +198,16 @@ public final class NetworkPlanner {
      */
     public static final class Inputs {
         private final long epoch;
-        private final ObjectList<NetworkDeviceSnapshot> devices;
-        private final ObjectList<NetworkContribution> contributions;
+        private final List<NetworkDeviceSnapshot> devices;
+        private final List<NetworkContribution> contributions;
         private final Object2ObjectMap<UUID, OwnerTeamResolution> owners;
 
-        private Inputs(long epoch, ObjectList<NetworkDeviceSnapshot> devices, ObjectList<NetworkContribution> contributions,
+        private Inputs(long epoch, List<NetworkDeviceSnapshot> devices, List<NetworkContribution> contributions,
                        Object2ObjectMap<UUID, OwnerTeamResolution> owners) {
             this.epoch = epoch;
-            this.devices = ObjectLists.unmodifiable(devices);
-            this.contributions = ObjectLists.unmodifiable(contributions);
-            this.owners = Object2ObjectMaps.unmodifiable(owners);
+            this.devices = devices;
+            this.contributions = contributions;
+            this.owners = owners;
         }
 
         OwnerTeamResolution owner(UUID ownerId) {

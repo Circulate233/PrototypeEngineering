@@ -40,7 +40,9 @@ public final class WorkSlot {
         return process;
     }
 
-    /** Transient successful completion hint; restoration and cancellation grant no retry authority. */
+    /**
+     * Transient successful completion hint; restoration and cancellation grant no retry authority.
+     */
     public @Nullable ResourceLocation lastCompletedRecipe() {
         return lastCompletedRecipe;
     }

@@ -44,12 +44,21 @@ import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class ZenRenderBridgeTest {
     private static final ResourceLocation MACHINE = id("machine");
     private static final ResourceLocation COMPONENT = id("component");
     private static final ResourceLocation STRUCTURE = id("structure");
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("render_test", path);
+    }
 
     @Test
     void compilerFreezesDeclarationsIntoTheExactNativeRegistryAndDataKeysProduceDetachedWorkerLayers() throws Exception {
@@ -77,7 +86,6 @@ class ZenRenderBridgeTest {
             RenderBindings.bindGeckoToStructure("render_test:machine", "render_test:structure", binding);
             binding.pass("bloom_transparent").sliceMode("per_slice");
             RenderBindings.bindGeckoToStructure("render_test:machine", "render_test:slices", binding);
-            binding.geo("render_test:geo/later.json").animationLayer("later");
             """);
         Objects.requireNonNull(module.getMain()).run();
         assertTrue(installed.view().machines().isEmpty());
@@ -113,7 +121,6 @@ class ZenRenderBridgeTest {
         assertEquals(new BlockPos(10, 20, 30), anchor.origin());
         assertTrue(anchor.binding().forceGlobalRenderer());
         assertEquals(List.of("server_base", "server_overlay"), anchor.layers());
-        values.setString("layers", "mutated_input");
         var request = GeckoRenderRequest.from(new GeckoRenderRequest.Owner(), new GeckoRenderRequest.Epoch(), new GeckoRenderRequest.Epoch(),
             anchor, BlockPos.ORIGIN, GeckoModelBaker.BakeMode.ANIMATED_ONLY, new GeckoRenderRequest.Sample(0, 1));
         try (var worker = Executors.newSingleThreadExecutor()) {
@@ -121,15 +128,13 @@ class ZenRenderBridgeTest {
             assertEquals(List.of("server_base", "server_overlay"), worker.submit(() -> machine.effectiveLayers(null, data)).get(5, TimeUnit.SECONDS));
         }
         assertEquals(List.of("typed"), machine.effectiveLayers(new MachineAnimationState.Snapshot(1, List.of("typed")), data));
-        values.setString("layers", " , ");
-        assertEquals(List.of("single"), machine.effectiveLayers(null, new ComponentData.Snapshot(2, values)));
-        values.setString("state", " ");
-        assertEquals(List.of("base", "overlay"), machine.effectiveLayers(null, new ComponentData.Snapshot(3, values)));
+        var noLayers = values.copy();
+        noLayers.setString("layers", " , ");
+        assertEquals(List.of("single"), machine.effectiveLayers(null, new ComponentData.Snapshot(2, noLayers)));
+        var noState = noLayers.copy();
+        noState.setString("state", " ");
+        assertEquals(List.of("base", "overlay"), machine.effectiveLayers(null, new ComponentData.Snapshot(3, noState)));
         assertEquals(List.of(), new GeckoModelBinding(id("geo/static.json"), id("textures/static.png")).effectiveLayers(null, data));
-    }
-
-    private static ResourceLocation id(String path) {
-        return new ResourceLocation("render_test", path);
     }
 
     @SuppressWarnings("SameParameterValue") // One complete compiled program exercises this registration phase once.
@@ -137,7 +142,8 @@ class ZenRenderBridgeTest {
         var output = new ByteArrayOutputStream();
         var environment = new GenericCompileEnvironment();
         var registry = new GenericRegistry(environment, new GenericErrorLogger(new PrintStream(output, true, StandardCharsets.UTF_8)));
-        for (var type : List.of(ZenRenderBindings.class, ZenGeckoBinding.class, IData.class)) registry.registerNativeClass(type);
+        for (var type : List.of(ZenRenderBindings.class, ZenGeckoBinding.class, IData.class))
+            registry.registerNativeClass(type);
         // SDK primitive caster rules cache their first environment, including ordinary data expansions.
         for (var expansion : List.of(ExpandAnyDict.class, ExpandDataStringDict.class, ExpandInt.class, ExpandBool.class, ExpandString.class))
             registry.registerExpansion(expansion);

@@ -23,6 +23,6 @@
 | `HeiPreviewInputMixin` | 材料选择和相机拖动必须先于 HEI 物品查询。实际 HEI 入口仍接收已经取消的 Forge 鼠标事件，因此只靠 Forge 事件取消不能处理这个交互。 |
 | `CtmHatchBloomMetadataMixin` | CTM 在没有 BLOOM 枚举的环境解析带标记纹理会失败。只处理显式 `prototype_eng_bloom` 元数据，在没有该层时使用 CUTOUT；有 BLOOM 层时保留原数据。 |
 
-`GuiScreenPreviewMixin` 原来提供的 tooltip 桥已改由本模组 GUI 实现 `PreviewNativeGui` 并直接调用继承的 `renderToolTip`。外部宿主使用公开 Forge tooltip 绘制接口和宿主的原生 `getItemToolTip`，保留自定义字体及 tooltip 事件，不给全部 `GuiScreen` 添加接口。
+`GuiScreenPreviewMixin` 原来提供的 tooltip 桥已改由本模组 GUI 实现 `GuiPreviewNative` 并直接调用继承的 `renderToolTip`。外部宿主使用公开 Forge tooltip 绘制接口和宿主的原生 `getItemToolTip`，保留自定义字体及 tooltip 事件，不给全部 `GuiScreen` 添加接口。
 
 配置保留2个通用和8个客户端 Mixin。必须同步删除配置和产物中的失效类；禁止只删除配置而留下没有消费者的守卫类及对应模拟流程测试。

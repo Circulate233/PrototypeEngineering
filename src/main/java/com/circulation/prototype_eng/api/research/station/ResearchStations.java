@@ -1,8 +1,5 @@
 package com.circulation.prototype_eng.api.research.station;
 
-import java.util.Collections;
-import java.util.function.Function;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.energy.EnergyInput;
 import com.circulation.prototype_eng.api.energy.EnergyOutput;
@@ -30,15 +27,18 @@ import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
@@ -64,20 +64,22 @@ public final class ResearchStations {
         this.absenceProof = Objects.requireNonNull(absenceProof);
     }
 
+    /**
+     * The caller retains the supplied immutable list for every saved or live capture using it.
+     */
     static List<Site> validatedSites(List<Site> sites) {
-        var saved = List.copyOf(sites);
-        if (saved.isEmpty()) {
+        if (sites.isEmpty()) {
             throw new IllegalArgumentException("A material segment requires physical stations");
         }
-        int dimension = saved.getFirst().location().dimension();
-        var ids = new ObjectLinkedOpenHashSet<UUID>(saved.size());
-        var locations = new ObjectLinkedOpenHashSet<MachineIdentity>(saved.size());
-        for (var site : saved) {
+        int dimension = sites.getFirst().location().dimension();
+        var ids = new ObjectLinkedOpenHashSet<UUID>(sites.size());
+        var locations = new ObjectLinkedOpenHashSet<MachineIdentity>(sites.size());
+        for (var site : sites) {
             if (!ids.add(site.identity().machineId()) || !locations.add(site.location()) || site.location().dimension() != dimension) {
                 throw new IllegalArgumentException("Saved stations must be distinct and in one dimension");
             }
         }
-        return saved;
+        return sites;
     }
 
     private static <T> MachineHatches pool(List<T> sources, Function<T, MachineHatches> hatchesOf) {
@@ -267,6 +269,7 @@ public final class ResearchStations {
 
     /**
      * Reload only the saved physical identities and locations; a new runtime must obtain fresh authority.
+     * The supplied sites list is borrowed immutable data for the lifetime of the returned capture.
      */
     @Nullable
     public Capture restore(String teamId, int requiredTier, List<Site> sites) {
@@ -531,8 +534,9 @@ public final class ResearchStations {
             var capturedSites = originalSites == null ? new ObjectArrayList<Site>(stations.size()) : null;
             var capturedMachines = new ObjectArrayList<MachineInstance>(stations.size());
             for (var station : this.stations) {
-                if (capturedSites != null) capturedSites.add(new Site(station.identity.identity(), station.identity.location(),
-                    Objects.requireNonNull(station.machine.lifecycle()).host().controllerBlockId()));
+                if (capturedSites != null)
+                    capturedSites.add(new Site(station.identity.identity(), station.identity.location(),
+                        Objects.requireNonNull(station.machine.lifecycle()).host().controllerBlockId()));
                 capturedMachines.add(station.machine());
             }
             sites = capturedSites == null ? originalSites : ObjectLists.unmodifiable(capturedSites);

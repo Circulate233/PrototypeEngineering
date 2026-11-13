@@ -27,10 +27,11 @@ import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.UUID;
 
-/** Full signed coordinates use compact zigzag varints, never lossy BlockPos packed longs. */
+/**
+ * Full signed coordinates use compact zigzag varints, never lossy BlockPos packed longs.
+ */
 public final class ControllerRenderSnapshotCodec {
     public static final int MAX_BYTES = 64 * 1024 * 1024;
     private static final int VERSION = 1;
@@ -39,7 +40,9 @@ public final class ControllerRenderSnapshotCodec {
     private ControllerRenderSnapshotCodec() {
     }
 
-    /** Same allocation gate for ordinary data carried by the native controller chunk channel. */
+    /**
+     * Same allocation gate for ordinary data carried by the native controller chunk channel.
+     */
     public static byte[] encodeCompound(NBTTagCompound tag) {
         var bytes = new ByteArrayOutputStream();
         try (var out = new DataOutputStream(new BoundedOutput(bytes))) {
@@ -122,17 +125,24 @@ public final class ControllerRenderSnapshotCodec {
             ResourceLocation structure = bool(in) ? id(in) : null;
             int nodes = count(in, MachineRenderSnapshot.MAX_OCCURRENCES, 19);
             var occurrences = new ObjectArrayList<MachineRenderSnapshot.Occurrence>(nodes);
+            var childCounts = new int[nodes];
             var positions = new ObjectLinkedOpenHashSet<BlockPos>();
             int memberships = 0;
             for (int i = 0; i < nodes; i++) {
                 int parent = in.readInt(), edge = in.readInt();
+                if (i == 0 ? parent != -1 || edge != -1 : parent < 0 || parent >= i || edge != childCounts[parent]++)
+                    throw new IllegalArgumentException("Invalid accepted occurrence parent/child edge");
                 var nodeId = id(in);
                 var origin = position(in);
                 int repetitions = in.readInt();
+                if (repetitions < 0 || repetitions > MachineRenderSnapshot.MAX_REPETITIONS)
+                    throw new IllegalArgumentException("Accepted repetition count exceeds supported scale");
                 int kind = in.readUnsignedByte();
                 if (kind >= StructurePreviewProvider.Kind.VALUES.length)
                     throw new IllegalArgumentException("Unknown accepted shape kind");
                 var step = position(in);
+                if (kind == StructurePreviewProvider.Kind.SLICE.ordinal() && repetitions > 0)
+                    MachineRenderSnapshot.sliceAnchor(origin, step, repetitions - 1);
                 boolean hide = bool(in);
                 int blocks = count(in, MachineRenderSnapshot.MAX_POSITIONS - memberships, 3);
                 memberships += blocks;
@@ -142,9 +152,19 @@ public final class ControllerRenderSnapshotCodec {
                 occurrences.add(new MachineRenderSnapshot.Occurrence(parent, edge, nodeId, origin, repetitions,
                     StructurePreviewProvider.Kind.VALUES[kind], step, hide, covered));
             }
+            if (display.formed() == occurrences.isEmpty() || !occurrences.isEmpty()
+                && (structure == null || !structure.equals(occurrences.getFirst().structure())))
+                throw new IllegalArgumentException("Formed display must contain its complete accepted root");
+            if (!display.formed() && !positions.isEmpty())
+                throw new IllegalArgumentException("Unformed display cannot retain accepted positions");
             int ids = count(in, MachineRenderSnapshot.MAX_OCCURRENCES, 5);
             var components = new ObjectArrayList<ResourceLocation>(ids);
-            for (int i = 0; i < ids; i++) components.add(id(in));
+            var componentIds = new ObjectLinkedOpenHashSet<ResourceLocation>();
+            for (int i = 0; i < ids; i++) {
+                var component = id(in);
+                if (!componentIds.add(component)) throw new IllegalArgumentException("Duplicate actual component ID");
+                components.add(component);
+            }
             MachineAnimationState.Snapshot animation = null;
             if (bool(in)) {
                 long revision = in.readLong();
@@ -153,8 +173,10 @@ public final class ControllerRenderSnapshotCodec {
                 for (int i = 0; i < size; i++) layers.add(string(in));
                 animation = new MachineAnimationState.Snapshot(revision, layers);
             }
+            if (animation != null && !componentIds.contains(MachineAnimationState.TYPE.id()))
+                throw new IllegalArgumentException("Animation state has no actual component binding");
             if (in.available() != 0) throw new IllegalArgumentException("Trailing machine render bytes");
-            return new MachineRenderSnapshot(display, catalog, controller, structure, occurrences, List.copyOf(positions), components, animation);
+            return new MachineRenderSnapshot(display, catalog, controller, structure, occurrences, new ObjectArrayList<>(positions), components, animation);
         } catch (IOException failure) {
             throw new IllegalArgumentException("Invalid or incomplete machine render payload", failure);
         }

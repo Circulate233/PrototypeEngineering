@@ -1,9 +1,5 @@
 package com.circulation.prototype_eng.storage;
 
-import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
-
-import it.unimi.dsi.fastutil.objects.Reference2LongMap;
-
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
@@ -17,15 +13,17 @@ import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.api.storage.StorageFence;
 import com.circulation.prototype_eng.api.storage.StorageSnapshot;
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
+import it.unimi.dsi.fastutil.objects.Reference2LongMap;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.BitSet;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
@@ -36,9 +34,6 @@ import java.util.function.Consumer;
  */
 public final class SlottedResourceBuffer implements SlottedResourceStorage {
     private final StorageContext context;
-    private @Nullable StorageSnapshot cachedSnapshot;
-    private @Nullable StorageSnapshot cachedKeySnapshot;
-    private @Nullable AEKey cachedSnapshotKey;
     private final Reference2LongArrayMap<AEKeyType> capacities = new Reference2LongArrayMap<>();
     private final AEKey[] keys;
     private final long[] amounts;
@@ -50,6 +45,9 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     private final AEKey2LongMap insertHolds;
     private final BitSet freeSlots;
     private final BitSet changedSlots;
+    private @Nullable StorageSnapshot cachedSnapshot;
+    private @Nullable StorageSnapshot cachedKeySnapshot;
+    private @Nullable AEKey cachedSnapshotKey;
     private int activeReservations;
     private int externalReservations;
     private boolean destroyed;
@@ -151,7 +149,8 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         context.lock();
         try {
             Objects.requireNonNull(key);
-            if (key.equals(cachedSnapshotKey) && cachedKeySnapshot != null && context.current(cachedKeySnapshot.revision())) return cachedKeySnapshot;
+            if (key.equals(cachedSnapshotKey) && cachedKeySnapshot != null && context.current(cachedKeySnapshot.revision()))
+                return cachedKeySnapshot;
             long amount = context.isValid() ? totals.getLong(key) - extractHolds.getLong(key) : 0;
             if (amount < 0) {
                 throw new IllegalStateException("Extraction holds exceed stored resources");
@@ -329,7 +328,9 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         return reserveTransfer(-1, key, amount, insert);
     }
 
-    /** A nonnegative slot limits the offer to one slot; -1 retains the aggregate native allocation. */
+    /**
+     * A nonnegative slot limits the offer to one slot; -1 retains the aggregate native allocation.
+     */
     @SuppressWarnings("ReturnOfInnerClass") // The public receipt must retain its exact private native token.
     public @Nullable NativeTransferReservation reserveTransfer(int slot, AEKey key, long amount, boolean insert) {
         context.requireOrdinaryLock();
@@ -364,7 +365,9 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         }
     }
 
-    /** Physical hosts must not replace an invalidated buffer while old tokens still own refunds. */
+    /**
+     * Physical hosts must not replace an invalidated buffer while old tokens still own refunds.
+     */
     boolean hasReservations() {
         context.lock();
         try {
@@ -593,7 +596,9 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         return result;
     }
 
-    /** Permanent removal retains exact token journals until their final completion or compensation. */
+    /**
+     * Permanent removal retains exact token journals until their final completion or compensation.
+     */
     List<GenericStack> removeForDrops(Consumer<List<GenericStack>> deferredDrops) {
         context.requireLock();
         if (destroyed) return List.of();
@@ -635,7 +640,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         Arrays.fill(amounts, 0);
         freeSlots.set(0, keys.length);
         changedSlots.set(0, keys.length);
-        return List.copyOf(drops);
+        return drops;
     }
 
     private void requireRestorable() {
@@ -791,7 +796,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         private long revision = -1;
         private ImmutableResourceAmounts.Builder quantitiesBuilder = ImmutableResourceAmounts.builder();
         @Nullable
-        private ImmutableResourceAmounts quantities;
+        private AEKey2LongMap quantities;
         private Iterator<Object2LongMap.Entry<AEKey>> entries;
         private boolean complete;
 

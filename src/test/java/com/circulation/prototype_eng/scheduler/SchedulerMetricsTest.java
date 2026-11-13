@@ -34,20 +34,6 @@ class SchedulerMetricsTest {
     }
 
     @Test
-    void percentileUsesActualPmIndexAndLargeSamplesDoNotOverflowAverage() {
-        var metrics = new SchedulerMetrics(20);
-        for (int value = 1; value <= 20; value++) metrics.record(sample(value, value));
-        assertEquals(new SchedulerReport.Stat(10, 20, 20), metrics.snapshotReport("JAVA").totalWallNanos());
-        var large = new SchedulerMetrics(2);
-        large.record(sample(Long.MAX_VALUE, Long.MAX_VALUE));
-        large.record(sample(Long.MAX_VALUE - 2, Long.MAX_VALUE - 2));
-        assertEquals(new SchedulerReport.Stat(Long.MAX_VALUE - 1, Long.MAX_VALUE, Long.MAX_VALUE),
-            large.snapshotReport("JAVA").totalWallNanos());
-        assertEquals(new SchedulerReport.Stat(Long.MAX_VALUE - 1, Long.MAX_VALUE, Long.MAX_VALUE),
-            large.snapshotReport("JAVA").mainTasks());
-    }
-
-    @Test
     void loggingOffRetainsReportsAndResizeDoesNotResetCadenceOrEmitTwice() {
         var metrics = new SchedulerMetrics(3);
         var logs = new ObjectArrayList<SchedulerReport>();

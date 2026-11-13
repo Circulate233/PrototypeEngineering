@@ -1,18 +1,16 @@
 package com.circulation.prototype_eng.storage;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
-
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKeyType;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.HatchReconfigurationStatus;
 import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
-import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.api.storage.StorageFence;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
+import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -35,20 +33,10 @@ class HatchReconfigurationTest {
         return ResourceHatchConfiguration.symmetric(HatchMode.MIXED, slots, new Reference2LongArrayMap<>(new AEKeyType[]{FIRST, SECOND}, new long[]{capacity, capacity}));
     }
 
-    private static String label(StorageContext context) {
-        context.lock();
-        try {
-            return context.sourceIdentity();
-        } finally {
-            context.unlock();
-        }
-    }
-
     @Test
-    void actualOldFencePreservesBothBalancesAndPhysicalLabelsWithNewContexts() {
+    void actualOldFencePreservesBothBalancesWithNewContexts() {
         var old = new BufferedResourceHatch(profile(3, 10), () -> {
         });
-        old.bindSourceIdentities("test:resource/1/2/3");
         var input = Objects.requireNonNull(old.input());
         var output = Objects.requireNonNull(old.output());
         input.insert(0, A, 8, Actionable.MODULATE);
@@ -58,7 +46,7 @@ class HatchReconfigurationTest {
         var target = new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(96, Reference2LongMaps.singleton(FIRST, 6L)),
             new ResourceHatchConfiguration.Side(128, Reference2LongMaps.singleton(SECOND, 100L)));
         var installed = new BufferedResourceHatch[]{old};
-        var result = old.replace(target, "test:resource/1/2/3", () -> {
+        var result = old.replace(target, () -> {
             }, () -> installed[0] == old,
             candidate -> () -> installed[0] = candidate);
         assertEquals(HatchReconfigurationStatus.APPLIED, result.status());
@@ -68,8 +56,6 @@ class HatchReconfigurationTest {
         assertEquals(15, nextInput.amount(A));
         assertEquals(27, nextOutput.amount(B));
         assertNotSame(input.context(), nextInput.context());
-        assertEquals("test:resource/1/2/3/input", label(nextInput.context()));
-        assertEquals("test:resource/1/2/3/output", label(nextOutput.context()));
         assertEquals(0, oldPort.insert(0, A, 1, Actionable.MODULATE));
         assertEquals(0, oldPort.extract(3, B, 1, Actionable.MODULATE));
         assertEquals(6, nextInput.insert(95, A, 6, Actionable.MODULATE));
@@ -91,7 +77,7 @@ class HatchReconfigurationTest {
         var output = Objects.requireNonNull(old.output());
         input.insert(A, 9, Actionable.MODULATE);
         output.insert(B, 21, Actionable.MODULATE);
-        var refused = old.replace(profile(1, 20), null, () -> {
+        var refused = old.replace(profile(1, 20), () -> {
             }, () -> true,
             _ -> {
                 throw new AssertionError("Refused replacement must not prepare publication");
@@ -104,7 +90,7 @@ class HatchReconfigurationTest {
         output.extract(B, 1, Actionable.MODULATE);
         assertFalse(refused.unchanged());
         var installed = new BufferedResourceHatch[]{old};
-        assertEquals(HatchReconfigurationStatus.APPLIED, old.replace(profile(1, 20), null, () -> {
+        assertEquals(HatchReconfigurationStatus.APPLIED, old.replace(profile(1, 20), () -> {
             }, () -> true,
             candidate -> () -> installed[0] = candidate).status());
         assertEquals(9, Objects.requireNonNull(installed[0].input()).amount(A));
@@ -118,7 +104,7 @@ class HatchReconfigurationTest {
         var input = Objects.requireNonNull(old.input());
         input.insert(A, 12, Actionable.MODULATE);
         var held = Objects.requireNonNull(input.reserveExtract(input.snapshot(), A, 5).reservation());
-        assertEquals(HatchReconfigurationStatus.PENDING_BUSY, old.replace(profile(3, 20), null, () -> {
+        assertEquals(HatchReconfigurationStatus.PENDING_BUSY, old.replace(profile(3, 20), () -> {
             }, () -> true,
             _ -> {
                 throw new AssertionError("Reserved balance must not publish");
@@ -130,7 +116,7 @@ class HatchReconfigurationTest {
         } finally {
             input.context().unlock();
         }
-        assertEquals(HatchReconfigurationStatus.PENDING_BUSY, old.replace(profile(3, 20), null, () -> {
+        assertEquals(HatchReconfigurationStatus.PENDING_BUSY, old.replace(profile(3, 20), () -> {
             }, () -> true,
             _ -> {
                 throw new AssertionError("Unclosed mutation must not publish");
@@ -141,7 +127,7 @@ class HatchReconfigurationTest {
         } finally {
             input.context().unlock();
         }
-        assertThrows(IllegalArgumentException.class, () -> old.replace(profile(3, 20), "test:failure", () -> {
+        assertThrows(IllegalArgumentException.class, () -> old.replace(profile(3, 20), () -> {
             }, () -> true,
             _ -> {
                 throw new IllegalArgumentException("Prepared host adapter failed");
@@ -152,7 +138,7 @@ class HatchReconfigurationTest {
         var contexts = List.of(input.context(), Objects.requireNonNull(old.output()).context());
         var retained = Objects.requireNonNull(StorageFence.tryAcquire(contexts));
         try {
-            assertEquals(HatchReconfigurationStatus.PENDING_BUSY, old.replace(profile(3, 20), null, () -> {
+            assertEquals(HatchReconfigurationStatus.PENDING_BUSY, old.replace(profile(3, 20), () -> {
                 }, () -> true,
                 _ -> {
                     throw new AssertionError("Retained original fence blocks admission");
@@ -161,22 +147,6 @@ class HatchReconfigurationTest {
             retained.release();
         }
         assertEquals(11, input.amount(A));
-    }
-
-    @Test
-    void nativeItemMetadataUsesTheSlotSideForDifferentCapacities() {
-        var items = AEKeyType.items();
-        var profile = new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(96, Reference2LongMaps.singleton(items, 64L)),
-            new ResourceHatchConfiguration.Side(128, new Reference2LongArrayMap<>(new AEKeyType[]{items, SECOND}, new long[]{1024L, 2000L})));
-        var hatch = new BufferedResourceHatch(profile, () -> {
-        });
-        var port = new HatchInventoryPort(hatch, true, true);
-        var nativeItems = new HatchItemHandler(port);
-        assertEquals(64, nativeItems.getSlotLimit(95));
-        assertEquals(1024, nativeItems.getSlotLimit(223));
-        Objects.requireNonNull(hatch.output()).insert(127, B, 777, Actionable.MODULATE);
-        assertEquals(777, port.extract(223, B, 800, Actionable.MODULATE));
-        assertEquals(2000, port.getCapacity(SECOND));
     }
 
     @Test
@@ -189,7 +159,7 @@ class HatchReconfigurationTest {
         input.insert(2, A, 7, Actionable.MODULATE);
         output.insert(2, B, 8, Actionable.MODULATE);
         var installed = new BufferedResourceHatch[]{old};
-        assertEquals(HatchReconfigurationStatus.APPLIED, old.replace(profile(4, 20), null, () -> {
+        assertEquals(HatchReconfigurationStatus.APPLIED, old.replace(profile(4, 20), () -> {
             }, () -> true,
             candidate -> () -> installed[0] = candidate).status());
         var nextInput = Objects.requireNonNull(installed[0].input());
@@ -216,7 +186,7 @@ class HatchReconfigurationTest {
         var target = new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(3, new Reference2LongArrayMap<>(new AEKeyType[]{FIRST, SECOND}, new long[]{10L, 10L})),
             new ResourceHatchConfiguration.Side(2, new Reference2LongArrayMap<>(new AEKeyType[]{FIRST, SECOND}, new long[]{10L, 10L})));
         var installed = new BufferedResourceHatch[]{old};
-        assertEquals(HatchReconfigurationStatus.APPLIED, old.replace(target, null, () -> {
+        assertEquals(HatchReconfigurationStatus.APPLIED, old.replace(target, () -> {
             }, () -> true,
             candidate -> () -> installed[0] = candidate).status());
         var nextInput = Objects.requireNonNull(installed[0].input());

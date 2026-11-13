@@ -1,8 +1,6 @@
 package com.circulation.prototype_eng.client.preview;
 
-import java.util.Collections;
-import it.unimi.dsi.fastutil.objects.Object2IntMap;
-
+import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewPath;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
@@ -11,8 +9,9 @@ import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.structure.StructureBounds;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
-import ae2.core.localization.LocalizationEnum;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -23,14 +22,16 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Map;
 import java.util.function.Function;
 
-/** One viewer/wrapper's choices and bounded observations; all geometry is supplied by the C service. */
+/**
+ * One viewer/wrapper's choices and bounded observations; all geometry is supplied by the C service.
+ */
 public final class StructurePreviewView {
     private final StructurePreviews previews;
     private final ResourceLocation id;
@@ -68,10 +69,14 @@ public final class StructurePreviewView {
     private StructurePreviewModel.Cell picked;
     private StructurePreviewModel.Cell controllerCell;
     private BlockPos restorePick;
+
     public StructurePreviewView(StructurePreviews previews, ResourceLocation id, StructurePreviewSettings settings) {
         this(previews, id, settings, null);
     }
-    /** Explicit declaration context is presentation only; bare structures never infer a machine. */
+
+    /**
+     * Explicit declaration context is presentation only; bare structures never infer a machine.
+     */
     public StructurePreviewView(StructurePreviews previews, ResourceLocation id, StructurePreviewSettings settings,
                                 @Nullable MachineType machine) {
         this.previews = Objects.requireNonNull(previews);
@@ -113,7 +118,9 @@ public final class StructurePreviewView {
         return machine;
     }
 
-    /** An unnamed structure in a machine viewer keeps that machine's localized display contract. */
+    /**
+     * An unnamed structure in a machine viewer keeps that machine's localized display contract.
+     */
     public @Nullable LocalizationEnum title() {
         var current = model();
         var declared = current == null ? null : current.title();
@@ -128,7 +135,9 @@ public final class StructurePreviewView {
         return formedPreview && threeDimensional;
     }
 
-    /** Include the independent controller only in 3D framing; complete geometry/BOM stay authoritative. */
+    /**
+     * Include the independent controller only in 3D framing; complete geometry/BOM stay authoritative.
+     */
     public @Nullable StructureBounds sceneBounds() {
         var complete = model();
         return complete == null ? null : controllerBounds;
@@ -276,17 +285,14 @@ public final class StructurePreviewView {
         }
         var complete = model();
         if (!scan || nextWorld == null || complete == null || complete.cells().isEmpty()) return;
-        var round = token;
-        var values = statuses;
         for (int step = 0; step < Math.min(visits, complete.cells().size()); step++) {
             var index = scanCursor;
             var cell = complete.cells().get(index);
-            var observed = Objects.requireNonNull(observer.observe(cell, add(anchor, cell.position())));
-            if (round != token || complete != model() || values != statuses || nextWorld != world) return;
-            if (values.get(index) != observed) {
-                updateCount(cell.display(), values.get(index), -1);
+            var observed = observer.observe(complete, cell, add(anchor, cell.position()));
+            if (statuses.get(index) != observed) {
+                updateCount(cell.display(), statuses.get(index), -1);
                 updateCount(cell.display(), observed, 1);
-                values.put(index, observed);
+                statuses.put(index, observed);
                 countsRevision++;
             }
             scanCursor = (index + 1) % complete.cells().size();
@@ -312,30 +318,43 @@ public final class StructurePreviewView {
         var display = cell.display();
         if (expected != token || model() == null || display == null || cells.get(cell.position()) != cell
             || option < 0 || option >= display.options().size()) return false;
-        var choices = new Object2ObjectOpenHashMap<>(settings.cellOptions());
+        var choices = new BlockPos2ObjectMap<>(settings.cellOptions());
         choices.put(cell.position(), new StructurePreviewSettings.CellChoice(display, option));
         return replaceAlternatives(expected, settings.displayOptions(), choices);
     }
 
-    /** Installs one server-authoritative choice snapshot without one rebuild per cell. */
+    /**
+     * Installs one server-authoritative choice snapshot without one rebuild per cell.
+     * The supplied maps are borrowed read-only for the lifetime of the resulting settings.
+     */
     public boolean replaceAlternatives(Object expected, Object2IntMap<StructureDisplay> global,
-                                       Map<BlockPos, StructurePreviewSettings.CellChoice> local) {
+                                       BlockPos2ObjectMap<StructurePreviewSettings.CellChoice> local) {
         return replaceSelections(expected, global, local, settings.sliceCounts());
     }
 
-    /** One authoritative builder snapshot updates materials and repetition counts together. */
+    /**
+     * One authoritative builder snapshot updates materials and repetition counts together.
+     * Callers must retain these maps unchanged and create new maps for subsequent edits.
+     */
     public boolean replaceSelections(Object expected, Object2IntMap<StructureDisplay> global,
-                                     Map<BlockPos, StructurePreviewSettings.CellChoice> local, Object2IntMap<StructurePreviewPath> slices) {
+                                     BlockPos2ObjectMap<StructurePreviewSettings.CellChoice> local, Object2IntMap<StructurePreviewPath> slices) {
         if (expected != token || model() == null) return false;
         for (var entry : slices.object2IntEntrySet())
             if (entry.getKey() == null || entry.getIntValue() < 0) return false;
         for (var entry : global.object2IntEntrySet())
-            if (entry.getKey() == null || !membership.contains(entry.getKey()) || entry.getIntValue() < 0 || entry.getIntValue() >= entry.getKey().options().size()) return false;
-        for (var entry : local.entrySet()) {
-            var cell = cells.get(entry.getKey());
-            if (cell == null || entry.getValue() == null || !entry.getValue().display().equals(cell.display())) return false;
+            if (entry.getKey() == null || !membership.contains(entry.getKey()) || entry.getIntValue() < 0 || entry.getIntValue() >= entry.getKey().options().size())
+                return false;
+        var position = new BlockPos.MutableBlockPos();
+        for (var entries = local.fastIterator(); entries.hasNext(); ) {
+            var entry = entries.next();
+            long packed = entry.getLongKey();
+            position.setPos(BlockPos2ObjectMap.unpackX(packed), BlockPos2ObjectMap.unpackY(packed), BlockPos2ObjectMap.unpackZ(packed));
+            var cell = cells.get(position);
+            if (cell == null || entry.getValue() == null || !entry.getValue().display().equals(cell.display()))
+                return false;
         }
-        if (settings.displayOptions().equals(global) && settings.cellOptions().equals(local) && settings.sliceCounts().equals(slices)) return true;
+        if (settings.displayOptions().equals(global) && settings.cellOptions().equals(local) && settings.sliceCounts().equals(slices))
+            return true;
         alternatives.clear();
         alternatives.putAll(global);
         settings = new StructurePreviewSettings(settings.orientation(), slices, settings.maxOccurrences(), settings.maxCellVisits(), global, local);
@@ -352,7 +371,7 @@ public final class StructurePreviewView {
         alternatives.put(display, option);
         var options = new Object2IntOpenHashMap<>(settings.displayOptions());
         options.put(display, option);
-        var local = new Object2ObjectOpenHashMap<>(settings.cellOptions());
+        var local = new BlockPos2ObjectMap<>(settings.cellOptions());
         local.values().removeIf(choice -> choice.display().equals(display));
         return replaceAlternatives(expected, options, local);
     }
@@ -435,7 +454,9 @@ public final class StructurePreviewView {
         return statuses.get(index);
     }
 
-    /** Full-structure counts deliberately never use the visible layer. Counts remain long throughout. */
+    /**
+     * Full-structure counts deliberately never use the visible layer. Counts remain long throughout.
+     */
     public List<Material> materials(Function<StructureDisplay, String> names, String unknownName) {
         var complete = model();
         if (complete == null) return List.of();
@@ -449,7 +470,9 @@ public final class StructurePreviewView {
         return materialRows;
     }
 
-    /** Resource and language reloads invalidate native names even when geometry and counts stay the same. */
+    /**
+     * Resource and language reloads invalidate native names even when geometry and counts stay the same.
+     */
     public void invalidateMaterials() {
         names.clear();
         namesRevision++;
@@ -509,7 +532,9 @@ public final class StructurePreviewView {
                            long mismatch, long unloaded, long unknown) {
     }
 
-    /** Identity token prevents a click drawn for a previous choice/generation from selecting new geometry. */
+    /**
+     * Identity token prevents a click drawn for a previous choice/generation from selecting new geometry.
+     */
     public record Click(Object token, StructurePreviewModel.Cell cell) {
     }
 

@@ -1,29 +1,34 @@
 package com.circulation.prototype_eng.integration.jei;
 
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
 import java.util.List;
 import java.util.Objects;
 
-/** Measures the complete explanation with the same font and wrapping used for drawing. */
+/**
+ * Measures the complete explanation with the same font and wrapping used for drawing.
+ * Layout and wrapped-line lists are read-only for the layout's lifetime.
+ */
 public record RecipeInformationLayout(List<Paragraph> paragraphs, int height) {
     public static RecipeInformationLayout measure(List<JeiRecipeDisplay.Text> information, int width, Font font) {
         var paragraphs = new ObjectArrayList<Paragraph>(information.size());
         int y = 0;
         for (var source : information) {
             int x = source.energy() == null ? 4 : 26;
-            var lines = List.copyOf(font.wrap().apply(source, width - x - 4));
+            var lines = font.wrap().apply(source, width - x - 4);
             int height = Math.max(source.energy() == null ? 0 : 18, lines.size() * font.lineHeight());
             paragraphs.add(new Paragraph(source, lines, x, y, height));
             y += height + 3;
         }
-        return new RecipeInformationLayout(ObjectLists.unmodifiable(paragraphs), Math.max(0, y - 3));
+        return new RecipeInformationLayout(paragraphs, Math.max(0, y - 3));
     }
 
     @FunctionalInterface
     public interface TextWrapper {
+        /**
+         * Returns completed lines that remain unchanged while the measured layout is in use.
+         */
         List<String> apply(JeiRecipeDisplay.Text text, int width);
     }
 

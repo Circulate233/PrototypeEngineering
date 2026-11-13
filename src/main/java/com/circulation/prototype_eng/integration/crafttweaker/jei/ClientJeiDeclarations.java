@@ -9,13 +9,18 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 
-/** Server-safe startup declarations; retained snapshots replay only the client category phase. */
+/**
+ * Server-safe startup declarations; retained snapshots replay only the client category phase.
+ */
 public final class ClientJeiDeclarations {
     private static final Object2ObjectLinkedOpenHashMap<ResourceLocation, Binding> PENDING = new Object2ObjectLinkedOpenHashMap<>();
-    @Nullable private static List<Binding> frozen;
-    @Nullable private static ZenJeiOptions defaults;
+    @Nullable
+    private static List<Binding> frozen;
+    @Nullable
+    private static ZenJeiOptions defaults;
 
-    private ClientJeiDeclarations() {}
+    private ClientJeiDeclarations() {
+    }
 
     static synchronized void defaults(ZenJeiOptions options) {
         requireOpen();
@@ -27,7 +32,8 @@ public final class ClientJeiDeclarations {
         requireOpen();
         var binding = new Binding(Objects.requireNonNull(pool), options, page);
         var previous = PENDING.putIfAbsent(pool, binding);
-        if (previous != null && !previous.equals(binding)) throw new IllegalArgumentException("Conflicting client page declaration: " + pool);
+        if (previous != null && !previous.equals(binding))
+            throw new IllegalArgumentException("Conflicting client page declaration: " + pool);
     }
 
     static synchronized List<Binding> freeze() {
@@ -38,11 +44,14 @@ public final class ClientJeiDeclarations {
         return frozen;
     }
 
-    static synchronized @Nullable ZenJeiOptions defaults() { return defaults; }
+    static synchronized @Nullable ZenJeiOptions defaults() {
+        return defaults;
+    }
 
     private static void requireOpen() {
         if (frozen != null) throw new IllegalStateException("Client page declarations have closed");
     }
 
-    record Binding(ResourceLocation pool, @Nullable ZenJeiOptions options, @Nullable ZenJeiPage page) {}
+    record Binding(ResourceLocation pool, @Nullable ZenJeiOptions options, @Nullable ZenJeiPage page) {
+    }
 }

@@ -11,7 +11,6 @@ import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.HatchReconfigurationStatus;
 import com.circulation.prototype_eng.api.storage.HatchTier;
 import com.circulation.prototype_eng.api.storage.ReconfigurableHatch;
-import com.circulation.prototype_eng.block.EnergyHatchBlock;
 import com.circulation.prototype_eng.storage.HatchAutoTransfer;
 import com.circulation.prototype_eng.storage.HatchConfigurationNbt;
 import com.circulation.prototype_eng.storage.HatchConfigurationRequest;
@@ -21,8 +20,6 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.play.server.SPacketUpdateTileEntity;
 import net.minecraft.util.EnumFacing;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.energy.CapabilityEnergy;
 import org.jetbrains.annotations.NotNull;
@@ -51,12 +48,9 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     @SuppressWarnings("unused") // Worker writes and server-tick drains use STORAGE_DIRTY.
     private boolean storageDirty;
     private HatchTier tier;
-    private boolean pendingConfiguration;
     private HatchMode mode;
     private EnergyBuffer buffer;
     private EnergyBuffer outputBuffer;
-    @Nullable
-    private String allocationLocation;
     private EnergyHatchStorage balances;
     private EnergyHatchConfiguration effective;
     private long observedTargetRevision = -1;
@@ -73,7 +67,6 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     @SuppressWarnings("unused")
     public EnergyHatchBlockEntity() {
         this(HatchMode.INPUT, HatchTier.LV1);
-        pendingConfiguration = true;
     }
 
     public EnergyHatchBlockEntity(HatchMode mode, HatchTier tier) {
@@ -86,60 +79,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     @Override
     public void onLoad() {
         super.onLoad();
-        if (pendingConfiguration && world != null && world.getTileEntity(pos) == this
-            && world.getBlockState(pos).getBlock() instanceof EnergyHatchBlock block
-            && block.getTileEntity(world, pos) == this) {
-            initializeConfiguration(block.mode(), block.tier());
-        }
-        bindSourceIdentities();
         observeConfigurationTarget();
-    }
-
-    /** Physical labels are facts about the world-owned tile, not source access tokens. */
-    protected @Nullable String allocationLocation() {
-        return world != null && world.getTileEntity(pos) == this
-            ? "prototype_eng:energy/" + world.provider.getDimension() + "/" + pos.getX() + "/" + pos.getY() + "/" + pos.getZ()
-            : null;
-    }
-
-    private void bindSourceIdentities() {
-        if (buffer == null || !buffer.isValid() || isInvalid()) return;
-        var location = allocationLocation();
-        if (location == null || location.equals(allocationLocation)) return;
-        buffer.context().bindSourceIdentity(location + (mode.hasInput() ? "/input" : "/output"));
-        if (outputBuffer != null && outputBuffer != buffer)
-            outputBuffer.context().bindSourceIdentity(location + "/output");
-        allocationLocation = location;
-    }
-
-    @Override
-    public void setPos(@NotNull BlockPos position) {
-        if (allocationLocation != null && !pos.equals(position)) invalidate();
-        super.setPos(position);
-    }
-
-    @Override
-    public void setWorld(@NotNull World nextWorld) {
-        if (allocationLocation != null && world != nextWorld) invalidate();
-        super.setWorld(nextWorld);
-    }
-
-    /**
-     * Completes only an unsaved no-arg instance; explicit construction and NBT remain authoritative.
-     */
-    protected void initializeConfiguration(HatchMode mode, HatchTier tier) {
-        if (!pendingConfiguration) {
-            return;
-        }
-        invalidateStorage();
-        this.mode = Objects.requireNonNull(mode);
-        this.tier = Objects.requireNonNull(tier);
-        effective = HatchConfig.energyConfiguration(tier, mode);
-        createStorage();
-        if (isInvalid()) {
-            invalidateStorage();
-        }
-        pendingConfiguration = false;
     }
 
     @Override
@@ -160,7 +100,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
         balances = next;
         buffer = next.primary();
         outputBuffer = next.output();
-        allocationLocation = null;
+
         port = new ForgeEnergyPort(next.input(), next.output());
     }
 
@@ -173,9 +113,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
         super.update();
         observeConfigurationTarget();
         queueConfiguration();
-        if ((mode.hasInput() && autoInput || mode.hasOutput() && autoOutput)
-            && world != null && !world.isRemote && !isInvalid()
-            && world.isBlockLoaded(pos) && world.getTileEntity(pos) == this)
+        if ((mode.hasInput() && autoInput || mode.hasOutput() && autoOutput) && !world.isRemote)
             autoTransfer.tickEnergy(this);
         flushStorageChanges();
         notifyConfiguration();
@@ -187,22 +125,21 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
         }
     }
 
-    /** Compatibility access to the input balance, or the sole output balance on output hatches. */
+    /**
+     * Compatibility access to the input balance, or the sole output balance on output hatches.
+     */
     @Override
     public EnergyBuffer storage() {
-        bindSourceIdentities();
         return buffer;
     }
 
     @Override
     public @Nullable EnergyBuffer inputStorage() {
-        bindSourceIdentities();
         return mode.hasInput() ? buffer : null;
     }
 
     @Override
     public @Nullable EnergyBuffer outputStorage() {
-        bindSourceIdentities();
         return outputBuffer;
     }
 
@@ -237,7 +174,9 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
             requestConfiguration(HatchConfig.energyConfiguration(tier, mode));
     }
 
-    /** Addon hosts may supply an owner scheduler while preserving the public request admission checks. */
+    /**
+     * Addon hosts may supply an owner scheduler while preserving the public request admission checks.
+     */
     protected @Nullable HatchConfigurationRequest.Boundary configurationBoundary() {
         return world == null ? null : HatchConfigurationRequest.boundary(this);
     }
@@ -258,8 +197,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     private HatchReplacement applyConfiguration() {
         var target = (EnergyHatchConfiguration) Objects.requireNonNull(configurationRequest.target());
         var old = balances;
-        var location = allocationLocation();
-        return old.replace(target, maxInputRate, maxOutputRate, location, this::requestStorageSave,
+        return old.replace(target, maxInputRate, maxOutputRate, this::requestStorageSave,
             () -> balances == old && configurationRequest.target() == target && !isInvalid(), candidate -> {
                 var nextPort = new ForgeEnergyPort(candidate.input(), candidate.output());
                 return () -> {
@@ -268,7 +206,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
                     outputBuffer = candidate.output();
                     port = nextPort;
                     effective = target;
-                    allocationLocation = location;
+
                 };
             });
     }
@@ -359,7 +297,6 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     @Nullable
     public <T> T getCapability(@NotNull Capability<T> capability, @Nullable EnumFacing side) {
         if (!isInvalid()) {
-            bindSourceIdentities();
             if (capability == HatchCapabilities.ENERGY_INPUT && mode.hasInput()) {
                 return HatchCapabilities.ENERGY_INPUT.cast(buffer);
             }
@@ -443,7 +380,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
         if (isInvalid()) candidate.invalidate();
         invalidateStorage();
         super.loadTag(tag);
-        pendingConfiguration = false;
+
         tier = nextTier;
         mode = nextMode;
         effective = profile;
@@ -459,6 +396,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
 
     @Override
     protected void setRemoved() {
+
         invalidateStorage();
         flushStorageChanges();
         super.setRemoved();
@@ -466,6 +404,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
 
     @Override
     protected void onChunkUnloaded() {
+
         invalidateStorage();
         flushStorageChanges();
         super.onChunkUnloaded();
@@ -483,7 +422,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     }
 
     private boolean hasTransferReservation() {
-        return buffer != null && buffer.hasTransferReservation()
+        return buffer.hasTransferReservation()
             || outputBuffer != null && outputBuffer != buffer && outputBuffer.hasTransferReservation();
     }
 

@@ -14,8 +14,8 @@ import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.Comparator;
+import java.util.Objects;
 
 /**
  * Loading-thread registration, followed by one atomic validated publication for runtime readers.
@@ -129,7 +129,9 @@ public final class ResearchRegistry {
         return requireFrozen().ordered;
     }
 
-    /** Stable GUI order is prepared once at definition freeze, independently of registration order. */
+    /**
+     * Stable GUI order is prepared once at definition freeze, independently of registration order.
+     */
     public ObjectList<ResearchDefinition> sortedById() {
         return requireFrozen().orderedById;
     }

@@ -24,16 +24,18 @@ import java.util.Objects;
 public class RecipePoolJeiRecipe implements IRecipeWrapper {
     private final RecipePoolJeiPage page;
     private final RecipePool pool;
-    private DisplayToken token;
     private final MachineRecipe recipe;
     private final JeiRecipeDisplay display;
     private final JeiRecipeIngredients ingredients;
+    private DisplayToken token;
 
     public RecipePoolJeiRecipe(RecipePoolJeiPage page, MachineRecipe recipe, JeiRecipeDisplay display, JeiRecipeIngredients ingredients) {
         this(page, page.pool(), recipe, display, ingredients);
     }
 
-    /** The prepared pool is explicit because its category still owns the old data. */
+    /**
+     * The prepared pool is explicit because its category still owns the old data.
+     */
     public RecipePoolJeiRecipe(RecipePoolJeiPage page, RecipePool pool, MachineRecipe recipe,
                                JeiRecipeDisplay display, JeiRecipeIngredients ingredients) {
         this.page = Objects.requireNonNull(page);
@@ -41,13 +43,6 @@ public class RecipePoolJeiRecipe implements IRecipeWrapper {
         this.recipe = Objects.requireNonNull(recipe);
         this.display = Objects.requireNonNull(display);
         this.ingredients = Objects.requireNonNull(ingredients);
-        if (!page.getUid().equals(RecipePoolJeiPage.uid(pool.id()))) throw new IllegalArgumentException("JEI preparation changed category UID");
-        boolean member = false;
-        for (var candidate : pool.recipes()) if (candidate == recipe) {
-            member = true;
-            break;
-        }
-        if (!member) throw new IllegalArgumentException("JEI wrapper recipe is outside its canonical pool");
     }
 
     public RecipePoolJeiPage page() {
@@ -58,25 +53,17 @@ public class RecipePoolJeiRecipe implements IRecipeWrapper {
         return recipe;
     }
 
-    public RecipePool pool() { return pool; }
+    public RecipePool pool() {
+        return pool;
+    }
 
-    public final boolean isCurrent() { return token == null || token.current(); }
+    public final boolean isCurrent() {
+        return token == null || token.current();
+    }
 
     public final void bindDisplayToken(DisplayToken token) {
         if (this.token != null) throw new IllegalStateException("JEI wrapper already belongs to a generation");
         this.token = Objects.requireNonNull(token);
-    }
-
-    public static final class DisplayToken {
-        private boolean current;
-        private boolean revoked;
-
-        public boolean current() { return current && !revoked; }
-        public void activate() {
-            if (revoked) throw new IllegalStateException("JEI generation has been revoked");
-            current = true;
-        }
-        public void revoke() { revoked = true; current = false; }
     }
 
     public JeiRecipeDisplay display() {
@@ -87,7 +74,9 @@ public class RecipePoolJeiRecipe implements IRecipeWrapper {
         return ingredients;
     }
 
-    /** Complete displayed resources, independent of the visible page; custom wrappers can supply their own grouping. */
+    /**
+     * Complete displayed resources, independent of the visible page; custom wrappers can supply their own grouping.
+     */
     public @Nullable JeiPatternRecipe patternRecipe() {
         return new RecipePanelLayout(display, JeiRenderOptions.defaults(), ingredients).patternRecipe(recipe.durationTicks());
     }
@@ -98,15 +87,38 @@ public class RecipePoolJeiRecipe implements IRecipeWrapper {
         JeiEnergyIngredients.index(target, display);
     }
 
-    /** Call super when overriding drawInfo so the native Forge scroll bridge sees the drawn bounds. */
+    /**
+     * Call super when overriding drawInfo so the native Forge scroll bridge sees the drawn bounds.
+     */
     @Override
     public void drawInfo(Minecraft minecraft, int recipeWidth, int recipeHeight, int mouseX, int mouseY) {
         if (!isCurrent()) return;
         JeiRecipeInputs.drawn(minecraft, this, recipeWidth, recipeHeight, mouseX, mouseY);
     }
 
-    /** Current JEI has no native wrapper wheel callback; the Forge bridge forwards drawn bounds here. */
+    /**
+     * Current JEI has no native wrapper wheel callback; the Forge bridge forwards drawn bounds here.
+     */
     public boolean handleMouseScroll(int mouseX, int mouseY, int scrollDelta) {
         return false;
+    }
+
+    public static final class DisplayToken {
+        private boolean current;
+        private boolean revoked;
+
+        public boolean current() {
+            return current && !revoked;
+        }
+
+        public void activate() {
+            if (revoked) throw new IllegalStateException("JEI generation has been revoked");
+            current = true;
+        }
+
+        public void revoke() {
+            revoked = true;
+            current = false;
+        }
     }
 }

@@ -1,5 +1,6 @@
 package pe.visual.examples;
 
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 
 import ae2.api.orientation.BlockOrientation;
@@ -10,7 +11,6 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleHost;
 import com.circulation.prototype_eng.api.structure.*;
 import com.circulation.prototype_eng.structure.WorldStructureSource;
 import com.circulation.prototype_eng.structure.tool.StructureBuildPlan;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.block.Block;
 import net.minecraft.init.Blocks;
@@ -28,16 +28,31 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nullable;
 
-/** Run-only adapters. Actual definitions live in 12/23 scripts; this class never mirrors their geometry. */
+/**
+ * Run-only adapters. Actual definitions live in 12/23 scripts; this class never mirrors their geometry.
+ */
 public final class CompositeStructureExamples {
     public static final String NESTED = "nested_structure", EXPANDABLE = "expandable_structure";
-    private CompositeStructureExamples() {}
-    public static ResourceLocation id(String path) { return new ResourceLocation("pe_run_tests", path); }
-    public static String name(String value) { return value.startsWith("pe_run_tests:") ? value.substring("pe_run_tests:".length()) : value; }
-    public static boolean known(String value) { return List.of(NESTED, EXPANDABLE).contains(name(value)); }
 
-    /** Derives every placement from the canonical registered graph and its actual slice path. */
-    public static @Nullable Map<BlockPos, Block> placement(String requested, int repeats) {
+    private CompositeStructureExamples() {
+    }
+
+    public static ResourceLocation id(String path) {
+        return new ResourceLocation("pe_run_tests", path);
+    }
+
+    public static String name(String value) {
+        return value.startsWith("pe_run_tests:") ? value.substring("pe_run_tests:".length()) : value;
+    }
+
+    public static boolean known(String value) {
+        return List.of(NESTED, EXPANDABLE).contains(name(value));
+    }
+
+    /**
+     * Derives every placement from the canonical registered graph and its actual slice path.
+     */
+    public static @Nullable BlockPos2ObjectMap<Block> placement(String requested, int repeats) {
         String name = name(requested);
         if (!known(name)) return null;
         if (repeats < 1 || repeats > 4 || name.equals(NESTED) && repeats != 1)
@@ -46,21 +61,25 @@ public final class CompositeStructureExamples {
         var shape = MachineTypeRegistry.INSTANCE.structure(type);
         var catalog = StructureCatalogView.capture(new StructureCatalog(List.of(new StructureDefinition(shape))), new UUID(0, 23), 0);
         var expanded = StructureBuildPlan.expand(catalog, type.structureId(), BlockOrientation.NORTH_UP, Object2IntMaps.singleton("0/0", repeats));
-        var blocks = new Object2ObjectLinkedOpenHashMap<BlockPos, Block>();
+        var blocks = new BlockPos2ObjectMap<Block>();
         for (var cell : expanded.cells()) {
             var display = Objects.requireNonNull(cell.display(), "Composite example has an unknown material");
             if (!display.complete()) throw new IllegalStateException("Composite example has partial material facts");
             var block = ForgeRegistries.BLOCKS.getValue(display.options().getFirst().blockId());
-            if (block == null || block == Blocks.AIR) throw new IllegalStateException("Composite material is not registered");
+            if (block == null || block == Blocks.AIR)
+                throw new IllegalStateException("Composite material is not registered");
             blocks.put(cell.position(), block);
         }
         blocks.put(BlockPos.ORIGIN, Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(id(name + "_controller"))));
         return blocks;
     }
 
-    /** Explicit player command: captures the real World on its owner, evaluates only the frozen snapshot on a worker. */
+    /**
+     * Explicit player command: captures the real World on its owner, evaluates only the frozen snapshot on a worker.
+     */
     public static void check(World world, BlockPos position, int expectedRepeats, boolean expectedMatch) {
-        if (!world.isBlockLoaded(position, false)) throw new IllegalArgumentException("Composite controller is not loaded");
+        if (!world.isBlockLoaded(position, false))
+            throw new IllegalArgumentException("Composite controller is not loaded");
         if (!(world.getTileEntity(position) instanceof MachineControllerHost controller) || !known(controller.type().id().toString()))
             throw new IllegalArgumentException("Expected an actual composite-example controller");
         if (expectedMatch && controller.type().id().equals(id(EXPANDABLE)) && (expectedRepeats < 1 || expectedRepeats > 4))
@@ -78,7 +97,8 @@ public final class CompositeStructureExamples {
             boolean nested = controller.type().id().equals(id(NESTED));
             int expectedBlocks = nested ? 26 : 13 + 9 * expectedRepeats;
             NativeChecks.check("composite_actual_block_count", match.allBlocks().size() == expectedBlocks);
-            var pending = new ObjectArrayList<StructureMatch>(); pending.add(match);
+            var pending = new ObjectArrayList<StructureMatch>();
+            pending.add(match);
             int pods = 0, markers = 0, slices = 0, caps = 0;
             while (!pending.isEmpty()) {
                 var node = pending.removeLast();
@@ -106,8 +126,13 @@ public final class CompositeStructureExamples {
     }
 
     private record Host(World world, MachineControllerHost controller) implements MachineLifecycleHost {
-        @Override public MachineIdentity identity() { return new MachineIdentity(controller.type().id(), world.provider.getDimension(), controller.blockEntity().getPos()); }
-        @Override public void requireServerThread() {
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(controller.type().id(), world.provider.getDimension(), controller.blockEntity().getPos());
+        }
+
+        @Override
+        public void requireServerThread() {
             if (world.isRemote || world.getMinecraftServer() == null || !world.getMinecraftServer().isCallingFromMinecraftThread())
                 throw new IllegalStateException("Composite capture requires the actual server thread");
         }

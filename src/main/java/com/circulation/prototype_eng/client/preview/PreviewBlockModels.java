@@ -156,7 +156,9 @@ public final class PreviewBlockModels implements AutoCloseable {
         return boxes;
     }
 
-    /** Same actual Baker, four layer meshes, sample cursor and GL restoration as world rendering. */
+    /**
+     * Same actual Baker, four layer meshes, sample cursor and GL restoration as world rendering.
+     */
     public void renderScene(StructurePreviewView view, PreviewBlockAccess access, double cameraX, double cameraY, double cameraZ) {
         requireOwner();
         var model = view.model();

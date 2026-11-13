@@ -45,7 +45,7 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
         public MachineDataCenterStorage restore(MachineInstance owner, MachineDataCenterStorage component, NBTTagCompound saved) {
             component.requireOwner(owner);
             owner.requirePersistenceBoundary();
-            if (component.loadAttempted || component.state != null) {
+            if (component.state != null) {
                 throw new IllegalStateException("Data-center restore requires a fresh attachment");
             }
             var savedState = DataCenterStorageNbt.decodeState(saved, component.registry);
@@ -70,16 +70,16 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
     private final ResearchRegistry registry;
     private final Consumer<MachineInstance> dirty;
     private final MachineDataCenterPersistence persistence;
-    @Nullable
-    private ComponentType<MachineInstance, ?> boundType;
+    private final ComponentType<MachineInstance, MachineDataCenterStorage> boundType;
     @Nullable
     private ResearchDataCenter state;
-    private boolean loadAttempted;
 
-    private MachineDataCenterStorage(MachineInstance owner, ComponentType<MachineInstance, MachineOwnership> ownership,
+    private MachineDataCenterStorage(MachineInstance owner, ComponentType<MachineInstance, MachineDataCenterStorage> boundType,
+                                     ComponentType<MachineInstance, MachineOwnership> ownership,
                                      int level, int capacity, ResearchRegistry registry, Consumer<MachineInstance> dirty,
                                      MachineDataCenterPersistence persistence) {
         this.owner = owner;
+        this.boundType = boundType;
         ownershipType = ownership;
         this.level = level;
         this.capacity = capacity;
@@ -130,27 +130,13 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
         Objects.requireNonNull(dirty);
         Objects.requireNonNull(ownership);
         Objects.requireNonNull(persistence);
-        return new ComponentType<>(id, owner -> new MachineDataCenterStorage(owner, ownership, level, capacity, registry, dirty, persistence),
+        return new ComponentType<>(id, (owner, type) -> new MachineDataCenterStorage(owner, type, ownership, level, capacity, registry, dirty, persistence),
             List.of(), List.of(ownership));
     }
 
     @Override
     public void onLoaded(MachineLifecycleEvent.Loaded event) {
-        requireOwner(event.context().machine());
         requireThread();
-        if (loadAttempted) {
-            throw new IllegalStateException("Data-center storage cannot load twice");
-        }
-        loadAttempted = true;
-        for (var binding : owner.components().assemblyBindings()) {
-            if (binding.component() == this) {
-                if (boundType != null) {
-                    throw new IllegalStateException("Data-center storage has multiple bindings");
-                }
-                boundType = binding.type();
-            }
-        }
-        Objects.requireNonNull(boundType, "Data-center storage is not installed");
         var identity = Objects.requireNonNull(owner.components().get(ownershipType)).identity();
         if (state == null) {
             state = new ResearchDataCenter(identity.machineId(), level, capacity, registry, this::requireThread, this::changed);
@@ -234,7 +220,7 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
         var captured = backend.persistentState();
         var expected = DataCenterStorageNbt.encodeState(captured);
         BooleanSupplier current = () -> physicalCurrent.getAsBoolean() && live() && backend.persistentState() == captured;
-        persistence.persistAndVerify(owner, Objects.requireNonNull(boundType).id(), ownershipType.id(), expected, current);
+        persistence.persistAndVerify(owner, boundType.id(), ownershipType.id(), expected, current);
         requireLive();
         if (!current.getAsBoolean()) throw new IllegalStateException("Database changed during its persistence barrier");
     }
@@ -255,7 +241,7 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
     }
 
     private boolean live() {
-        return boundType != null && owner.components().get(boundType) == this
+        return owner.components().get(boundType) == this
             && Objects.requireNonNull(owner.lifecycle()).schedulingAllowed();
     }
 

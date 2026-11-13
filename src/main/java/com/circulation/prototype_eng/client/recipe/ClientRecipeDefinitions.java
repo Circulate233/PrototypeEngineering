@@ -2,8 +2,8 @@ package com.circulation.prototype_eng.client.recipe;
 
 import com.circulation.prototype_eng.api.client.jei.ClientRecipeDeclarations;
 import com.circulation.prototype_eng.api.recipe.RecipeDefinitionManifest;
-import com.circulation.prototype_eng.recipe.RecipeDefinitionManifestCodec;
 import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
+import com.circulation.prototype_eng.recipe.RecipeDefinitionManifestCodec;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.Nullable;

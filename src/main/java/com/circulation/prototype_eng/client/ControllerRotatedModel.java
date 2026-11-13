@@ -16,7 +16,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-/** PM RotatedBakedModel: precomputed quarter turns around the already facing-rotated model's front. */
+/**
+ * PM RotatedBakedModel: precomputed quarter turns around the already facing-rotated model's front.
+ */
 final class ControllerRotatedModel implements IBakedModel {
     private final IBakedModel base;
     private final ObjectArrayList<ObjectList<BakedQuad>> quads = new ObjectArrayList<>(7);
@@ -47,7 +49,9 @@ final class ControllerRotatedModel implements IBakedModel {
         for (int i = 0; i < 7; i++) quads.set(i, ObjectLists.unmodifiable(quads.get(i)));
     }
 
-    /** Exact quarter turns avoid floating-point rotation drift at block boundaries. */
+    /**
+     * Exact quarter turns avoid floating-point rotation drift at block boundaries.
+     */
     private static void turn(float[] vector, EnumFacing axis, int twist, float center) {
         float x = vector[0] - center, y = vector[1] - center, z = vector[2] - center;
         int ax = axis.getXOffset(), ay = axis.getYOffset(), az = axis.getZOffset();

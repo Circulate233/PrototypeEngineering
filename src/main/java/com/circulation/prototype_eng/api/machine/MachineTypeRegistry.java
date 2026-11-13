@@ -4,7 +4,6 @@ import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
 import com.circulation.prototype_eng.api.structure.MachineStructure;
 import com.circulation.prototype_eng.api.structure.StructureCatalog;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.util.ResourceLocation;
@@ -16,6 +15,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
+ * Published collections are read-only by contract; consumers must not modify them.
+ * Mutations must not be reentered from supplied collections or structure-definition callbacks.
  * Startup declarations close before controller generation; structures bind in a separate complete
  * publication after block resolution. Both stages retain the exact canonical MachineType objects.
  * Controller runtime publication additionally requires an assembly for every declaration; neither
@@ -29,7 +30,6 @@ public final class MachineTypeRegistry {
     @Nullable
     private ResolvedRuntime runtime;
     private boolean frozen;
-    private boolean mutating;
 
     private static Map<ResourceLocation, MachineStructure> validateStructures(Map<ResourceLocation, ? extends MachineStructure> definitions) {
         Objects.requireNonNull(definitions, "structure definitions");
@@ -55,39 +55,29 @@ public final class MachineTypeRegistry {
      * Validate the entire batch before changing pending declarations. Rejected batches add nothing.
      */
     public synchronized void registerAll(Collection<? extends MachineType> batch) {
-        beginMutation();
-        try {
-            if (frozen) {
-                throw new IllegalStateException("Machine declarations are already frozen");
-            }
-            Objects.requireNonNull(batch, "machine batch");
-            var additions = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineType>(batch.size());
-            for (var type : batch) {
-                Objects.requireNonNull(type, "machine type");
-                if (declarations.containsKey(type.id()) || additions.putIfAbsent(type.id(), type) != null) {
-                    throw new IllegalArgumentException("Duplicate machine type ID: " + type.id());
-                }
-            }
-            declarations.putAll(additions);
-        } finally {
-            mutating = false;
+        if (frozen) {
+            throw new IllegalStateException("Machine declarations are already frozen");
         }
+        Objects.requireNonNull(batch, "machine batch");
+        var additions = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineType>(batch.size());
+        for (var type : batch) {
+            Objects.requireNonNull(type, "machine type");
+            if (declarations.containsKey(type.id()) || additions.putIfAbsent(type.id(), type) != null) {
+                throw new IllegalArgumentException("Duplicate machine type ID: " + type.id());
+            }
+        }
+        declarations.putAll(additions);
     }
 
     /**
      * Close once, publishing the complete deterministic declaration order.
      */
     public synchronized void freeze() {
-        beginMutation();
-        try {
-            if (frozen) {
-                throw new IllegalStateException("Machine declarations are already frozen");
-            }
-            types = ObjectLists.unmodifiable(new ObjectArrayList<>(declarations.values()));
-            frozen = true;
-        } finally {
-            mutating = false;
+        if (frozen) {
+            throw new IllegalStateException("Machine declarations are already frozen");
         }
+        types = new ObjectArrayList<>(declarations.values());
+        frozen = true;
     }
 
     public synchronized List<MachineType> types() {
@@ -105,17 +95,12 @@ public final class MachineTypeRegistry {
      * Validate every supplied key/ID and every declared reference before publishing any binding.
      */
     public synchronized void resolveStructures(Map<ResourceLocation, ? extends MachineStructure> definitions) {
-        beginMutation();
-        try {
-            requireFrozen();
-            if (runtime != null) {
-                throw new IllegalStateException("Machine structures are already resolved");
-            }
-            var catalog = StructureCatalog.fromShapes(validateStructures(definitions));
-            runtime = new ResolvedRuntime(catalog, resolveStructureReferences(catalog), null);
-        } finally {
-            mutating = false;
+        requireFrozen();
+        if (runtime != null) {
+            throw new IllegalStateException("Machine structures are already resolved");
         }
+        var catalog = StructureCatalog.fromShapes(validateStructures(definitions));
+        runtime = new ResolvedRuntime(catalog, resolveStructureReferences(catalog), null);
     }
 
     /**
@@ -123,14 +108,9 @@ public final class MachineTypeRegistry {
      */
     public synchronized void resolveRuntime(Map<ResourceLocation, ? extends MachineStructure> definitions,
                                             Collection<? extends MachineAssembly> assemblyDefinitions) {
-        beginMutation();
-        try {
-            requireFrozen();
-            if (runtime != null) throw new IllegalStateException("Machine structures are already resolved");
-            resolveRuntimeCandidate(StructureCatalog.fromShapes(validateStructures(definitions)), assemblyDefinitions);
-        } finally {
-            mutating = false;
-        }
+        requireFrozen();
+        if (runtime != null) throw new IllegalStateException("Machine structures are already resolved");
+        resolveRuntimeCandidate(StructureCatalog.fromShapes(validateStructures(definitions)), assemblyDefinitions);
     }
 
     /**
@@ -138,12 +118,7 @@ public final class MachineTypeRegistry {
      */
     public synchronized void resolveRuntime(StructureCatalog catalog,
                                             Collection<? extends MachineAssembly> assemblyDefinitions) {
-        beginMutation();
-        try {
-            resolveRuntimeCandidate(Objects.requireNonNull(catalog), assemblyDefinitions);
-        } finally {
-            mutating = false;
-        }
+        resolveRuntimeCandidate(Objects.requireNonNull(catalog), assemblyDefinitions);
     }
 
     private void resolveRuntimeCandidate(StructureCatalog catalog, Collection<? extends MachineAssembly> assemblyDefinitions) {
@@ -168,8 +143,7 @@ public final class MachineTypeRegistry {
             }
             resolvedAssemblies.put(type.id(), assembly);
         }
-        var publishedAssemblies = Object2ObjectMaps.unmodifiable(resolvedAssemblies);
-        runtime = new ResolvedRuntime(catalog, resolvedStructures, publishedAssemblies);
+        runtime = new ResolvedRuntime(catalog, resolvedStructures, resolvedAssemblies);
     }
 
     private Map<ResourceLocation, MachineStructure> resolveStructureReferences(StructureCatalog catalog) {
@@ -185,7 +159,7 @@ public final class MachineTypeRegistry {
             }
             resolved.put(type.id(), definition.shape());
         }
-        return Object2ObjectMaps.unmodifiable(resolved);
+        return resolved;
     }
 
     public synchronized MachineStructure structure(MachineType type) {
@@ -219,29 +193,19 @@ public final class MachineTypeRegistry {
      * Preflight without changing either the complete catalog or canonical assembly bindings.
      */
     public synchronized Replacement prepareReplacement(StructureCatalog catalog) {
-        beginMutation();
-        try {
-            requireFrozen();
-            var previous = Objects.requireNonNull(runtime, "Machine runtime has not been resolved");
-            if (previous.assemblies == null) throw new IllegalStateException("Machine runtime has no assemblies");
-            return new Replacement(this, previous, new ResolvedRuntime(Objects.requireNonNull(catalog),
-                resolveStructureReferences(catalog), previous.assemblies));
-        } finally {
-            mutating = false;
-        }
+        requireFrozen();
+        var previous = Objects.requireNonNull(runtime, "Machine runtime has not been resolved");
+        if (previous.assemblies == null) throw new IllegalStateException("Machine runtime has no assemblies");
+        return new Replacement(this, previous, new ResolvedRuntime(Objects.requireNonNull(catalog),
+            resolveStructureReferences(catalog), previous.assemblies));
     }
 
     /**
      * Called once at the owning scheduler's joined boundary after exact host preflight.
      */
     public synchronized void publishReplacement(Replacement replacement) {
-        beginMutation();
-        try {
-            if (!replacementCurrent(replacement)) throw new IllegalStateException("Structure replacement is obsolete");
-            runtime = replacement.next;
-        } finally {
-            mutating = false;
-        }
+        if (!replacementCurrent(replacement)) throw new IllegalStateException("Structure replacement is obsolete");
+        runtime = replacement.next;
     }
 
     public synchronized boolean replacementCurrent(Replacement replacement) {
@@ -261,12 +225,6 @@ public final class MachineTypeRegistry {
         }
     }
 
-    private void beginMutation() {
-        if (mutating) {
-            throw new IllegalStateException("Machine registry mutation is reentrant");
-        }
-        mutating = true;
-    }
 
     /**
      * A held replacement has no publication authority beyond its exact previous runtime.

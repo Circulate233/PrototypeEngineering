@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.api.recipe.requirement;
 
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import org.jetbrains.annotations.Nullable;
 
@@ -14,6 +13,7 @@ import java.util.Objects;
  * This is one built-in requirement, not the recipe model or a replacement resource type system.
  * Counts describe one execution, scaled by effective parallelism and chance at acquisition.
  * Fuzzy/dynamic groups resolve and lock one key per group at START; weighted outputs run at END.
+ * All supplied lists and their elements are borrowed immutable values for this definition's lifetime.
  */
 public record ResourceRequirement(List<GenericStack> inputs, List<GenericStack> inputsPerTick,
                                   List<GenericStack> outputsPerTick, List<GenericStack> outputs,
@@ -21,14 +21,12 @@ public record ResourceRequirement(List<GenericStack> inputs, List<GenericStack> 
                                   @Nullable RandomOutputPool randomOutputs, List<FuzzyInputGroup> fuzzyInputs,
                                   List<DynamicInputGroup> dynamicInputs, InputAllocation inputAllocation) {
     public ResourceRequirement {
-        inputs = canonicalStacks(inputs);
-        inputsPerTick = canonicalStacks(inputsPerTick);
-        outputsPerTick = canonicalStacks(outputsPerTick);
-        outputs = canonicalStacks(outputs);
+        validateStacks(inputs);
+        validateStacks(inputsPerTick);
+        validateStacks(outputsPerTick);
+        validateStacks(outputs);
         Objects.requireNonNull(chance);
         Objects.requireNonNull(inputAllocation);
-        fuzzyInputs = copyGroups(fuzzyInputs);
-        dynamicInputs = copyGroups(dynamicInputs);
     }
 
     public ResourceRequirement(List<GenericStack> inputs, List<GenericStack> inputsPerTick,
@@ -57,33 +55,13 @@ public record ResourceRequirement(List<GenericStack> inputs, List<GenericStack> 
     }
 
     /**
-     * Freezes and validates IO once; built-in overlays can reuse these privately owned lists.
+     * Validates declaration quantities and borrows the list unchanged; no defensive copy is made.
      */
-    public static List<GenericStack> canonicalStacks(List<GenericStack> stacks) {
-        if (stacks instanceof CanonicalList<?>) {
-            return stacks;
-        }
-        var result = new ObjectArrayList<GenericStack>(stacks.size());
+    public static void validateStacks(List<GenericStack> stacks) {
         for (var stack : stacks) {
-            Objects.requireNonNull(stack);
-            Objects.requireNonNull(stack.what());
-            if (stack.amount() <= 0) {
+            if (stack.amount() <= 0)
                 throw new IllegalArgumentException("Resource requirements need positive quantities");
-            }
-            result.add(stack);
         }
-        return new CanonicalList<>(result);
-    }
-
-    private static <T> List<T> copyGroups(List<T> groups) {
-        if (groups instanceof CanonicalList<?>) {
-            return groups;
-        }
-        var result = new ObjectArrayList<T>(groups.size());
-        for (var group : groups) {
-            result.add(Objects.requireNonNull(group));
-        }
-        return new CanonicalList<>(result);
     }
 
     public ResourceRequirement withInputAllocation(InputAllocation allocation) {
@@ -91,9 +69,4 @@ public record ResourceRequirement(List<GenericStack> inputs, List<GenericStack> 
             chance, randomOutputs, fuzzyInputs, dynamicInputs, allocation);
     }
 
-    private static final class CanonicalList<T> extends ObjectLists.UnmodifiableList<T> {
-        private CanonicalList(ObjectArrayList<T> owned) {
-            super(owned);
-        }
-    }
 }

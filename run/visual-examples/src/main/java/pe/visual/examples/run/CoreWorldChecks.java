@@ -1,5 +1,6 @@
 package pe.visual.examples.run;
 
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
@@ -33,7 +34,9 @@ import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-/** Actual user-world capture diagnostics. Never invoked by the standalone no-bootstrap verifier. */
+/**
+ * Actual user-world capture diagnostics. Never invoked by the standalone no-bootstrap verifier.
+ */
 final class CoreWorldChecks {
     static ZenStructureQuery query;
     static ZenStructure shape;
@@ -53,7 +56,9 @@ final class CoreWorldChecks {
     private static StructureEvaluation previousEvaluation;
     private static boolean previousMatched;
     private static int previousLight;
-    private CoreWorldChecks() {}
+
+    private CoreWorldChecks() {
+    }
 
     static void observe(IWorld scriptWorld, IBlockPos scriptPosition, int light) {
         var world = CraftTweakerMC.getWorld(scriptWorld);
@@ -68,21 +73,27 @@ final class CoreWorldChecks {
             counts.addTo(position, 1);
         }
     }
+
     static void validation(ZenStructureFacts facts) {
         if (owner == null) return;
-        if (Thread.currentThread() == owner) throw new IllegalStateException("Explicit world-query validator ran on capture owner");
+        if (Thread.currentThread() == owner)
+            throw new IllegalStateException("Explicit world-query validator ran on capture owner");
         // Only frozen facts are read here; no World/TE/source is accessible to this worker observer.
         validations.add(new Validation(facts.x(), facts.y(), facts.z(), facts.offsetX(), facts.offsetY(), facts.offsetZ(),
             facts.read(Objects.requireNonNull(query)).asInt(), facts.dimension(), Thread.currentThread().getName()));
     }
-    static String stats() { return "actual query captures=" + totalCaptures + "; " + lastCommand; }
+
+    static String stats() {
+        return "actual query captures=" + totalCaptures + "; " + lastCommand;
+    }
 
     static String run(World world, BlockPos controller, BlockOrientation orientation, boolean expectedMatch) {
         requireOwner(world);
         var tile = world.getTileEntity(controller);
         if (!(tile instanceof MachineControllerHost actual) || !actual.type().id().equals(CoreCases.id("core_world")))
             throw new IllegalArgumentException("world-query requires the actual core_world controller");
-        if (actual.orientation() != orientation) throw new IllegalArgumentException("Use the actual controller orientation: " + actual.orientation());
+        if (actual.orientation() != orientation)
+            throw new IllegalArgumentException("Use the actual controller orientation: " + actual.orientation());
         var canonical = MachineTypeRegistry.INSTANCE.structure(actual.type());
         if (canonical != Objects.requireNonNull(shape, "21 core world script did not execute").definition().shape())
             throw new IllegalStateException("World shape is not the canonical registered definition");
@@ -94,13 +105,15 @@ final class CoreWorldChecks {
         if (!Files.isRegularFile(fixture)) fixture = Path.of("run", "scripts", "fixtures", "core_world.json");
         owner = Thread.currentThread();
         activeWorld = world;
-        samples.clear(); counts.clear(); validations.clear();
+        samples.clear();
+        counts.clear();
+        validations.clear();
         try (var worker = Executors.newSingleThreadExecutor()) {
             var catalog = StructureJsonLoader.readSources(Map.of("core_world.json", Files.readString(fixture)))
-                .resolve(new StructureCatalog(List.of()), factories, new NoBlocks());
+                                             .resolve(new StructureCatalog(List.of()), factories, new NoBlocks());
             var json = Objects.requireNonNull(catalog.get(CoreCases.id("core_world_json"))).shape();
-            var center = controller.add(StructureTransform.of(orientation).apply(new BlockPos(6,0,0)));
-            var neighbor = controller.add(StructureTransform.of(orientation).apply(new BlockPos(7,0,0)));
+            var center = controller.add(StructureTransform.of(orientation).apply(new BlockPos(6, 0, 0)));
+            var neighbor = controller.add(StructureTransform.of(orientation).apply(new BlockPos(7, 0, 0)));
             boolean samePrevious = previousWorld.get() == world && controller.equals(previousController) && orientation == previousOrientation;
             int light = world.getLight(center);
             if (samePrevious && light != previousLight) {
@@ -118,7 +131,11 @@ final class CoreWorldChecks {
                 var result = worker.submit(() -> plan.evaluate(snapshot)).get(5, TimeUnit.SECONDS);
                 var expected = expectedMatch ? StructurePredicateResult.MATCHED : StructurePredicateResult.MISMATCH;
                 NativeChecks.check("core_world_" + definition.id().getPath() + "_actual_status", result.status() == expected && result.isCurrent(source));
-                if (definition == json) { newJsonPlan = plan; newJsonSnapshot = snapshot; newJsonEvaluation = result; }
+                if (definition == json) {
+                    newJsonPlan = plan;
+                    newJsonSnapshot = snapshot;
+                    newJsonEvaluation = result;
+                }
             }
             NativeChecks.check("core_world_actual_query_positions", samples.containsKey(center) && samples.containsKey(neighbor) && samples.containsKey(controller));
             NativeChecks.check("core_world_actual_light_condition", (samples.get(center).light() >= 8) == expectedMatch);
@@ -130,52 +147,100 @@ final class CoreWorldChecks {
                         && frozen.queryLight() == samples.get(center).light() && frozen.dimension() == world.provider.getDimension()
                         && frozen.offsetX() * frozen.offsetX() + frozen.offsetY() * frozen.offsetY() + frozen.offsetZ() * frozen.offsetZ() == 36);
             }
-            previousWorld = new WeakReference<>(world); previousController = controller.toImmutable(); previousOrientation = orientation;
-            previousPlan = newJsonPlan; previousSnapshot = newJsonSnapshot; previousEvaluation = newJsonEvaluation;
-            previousMatched = expectedMatch; previousLight = samples.get(center).light();
+            previousWorld = new WeakReference<>(world);
+            previousController = controller.toImmutable();
+            previousOrientation = orientation;
+            previousPlan = newJsonPlan;
+            previousSnapshot = newJsonSnapshot;
+            previousEvaluation = newJsonEvaluation;
+            previousMatched = expectedMatch;
+            previousLight = samples.get(center).light();
             lastCommand = "owner=" + owner.getName() + " controller=" + controller + " orientation=" + orientation
                 + " status=" + (expectedMatch ? "MATCHED" : "MISMATCH") + " actual samples=" + samples.values()
                 + " callsByPosition=" + counts + " frozen worker observations=" + validations;
             return stats();
         } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt(); throw new IllegalStateException("World query check interrupted", interrupted);
-        } catch (java.io.IOException | java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException failure) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("World query check interrupted", interrupted);
+        } catch (java.io.IOException | java.util.concurrent.ExecutionException |
+                 java.util.concurrent.TimeoutException failure) {
             throw new IllegalStateException("Actual world query check failed", failure);
-        } finally { owner = null; activeWorld = null; }
+        } finally {
+            owner = null;
+            activeWorld = null;
+        }
     }
 
-    /** NORTH_UP local block table; the command rotates these offsets with the actual controller. */
-    static Map<BlockPos, Block> placement() {
-        var blocks = new Object2ObjectLinkedOpenHashMap<BlockPos, Block>();
+    /**
+     * NORTH_UP local block table; the command rotates these offsets with the actual controller.
+     */
+    static BlockPos2ObjectMap<Block> placement() {
+        var blocks = new BlockPos2ObjectMap<Block>();
         blocks.put(BlockPos.ORIGIN, Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(CoreCases.id("core_world_controller"))));
-        blocks.put(new BlockPos(-1,0,0), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng", "input_hatch_4"))));
-        blocks.put(new BlockPos(1,0,0), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng", "output_hatch_4"))));
-        blocks.put(new BlockPos(6,0,0), Blocks.REDSTONE_LAMP);
-        for (var position : List.of(new BlockPos(5,0,0), new BlockPos(7,0,0), new BlockPos(6,1,0), new BlockPos(6,0,-1), new BlockPos(6,0,1))) blocks.put(position, Blocks.STONE);
-        blocks.put(new BlockPos(6,-1,0), Blocks.REDSTONE_BLOCK);
+        blocks.put(new BlockPos(-1, 0, 0), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng", "input_hatch_4"))));
+        blocks.put(new BlockPos(1, 0, 0), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng", "output_hatch_4"))));
+        blocks.put(new BlockPos(6, 0, 0), Blocks.REDSTONE_LAMP);
+        for (var position : List.of(new BlockPos(5, 0, 0), new BlockPos(7, 0, 0), new BlockPos(6, 1, 0), new BlockPos(6, 0, -1), new BlockPos(6, 0, 1)))
+            blocks.put(position, Blocks.STONE);
+        blocks.put(new BlockPos(6, -1, 0), Blocks.REDSTONE_BLOCK);
         return blocks;
     }
+
     private static void requireOwner(World world) {
         if (world.isRemote || world.getMinecraftServer() == null || !world.getMinecraftServer().isCallingFromMinecraftThread())
             throw new IllegalStateException("Actual World query checks require the server owner");
     }
-    private record Sample(BlockPos position, int light, String ownerThread) {}
-    private record Validation(int x, int y, int z, int offsetX, int offsetY, int offsetZ, int queryLight, int dimension, String workerThread) {}
+
+    private record Sample(BlockPos position, int light, String ownerThread) {
+    }
+
+    private record Validation(int x, int y, int z, int offsetX, int offsetY, int offsetZ, int queryLight, int dimension,
+                              String workerThread) {
+    }
+
     private record Host(World world, MachineControllerHost actual) implements MachineLifecycleHost {
-        @Override public MachineIdentity identity() { return new MachineIdentity(actual.type().id(), world.provider.getDimension(), actual.blockEntity().getPos()); }
-        @Override public void requireServerThread() {
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(actual.type().id(), world.provider.getDimension(), actual.blockEntity().getPos());
+        }
+
+        @Override
+        public void requireServerThread() {
             requireOwner(world);
             var tile = actual.blockEntity();
             if (tile.getWorld() != world || tile.isInvalid() || world.getTileEntity(tile.getPos()) != tile)
                 throw new IllegalStateException("World query controller attachment is no longer current");
         }
     }
+
     private static final class NoBlocks implements StructureBlockResolver {
-        private IllegalArgumentException unexpected() { return new IllegalArgumentException("World JSON fixture has no block resolver entries"); }
-        @Override public StructurePredicate block(ResourceLocation id) { throw unexpected(); }
-        @Override public StructurePredicate state(ResourceLocation id, int meta, Map<String, String> nbt) { throw unexpected(); }
-        @Override public StructurePredicate regex(String expression) { throw unexpected(); }
-        @Override public StructureDisplay.BlockOption displayState(ResourceLocation id, int meta, Map<String, String> nbt) { throw unexpected(); }
-        @Override public List<StructureDisplay.BlockOption> displayRegex(String expression) { throw unexpected(); }
+        private IllegalArgumentException unexpected() {
+            return new IllegalArgumentException("World JSON fixture has no block resolver entries");
+        }
+
+        @Override
+        public StructurePredicate block(ResourceLocation id) {
+            throw unexpected();
+        }
+
+        @Override
+        public StructurePredicate state(ResourceLocation id, int meta, Map<String, String> nbt) {
+            throw unexpected();
+        }
+
+        @Override
+        public StructurePredicate regex(String expression) {
+            throw unexpected();
+        }
+
+        @Override
+        public StructureDisplay.BlockOption displayState(ResourceLocation id, int meta, Map<String, String> nbt) {
+            throw unexpected();
+        }
+
+        @Override
+        public List<StructureDisplay.BlockOption> displayRegex(String expression) {
+            throw unexpected();
+        }
     }
 }

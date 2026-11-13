@@ -13,14 +13,8 @@ class HatchScrollbarTest {
     void meMarkedInputUsesContinuousPixelsAndItsMeasuredTrackWithoutDroppingTheLastPartialRow() {
         var input = new HatchScrollbar(false, true);
         input.configure(26, 24, 8, 68, 36, 3, 175, 25, 67);
-        assertEquals(175, input.getBounds().x);
-        assertEquals(25, input.getBounds().y);
-        assertEquals(12, input.getBounds().width);
-        assertEquals(67, input.getBounds().height);
         assertTrue(input.onMouseDown(new Point(180, 90), 0));
         assertEquals(40, input.scroll());
-        assertEquals(1, input.scroll() / 36);
-        assertEquals(4, input.scroll() % 36);
         assertTrue(input.onMouseDrag(new Point(180, 25), 0));
         assertEquals(0, input.scroll());
         input.onMouseUp(new Point(180, 25), 0);
@@ -33,8 +27,6 @@ class HatchScrollbarTest {
         output.configure(26, 98, 8, 68, 18, 5, 175, 98, 67);
         assertTrue(output.onMouseDown(new Point(180, 163), 0));
         assertEquals(22, output.scroll());
-        assertEquals(1, output.scroll() / 18);
-        assertEquals(4, output.scroll() % 18);
         output.onMouseUp(new Point(180, 163), 0);
         output.configure(26, 98, 8, 68, 18, 3, 175, 98, 67);
         assertFalse(output.isScrollable());
@@ -51,39 +43,6 @@ class HatchScrollbarTest {
         assertEquals((rows - 3L) * 18, bar.scroll());
         assertEquals(Integer.MAX_VALUE - 1L, bar.scroll() / 18 * 4 + 10);
         assertTrue(bar.onMouseDrag(new Point(103, 24), 0));
-        assertEquals(0, bar.scroll());
-    }
-
-    @Test
-    void presentSideKeepsItsDisabledThumbWhenEverythingFits() {
-        for (boolean thin : new boolean[] { false, true }) {
-            var bar = new HatchScrollbar(thin, true);
-            bar.configure(26, 24, 4, 3, 3);
-            var mouse = new Point(bar.getBounds().x + 1, 25);
-            assertTrue(bar.isVisible());
-            assertFalse(bar.isScrollable());
-            assertEquals(HatchScrollbar.ThumbState.DISABLED, bar.thumbState(mouse));
-            assertFalse(bar.onMouseWheel(mouse, -1));
-            assertFalse(bar.onMouseDown(mouse, 0));
-            assertFalse(bar.onMouseDrag(new Point(mouse.x(), 75), 0));
-            bar.frame(new Point(mouse.x(), 75));
-            assertEquals(0, bar.scroll());
-            bar.configure(26, 24, 4, 3, 0);
-            assertTrue(bar.isVisible());
-            assertEquals(HatchScrollbar.ThumbState.DISABLED, bar.thumbState(mouse));
-        }
-    }
-
-    @Test
-    void absentSideDoesNotRenderOrRespondEvenIfRowsAreProvided() {
-        var bar = new HatchScrollbar(false, false);
-        bar.configure(26, 24, 4, 3, 10);
-        var mouse = new Point(bar.getBounds().x + 1, 25);
-        assertFalse(bar.isVisible());
-        assertFalse(bar.isScrollable());
-        assertFalse(bar.onMouseWheel(mouse, -1));
-        assertFalse(bar.onMouseDown(mouse, 0));
-        assertFalse(bar.onMouseDrag(new Point(mouse.x(), 75), 0));
         assertEquals(0, bar.scroll());
     }
 

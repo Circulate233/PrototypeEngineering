@@ -22,8 +22,8 @@ import crafttweaker.zenscript.expand.ExpandInt;
 import crafttweaker.zenscript.expand.ExpandString;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.util.math.BlockPos;
-import org.junit.jupiter.api.Test;
 import org.jetbrains.annotations.Nullable;
+import org.junit.jupiter.api.Test;
 import stanhebben.zenscript.ZenModule;
 import stanhebben.zenscript.ZenParsedFile;
 import stanhebben.zenscript.ZenTokener;
@@ -85,7 +85,8 @@ class ZenStructureHatchBridgeTest {
         var registry = new GenericRegistry(environment, new GenericErrorLogger(new PrintStream(output, true, StandardCharsets.UTF_8)));
         for (var type : List.of(ZenStructure.class, ZenStructurePattern.class, ZenStructurePredicate.class,
             ZenResource.class, ZenResourceHatchSide.class, ZenEnergyHatchSide.class, ZenHatchConfiguration.class,
-            ZenHatchUpdate.class, ZenHatchReport.class, IData.class, Harness.class)) registry.registerNativeClass(type);
+            ZenHatchUpdate.class, ZenHatchReport.class, IData.class, Harness.class))
+            registry.registerNativeClass(type);
         for (var expansion : List.of(ExpandAnyDict.class, ExpandDataStringDict.class, ExpandInt.class, ExpandBool.class, ExpandString.class))
             registry.registerExpansion(expansion);
         var classes = new Object2ObjectOpenHashMap<String, byte[]>();

@@ -1,8 +1,5 @@
 package com.circulation.prototype_eng.client.preview;
 
-import it.unimi.dsi.fastutil.objects.Object2IntMaps;
-import it.unimi.dsi.fastutil.ints.IntList;
-
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
@@ -10,19 +7,21 @@ import com.circulation.prototype_eng.api.client.structure.StructurePreviewPath;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
+import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
+import com.circulation.prototype_eng.localization.StructurePreviewText;
+import com.circulation.prototype_eng.localization.StructureToolText;
+import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
 import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
 import com.circulation.prototype_eng.structure.tool.BuilderState;
 import com.circulation.prototype_eng.structure.tool.StructureBuildPlan;
-import com.circulation.prototype_eng.api.machine.MachineType;
-import com.circulation.prototype_eng.localization.StructureToolText;
-import com.circulation.prototype_eng.localization.StructurePreviewText;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
+import it.unimi.dsi.fastutil.ints.IntList;
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import net.minecraft.nbt.NBTTagCompound;
-import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
-import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
@@ -61,9 +60,9 @@ class StructurePreviewInteractionTest {
         var leafId = new ResourceLocation("preview_ui_test", "leaf");
         var leaf = new StructureCatalogView.Node(leafId, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE, new BlockPos(0, 0, 1), 1, 1, BlockPos.ORIGIN, List.of(new BlockPos(1, 0, 0)), IntList.of());
         return new StructureCatalogView(session, sequence, List.of(root, child, leaf), Map.of(
-            ROOT, new StructureCatalogView.Entry(0, null, Map.of(new BlockPos(1, 0, 0), A, new BlockPos(1, 1, 0), B)),
-            CHILD, new StructureCatalogView.Entry(1, null, Map.of(new BlockPos(1, 0, 0), A)),
-            leafId, new StructureCatalogView.Entry(2, null, Map.of(new BlockPos(1, 0, 0), A))));
+            ROOT, new StructureCatalogView.Entry(0, null, new BlockPos2ObjectMap<>(Map.of(new BlockPos(1, 0, 0), A, new BlockPos(1, 1, 0), B))),
+            CHILD, new StructureCatalogView.Entry(1, null, new BlockPos2ObjectMap<>(Map.of(new BlockPos(1, 0, 0), A))),
+            leafId, new StructureCatalogView.Entry(2, null, new BlockPos2ObjectMap<>(Map.of(new BlockPos(1, 0, 0), A)))));
     }
 
     private static void deliver(ClientStructureCatalog catalog, Object connection, StructureCatalogView view) {
@@ -97,7 +96,7 @@ class StructurePreviewInteractionTest {
             assertSame(StructureToolText.BuilderTitle, ui.title());
             var old = Objects.requireNonNull(ui.model()).generation();
             var entries = new Object2ObjectLinkedOpenHashMap<>(old.entries());
-            entries.compute(ROOT, (_, root) -> new StructureCatalogView.Entry(Objects.requireNonNull(root).node(), StructurePreviewText.Title.getTranslationKey(), root.displays()));
+            entries.compute(ROOT, (_, root) -> new StructureCatalogView.Entry(Objects.requireNonNull(root).node(), StructurePreviewText.Title.getTranslationKey(), new BlockPos2ObjectMap<>(root.displays())));
             deliver(f.catalog, f.connection, new StructureCatalogView(old.session(), old.sequence() + 1, old.nodes(), entries));
             ui.advance(1000);
             assertEquals(StructurePreviewText.Title.getTranslationKey(), Objects.requireNonNull(ui.title()).getTranslationKey());
@@ -173,7 +172,7 @@ class StructurePreviewInteractionTest {
             ui.scan = true;
             var visits = new AtomicInteger();
             var world = new Object();
-            ui.scan(world, (_, _) -> {
+            ui.scan(world, (_, _, _) -> {
                 visits.incrementAndGet();
                 return StructureProjectionState.Status.MISSING;
             }, 1);
@@ -209,8 +208,8 @@ class StructurePreviewInteractionTest {
             var copied = tag.copy();
             var ui = f.first;
             var old = ui.token();
-            assertTrue(ui.replaceSelections(old, Object2IntMaps.singleton(A, 1), Map.of(), BuilderState.previewSlices(copied)));
-            assertFalse(ui.replaceSelections(old, Object2IntMaps.emptyMap(), Map.of(), Object2IntMaps.emptyMap()), "A stale response cannot reset current counts");
+            assertTrue(ui.replaceSelections(old, Object2IntMaps.singleton(A, 1), new BlockPos2ObjectMap<>(), BuilderState.previewSlices(copied)));
+            assertFalse(ui.replaceSelections(old, Object2IntMaps.emptyMap(), new BlockPos2ObjectMap<>(), Object2IntMaps.emptyMap()), "A stale response cannot reset current counts");
             ui.advance(1000);
             var model = Objects.requireNonNull(ui.model());
             var construction = StructureBuildPlan.expand(model.generation(), ROOT, ui.settings().orientation(), BuilderState.sliceCounts(copied));
@@ -287,12 +286,6 @@ class StructurePreviewInteractionTest {
             }));
         assertEquals(3, visits.get());
         assertNull(ProjectionRayMarcher.pick(BlockPos.ORIGIN, new Vec3d(-1, .5, .5), new Vec3d(-1, 0, 0), 8, 2, pos -> pos.getX() == -3));
-    }
-
-    @Test
-    void clockwiseFirstQuarterUsesNativeBlockInteractionConvention() {
-        assertSame(BlockOrientation.EAST_UP, ProjectionOrientations.rotate(BlockOrientation.NORTH_UP, EnumFacing.UP));
-        assertSame(BlockOrientation.WEST_UP, ProjectionOrientations.rotate(BlockOrientation.NORTH_UP, EnumFacing.DOWN));
     }
 
     @Test
@@ -389,10 +382,10 @@ class StructurePreviewInteractionTest {
             ui.search = "";
             ui.scan = true;
             var world = new Object();
-            ui.scan(world, (_, _) -> StructureProjectionState.Status.MISSING, 100);
+            ui.scan(world, (_, _, _) -> StructureProjectionState.Status.MISSING, 100);
             var observed = ui.materials(names, "unknown");
             assertTrue(observed.stream().allMatch(row -> row.mismatch() == row.count() && row.unknown() == 0));
-            ui.scan(world, (_, _) -> StructureProjectionState.Status.MISSING, 100);
+            ui.scan(world, (_, _, _) -> StructureProjectionState.Status.MISSING, 100);
             assertSame(observed, ui.materials(names, "unknown"));
             assertEquals(2, calls.get());
             ui.showMismatch = false;

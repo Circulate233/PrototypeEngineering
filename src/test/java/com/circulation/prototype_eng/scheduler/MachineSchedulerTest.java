@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.scheduler;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
-
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
@@ -18,6 +16,7 @@ import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import com.circulation.prototype_eng.energy.EnergyBuffer;
 import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import com.circulation.prototype_eng.testsupport.TestResources;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;

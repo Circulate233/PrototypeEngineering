@@ -25,6 +25,7 @@ import com.circulation.prototype_eng.api.structure.json.StructureJsonException;
 import com.circulation.prototype_eng.api.structure.json.StructurePredicateRegistry;
 import com.circulation.prototype_eng.localization.RecipeText;
 import com.circulation.prototype_eng.structure.TemplateStructure;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import net.minecraft.nbt.NBTTagCompound;
@@ -206,7 +207,7 @@ class StructureJsonLoaderTest {
     @Test
     void javaChildrenAreReusedAndJavaJsonIdConflictsAreRejected() {
         var child = new TemplateStructure(id("child"), BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false,
-            new StructurePattern(Map.of()), List.of(), List.of());
+            new StructurePattern(BlockPos2ObjectMap.emptyMap()), List.of(), List.of());
         var java = new StructureCatalog(List.of(new StructureDefinition(child)));
         var loader = load("{\"id\":\"test:parent\",\"type\":\"template\",\"pattern\":[],\"children\":[\"test:child\"]}");
         assertSame(child, ((TemplateStructure) definition(loader.resolve(java, builtins(), new FakeBlocks()), "parent").shape()).children().getFirst());

@@ -1,7 +1,7 @@
 package com.circulation.prototype_eng.api.recipe;
 
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 
@@ -11,6 +11,7 @@ import java.util.UUID;
 
 /**
  * Only explicit declaration identities cross the connection; executable definitions stay local.
+ * Pool and member lists are borrowed completed values and remain immutable for the manifest's lifetime.
  */
 public record RecipeDefinitionManifest(UUID serverSession, long generation, RecipeDeclarationKey declaration,
                                        List<Pool> pools) {
@@ -18,7 +19,6 @@ public record RecipeDefinitionManifest(UUID serverSession, long generation, Reci
         Objects.requireNonNull(serverSession);
         Objects.requireNonNull(declaration);
         if (generation < 0) throw new IllegalArgumentException("Negative recipe manifest generation");
-        pools = List.copyOf(pools);
         var revisions = new Object2ObjectOpenHashMap<ResourceLocation, String>();
         for (int p = 0; p < pools.size(); p++) {
             var pool = pools.get(p);
@@ -52,7 +52,7 @@ public record RecipeDefinitionManifest(UUID serverSession, long generation, Reci
             }
             pools.add(new Pool(pool.id(), members));
         }
-        return List.copyOf(pools);
+        return pools;
     }
 
     /**
@@ -81,7 +81,6 @@ public record RecipeDefinitionManifest(UUID serverSession, long generation, Reci
     public record Pool(ResourceLocation id, List<RecipeDefinitionRevision> members) {
         public Pool {
             Objects.requireNonNull(id);
-            members = List.copyOf(members);
             var ids = new ObjectOpenHashSet<ResourceLocation>(members.size());
             for (var member : members)
                 if (!ids.add(member.recipeId()))

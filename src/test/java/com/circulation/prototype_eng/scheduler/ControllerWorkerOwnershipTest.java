@@ -24,22 +24,31 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ControllerWorkerOwnershipTest {
     private static ResourceLocation id(String name) {
         return new ResourceLocation("controller_worker_ownership", name);
+    }
+
+    private static void await(CountDownLatch entered) {
+        try {
+            assertTrue(entered.await(5, TimeUnit.SECONDS), "Both independent callbacks must enter before either exits");
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Callback interrupted before overlap was established", failure);
+        }
     }
 
     @Test
@@ -56,8 +65,8 @@ class ControllerWorkerOwnershipTest {
                 var deadline = PlannedDeadline.after(Duration.ofSeconds(5));
                 var execution = new MachineRecipeExecution(new PlannedTaskExecutor(workers, new ExecutorService[]{sourceLane}),
                     List.of(first.candidate(), second.candidate()), deadline, () -> {
-                        if (refreshes.incrementAndGet() == 2) throw failure;
-                    }, () -> true);
+                    if (refreshes.incrementAndGet() == 2) throw failure;
+                }, () -> true);
                 assertSame(failure, assertThrows(IllegalStateException.class, () -> execution.advance(deadline)));
                 assertEquals(2, refreshes.get());
                 assertEquals(0, first.callbacks.get());
@@ -73,7 +82,8 @@ class ControllerWorkerOwnershipTest {
     }
 
     @Test
-    @SuppressWarnings("ResultOfMethodCallIgnored") // Finally drains an interrupt so teardown can join and unload on the owner.
+    @SuppressWarnings("ResultOfMethodCallIgnored")
+        // Finally drains an interrupt so teardown can join and unload on the owner.
     void interruptWhileAnAcceptedCallbackRunsStillJoinsItAndReturnsBothClaimsToTheOwner() throws InterruptedException {
         var owner = Thread.currentThread();
         var entered = new CountDownLatch(1);
@@ -107,7 +117,7 @@ class ControllerWorkerOwnershipTest {
                 var deadline = PlannedDeadline.after(Duration.ofSeconds(5));
                 var execution = new MachineRecipeExecution(new PlannedTaskExecutor(workers, new ExecutorService[]{sourceLane}),
                     List.of(fixture.candidate()), deadline, () -> {
-                    }, () -> true);
+                }, () -> true);
                 assertThrows(IllegalStateException.class, () -> execution.advance(deadline));
                 assertTrue(Thread.interrupted(), "The owner's interrupt must be restored only after actual worker exit");
                 assertTrue(execution.finished());
@@ -155,7 +165,7 @@ class ControllerWorkerOwnershipTest {
                 var shared = new Object();
                 var execution = new MachineRecipeExecution(new PlannedTaskExecutor(workers, new ExecutorService[]{sourceLane}),
                     List.of(first.candidate(Set.of(shared)), second.candidate(Set.of(shared))), deadline, () -> {
-                    }, () -> true);
+                }, () -> true);
                 assertTrue(execution.advance(deadline));
                 assertEquals(List.of("first", "second"), List.copyOf(log));
                 assertEquals(0, active.get());
@@ -194,7 +204,7 @@ class ControllerWorkerOwnershipTest {
                 var deadline = PlannedDeadline.after(Duration.ofSeconds(10));
                 var execution = new MachineRecipeExecution(new PlannedTaskExecutor(workers, new ExecutorService[]{sourceLane}),
                     List.of(first.candidate(Set.of(new Object())), second.candidate(Set.of(new Object()))), deadline, () -> {
-                    }, () -> true);
+                }, () -> true);
                 assertTrue(execution.advance(deadline));
                 assertEquals(0, entered.getCount());
                 assertNotSame(owner, threads[0]);
@@ -206,15 +216,6 @@ class ControllerWorkerOwnershipTest {
                 second.controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
                 first.controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
             }
-        }
-    }
-
-    private static void await(CountDownLatch entered) {
-        try {
-            assertTrue(entered.await(5, TimeUnit.SECONDS), "Both independent callbacks must enter before either exits");
-        } catch (InterruptedException failure) {
-            Thread.currentThread().interrupt();
-            throw new AssertionError("Callback interrupted before overlap was established", failure);
         }
     }
 
@@ -244,9 +245,9 @@ class ControllerWorkerOwnershipTest {
                 }
             }));
             var type = MachineType.builder(id(name), RecipeText.Cancelled, id("shape"))
-                .executionPolicy(ControllerExecutionPolicy.FULL_ASYNC).component(callback).build();
+                                  .executionPolicy(ControllerExecutionPolicy.FULL_ASYNC).component(callback).build();
             var assembly = MachineAssembly.builder(type, "worker-owner-v1").recreated(callback)
-                .instanceFactory(MultithreadController::new).build();
+                                          .instanceFactory(MultithreadController::new).build();
             controller = new MachineController(assembly, new Host(Thread.currentThread(), type.id()), scheduler, new MachineLifecycleRegistry());
             controller.load(null);
             machine = Objects.requireNonNull(controller.machine());

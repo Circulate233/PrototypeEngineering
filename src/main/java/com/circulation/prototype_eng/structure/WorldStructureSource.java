@@ -66,7 +66,9 @@ public final class WorldStructureSource implements StructureReadSource {
         }, immutable);
     }
 
-    /** Explicit native candidate preparation visits the original World's loaded column query. */
+    /**
+     * Explicit native candidate preparation visits the original World's loaded column query.
+     */
     @SuppressWarnings("ReturnOfInnerClass") // The retained cursor owns only native owner-side column preparation.
     public StructureOperation<Boolean> beginNativeAreaRead(StructureBounds bounds) {
         requireServerThread();

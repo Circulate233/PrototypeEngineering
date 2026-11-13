@@ -1,9 +1,5 @@
 package com.circulation.prototype_eng.structure.json;
 
-import java.nio.file.attribute.BasicFileAttributes;
-import org.jetbrains.annotations.NotNull;
-import java.nio.file.FileVisitResult;
-import java.nio.file.SimpleFileVisitor;
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.structure.MachineStructure;
 import com.circulation.prototype_eng.api.structure.StructureCatalog;
@@ -18,6 +14,7 @@ import com.circulation.prototype_eng.api.structure.json.StructureJsonParameters;
 import com.circulation.prototype_eng.api.structure.json.StructurePredicateRegistry;
 import com.circulation.prototype_eng.structure.SliceStructure;
 import com.circulation.prototype_eng.structure.TemplateStructure;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
@@ -26,13 +23,17 @@ import net.minecraft.nbt.NBTException;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -66,7 +67,8 @@ public final class StructureJsonLoader {
             Files.walkFileTree(directory, new SimpleFileVisitor<>() {
                 @Override
                 public @NotNull FileVisitResult visitFile(@NotNull Path file, @NotNull BasicFileAttributes attributes) {
-                    if (Files.isRegularFile(file) && file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json")) files.add(file);
+                    if (Files.isRegularFile(file) && file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json"))
+                        files.add(file);
                     return FileVisitResult.CONTINUE;
                 }
             });
@@ -141,7 +143,8 @@ public final class StructureJsonLoader {
         entry.at("pos");
         var options = new ObjectArrayList<Option>();
         if (entry.has("blockId")) options.add(option(entry, false));
-        else if (entry.has("meta") || entry.has("nbt") || entry.has("properties")) throw entry.error("meta/nbt/properties require blockId");
+        else if (entry.has("meta") || entry.has("nbt") || entry.has("properties"))
+            throw entry.error("meta/nbt/properties require blockId");
         if (entry.has("alternatives"))
             for (var alternative : entry.array("alternatives")) options.add(option(alternative, true));
         var predicates = specs(entry, "predicates");
@@ -182,8 +185,8 @@ public final class StructureJsonLoader {
 
     private static StructureDefinition build(Data data, List<MachineStructure> children,
                                              StructurePredicateRegistry factories, StructureBlockResolver blocks) {
-        var pattern = new Object2ObjectLinkedOpenHashMap<BlockPos, StructurePredicate>(data.pattern.size());
-        var displays = new Object2ObjectLinkedOpenHashMap<BlockPos, StructureDisplay>(data.pattern.size());
+        var pattern = new BlockPos2ObjectMap<StructurePredicate>(data.pattern.size());
+        var displays = new BlockPos2ObjectMap<StructureDisplay>(data.pattern.size());
         for (var cell : data.pattern) {
             var parts = new ObjectArrayList<StructurePredicate>(cell.options.size());
             var alternatives = new ObjectArrayList<StructurePredicate>(cell.options.size());
@@ -300,7 +303,8 @@ public final class StructureJsonLoader {
     private record Cell(BlockPos position, List<Option> options, List<Spec> predicates, @Nullable Display display) {
     }
 
-    private record Option(ResourceLocation id, int meta, Map<String, String> nbt, Map<String, String> properties, StructureJsonParameters location) {
+    private record Option(ResourceLocation id, int meta, Map<String, String> nbt, Map<String, String> properties,
+                          StructureJsonParameters location) {
     }
 
     private record Spec(StructureJsonParameters identifier, StructureJsonParameters parameters) {

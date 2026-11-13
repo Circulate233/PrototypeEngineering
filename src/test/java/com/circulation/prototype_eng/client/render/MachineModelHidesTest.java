@@ -123,7 +123,9 @@ class MachineModelHidesTest {
         }
     }
 
-    /** Exercises the actual adapter; only the dependency's native chunk-update calls are replaced. */
+    /**
+     * Exercises the actual adapter; only the dependency's native chunk-update calls are replaced.
+     */
     private static class Hides extends MachineModelHides {
         final Map<BlockPos, Collection<BlockPos>> nativeEntries = new Object2ObjectOpenHashMap<>();
         final Set<BlockPos> hidden = new ObjectLinkedOpenHashSet<>();

@@ -5,7 +5,9 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-/** Resource-only startup declarations may be queued on either side; only the client delivers them. */
+/**
+ * Resource-only startup declarations may be queued on either side; only the client delivers them.
+ */
 public final class ClientRenderDeclarations {
     private static final ObjectArrayList<Consumer<MachineRenderRegistrationEvent>> DECLARATIONS = new ObjectArrayList<>();
     private static boolean sealed;
@@ -18,7 +20,9 @@ public final class ClientRenderDeclarations {
         DECLARATIONS.add(Objects.requireNonNull(declaration));
     }
 
-    /** Closes before callbacks; reentry and script reload cannot replay startup declarations. */
+    /**
+     * Closes before callbacks; reentry and script reload cannot replay startup declarations.
+     */
     public static void dispatch(MachineRenderRegistrationEvent event) {
         Objects.requireNonNull(event);
         ObjectArrayList<Consumer<MachineRenderRegistrationEvent>> callbacks;

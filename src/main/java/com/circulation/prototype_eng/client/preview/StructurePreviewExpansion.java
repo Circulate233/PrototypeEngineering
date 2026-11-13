@@ -32,6 +32,7 @@ public final class StructurePreviewExpansion {
     private final Iterator<StructureCatalogView.Entry> definitions;
     private final Int2ObjectOpenHashMap<StructureCatalogView.Entry> byNode = new Int2ObjectOpenHashMap<>();
     private final ObjectArrayList<Frame> stack = new ObjectArrayList<>();
+    private final BlockPos.MutableBlockPos shiftedOrigin = new BlockPos.MutableBlockPos();
     private final StructurePreviewModel.Builder output;
     private final Object2ObjectLinkedOpenHashMap<BlockPos, StructurePreviewModel.Cell> positions = new Object2ObjectLinkedOpenHashMap<>();
     private final Object2LongLinkedOpenHashMap<StructureDisplay> counts = new Object2LongLinkedOpenHashMap<>();
@@ -41,10 +42,8 @@ public final class StructurePreviewExpansion {
     private Iterator<Object2LongMap.Entry<StructureDisplay>> bomIterator;
     @Nullable
     private StructurePreviewModel model;
-    @Nullable
-    private BlockPos min;
-    @Nullable
-    private BlockPos max;
+    private int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
+    private int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
     private boolean started;
     private int cellVisits;
     private int occurrenceCount;
@@ -107,14 +106,12 @@ public final class StructurePreviewExpansion {
             output.addCell(cell);
             counts.addTo(cell.display(), 1L);
             var position = cell.position();
-            if (min == null) {
-                min = position;
-                max = position;
-            } else {
-                min = new BlockPos(Math.min(min.getX(), position.getX()), Math.min(min.getY(), position.getY()), Math.min(min.getZ(), position.getZ()));
-                var upper = Objects.requireNonNull(max);
-                max = new BlockPos(Math.max(upper.getX(), position.getX()), Math.max(upper.getY(), position.getY()), Math.max(upper.getZ(), position.getZ()));
-            }
+            minX = Math.min(minX, position.getX());
+            minY = Math.min(minY, position.getY());
+            minZ = Math.min(minZ, position.getZ());
+            maxX = Math.max(maxX, position.getX());
+            maxY = Math.max(maxY, position.getY());
+            maxZ = Math.max(maxZ, position.getZ());
             return;
         }
         if (bomIterator == null) {
@@ -127,14 +124,15 @@ public final class StructurePreviewExpansion {
             return;
         }
         // Model.Builder owns and freezes the result data; this class owns only geometry traversal.
-        model = output.freeze(min == null ? StructureBounds.at(BlockPos.ORIGIN) : new StructureBounds(min, Objects.requireNonNull(max)));
+        model = output.freeze(positions.isEmpty() ? StructureBounds.at(BlockPos.ORIGIN)
+            : new StructureBounds(new BlockPos(minX, minY, minZ), new BlockPos(maxX, maxY, maxZ)));
     }
 
     private void push(int node, StructurePreviewPath path, BlockPos anchor) {
         if (occurrenceCount == settings.maxOccurrences())
             throw new IllegalArgumentException("Preview occurrence limit exceeded");
         var shape = view.nodes().get(node);
-        var origin = add(anchor, rotation.apply(shape.offset()));
+        var origin = rotation.applyAt(anchor, shape.offset());
         int count = switch (shape.kind()) {
             case TEMPLATE -> 1;
             case OPAQUE -> 0;
@@ -156,7 +154,11 @@ public final class StructurePreviewExpansion {
             if (cellVisits == settings.maxCellVisits())
                 throw new IllegalArgumentException("Preview cell visit limit exceeded");
             cellVisits++;
-            var position = add(add(frame.origin, multiply(frame.step, frame.slice)), rotation.apply(relative));
+            shiftedOrigin.setPos(
+                Math.addExact(frame.origin.getX(), Math.toIntExact((long) frame.step.getX() * frame.slice)),
+                Math.addExact(frame.origin.getY(), Math.toIntExact((long) frame.step.getY() * frame.slice)),
+                Math.addExact(frame.origin.getZ(), Math.toIntExact((long) frame.step.getZ() * frame.slice)));
+            var position = rotation.applyAt(shiftedOrigin, relative);
             if (!position.equals(BlockPos.ORIGIN)) {
                 var definition = byNode.get(frame.node);
                 var display = definition == null ? frame.shape.displays().get(relative) : definition.displays().getOrDefault(relative, frame.shape.displays().get(relative));

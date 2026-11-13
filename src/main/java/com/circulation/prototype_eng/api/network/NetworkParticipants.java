@@ -45,7 +45,9 @@ public final class NetworkParticipants {
         this.ownerCheck = ownerCheck;
     }
 
-    /** Public server entry for hosts that have no PE machine instance or physical structure. */
+    /**
+     * Public server entry for hosts that have no PE machine instance or physical structure.
+     */
     @SuppressWarnings("unused") // External hosts use the active server's single runtime.
     public static NetworkParticipants forServer(MinecraftServer server) {
         return ServerNetworkRuntime.participants(server);
@@ -57,7 +59,9 @@ public final class NetworkParticipants {
             && expected.members().equals(current.members()) && expected.teamOwnerId().equals(current.teamOwnerId()));
     }
 
-    /** The returned handle alone can detach this exact registration, including after replacement. */
+    /**
+     * The returned handle alone can detach this exact registration, including after replacement.
+     */
     @SuppressWarnings("ReturnOfInnerClass")
     // Exact handles deliberately retain their owning session and cleanup authority.
     public Registration register(NetworkParticipant participant) {
@@ -84,13 +88,17 @@ public final class NetworkParticipants {
         }
     }
 
-    /** Original receipts that still own cancellation or compensation, including detached hosts. */
+    /**
+     * Original receipts that still own cancellation or compensation, including detached hosts.
+     */
     public List<Work> pendingWork() {
         ownerCheck.run();
         return List.copyOf(pending);
     }
 
-    /** Resolves original cleanup only; never captures another snapshot or replays a commit. */
+    /**
+     * Resolves original cleanup only; never captures another snapshot or replays a commit.
+     */
     public boolean retryCleanup() {
         begin();
         try {
@@ -111,7 +119,9 @@ public final class NetworkParticipants {
         operating = true;
     }
 
-    /** Every refresh retires prior-epoch uncommitted work before issuing another publication. */
+    /**
+     * Every refresh retires prior-epoch uncommitted work before issuing another publication.
+     */
     boolean beforeRefresh() {
         return retryCleanup();
     }
@@ -281,7 +291,9 @@ public final class NetworkParticipants {
             }
         }
 
-        /** Returns this publication's worker-safe value only while its entire supply is authorized. */
+        /**
+         * Returns this publication's worker-safe value only while its entire supply is authorized.
+         */
         public @Nullable Snapshot snapshot() {
             begin();
             try {
@@ -294,7 +306,9 @@ public final class NetworkParticipants {
             }
         }
 
-        /** One work unit consumes its frozen complete numeric vector and one shared machine lease. */
+        /**
+         * One work unit consumes its frozen complete numeric vector and one shared machine lease.
+         */
         public PlanResult plan(UUID planId, Snapshot snapshot, ResourceLocation workType, @Nullable ResourceLocation materialSource) {
             begin();
             try {
@@ -446,7 +460,9 @@ public final class NetworkParticipants {
             }
         }
 
-        /** Finished work is not implicitly undone by cancellation, refresh, unload or server stop. */
+        /**
+         * Finished work is not implicitly undone by cancellation, refresh, unload or server stop.
+         */
         public WorkResult cancel() {
             begin();
             try {
@@ -457,7 +473,9 @@ public final class NetworkParticipants {
             }
         }
 
-        /** Explicit compensation may undo finished work, but always refunds its original tick book. */
+        /**
+         * Explicit compensation may undo finished work, but always refunds its original tick book.
+         */
         public WorkResult compensate() {
             begin();
             try {

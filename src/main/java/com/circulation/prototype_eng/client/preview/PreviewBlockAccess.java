@@ -21,7 +21,9 @@ import org.lwjgl.opengl.GL11;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.nio.ByteOrder;
 
-/** Owned representative state neighborhood, never a World or a matcher. Preparation resumes per cell. */
+/**
+ * Owned representative state neighborhood, never a World or a matcher. Preparation resumes per cell.
+ */
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 public final class PreviewBlockAccess implements IBlockAccess {
@@ -38,7 +40,9 @@ public final class PreviewBlockAccess implements IBlockAccess {
         token = view.token();
     }
 
-    /** PM's GUI uses Forge's real block renderer, including extended state, tint, face lighting and CTM. */
+    /**
+     * PM's GUI uses Forge's real block renderer, including extended state, tint, face lighting and CTM.
+     */
     int[] renderLayer(IBlockState state, BlockPos pos) {
         renderScratch.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
         try {
@@ -76,7 +80,9 @@ public final class PreviewBlockAccess implements IBlockAccess {
         return used;
     }
 
-    /** Independent registered controller state for 3D neighbors; never a preview cell or tile. */
+    /**
+     * Independent registered controller state for 3D neighbors; never a preview cell or tile.
+     */
     public void controllerState(@Nullable IBlockState state) {
         if (!current()) return;
         controllerOverride = state;

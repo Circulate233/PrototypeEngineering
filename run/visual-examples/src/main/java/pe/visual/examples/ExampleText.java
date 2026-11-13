@@ -5,6 +5,7 @@ import crafttweaker.annotations.ZenRegister;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenProperty;
+
 import java.util.Locale;
 
 @ZenRegister
@@ -67,8 +68,14 @@ public enum ExampleText implements LocalizationEnum {
     @ZenProperty RenderDefaultPool("pe_run_tests.pool.render_default");
 
     private final String key;
-    ExampleText() { key = "pe_visual_examples." + name().toLowerCase(Locale.ROOT); }
-    ExampleText(String key) { this.key = key; }
+
+    ExampleText() {
+        key = "pe_visual_examples." + name().toLowerCase(Locale.ROOT);
+    }
+
+    ExampleText(String key) {
+        this.key = key;
+    }
 
     @Override
     @ZenGetter("key")

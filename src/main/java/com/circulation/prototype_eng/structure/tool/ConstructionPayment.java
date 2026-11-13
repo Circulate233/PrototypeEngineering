@@ -15,11 +15,13 @@ import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
 import org.jetbrains.annotations.Nullable;
 
-/** One-position escrow: local stock first, then the currently authorized wireless network. */
+/**
+ * One-position escrow: local stock first, then the currently authorized wireless network.
+ */
 final class ConstructionPayment {
     static final ConstructionPayment FREE = new ConstructionPayment(null, null, 0, null, new ObjectArrayList<>(), null);
     private final @Nullable GenericStack resource;
-    private final @Nullable ConstructionMeAccess me;
+    private final @Nullable ConstructionMEAccess me;
     private final long networkAmount;
     private final @Nullable ItemTake item;
     private final ObjectArrayList<FluidEdit> fluids;
@@ -28,7 +30,7 @@ final class ConstructionPayment {
     private ItemStack itemTaken = ItemStack.EMPTY;
     private int edited;
 
-    private ConstructionPayment(@Nullable GenericStack resource, @Nullable ConstructionMeAccess me, long networkAmount,
+    private ConstructionPayment(@Nullable GenericStack resource, @Nullable ConstructionMEAccess me, long networkAmount,
                                 @Nullable ItemTake item, ObjectArrayList<FluidEdit> fluids, @Nullable EntityPlayerMP owner) {
         this.resource = resource;
         this.me = me;
@@ -41,7 +43,7 @@ final class ConstructionPayment {
     static long missingAmount(EntityPlayerMP player, GenericStack resource, boolean useMe) {
         long missing = resource.amount() - new ConstructionInventory(player).take(resource);
         if (missing <= 0 || !useMe) return missing;
-        var me = ConstructionMeAccess.find(player);
+        var me = ConstructionMEAccess.find(player);
         return me == null ? missing : missing - me.extract(resource.what(), missing, Actionable.SIMULATE);
     }
 
@@ -60,7 +62,8 @@ final class ConstructionPayment {
                     local = 1;
                     break inventoryLoop;
                 }
-                if (!(resource.what() instanceof AEFluidKey fluid) || !(inventory instanceof IItemHandlerModifiable writable)) continue;
+                if (!(resource.what() instanceof AEFluidKey fluid) || !(inventory instanceof IItemHandlerModifiable writable))
+                    continue;
                 var stack = inventory.getStackInSlot(slot);
                 if (stack.isEmpty()) continue;
                 var after = stack.copy();
@@ -89,9 +92,14 @@ final class ConstructionPayment {
             }
         }
         long remaining = resource.amount() - local;
-        var me = remaining > 0 && useMe ? ConstructionMeAccess.find(player) : null;
-        if (remaining > 0 && (me == null || me.extract(resource.what(), remaining, Actionable.SIMULATE) != remaining)) return null;
+        var me = remaining > 0 && useMe ? ConstructionMEAccess.find(player) : null;
+        if (remaining > 0 && (me == null || me.extract(resource.what(), remaining, Actionable.SIMULATE) != remaining))
+            return null;
         return new ConstructionPayment(resource, me, remaining, item, fluids, player);
+    }
+
+    private static void give(EntityPlayer player, ItemStack stack) {
+        if (!stack.isEmpty() && !player.inventory.addItemStackToInventory(stack)) player.dropItem(stack, false);
     }
 
     boolean commit() {
@@ -100,7 +108,10 @@ final class ConstructionPayment {
             if (!ItemStack.areItemStacksEqual(edit.inventory.getStackInSlot(edit.slot), edit.before)) return false;
         if (me != null && networkAmount > 0) {
             networkTaken = me.extract(resource.what(), networkAmount, Actionable.MODULATE);
-            if (networkTaken != networkAmount) { refund(owner); return false; }
+            if (networkTaken != networkAmount) {
+                refund(owner);
+                return false;
+            }
         }
         if (item != null) {
             itemTaken = item.inventory.extractItem(item.slot, 1, false);
@@ -134,7 +145,8 @@ final class ConstructionPayment {
             boolean restored;
             try {
                 var current = edit.inventory.getStackInSlot(edit.slot);
-                if (ItemStack.areItemStacksEqual(current, edit.after)) edit.inventory.setStackInSlot(edit.slot, edit.before.copy());
+                if (ItemStack.areItemStacksEqual(current, edit.after))
+                    edit.inventory.setStackInSlot(edit.slot, edit.before.copy());
                 restored = ItemStack.areItemStacksEqual(edit.inventory.getStackInSlot(edit.slot), edit.before);
             } catch (RuntimeException failure) {
                 PrototypeEngineering.LOGGER.error("Failed to restore construction fluid container", failure);
@@ -142,7 +154,8 @@ final class ConstructionPayment {
                 restored = ItemStack.areItemStacksEqual(edit.inventory.getStackInSlot(edit.slot), edit.before);
             }
             // Preserve callback changes to this slot; return only the fluid taken by this payment.
-            if (!restored && resource != null) give(player, GenericResourcePackageItem.wrap(resource.what(), edit.amount));
+            if (!restored && resource != null)
+                give(player, GenericResourcePackageItem.wrap(resource.what(), edit.amount));
         }
         if (item != null && !itemTaken.isEmpty()) {
             give(player, item.inventory.insertItem(item.slot, itemTaken, false));
@@ -150,16 +163,16 @@ final class ConstructionPayment {
         }
         if (resource != null && networkTaken > 0) {
             long restored = me == null ? 0 : me.refund(resource.what(), networkTaken);
-            if (restored < networkTaken) give(player, GenericResourcePackageItem.wrap(resource.what(), networkTaken - restored));
+            if (restored < networkTaken)
+                give(player, GenericResourcePackageItem.wrap(resource.what(), networkTaken - restored));
             networkTaken = 0;
         }
     }
 
-    private static void give(EntityPlayer player, ItemStack stack) {
-        if (!stack.isEmpty() && !player.inventory.addItemStackToInventory(stack)) player.dropItem(stack, false);
+    private record ItemTake(IItemHandler inventory, int slot) {
     }
 
-    private record ItemTake(IItemHandler inventory, int slot) { }
     private record FluidEdit(IItemHandlerModifiable inventory, int slot, ItemStack before, ItemStack after,
-                             ObjectArrayList<ItemStack> returned, long amount) { }
+                             ObjectArrayList<ItemStack> returned, long amount) {
+    }
 }

@@ -40,7 +40,9 @@ public final class MachineControllerModels {
         }
     }
 
-    /** PM TwistMath derives the turn from the actual front/top axes, not AE's spin numbering. */
+    /**
+     * PM TwistMath derives the turn from the actual front/top axes, not AE's spin numbering.
+     */
     static int originalTwist(BlockOrientation orientation) {
         var front = orientation.getSide(RelativeSide.FRONT);
         var top = orientation.getSide(RelativeSide.TOP);

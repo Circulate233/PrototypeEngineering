@@ -23,12 +23,15 @@ public interface ResourceStorage {
         return snapshot();
     }
 
-    /** A one-key lookup keeps large unrelated inventories out of single-input pool discovery. */
+    /**
+     * A one-key lookup keeps large unrelated inventories out of single-input pool discovery.
+     */
     @SuppressWarnings("ReturnOfInnerClass") // Capture retains this storage's keyed callback and revision proof.
     default QuantityCapture beginQuantityCapture(AEKey key) {
         Objects.requireNonNull(key);
         return new QuantityCapture() {
             private StorageSnapshot snapshot;
+
             @Override
             public boolean advance(RecipeWorkBudget budget) {
                 if (snapshot != null) return true;
@@ -37,18 +40,21 @@ public interface ResourceStorage {
                 if (!context.tryOrdinaryLock()) return false;
                 try {
                     var captured = ResourceStorage.this.snapshotFor(key);
-                    if (captured.context() != context) throw new IllegalStateException("Input snapshot changed its context");
+                    if (captured.context() != context)
+                        throw new IllegalStateException("Input snapshot changed its context");
                     snapshot = captured;
                     return true;
                 } finally {
                     context.unlock();
                 }
             }
+
             @Override
             public AEKey2LongMap available() {
                 if (snapshot == null) throw new IllegalStateException("Quantity capture is incomplete");
                 return snapshot.available();
             }
+
             @Override
             public boolean current() {
                 return snapshot != null && context().current(snapshot.revision());

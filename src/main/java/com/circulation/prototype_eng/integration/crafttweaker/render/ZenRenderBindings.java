@@ -6,10 +6,13 @@ import net.minecraft.util.ResourceLocation;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-/** Declarative resources only, safe during ordinary scripts on a dedicated server. */
+/**
+ * Declarative resources only, safe during ordinary scripts on a dedicated server.
+ */
 @ZenRegister
 @ZenClass("mods.prototype_eng.render.RenderBindings")
-@SuppressWarnings({"unused", "resource"}) // ZenScript resolves methods; declarations retain optional handles' bindings for the client lifetime.
+@SuppressWarnings({"unused", "resource"})
+// ZenScript resolves methods; declarations retain optional handles' bindings for the client lifetime.
 public final class ZenRenderBindings {
     private ZenRenderBindings() {
     }

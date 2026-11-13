@@ -19,14 +19,12 @@ import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
 import com.circulation.prototype_eng.api.persistence.AttributeModifierNbt;
 import com.circulation.prototype_eng.api.persistence.MachineAttributesNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
-import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
+import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.structure.StructureComponents;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
@@ -42,6 +40,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
+ * Published collections are read-only by contract; consumers must not modify them.
  * Attached-host assembly and explicit persistence for one canonical machine declaration revision.
  * Creation/restoration completes before lifecycle load; successful load returns an unregistered
  * machine for the controller to register with its scheduler. The persisted formation count prevents
@@ -78,11 +77,11 @@ public final class MachineAssembly {
         type = builder.type;
         revision = builder.revision;
         attributes = new MachineAttributesNbt(builder.attributes);
-        validators = ObjectLists.unmodifiable(new ObjectArrayList<>(builder.validators));
-        var copy = new Object2ObjectLinkedOpenHashMap<>(builder.bindings);
+        validators = builder.validators;
+        var copy = builder.bindings;
         add(copy, new Binding<>(MachineScheduling.TYPE, SCHEDULING));
         add(copy, new Binding<>(MachineOwnership.TYPE, MachineOwnership.CODEC));
-        bindings = Object2ObjectMaps.unmodifiable(copy);
+        bindings = copy;
         for (var declared : type.componentTypes()) {
             if (isStructureDerived(declared)) {
                 throw new IllegalArgumentException("Structure-derived hatches must be established by structure publication, not declared as components");
@@ -644,6 +643,9 @@ public final class MachineAssembly {
             return this;
         }
 
+        /**
+         * Build once. Transfers declarations to the assembly; do not modify this builder afterwards.
+         */
         public MachineAssembly build() {
             return new MachineAssembly(this);
         }

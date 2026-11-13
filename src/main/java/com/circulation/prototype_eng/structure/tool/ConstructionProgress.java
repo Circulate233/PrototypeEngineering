@@ -2,10 +2,10 @@ package com.circulation.prototype_eng.structure.tool;
 
 import java.util.function.IntFunction;
 
-/** Tracks completed positions while retaining the current position during a material wait. */
+/**
+ * Tracks completed positions while retaining the current position during a material wait.
+ */
 final class ConstructionProgress {
-    enum Step { COMPLETE, RETRY, WAIT }
-
     private final boolean[] complete;
     private int cursor;
     private int done;
@@ -35,7 +35,13 @@ final class ConstructionProgress {
         }
     }
 
-    int done() { return done; }
+    int done() {
+        return done;
+    }
 
-    boolean waiting() { return waiting; }
+    boolean waiting() {
+        return waiting;
+    }
+
+    enum Step {COMPLETE, RETRY, WAIT}
 }

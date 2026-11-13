@@ -39,7 +39,7 @@ class TransactionGroupBudgetFailureTest {
                 return state;
             }
         };
-        var group = TransactionGroup.frozen(List.of(TransactionGroup.callbacks(() -> {
+        var group = new TransactionGroup(List.of(TransactionGroup.callbacks(() -> {
         }, () -> {
         }, later::incrementAndGet), child));
         assertFalse(group.rollbackWithinBudget(new RecipeWorkBudget(1)), "Selecting the real composite child retains its original callback");
@@ -77,7 +77,7 @@ class TransactionGroupBudgetFailureTest {
                 throw fatal;
             }
         };
-        var group = TransactionGroup.frozen(List.of(child, TransactionGroup.callbacks(() -> {
+        var group = new TransactionGroup(List.of(child, TransactionGroup.callbacks(() -> {
         }, () -> {
         }, () -> {
         })));

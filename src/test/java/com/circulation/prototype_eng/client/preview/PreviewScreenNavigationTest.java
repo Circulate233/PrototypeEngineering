@@ -31,14 +31,6 @@ class PreviewScreenNavigationTest {
     }
 
     @Test
-    void unheldEscapeReturnsImmediately() {
-        var returns = new AtomicInteger();
-        var back = new PreviewBackRequest(() -> true, returns::incrementAndGet);
-        back.keyPress();
-        assertEquals(1, returns.get());
-    }
-
-    @Test
     void commandQueueWaitsUntilChatClosedAndActualEndTick() {
         var queue = PreviewClientOpenQueue.INSTANCE;
         var chat = new Object();

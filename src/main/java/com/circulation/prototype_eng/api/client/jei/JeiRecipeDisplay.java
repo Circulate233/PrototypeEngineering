@@ -13,14 +13,11 @@ import java.util.Objects;
 
 /**
  * Immutable declared display data. No machine, process, matcher or chance callback is evaluated.
+ * All lists, including nested text arguments and contexts, are borrowed read-only for this display's lifetime.
+ * Callers must finish building them before construction and must not mutate them afterwards.
  */
 @SideOnly(Side.CLIENT)
 public record JeiRecipeDisplay(List<Resource> resources, List<Text> information) {
-    public JeiRecipeDisplay {
-        resources = ObjectLists.unmodifiable(new ObjectArrayList<>(resources));
-        information = ObjectLists.unmodifiable(new ObjectArrayList<>(information));
-    }
-
     public enum Role {INPUT, OUTPUT}
 
     /**
@@ -35,7 +32,6 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
             if (stack.amount() <= 0) {
                 throw new IllegalArgumentException("Display quantities must be positive");
             }
-            details = ObjectLists.unmodifiable(new ObjectArrayList<>(details));
         }
 
         public Resource(GenericStack stack, Role role, List<Text> details) {
@@ -43,14 +39,18 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
         }
     }
 
-    /** Pure declaration; attribute-driven chance is marked rather than evaluated. */
+    /**
+     * Pure declaration; attribute-driven chance is marked rather than evaluated.
+     */
     public record Chance(double percent, boolean attributeDriven) {
         public Chance {
             if (!Double.isFinite(percent)) throw new IllegalArgumentException("Non-finite display chance");
         }
     }
 
-    /** Identity scopes candidate rows; equal names from unrelated declarations never merge. */
+    /**
+     * Identity scopes candidate rows; equal names from unrelated declarations never merge.
+     */
     public record CandidateGroup(String name, int alternativeSlots) {
         public CandidateGroup {
             Objects.requireNonNull(name);
@@ -76,8 +76,6 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
     public record Text(LocalizationEnum text, List<Object> arguments, List<Text> context, @Nullable Energy energy) {
         public Text {
             Objects.requireNonNull(text);
-            arguments = ObjectLists.unmodifiable(new ObjectArrayList<>(arguments));
-            context = ObjectLists.unmodifiable(new ObjectArrayList<>(context));
         }
 
         public Text(LocalizationEnum text, List<Object> arguments) {
@@ -136,7 +134,7 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
         public Builder scoped(Text... explanation) {
             var nested = new ObjectArrayList<>(scope);
             nested.addAll(ObjectArrayList.of(explanation));
-            return new Builder(resources, information, ObjectLists.unmodifiable(nested), chance, candidates);
+            return new Builder(resources, information, nested, chance, candidates);
         }
 
         public Builder chance(double percent, boolean attributeDriven) {
@@ -166,6 +164,9 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
             information(new Text(line.text(), line.arguments(), line.context(), new Energy(amount, role, perTick)));
         }
 
+        /**
+         * Transfers the accumulated lists; this builder and its scoped builders must no longer be mutated.
+         */
         public JeiRecipeDisplay build() {
             return new JeiRecipeDisplay(resources, information);
         }

@@ -6,7 +6,9 @@ package com.circulation.prototype_eng.api.storage;
 public enum HatchMode {
     INPUT(true, false), OUTPUT(false, true), MIXED(true, true);
 
-    /** Shared declaration order; callers must not modify this array. */
+    /**
+     * Shared declaration order; callers must not modify this array.
+     */
     public static final HatchMode[] VALUES = values();
 
     private final boolean input;

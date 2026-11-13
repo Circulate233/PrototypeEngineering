@@ -41,12 +41,14 @@ public final class ZenOverlayContext {
         putResourcePatch(target, layerId, inputs, inputsPerTick, outputsPerTick, outputs, voidExcessOutputs);
     }
 
-    /** Null inherits a field; an empty resource array explicitly clears it. */
+    /**
+     * Null inherits a field; an empty resource array explicitly clears it.
+     */
     @ZenMethod
     public void putResourcePatch(ZenRequirement target, String layerId, @Nullable ZenResource[] inputs,
                                  @Nullable ZenResource[] inputsPerTick, @Nullable ZenResource[] outputsPerTick,
                                  @Nullable ZenResource[] outputs, @Nullable Boolean voidExcessOutputs) {
-        context.put(Objects.requireNonNull(target).resource(), layerId, RecipeOverlayTypes.RESOURCE_IO,
+        context.put(target.resource(), layerId, RecipeOverlayTypes.RESOURCE_IO,
             new ResourceRequirementPatch(ZenRecipeSupport.optionalStacks(inputs), ZenRecipeSupport.optionalStacks(inputsPerTick),
                 ZenRecipeSupport.optionalStacks(outputsPerTick), ZenRecipeSupport.optionalStacks(outputs), voidExcessOutputs));
     }
@@ -56,17 +58,19 @@ public final class ZenOverlayContext {
         putEnergyPatch(target, layerId, inputPerTick, outputPerTick, voidExcessOutputs);
     }
 
-    /** Null inherits a rate; zero explicitly disables it. */
+    /**
+     * Null inherits a rate; zero explicitly disables it.
+     */
     @ZenMethod
     public void putEnergyPatch(ZenRequirement target, String layerId, @Nullable Long inputPerTick,
                                @Nullable Long outputPerTick, @Nullable Boolean voidExcessOutputs) {
-        context.put(Objects.requireNonNull(target).energy(), layerId, RecipeOverlayTypes.ENERGY_RATES,
+        context.put(target.energy(), layerId, RecipeOverlayTypes.ENERGY_RATES,
             new EnergyRequirementPatch(inputPerTick, outputPerTick, voidExcessOutputs));
     }
 
     @ZenMethod
     public void putOverlay(ZenRequirementOverlay overlay, String layerId) {
-        Objects.requireNonNull(overlay).put(context, layerId);
+        overlay.put(context, layerId);
     }
 
     @ZenGetter("data")

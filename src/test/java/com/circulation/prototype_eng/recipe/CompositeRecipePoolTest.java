@@ -1,7 +1,7 @@
 package com.circulation.prototype_eng.recipe;
 
-import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
@@ -17,9 +17,9 @@ import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
 import com.circulation.prototype_eng.localization.RecipeText;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.AbstractObject2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -67,6 +67,10 @@ class CompositeRecipePoolTest {
         throw new AssertionError("Composite lookup did not finish under one-credit slices");
     }
 
+    private static TestPool testPool(String name, List<MachineRecipe> recipes, List<RecipeInventoryMatch> matches) {
+        return new TestPool(id(name), recipes, List.of(), matches, List.of(), 1, new int[1], new boolean[]{true});
+    }
+
     @Test
     void mixedSnapshotProvidersPreserveGlobalPriorityAndTakeTheWidestSharedBound() {
         var first = entry("first", 5);
@@ -90,8 +94,6 @@ class CompositeRecipePoolTest {
         assertEquals(matches.stream().map(RecipeInventoryMatch::recipe).toList(), lookup.result());
         assertEquals(7, lookup.inputParallelismLimit(first.recipe()));
         assertEquals(12, inventory.getLong(INPUT));
-        assertThrows(UnsupportedOperationException.class, composite.pools()::clear);
-        assertThrows(UnsupportedOperationException.class, matches::clear);
         var excluded = composite.beginMatch(inventory, 1, Set.of(id("absent")));
         complete(excluded);
         assertEquals(List.of(), excluded.result());
@@ -194,10 +196,6 @@ class CompositeRecipePoolTest {
         }
     }
 
-    private static TestPool testPool(String name, List<MachineRecipe> recipes, List<RecipeInventoryMatch> matches) {
-        return new TestPool(id(name), recipes, List.of(), matches, List.of(), 1, new int[1], new boolean[]{true});
-    }
-
     private static final class DirectInventory extends AbstractObject2LongMap<AEKey> implements AEKey2LongMap {
         private final AEKey2LongMap quantities;
 
@@ -238,7 +236,8 @@ class CompositeRecipePoolTest {
         public List<RecipeInventoryMatch> match(AEKey2LongMap inventory, int parallelism) {
             calls[0]++;
             var output = new ObjectArrayList<RecipeInventoryMatch>();
-            for (var match : inventoryMatches) output.add(new RecipeInventoryMatch(match.recipe(), Math.min(parallelism, match.maximumParallelism())));
+            for (var match : inventoryMatches)
+                output.add(new RecipeInventoryMatch(match.recipe(), Math.min(parallelism, match.maximumParallelism())));
             return output;
         }
 

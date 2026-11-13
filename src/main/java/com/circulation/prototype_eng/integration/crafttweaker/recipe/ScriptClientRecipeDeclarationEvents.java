@@ -12,7 +12,9 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
-/** Resolves author-supplied local variants against the real initial snapshot and frozen providers. */
+/**
+ * Resolves author-supplied local variants against the real initial snapshot and frozen providers.
+ */
 @SideOnly(Side.CLIENT)
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID, value = Side.CLIENT)
 public final class ScriptClientRecipeDeclarationEvents {

@@ -4,7 +4,9 @@ import ae2.api.util.AEColor;
 import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.Tags;
 
-/** Names for resource isolation groups, including the shared uncolored group. */
+/**
+ * Names for resource isolation groups, including the shared uncolored group.
+ */
 public enum IsolationGroupText implements LocalizationEnum {
     White, LightGray, Gray, Black, Lime, Yellow, Orange, Brown, Red,
     Pink, Magenta, Purple, Blue, LightBlue, Cyan, Green, Uncolored;

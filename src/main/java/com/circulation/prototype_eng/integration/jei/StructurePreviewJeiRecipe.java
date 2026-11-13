@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.integration.jei;
 
-import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.GenericStack;
@@ -13,34 +11,38 @@ import com.circulation.prototype_eng.client.preview.StructurePreviewPanel;
 import com.circulation.prototype_eng.client.preview.StructurePreviewView;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import mcp.MethodsReturnNonnullByDefault;
+import mezz.jei.api.gui.IRecipeLayout;
 import mezz.jei.api.ingredients.IIngredients;
 import mezz.jei.api.ingredients.VanillaTypes;
-import mezz.jei.api.gui.IRecipeLayout;
-import mezz.jei.gui.recipes.RecipeLayout;
 import mezz.jei.api.recipe.IRecipeWrapper;
+import mezz.jei.gui.recipes.RecipeLayout;
 import net.minecraft.client.Minecraft;
 import net.minecraft.item.ItemStack;
+import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
-import org.jetbrains.annotations.Nullable;
 
-/** One machine's native controller R output. Each wrapper has independent camera, choices and owned meshes. */
+/**
+ * One machine's native controller R output. Each wrapper has independent camera, choices and owned meshes.
+ */
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
 public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoCloseable {
     private final MachineType machine;
     private final List<ItemStack> controllers;
+    private final Int2ObjectOpenHashMap<IngredientSlot> ingredientSlots = new Int2ObjectOpenHashMap<>();
+    private final IntOpenHashSet visibleIngredients = new IntOpenHashSet();
     private StructurePreviewView view;
     private StructurePreviewPanel panel;
     private IRecipeLayout layout;
     private Object transferToken, transferMaterials;
-    private final Int2ObjectOpenHashMap<IngredientSlot> ingredientSlots = new Int2ObjectOpenHashMap<>();
-    private final IntOpenHashSet visibleIngredients = new IntOpenHashSet();
 
     public StructurePreviewJeiRecipe(MachineType machine, List<ItemStack> controllers) {
         this.machine = Objects.requireNonNull(machine);
@@ -106,8 +108,6 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
         if (layout != null) layout.getItemStacks().getGuiIngredients().clear();
     }
 
-    private record IngredientSlot(ItemStack stack, int x, int y) { }
-
     @Override
     public List<String> getTooltipStrings(int x, int y) {
         return panel == null ? List.of() : panel.controlTooltip(x, y);
@@ -142,10 +142,11 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
         var materials = scene.materials();
         if (materials == null) return null;
         var output = ItemStack.EMPTY;
-        for (var controller : controllers) if (!controller.isEmpty()) {
-            output = controller.copy();
-            break;
-        }
+        for (var controller : controllers)
+            if (!controller.isEmpty()) {
+                output = controller.copy();
+                break;
+            }
         if (output.isEmpty()) return null;
         output.setCount(1);
         var key = AEItemKey.of(output);
@@ -156,10 +157,14 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
         return new Pattern(recipe, () -> panel != null && !panel.closed() && panel.scene() == scene && scene.materialsCurrent(materials));
     }
 
-    record Pattern(JeiPatternRecipe recipe, BooleanSupplier current) { }
-
     @Override
     public void close() {
         retirePanel();
+    }
+
+    private record IngredientSlot(ItemStack stack, int x, int y) {
+    }
+
+    record Pattern(JeiPatternRecipe recipe, BooleanSupplier current) {
     }
 }

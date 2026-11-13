@@ -7,7 +7,9 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 import java.util.List;
 
-/** Exposes native low-to-high ordering, without identifying a pack by its non-unique display name. */
+/**
+ * Exposes native low-to-high ordering, without identifying a pack by its non-unique display name.
+ */
 @Mixin(FallbackResourceManager.class)
 public interface FallbackResourceManagerAccessor {
     @Accessor("resourcePacks")

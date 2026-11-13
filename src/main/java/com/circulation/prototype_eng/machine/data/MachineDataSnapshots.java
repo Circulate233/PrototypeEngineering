@@ -11,10 +11,11 @@ import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
 import java.util.Objects;
 
-/** Called only by the joined machine owner; process identity survives a slot transfer, never replacement. */
+/**
+ * Called only by the joined machine owner; process identity survives a slot transfer, never replacement.
+ */
 public final class MachineDataSnapshots {
     private final Reference2LongOpenHashMap<MachineWorkSlots> hosts = new Reference2LongOpenHashMap<>();
     private final Reference2LongOpenHashMap<RecipeProcess> processes = new Reference2LongOpenHashMap<>();
@@ -72,15 +73,16 @@ public final class MachineDataSnapshots {
         var component = machine == null ? null : machine.components().get(DataComponents.MACHINE);
         var data = observeData(component, liveData);
         dataFacts.keySet().retainAll(liveData);
-        var frozen = List.copyOf(captured);
-        if (previous != null && previous.generation() == generation && Objects.equals(previous.machine(), data) && previous.hosts().equals(frozen))
+        if (previous != null && previous.generation() == generation && Objects.equals(previous.machine(), data) && previous.hosts().equals(captured))
             return previous;
         revision = Math.incrementExact(revision);
-        previous = new MachineDataSnapshot(generation, revision, data, frozen);
+        previous = new MachineDataSnapshot(generation, revision, data, captured);
         return previous;
     }
 
-    /** A reused fact already owns a consistent revision/NBT pair; only a changed component is copied. */
+    /**
+     * A reused fact already owns a consistent revision/NBT pair; only a changed component is copied.
+     */
     private @Nullable ComponentData.Snapshot observeData(@Nullable ComponentData component, ReferenceOpenHashSet<ComponentData> live) {
         if (component == null) return null;
         live.add(component);

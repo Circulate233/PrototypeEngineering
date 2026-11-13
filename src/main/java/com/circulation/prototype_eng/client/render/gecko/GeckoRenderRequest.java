@@ -10,7 +10,9 @@ import net.minecraft.util.math.Vec3d;
 import java.util.List;
 import java.util.Objects;
 
-/** Frozen CPU input. Owner and epoch tokens carry identity, never a World/TE callback. */
+/**
+ * Frozen CPU input. Owner and epoch tokens carry identity, never a World/TE callback.
+ */
 public record GeckoRenderRequest(Owner owner, StructureRenderAnchors.Part part, Epoch bindingEpoch, Epoch resourceEpoch,
                                  GeckoModelBinding binding, List<String> layers, GeckoModelBaker.BakeMode mode,
                                  BlockPos position, BlockPos origin, BlockOrientation orientation, Vec3d localOffset,
@@ -41,7 +43,9 @@ public record GeckoRenderRequest(Owner owner, StructureRenderAnchors.Part part, 
             mode, anchor.origin(), origin, anchor.orientation(), new Vec3d(model.offsetX(), model.offsetY(), model.offsetZ()), sample);
     }
 
-    /** Sampling time alone may change while a completed previous frame remains drawable. */
+    /**
+     * Sampling time alone may change while a completed previous frame remains drawable.
+     */
     public boolean sameBase(GeckoRenderRequest other) {
         return baseKey().equals(other.baseKey());
     }

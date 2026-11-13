@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.recipe;
 
-import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
 import com.circulation.prototype_eng.api.recipe.RecipeDefinitionPublicationEvent;
@@ -19,12 +18,16 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Exact server lifecycle owner of recipe definition publication; no executor or parallel registry. */
+/**
+ * Exact server lifecycle owner of recipe definition publication; no executor or parallel registry.
+ */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class ServerRecipeDefinitions {
-    @Nullable private static volatile Session session;
+    @Nullable
+    private static volatile Session session;
 
-    private ServerRecipeDefinitions() {}
+    private ServerRecipeDefinitions() {
+    }
 
     public static synchronized void start(MinecraftServer server) {
         requireThread(Objects.requireNonNull(server));
@@ -33,15 +36,11 @@ public final class ServerRecipeDefinitions {
         var sessionId = UUID.randomUUID();
         var updates = new RecipeDefinitionUpdates(RecipeRegistry.INSTANCE, NetworkRecipeExtensions.INSTANCE, scheduler,
             sessionId, notice -> published(server, notice));
-        var started = new Session(server, scheduler, updates, sessionId);
+        var started = new Session(server, scheduler, updates);
         session = started;
         scheduler.runAtBoundary(() -> {
             if (session != started || !updates.accepting()) return;
-            try {
-                MinecraftForge.EVENT_BUS.post(new RecipeDefinitionPublicationEvent(server, sessionId, null, updates.snapshot(), null));
-            } catch (RuntimeException | Error failure) {
-                PrototypeEngineering.LOGGER.error("Recipe definition session notification failed", failure);
-            }
+            MinecraftForge.EVENT_BUS.post(new RecipeDefinitionPublicationEvent(server, sessionId, null, updates.snapshot(), null));
         });
     }
 
@@ -51,10 +50,12 @@ public final class ServerRecipeDefinitions {
         return current.updates;
     }
 
-    /** Pure late-notification proof; a stopped or replaced session is an ordinary false result. */
+    /**
+     * Pure late-notification proof; a stopped or replaced session is an ordinary false result.
+     */
     public static boolean current(MinecraftServer server, UUID sessionId, RecipeRegistry.Snapshot snapshot) {
         var current = session;
-        return current != null && current.server == server && current.sessionId.equals(sessionId)
+        return current != null && current.server == server && current.updates.sessionId().equals(sessionId)
             && current.updates.accepting() && current.updates.snapshot() == snapshot;
     }
 
@@ -65,7 +66,9 @@ public final class ServerRecipeDefinitions {
         current.updates.stopAccepting();
     }
 
-    /** Called after ServerTaskSchedulers.stop, including failed startup cleanup. */
+    /**
+     * Called after ServerTaskSchedulers.stop, including failed startup cleanup.
+     */
     public static synchronized void stop() {
         var current = session;
         if (current == null) return;
@@ -76,10 +79,10 @@ public final class ServerRecipeDefinitions {
 
     private static void published(MinecraftServer server, RecipeDefinitionUpdates.Published notice) {
         var current = requireSession(server);
-        if (!current.sessionId.equals(notice.sessionId()) || current.updates.snapshot() != notice.current()) {
+        if (!current.updates.sessionId().equals(notice.sessionId()) || current.updates.snapshot() != notice.current()) {
             throw new IllegalStateException("Obsolete recipe definition notification");
         }
-        MinecraftForge.EVENT_BUS.post(new RecipeDefinitionPublicationEvent(server, current.sessionId, notice.previous(), notice.current(), null));
+        MinecraftForge.EVENT_BUS.post(new RecipeDefinitionPublicationEvent(server, current.updates.sessionId(), notice.previous(), notice.current(), null));
     }
 
     @SubscribeEvent
@@ -89,25 +92,25 @@ public final class ServerRecipeDefinitions {
         var current = requireSession(server);
         var connection = player.connection;
         current.scheduler.runAtBoundary(() -> {
-            if (session != current || !current.updates.accepting() || !current.sessionId.equals(current.updates.sessionId())
-                || player.connection != connection || server.getPlayerList().getPlayerByUUID(player.getUniqueID()) != player) return;
-            try {
-                MinecraftForge.EVENT_BUS.post(new RecipeDefinitionPublicationEvent(server, current.sessionId, null, current.updates.snapshot(), player));
-            } catch (RuntimeException | Error failure) {
-                PrototypeEngineering.LOGGER.error("Recipe definition login notification failed for {}", player.getUniqueID(), failure);
-            }
+            if (session != current || !current.updates.accepting()
+                || player.connection != connection || server.getPlayerList().getPlayerByUUID(player.getUniqueID()) != player)
+                return;
+            MinecraftForge.EVENT_BUS.post(new RecipeDefinitionPublicationEvent(server, current.updates.sessionId(), null, current.updates.snapshot(), player));
         });
     }
 
     private static Session requireSession(MinecraftServer server) {
         var current = session;
-        if (current == null || current.server != server) throw new IllegalStateException("No recipe definition owner for this server session");
+        if (current == null || current.server != server)
+            throw new IllegalStateException("No recipe definition owner for this server session");
         return current;
     }
 
     private static void requireThread(MinecraftServer server) {
-        if (!server.isCallingFromMinecraftThread()) throw new IllegalStateException("Recipe definition lifecycle requires its server owner");
+        if (!server.isCallingFromMinecraftThread())
+            throw new IllegalStateException("Recipe definition lifecycle requires its server owner");
     }
 
-    private record Session(MinecraftServer server, TaskScheduler scheduler, RecipeDefinitionUpdates updates, UUID sessionId) {}
+    private record Session(MinecraftServer server, TaskScheduler scheduler, RecipeDefinitionUpdates updates) {
+    }
 }

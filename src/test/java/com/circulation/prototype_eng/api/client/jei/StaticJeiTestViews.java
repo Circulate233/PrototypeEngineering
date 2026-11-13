@@ -12,11 +12,14 @@ import mezz.jei.api.ingredients.IIngredients;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
 
-/** Headless access to real default-page measurement and an independent legacy page's identity cache. */
+/**
+ * Headless access to real default-page measurement and an independent legacy page's identity cache.
+ */
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 public final class StaticJeiTestViews {
-    private StaticJeiTestViews() {}
+    private StaticJeiTestViews() {
+    }
 
     public static AutoLayoutRecipePage page(RecipePool pool, RecipeJeiDisplays.Snapshot descriptions) {
         return new AutoLayoutRecipePage(pool, new JeiTestViews.Helper(), descriptions, JeiRenderOptions.defaults(), JeiTestViews.FONT);
@@ -39,12 +42,24 @@ public final class StaticJeiTestViews {
             for (var recipe : pool.recipes()) measured.add(descriptions.describe(recipe));
         }
 
-        @Override public RecipePool pool() { return pool; }
-        @Override public IDrawable getBackground() { return new JeiTestViews.Blank(100, 100); }
-        @Override public void setRecipe(IRecipeLayout ignoredLayout, RecipePoolJeiRecipe ignoredWrapper, IIngredients ignoredIngredients) {}
+        @Override
+        public RecipePool pool() {
+            return pool;
+        }
 
-        @Override public RecipePoolJeiRecipe createRecipe(MachineRecipe recipe, JeiRecipeDisplay display, JeiRecipeIngredients ingredients) {
-            if (!measured.contains(display)) throw new IllegalArgumentException("Legacy page received an unmeasured display");
+        @Override
+        public IDrawable getBackground() {
+            return new JeiTestViews.Blank(100, 100);
+        }
+
+        @Override
+        public void setRecipe(IRecipeLayout ignoredLayout, RecipePoolJeiRecipe ignoredWrapper, IIngredients ignoredIngredients) {
+        }
+
+        @Override
+        public RecipePoolJeiRecipe createRecipe(MachineRecipe recipe, JeiRecipeDisplay display, JeiRecipeIngredients ingredients) {
+            if (!measured.contains(display))
+                throw new IllegalArgumentException("Legacy page received an unmeasured display");
             return new RecipePoolJeiRecipe(this, recipe, display, ingredients);
         }
     }

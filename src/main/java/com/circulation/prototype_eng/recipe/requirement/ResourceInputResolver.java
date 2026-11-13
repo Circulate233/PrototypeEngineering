@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.recipe.requirement;
 
-import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
-
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
@@ -17,6 +15,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.localization.RecipeText;
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
@@ -33,7 +32,7 @@ final class ResourceInputResolver {
     }
 
     static Selection resolve(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement,
-                             List<ResourceHatch> hatches, long checkTimes, AEKey2LongMap planned) {
+                             List<? extends ResourceHatch> hatches, long checkTimes, AEKey2LongMap planned) {
         var locks = ResourceInputLocks.getOrCreate(process);
         var pending = new ObjectArrayList<Choice>();
         var inputs = new ObjectArrayList<>(requirement.payload().inputs());

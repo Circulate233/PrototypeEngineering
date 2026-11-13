@@ -6,7 +6,9 @@ import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 
 import java.util.function.LongSupplier;
 
-/** Each declared logical thread owns an independent recipe search and shares the machine's parallel allowance. */
+/**
+ * Each declared logical thread owns an independent recipe search and shares the machine's parallel allowance.
+ */
 public class MultithreadController extends RecipeController {
     public MultithreadController() {
     }

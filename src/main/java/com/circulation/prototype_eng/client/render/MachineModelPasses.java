@@ -17,23 +17,31 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
 
-/** One concrete pass pipeline shared by the native runtime and the preview's original camera matrices. */
+/**
+ * One concrete pass pipeline shared by the native runtime and the preview's original camera matrices.
+ */
 public final class MachineModelPasses {
     private MachineModelPasses() {
     }
 
-    /** Callers retain and finally close input leases; a deferred native Bloom phase takes its own forks. */
+    /**
+     * Callers retain and finally close input leases; a deferred native Bloom phase takes its own forks.
+     */
     public static void draw(ModelBuildCache cache, List<Entry> entries, Vec3d camera, boolean worldBloom) {
         draw(cache, entries, camera, camera, worldBloom);
     }
 
-    /** Preview matrices already place the camera, but transparent sorting still needs its model-space eye. */
+    /**
+     * Preview matrices already place the camera, but transparent sorting still needs its model-space eye.
+     */
     public static void draw(ModelBuildCache cache, List<Entry> entries, Vec3d translationCamera, Vec3d sortingCamera, boolean worldBloom) {
         draw(cache, entries, translationCamera, sortingCamera, worldBloom, () -> {
         });
     }
 
-    /** Runtime callers capture their actual state/owner scope for a deferred native failure. */
+    /**
+     * Runtime callers capture their actual state/owner scope for a deferred native failure.
+     */
     public static void draw(ModelBuildCache cache, List<Entry> entries, Vec3d translationCamera, Vec3d sortingCamera, boolean worldBloom, Runnable revoke) {
         GlStateManager.pushMatrix();
         Throwable failure = null;
@@ -84,7 +92,7 @@ public final class MachineModelPasses {
                 GL11.glDepthMask(false);
                 GL11.glDepthFunc(GL11.GL_LEQUAL);
                 for (var entry : selected(entries, camera, pass))
-                    drawGroup(cache, List.of(entry), pass, fullbright ? 0xF000F0 : entry.combinedLight);
+                    drawSingle(cache, entry, pass, fullbright ? 0xF000F0 : entry.combinedLight);
             } else {
                 Map<Bucket, List<Entry>> groups = new Object2ObjectLinkedOpenHashMap<>();
                 for (var entry : entries) {
@@ -130,6 +138,26 @@ public final class MachineModelPasses {
         try {
             GlStateManager.translate(origin.getX(), origin.getY(), origin.getZ());
             cache.uploader().drawMultiple(leases, pass);
+        } catch (RuntimeException | Error exception) {
+            failure = exception;
+        }
+        try {
+            GlStateManager.popMatrix();
+        } catch (RuntimeException | Error cleanup) {
+            failure = BuiltModelBuffers.append(failure, cleanup);
+        }
+        BuiltModelBuffers.rethrow(failure);
+    }
+
+    private static void drawSingle(ModelBuildCache cache, Entry entry, MachineRenderPass pass, int light) {
+        if (!entry.current.getAsBoolean()) return;
+        var origin = entry.lease.buffers().origin();
+        OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, light & 65535, light >>> 16);
+        GlStateManager.pushMatrix();
+        Throwable failure = null;
+        try {
+            GlStateManager.translate(origin.getX(), origin.getY(), origin.getZ());
+            cache.uploader().draw(entry.lease, pass);
         } catch (RuntimeException | Error exception) {
             failure = exception;
         }

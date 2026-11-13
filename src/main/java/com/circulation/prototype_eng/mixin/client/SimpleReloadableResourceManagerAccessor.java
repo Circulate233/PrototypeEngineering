@@ -7,7 +7,9 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 import java.util.Map;
 
-/** Reads the actual selected domain; the resource manager mutates in place before reload listeners. */
+/**
+ * Reads the actual selected domain; the resource manager mutates in place before reload listeners.
+ */
 @Mixin(SimpleReloadableResourceManager.class)
 public interface SimpleReloadableResourceManagerAccessor {
     @Accessor("domainResourceManagers")

@@ -28,7 +28,7 @@ public final class HatchCapabilities {
 
     @Nullable
     public static ResourceHatch findResource(@Nullable TileEntity host, @Nullable EnumFacing side) {
-        if (host == null || host.isInvalid() || RESOURCE == null) {
+        if (host == null || host.isInvalid()) {
             return null;
         }
         ResourceHatch hatch = host.getCapability(RESOURCE, side);
@@ -37,7 +37,7 @@ public final class HatchCapabilities {
 
     @Nullable
     public static EnergyInput findEnergyInput(@Nullable TileEntity host, @Nullable EnumFacing side) {
-        if (host == null || host.isInvalid() || ENERGY_INPUT == null) {
+        if (host == null || host.isInvalid()) {
             return null;
         }
         EnergyInput input = host.getCapability(ENERGY_INPUT, side);
@@ -46,7 +46,7 @@ public final class HatchCapabilities {
 
     @Nullable
     public static EnergyOutput findEnergyOutput(@Nullable TileEntity host, @Nullable EnumFacing side) {
-        if (host == null || host.isInvalid() || ENERGY_OUTPUT == null) {
+        if (host == null || host.isInvalid()) {
             return null;
         }
         EnergyOutput output = host.getCapability(ENERGY_OUTPUT, side);

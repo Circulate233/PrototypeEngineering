@@ -14,19 +14,20 @@ import com.circulation.prototype_eng.recipe.RecipeDefinitionManifestCodec;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import net.minecraft.util.ResourceLocation;
-import org.junit.jupiter.api.Test;
 import org.jetbrains.annotations.Nullable;
+import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.UUID;
 import java.util.Objects;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ClientboundDeliveryTest {
-    private static ResourceLocation id(String name) { return new ResourceLocation("ae_packet_delivery", name); }
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("ae_packet_delivery", name);
+    }
 
     private static RecipeRegistry.Snapshot snapshot() {
         var recipe = new MachineRecipe(id("recipe"), 2, List.of());
@@ -78,7 +79,8 @@ class ClientboundDeliveryTest {
             }
 
             @Override
-            public void withdraw(String reason) {}
+            public void withdraw(String reason) {
+            }
         });
         var oldConnection = new Object();
         target.connected(oldConnection);
@@ -100,13 +102,14 @@ class ClientboundDeliveryTest {
         delivery.dispatchClient(newConnection);
         assertEquals(current, target.applied());
         assertEquals(2, applies[0]);
-        assertThrows(IllegalStateException.class, () -> delivery.receiveConnection(newConnection));
         delivery.dispatchClient(oldConnection);
         assertEquals(current, target.applied());
         assertEquals(2, applies[0]);
     }
 
-    /** Exercise the common receipt gate with the real packet body without initializing Minecraft/FML. */
+    /**
+     * Exercise the common receipt gate with the real packet body without initializing Minecraft/FML.
+     */
     private static final class ManifestDelivery extends ConnectionClientboundPacket {
         private final @Nullable ClientRecipeDefinitions target;
         private final RecipeDefinitionManifestPacket payload;
@@ -122,12 +125,18 @@ class ClientboundDeliveryTest {
         }
 
         @Override
-        protected void read(ByteBuf buffer) { payload.fromBytes(buffer); }
+        protected void read(ByteBuf buffer) {
+            payload.fromBytes(buffer);
+        }
 
         @Override
-        protected void write(ByteBuf buffer) { payload.toBytes(buffer); }
+        protected void write(ByteBuf buffer) {
+            payload.toBytes(buffer);
+        }
 
         @Override
-        protected void handleClientConnection(Object receivedConnection) { Objects.requireNonNull(target).receive(receivedConnection, payload); }
+        protected void handleClientConnection(Object receivedConnection) {
+            Objects.requireNonNull(target).receive(receivedConnection, payload);
+        }
     }
 }

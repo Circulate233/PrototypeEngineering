@@ -11,7 +11,9 @@ import stanhebben.zenscript.annotations.ZenClass;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-/** Java addons expose a real descriptor and its explicit persistence/recreation policy as one handle. */
+/**
+ * Java addons expose a real descriptor and its explicit persistence/recreation policy as one handle.
+ */
 @ZenRegister
 @ZenClass("mods.prototype_eng.MachineComponent")
 @SuppressWarnings("unused") // Public addon factories return this script handle.
@@ -33,6 +35,11 @@ public final class ZenMachineComponent {
         return new ZenMachineComponent(type, assembly -> assembly.recreated(type));
     }
 
-    void declare(MachineType.Builder machine) { machine.component(type); }
-    void bind(MachineAssembly.Builder assembly) { binding.accept(assembly); }
+    void declare(MachineType.Builder machine) {
+        machine.component(type);
+    }
+
+    void bind(MachineAssembly.Builder assembly) {
+        binding.accept(assembly);
+    }
 }

@@ -9,9 +9,9 @@ import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.api.recipe.scanning.GroupedResourceLookup;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
 import com.circulation.prototype_eng.api.recipe.scanning.ResourceRecipeIndex;
-import com.circulation.prototype_eng.api.recipe.scanning.GroupedResourceLookup;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import com.circulation.prototype_eng.api.storage.StorageContext;
@@ -20,8 +20,8 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -32,7 +32,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 
-/** Single fixed START input to any number of fixed END outputs, with pool-local AEKey/long postings. */
+/**
+ * Single fixed START input to any number of fixed END outputs, with pool-local AEKey/long postings.
+ */
 public final class SimpleRecipePool implements RecipePool {
     private final ResourceLocation id;
     private final String translationKey;
@@ -44,7 +46,9 @@ public final class SimpleRecipePool implements RecipePool {
     private final Object2ObjectOpenHashMap<AEKey, List<Entry>> byInput = new Object2ObjectOpenHashMap<>();
     private final Reference2IntOpenHashMap<MachineRecipe> priority = new Reference2IntOpenHashMap<>();
 
-    /** Uses the actual owner's scanner/input policy; unknown factories/providers retain every candidate. */
+    /**
+     * Uses the actual owner's scanner/input policy; unknown factories/providers retain every candidate.
+     */
     public SimpleRecipePool(ResourceLocation id, String translationKey, List<Entry> entries) {
         this(id, translationKey, entries, MachineInstance::supportsStableFixedInputLowerBounds);
     }
@@ -127,7 +131,9 @@ public final class SimpleRecipePool implements RecipePool {
         return existingJeiPageId;
     }
 
-    /** Immutable addon binding; existing lookup policy and native quantities remain unchanged. */
+    /**
+     * Immutable addon binding; existing lookup policy and native quantities remain unchanged.
+     */
     public SimpleRecipePool withExistingJeiPage(@Nullable String categoryUid) {
         var entries = new ObjectArrayList<Entry>(recipes.size());
         for (var recipe : recipes) entries.add(Entry.of(recipe));
@@ -147,12 +153,14 @@ public final class SimpleRecipePool implements RecipePool {
             ? new GroupedResourceLookup(machine, priority::getInt, group -> new Lookup(machine, group.hatches().resources())) : null;
     }
 
-    /** Exact simple definition. Amounts need not be one and keys can have any registered AEKeyType. */
+    /**
+     * Exact simple definition. Amounts need not be one and keys can have any registered AEKeyType.
+     */
     public record Entry(MachineRecipe recipe, GenericStack input, List<GenericStack> outputs) {
         public Entry {
             Objects.requireNonNull(recipe);
             Objects.requireNonNull(input);
-            outputs = ResourceRequirement.canonicalStacks(outputs);
+            ResourceRequirement.validateStacks(outputs);
             var resource = resource(recipe);
             if (!resource.inputs().getFirst().equals(input) || !resource.outputs().equals(outputs))
                 throw new IllegalArgumentException("Simple entry differs from its recipe definition: " + recipe.id());
@@ -199,7 +207,9 @@ public final class SimpleRecipePool implements RecipePool {
         }
     }
 
-    /** Includes skipped bindings: a previously invalid/null view becoming usable invalidates the opinion. */
+    /**
+     * Includes skipped bindings: a previously invalid/null view becoming usable invalidates the opinion.
+     */
     private record Binding(ResourceHatch hatch, boolean valid, boolean present, @Nullable Object identity,
                            @Nullable StorageContext context, boolean storageValid) {
         boolean current() {
@@ -211,18 +221,20 @@ public final class SimpleRecipePool implements RecipePool {
         }
     }
 
-    /** Visits present storage keys and their postings; absent-key recipes are never enumerated. */
+    /**
+     * Visits present storage keys and their postings; absent-key recipes are never enumerated.
+     */
     private final class Lookup implements RecipeCandidateIndex.Cursor {
         private final MachineInstance machine;
         private final MachineHatches sourceBindings;
-        private final List<ResourceHatch> selectedHatches;
+        private final List<? extends ResourceHatch> selectedHatches;
         private final Reference2ObjectOpenHashMap<StorageContext, AEKey2LongMap> byContext = new Reference2ObjectOpenHashMap<>();
         private final AEKey2LongMap available = new AEKey2LongMap.SaturatingOpenHashMap(6);
         private final ObjectArrayList<Captured> captures = new ObjectArrayList<>();
         private final ObjectArrayList<Binding> bindings = new ObjectArrayList<>();
         private final ObjectArrayList<MachineRecipe> result = new ObjectArrayList<>();
         private final Reference2IntOpenHashMap<MachineRecipe> ceilings = new Reference2IntOpenHashMap<>();
-        private List<ResourceHatch> hatches;
+        private List<? extends ResourceHatch> hatches;
         private int hatchIndex;
         private Captured view;
         private Iterator<Object2LongMap.Entry<AEKey>> quantities;
@@ -235,7 +247,7 @@ public final class SimpleRecipePool implements RecipePool {
         private int phase;
         private boolean stale;
 
-        Lookup(MachineInstance machine, List<ResourceHatch> selectedHatches) {
+        Lookup(MachineInstance machine, List<? extends ResourceHatch> selectedHatches) {
             this.machine = machine;
             this.sourceBindings = MachineHatches.get(machine);
             this.selectedHatches = selectedHatches;
@@ -358,7 +370,7 @@ public final class SimpleRecipePool implements RecipePool {
         @Override
         public List<MachineRecipe> result() {
             if (phase != 3 || stale) throw new IllegalStateException("Simple pool opinion is incomplete or stale");
-            return ObjectLists.unmodifiable(result);
+            return result;
         }
 
         @Override

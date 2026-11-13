@@ -19,7 +19,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 
-/** Native TE channel only. Watch replay revalidates the original chunk, tile and player connection. */
+/**
+ * Native TE channel only. Watch replay revalidates the original chunk, tile and player connection.
+ */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 @SuppressWarnings("resource") // The FML server session owns the borrowed scheduler, never this packet helper.
 public final class ControllerRenderSync {
@@ -31,7 +33,7 @@ public final class ControllerRenderSync {
     }
 
     private static NBTTagCompound tag(MachineControllerBlockEntity tile, ControllerRenderChunks.Part part, boolean ordinary,
-                                     @Nullable ControllerDisplayData dataDisplay) {
+                                      @Nullable ControllerDisplayData dataDisplay) {
         var position = tile.getPos();
         var tag = new NBTTagCompound();
         tag.setInteger("x", position.getX());
@@ -44,7 +46,9 @@ public final class ControllerRenderSync {
         return tag;
     }
 
-    /** Data's revision clock is independent of render-only metadata updates. */
+    /**
+     * Data's revision clock is independent of render-only metadata updates.
+     */
     public static NBTTagCompound dataTag(ControllerRenderChunks.Part part) {
         return dataTag(part, part.display());
     }
@@ -58,7 +62,9 @@ public final class ControllerRenderSync {
         return tag;
     }
 
-    /** First part is delivered by the original notifyBlockUpdate/getUpdatePacket path. */
+    /**
+     * First part is delivered by the original notifyBlockUpdate/getUpdatePacket path.
+     */
     public static void remaining(MachineControllerBlockEntity tile, List<ControllerRenderChunks.Part> parts) {
         remaining(tile, parts, false);
     }
@@ -75,7 +81,7 @@ public final class ControllerRenderSync {
         var position = tile.getPos();
         var entry = world.getPlayerChunkMap().getEntry(position.getX() >> 4, position.getZ() >> 4);
         if (entry == null) return;
-        for (var player : new ObjectArrayList<>(entry.getWatchingPlayers()))
+        for (var player : entry.getWatchingPlayers())
             send(world, tile, parts, player, player.connection, 1, ordinary, null);
     }
 
@@ -110,10 +116,9 @@ public final class ControllerRenderSync {
         var canonicalDisplay = ordinary ? tile.serverDataDisplay() : null;
         if (ordinary && canonicalDisplay == null) return;
         var dataDisplay = replayDisplay == null ? canonicalDisplay : replayDisplay;
+        if (!currentWatcher(world, tile, player, connection) || currentParts(tile, ordinary) != parts) return;
+        var pos = tile.getPos();
         for (int index = first; index < parts.size(); index++) {
-            var pos = tile.getPos();
-            if (!currentWatcher(world, tile, player, connection) || currentParts(tile, ordinary) != parts ||
-                ordinary && tile.serverDataDisplay() != canonicalDisplay) return;
             connection.sendPacket(new SPacketUpdateTileEntity(pos, 0, tag(tile, parts.get(index), ordinary, dataDisplay)));
         }
     }

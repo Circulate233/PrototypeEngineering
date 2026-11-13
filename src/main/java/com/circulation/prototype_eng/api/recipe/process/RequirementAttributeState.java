@@ -182,10 +182,9 @@ public final class RequirementAttributeState implements ProcessAbortListener {
         }
     }
 
+    /**
+     * Owns the supplied completed lists; neither producer nor consumer may modify them afterward.
+     */
     public record Snapshot(List<Reference> owned, List<Reference> aborted) {
-        public Snapshot {
-            owned = ObjectLists.unmodifiable(new ObjectArrayList<>(owned));
-            aborted = ObjectLists.unmodifiable(new ObjectArrayList<>(aborted));
-        }
     }
 }

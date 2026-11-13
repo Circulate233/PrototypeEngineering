@@ -84,7 +84,9 @@ public class DefaultRecipeDisplays {
         }
     }
 
-    /** Corresponding input/output slots share JEI candidate lists, including nested fuzzy groups. */
+    /**
+     * Corresponding input/output slots share JEI candidate lists, including nested fuzzy groups.
+     */
     private static void appendAlternative(JeiRecipeDisplay.Builder display, JeiRecipeDisplay candidate,
                                           JeiRecipeDisplay.Role role, List<JeiRecipeDisplay.CandidateGroup> slots, String name) {
         var assigned = new Reference2ObjectOpenHashMap<JeiRecipeDisplay.CandidateGroup, List<JeiRecipeDisplay.CandidateGroup>>();

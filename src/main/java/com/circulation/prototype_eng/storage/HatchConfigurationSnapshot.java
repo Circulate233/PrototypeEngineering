@@ -21,7 +21,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Complete read-only display defaults from one server session and target generation. */
+/**
+ * Complete read-only display defaults from one server session and target generation.
+ * The producer supplies stable profiles; callers must not modify the list after publication.
+ */
 public record HatchConfigurationSnapshot(UUID session, long revision, List<HatchConfiguration> profiles) {
     public static final int MAX_BYTES = 8 * 1024 * 1024;
     private static final int PROFILE_COUNT = HatchTier.VALUES.length * HatchMode.VALUES.length * 2;
@@ -30,7 +33,6 @@ public record HatchConfigurationSnapshot(UUID session, long revision, List<Hatch
         Objects.requireNonNull(session);
         if (revision < 0 || profiles.size() != PROFILE_COUNT)
             throw new IllegalArgumentException("Incomplete hatch configuration snapshot");
-        profiles = List.copyOf(profiles);
         for (int index = 0; index < profiles.size(); index++) {
             var profile = profiles.get(index);
             if (profile.mode() != HatchMode.VALUES[index / 2 % HatchMode.VALUES.length]

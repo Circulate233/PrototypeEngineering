@@ -1,6 +1,8 @@
 package com.circulation.prototype_eng.api.storage;
 
-/** Loaded native and addon tile hosts opt into the same owner-boundary configuration bridge. */
+/**
+ * Loaded native and addon tile hosts opt into the same owner-boundary configuration bridge.
+ */
 public interface ReconfigurableHatch {
     HatchTier tier();
 

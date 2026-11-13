@@ -3,7 +3,9 @@ package com.circulation.prototype_eng.localization;
 import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.Tags;
 
-/** PM tool labels and messages, shared by server translations and client tooltips. */
+/**
+ * PM tool labels and messages, shared by server translations and client tooltips.
+ */
 public enum StructureToolText implements LocalizationEnum {
     ScannerTitle,
     BuilderTitle,

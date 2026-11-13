@@ -14,7 +14,9 @@ public final class SelectiveModifiers {
     private SelectiveModifiers() {
     }
 
-    /** Adds an amount to process speed when the selected candidate's START commits. */
+    /**
+     * Adds an amount to process speed when the selected candidate's START commits.
+     */
     public static SelectiveModifierDescriptor processSpeedAddition(ResourceLocation id, String modifierId, double amount) {
         return processSpeed(id, speedAddition(modifierId, amount));
     }

@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.machine.MachineTypeRegistrationEvent;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.block.Block;
 import net.minecraft.item.Item;
@@ -59,7 +58,7 @@ public final class MachineControllerBlocks {
         // Even an empty library needs its generic tile mapping for downstream loading and saves.
         GameRegistry.registerTileEntity(MachineControllerBlockEntity.class, new ResourceLocation(Tags.MOD_ID, "machine_controller"));
         event.getRegistry().registerAll(generated.toArray(MachineControllerBlock<?>[]::new));
-        blocks = ObjectLists.unmodifiable(generated);
+        blocks = generated;
     }
 
     @SubscribeEvent

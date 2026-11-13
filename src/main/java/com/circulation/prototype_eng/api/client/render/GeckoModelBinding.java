@@ -1,7 +1,7 @@
 package com.circulation.prototype_eng.api.client.render;
 
-import com.circulation.prototype_eng.api.machine.render.MachineAnimationState;
 import com.circulation.prototype_eng.api.data.ComponentData;
+import com.circulation.prototype_eng.api.machine.render.MachineAnimationState;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.nbt.NBTTagString;
 import net.minecraft.util.ResourceLocation;
@@ -10,7 +10,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 
-/** Resource declarations only; each later render owner creates its own mutable Gecko instance. */
+/**
+ * Resource declarations only; each later render owner creates its own mutable Gecko instance.
+ */
 public record GeckoModelBinding(ResourceLocation geo, ResourceLocation texture, @Nullable ResourceLocation animation,
                                 @Nullable String defaultAnimationName, List<String> layers,
                                 double offsetX, double offsetY, double offsetZ, double yOffset,
@@ -43,12 +45,16 @@ public record GeckoModelBinding(ResourceLocation geo, ResourceLocation texture, 
         return key == null || key.isBlank() ? null : key.trim();
     }
 
-    /** Layer ordering is retained; a later layer overrides conflicting bone transforms. */
+    /**
+     * Layer ordering is retained; a later layer overrides conflicting bone transforms.
+     */
     public List<String> effectiveLayers(@Nullable MachineAnimationState.Snapshot state) {
         return effectiveLayers(state, null);
     }
 
-    /** Typed state, synchronized data layer key, data single-name key, then declaration defaults. */
+    /**
+     * Typed state, synchronized data layer key, data single-name key, then declaration defaults.
+     */
     public List<String> effectiveLayers(@Nullable MachineAnimationState.Snapshot state, @Nullable ComponentData.Snapshot data) {
         if (animation == null) return List.of();
         if (state != null && !state.layers().isEmpty()) return state.layers();

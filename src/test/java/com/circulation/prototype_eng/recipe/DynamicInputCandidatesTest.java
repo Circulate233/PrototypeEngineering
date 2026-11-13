@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.recipe;
 
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
-
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKeyType;
@@ -27,6 +25,7 @@ import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagInt;
@@ -93,7 +92,6 @@ class DynamicInputCandidatesTest {
         assertEquals(List.of(a, b), DynamicInputCandidates.enumerate(available, group));
         available.sort(Comparator.comparing(key -> Objects.requireNonNull(key.getId()).toString()));
         assertEquals(List.of(a, b), DynamicInputCandidates.enumerate(available, group));
-        assertThrows(UnsupportedOperationException.class, () -> DynamicInputCandidates.enumerate(available, group).clear());
     }
 
     @Test

@@ -51,13 +51,39 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 class ZenJeiPoolBridgeTest {
     private static final KeyType TYPE = new KeyType("ct_jei");
     private static final IIngredientType<GenericStack> INGREDIENT = () -> GenericStack.class;
+
+    private static JeiRecipeIngredients ingredients(JeiRecipeDisplay display) {
+        var converter = new IngredientConverter<GenericStack>() {
+            @Override
+            public IIngredientType<GenericStack> getIngredientType() {
+                return INGREDIENT;
+            }
+
+            @Override
+            public @Nullable GenericStack getIngredientFromStack(GenericStack value) {
+                return value.what().getType() == TYPE ? value : null;
+            }
+
+            @Override
+            public GenericStack getStackFromIngredient(GenericStack value) {
+                return value;
+            }
+        };
+        var identities = new JeiQueryIdentityIndex();
+        identities.captureConverter(converter, new JeiTestViews.IdentityHelper<>(value -> value.what().toTag().toString()), List.of(), List.of(display));
+        return new JeiRecipeIngredients(display, List.of(converter), List.of(INGREDIENT), identities);
+    }
 
     @Test
     void compiledSimplePoolOptionsAndIndependentInstanceBindAndReplayTheSameNativePages() throws Exception {
@@ -135,26 +161,14 @@ class ZenJeiPoolBridgeTest {
         }
     }
 
-    private static JeiRecipeIngredients ingredients(JeiRecipeDisplay display) {
-        var converter = new IngredientConverter<GenericStack>() {
-            @Override public IIngredientType<GenericStack> getIngredientType() { return INGREDIENT; }
-            @Override public @Nullable GenericStack getIngredientFromStack(GenericStack value) {
-                return value.what().getType() == TYPE ? value : null;
-            }
-            @Override public GenericStack getStackFromIngredient(GenericStack value) { return value; }
-        };
-        var identities = new JeiQueryIdentityIndex();
-        identities.captureConverter(converter, new JeiTestViews.IdentityHelper<>(value -> value.what().toTag().toString()), List.of(), List.of(display));
-        return new JeiRecipeIngredients(display, List.of(converter), List.of(INGREDIENT), identities);
-    }
-
     @SuppressWarnings("SameParameterValue") // The actual compiler fixture receives this focused script.
     private ZenModule compile(String script) throws Exception {
         var output = new ByteArrayOutputStream();
         var environment = new GenericCompileEnvironment();
         var registry = new GenericRegistry(environment, new GenericErrorLogger(new PrintStream(output, true, StandardCharsets.UTF_8)));
         for (var type : List.of(ZenRecipe.class, ZenRecipePool.class, ZenRequirement.class, ZenResource.class,
-            ZenJeiOptions.class, ZenJeiPage.class, IData.class, Harness.class)) registry.registerNativeClass(type);
+            ZenJeiOptions.class, ZenJeiPage.class, IData.class, Harness.class))
+            registry.registerNativeClass(type);
         for (var expansion : List.of(ExpandAnyDict.class, ExpandDataStringDict.class, ExpandInt.class, ExpandBool.class, ExpandString.class))
             registry.registerExpansion(expansion);
         var classes = new Object2ObjectOpenHashMap<String, byte[]>();
@@ -172,17 +186,39 @@ class ZenJeiPoolBridgeTest {
     public static final class Harness {
         private static ZenRecipePool ordinary;
         private static ZenRecipePool independent;
-        @ZenMethod public static ZenResource resource() { return new ZenResource(new Key(TYPE, "input"), 7); }
-        @ZenMethod public static void capture(ZenRecipePool first, ZenRecipePool second) { ordinary = first; independent = second; }
+
+        @ZenMethod
+        public static ZenResource resource() {
+            return new ZenResource(new Key(TYPE, "input"), 7);
+        }
+
+        @ZenMethod
+        public static void capture(ZenRecipePool first, ZenRecipePool second) {
+            ordinary = first;
+            independent = second;
+        }
     }
 
     private static final class IndependentPage implements RecipePoolJeiPage {
         private final RecipePool pool;
         private int layouts;
-        private IndependentPage(RecipePool pool) { this.pool = pool; }
-        @Override public RecipePool pool() { return pool; }
-        @Override public IDrawable getBackground() { return new JeiTestViews.Blank(88, 32); }
-        @Override public void setRecipe(IRecipeLayout ignoredLayout, RecipePoolJeiRecipe wrapper, IIngredients ignoredIngredients) {
+
+        private IndependentPage(RecipePool pool) {
+            this.pool = pool;
+        }
+
+        @Override
+        public RecipePool pool() {
+            return pool;
+        }
+
+        @Override
+        public IDrawable getBackground() {
+            return new JeiTestViews.Blank(88, 32);
+        }
+
+        @Override
+        public void setRecipe(IRecipeLayout ignoredLayout, RecipePoolJeiRecipe wrapper, IIngredients ignoredIngredients) {
             assertSame(this, wrapper.page());
             assertSame(pool, wrapper.pool());
             layouts++;

@@ -1,8 +1,8 @@
 package com.circulation.prototype_eng.container;
 
 import com.circulation.prototype_eng.api.component.ComponentType;
-import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
@@ -153,9 +153,7 @@ class MachineGuiSnapshotTest {
             arguments.add("a".repeat(1500));
         }
         var entry = new MachineGuiSnapshot.Entry("slot", "recipe", WorkSlotStatus.BLOCKED, 30, "reason", arguments);
-        arguments.clear();
         assertEquals(16, entry.arguments().size());
         assertEquals(1024, entry.arguments().getFirst().length());
-        assertThrows(UnsupportedOperationException.class, () -> entry.arguments().clear());
     }
 }

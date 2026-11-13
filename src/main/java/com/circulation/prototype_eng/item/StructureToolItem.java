@@ -3,10 +3,10 @@ package com.circulation.prototype_eng.item;
 import ae2.items.AEBaseItem;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.Tags;
-import com.circulation.prototype_eng.container.StructureToolContainer;
+import com.circulation.prototype_eng.container.ContainerStructureTool;
 import com.circulation.prototype_eng.localization.StructureToolText;
-import com.circulation.prototype_eng.structure.tool.BuilderState;
 import com.circulation.prototype_eng.structure.tool.BuilderMiningTool;
+import com.circulation.prototype_eng.structure.tool.BuilderState;
 import com.circulation.prototype_eng.structure.tool.ConstructionTarget;
 import com.circulation.prototype_eng.structure.tool.ScannerState;
 import net.minecraft.client.util.ITooltipFlag;
@@ -27,7 +27,9 @@ import org.jetbrains.annotations.Nullable;
 import java.math.BigInteger;
 import java.util.List;
 
-/** PM's range selector and controller-bound construction instrument. */
+/**
+ * PM's range selector and controller-bound construction instrument.
+ */
 public final class StructureToolItem extends AEBaseItem {
     private final boolean builder;
 
@@ -61,7 +63,8 @@ public final class StructureToolItem extends AEBaseItem {
             lines.add(StructureToolText.BuilderToolFusion.getLocal());
             lines.add(StructureToolText.BuilderToolFusionPermanent.getLocal());
             var miningTool = BuilderMiningTool.profile(stack);
-            if (!miningTool.isEmpty()) lines.add(StructureToolText.BuilderToolFused.getLocal(miningTool.getDisplayName()));
+            if (!miningTool.isEmpty())
+                lines.add(StructureToolText.BuilderToolFused.getLocal(miningTool.getDisplayName()));
             lines.add(StructureToolText.BuilderFluidRecovery.getLocal());
         } else {
             lines.add(StructureToolText.ScanHint.getLocal());
@@ -75,7 +78,7 @@ public final class StructureToolItem extends AEBaseItem {
         if (!world.isRemote) {
             if (!builder) ScannerState.data(stack);
             int slot = hand == EnumHand.MAIN_HAND ? player.inventory.currentItem : 40;
-            player.openGui(PrototypeEngineering.instance, StructureToolContainer.GUI_ID, world, slot, 0, 0);
+            player.openGui(PrototypeEngineering.instance, ContainerStructureTool.GUI_ID, world, slot, 0, 0);
         }
         return new ActionResult<>(EnumActionResult.SUCCESS, stack);
     }
@@ -94,7 +97,8 @@ public final class StructureToolItem extends AEBaseItem {
             if (!world.isBlockLoaded(pos, false)) return EnumActionResult.FAIL;
             var target = ConstructionTarget.resolve(world, pos);
             if (target == null) return EnumActionResult.PASS;
-            if (!world.isBlockModifiable(player, pos) || !player.canPlayerEdit(pos, side, stack)) return EnumActionResult.FAIL;
+            if (!world.isBlockModifiable(player, pos) || !player.canPlayerEdit(pos, side, stack))
+                return EnumActionResult.FAIL;
             if (!world.isRemote) {
                 var position = pos.toImmutable();
                 var open = player.openContainer;
@@ -117,7 +121,7 @@ public final class StructureToolItem extends AEBaseItem {
                     }
                     if (same || sneaking) {
                         int slot = hand == EnumHand.MAIN_HAND ? player.inventory.currentItem : 40;
-                        player.openGui(PrototypeEngineering.instance, StructureToolContainer.GUI_ID, world, slot, 0, 0);
+                        player.openGui(PrototypeEngineering.instance, ContainerStructureTool.GUI_ID, world, slot, 0, 0);
                     }
                 });
             }

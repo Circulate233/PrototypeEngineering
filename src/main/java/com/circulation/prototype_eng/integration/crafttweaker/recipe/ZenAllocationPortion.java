@@ -7,7 +7,9 @@ import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.Objects;
 
-/** Existing Java portion value; validation and source acquisition belong to InputAllocation. */
+/**
+ * Existing Java portion value; validation and source acquisition belong to InputAllocation.
+ */
 @SuppressWarnings("unused")
 @ZenRegister
 @ZenClass("mods.prototype_eng.recipe.AllocationPortion")

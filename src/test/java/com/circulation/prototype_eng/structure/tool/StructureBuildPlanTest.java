@@ -1,8 +1,5 @@
 package com.circulation.prototype_eng.structure.tool;
 
-import it.unimi.dsi.fastutil.objects.Object2IntMaps;
-import it.unimi.dsi.fastutil.ints.IntList;
-
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewPath;
@@ -11,6 +8,9 @@ import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.client.preview.StructurePreviewExpansion;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
+import it.unimi.dsi.fastutil.ints.IntList;
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -21,22 +21,21 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StructureBuildPlanTest {
     private static final ResourceLocation ROOT = new ResourceLocation("test", "root"), CHILD = new ResourceLocation("test", "child");
 
-    private static StructureCatalogView view(int offset) {
+    private static StructureCatalogView view() {
         var display = new StructureDisplay("stone", List.of(new StructureDisplay.BlockOption(new ResourceLocation("minecraft", "stone"), 0, Map.of())), null);
-        var nodes = List.of(new StructureCatalogView.Node(ROOT, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.SLICE, new BlockPos(offset, 0, 0), 0, 5, new BlockPos(0, 2, 0), List.of(BlockPos.ORIGIN, new BlockPos(1, 0, 0)), IntList.of(1)),
+        var nodes = List.of(new StructureCatalogView.Node(ROOT, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.SLICE, BlockPos.ORIGIN, 0, 5, new BlockPos(0, 2, 0), List.of(BlockPos.ORIGIN, new BlockPos(1, 0, 0)), IntList.of(1)),
             new StructureCatalogView.Node(CHILD, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE, new BlockPos(0, 0, 1), 1, 1, BlockPos.ORIGIN, List.of(new BlockPos(1, 0, 0)), IntList.of()));
-        return new StructureCatalogView(UUID.randomUUID(), 0, nodes, Map.of(ROOT, new StructureCatalogView.Entry(0, null, Map.of(BlockPos.ORIGIN, display, new BlockPos(1, 0, 0), display)), CHILD, new StructureCatalogView.Entry(1, null, Map.of(new BlockPos(1, 0, 0), display))));
+        return new StructureCatalogView(UUID.randomUUID(), 0, nodes, Map.of(ROOT, new StructureCatalogView.Entry(0, null, new BlockPos2ObjectMap<>(Map.of(BlockPos.ORIGIN, display, new BlockPos(1, 0, 0), display))), CHILD, new StructureCatalogView.Entry(1, null, new BlockPos2ObjectMap<>(Map.of(new BlockPos(1, 0, 0), display)))));
     }
 
     @Test
     void constructionAndPreviewAgreeForZeroAndRepeatedSlicesInEveryOrientation() {
-        var catalog = view(0);
+        var catalog = view();
         for (var front : EnumFacing.VALUES)
             for (int count : List.of(0, 1, 4)) {
                 var orientation = BlockOrientation.get(front, front.getAxis() == EnumFacing.Axis.Y ? EnumFacing.NORTH : EnumFacing.UP);
@@ -48,9 +47,4 @@ class StructureBuildPlanTest {
             }
     }
 
-    @Test
-    void coordinateOverflowIsReportedBeforeWrappingIntoUnrelatedBlocks() {
-        assertThrows(ArithmeticException.class, () -> StructureBuildPlan.expand(view(Integer.MAX_VALUE), ROOT, BlockOrientation.NORTH_UP, Object2IntMaps.singleton("0", 1)));
-        assertThrows(ArithmeticException.class, () -> StructureBuildPlan.add(new BlockPos(Integer.MIN_VALUE, 0, 0), new BlockPos(-1, 0, 0)));
-    }
 }

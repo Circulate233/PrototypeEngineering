@@ -14,9 +14,12 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 
-/** Framework input-source receipts. Native reservation transitions retain their original semantics. */
+/**
+ * Framework input-source receipts. Native reservation transitions retain their original semantics.
+ */
 public final class ResourceInputReceipts {
-    private ResourceInputReceipts() {}
+    private ResourceInputReceipts() {
+    }
 
     public static MachineHatches bind(MachineHatches source, RecipeProcess process) {
         var resources = source.resources();
@@ -28,7 +31,9 @@ public final class ResourceInputReceipts {
         return new MachineHatches(observed, source.energyInputs(), source.energyOutputs());
     }
 
-    /** One outer stage owns this ledger; completion workers only write their own receipt flag. */
+    /**
+     * One outer stage owns this ledger; completion workers only write their own receipt flag.
+     */
     public static final class Ledger {
         private final ObjectArrayList<Receipt> receipts = new ObjectArrayList<>();
 
@@ -62,11 +67,13 @@ public final class ResourceInputReceipts {
                 committed.add(receipt.key, receipt.amount);
             }
             receipts.clear();
-            return new Publication(overflow ? null : ImmutableResourceAmounts.copyOf(total), groups);
+            return new Publication(overflow ? null : total, groups);
         }
     }
 
-    /** The process installs the whole-stage snapshot before publishing any individual source. */
+    /**
+     * The process installs the whole-stage snapshot before publishing any individual source.
+     */
     public static final class Publication {
         private final @Nullable AEKey2LongMap amounts;
         private final Reference2ObjectLinkedOpenHashMap<Object, Committed> groups;
@@ -76,7 +83,9 @@ public final class ResourceInputReceipts {
             this.groups = groups;
         }
 
-        public @Nullable AEKey2LongMap amounts() { return amounts; }
+        public @Nullable AEKey2LongMap amounts() {
+            return amounts;
+        }
 
         public void publish(RecipeProcess process, RecipeStage stage) {
             StorageContext.requireNoLocks();
@@ -100,10 +109,12 @@ public final class ResourceInputReceipts {
 
     private static final class Committed {
         private final ResourceRecipeObserver observer;
-        private AEKey2LongMap amounts = new AEKey2LongMap.OpenHashMap();
         private final ObjectArrayList<AEKey2LongMap> chunks = new ObjectArrayList<>();
+        private AEKey2LongMap amounts = new AEKey2LongMap.OpenHashMap();
 
-        private Committed(ResourceRecipeObserver observer) { this.observer = observer; }
+        private Committed(ResourceRecipeObserver observer) {
+            this.observer = observer;
+        }
 
         private void add(AEKey key, long amount) {
             if (amounts.getLong(key) > Long.MAX_VALUE - amount) {
@@ -114,11 +125,13 @@ public final class ResourceInputReceipts {
         }
 
         private void finish() {
-            if (!amounts.isEmpty()) chunks.add(ImmutableResourceAmounts.copyOf(amounts));
+            if (!amounts.isEmpty()) chunks.add(amounts);
         }
     }
 
-    /** Allocated and enrolled during acquisition. Terminal native completion only sets a flag. */
+    /**
+     * Allocated and enrolled during acquisition. Terminal native completion only sets a flag.
+     */
     public static final class Receipt implements ResourceReservation {
         private final @Nullable ResourceRecipeObserver observer;
         private final @Nullable Object identity;
@@ -143,14 +156,45 @@ public final class ResourceInputReceipts {
             return accepted;
         }
 
-        @Override public StorageContext context() { return delegate.context(); }
-        @Override public boolean canApply() { return delegate.canApply(); }
-        @Override public @Nullable Boolean canApplyWithinBudget(RecipeWorkBudget budget) { return delegate.canApplyWithinBudget(budget); }
-        @Override public void apply() { delegate.apply(); }
-        @Override public boolean applyWithinBudget(RecipeWorkBudget budget) { return delegate.applyWithinBudget(budget); }
-        @Override public boolean supportsSequentialUse() { return delegate.supportsSequentialUse(); }
-        @Override public void exposeApplied() { delegate.exposeApplied(); }
-        @Override public boolean exposeAppliedWithinBudget(RecipeWorkBudget budget) { return delegate.exposeAppliedWithinBudget(budget); }
+        @Override
+        public StorageContext context() {
+            return delegate.context();
+        }
+
+        @Override
+        public boolean canApply() {
+            return delegate.canApply();
+        }
+
+        @Override
+        public @Nullable Boolean canApplyWithinBudget(RecipeWorkBudget budget) {
+            return delegate.canApplyWithinBudget(budget);
+        }
+
+        @Override
+        public void apply() {
+            delegate.apply();
+        }
+
+        @Override
+        public boolean applyWithinBudget(RecipeWorkBudget budget) {
+            return delegate.applyWithinBudget(budget);
+        }
+
+        @Override
+        public boolean supportsSequentialUse() {
+            return delegate.supportsSequentialUse();
+        }
+
+        @Override
+        public void exposeApplied() {
+            delegate.exposeApplied();
+        }
+
+        @Override
+        public boolean exposeAppliedWithinBudget(RecipeWorkBudget budget) {
+            return delegate.exposeAppliedWithinBudget(budget);
+        }
 
         @Override
         public void complete() {
@@ -180,8 +224,13 @@ public final class ResourceInputReceipts {
             return resolution;
         }
 
-        @Override public Resolution resolution() { return observe(delegate.resolution()); }
-        @Override public @Nullable Resolution resolutionWithinBudget(RecipeWorkBudget budget) {
+        @Override
+        public Resolution resolution() {
+            return observe(delegate.resolution());
+        }
+
+        @Override
+        public @Nullable Resolution resolutionWithinBudget(RecipeWorkBudget budget) {
             var resolution = delegate.resolutionWithinBudget(budget);
             return resolution == null ? null : observe(resolution);
         }
@@ -210,33 +259,128 @@ public final class ResourceInputReceipts {
             return observed;
         }
 
-        @Override public @Nullable ResourceStorage output() { return source.output(); }
-        @Override public @Nullable Object inputStorageIdentity() { return source.inputStorageIdentity(); }
-        @Override public @Nullable Object outputStorageIdentity() { return source.outputStorageIdentity(); }
-        @Override public ResourceInputGroup inputGroup() { return source.inputGroup(); }
-        @Override public boolean sharedInput() { return source.sharedInput(); }
-        @Override public List<? extends ResourceHatch> inputPartitions() { return source.inputPartitions(); }
-        @Override public boolean isValid() { return source.isValid(); }
-        @Override public Object observerIdentity() { return observer == null ? this : observer.observerIdentity(); }
-        @Override public void attached(RecipeProcess value) { if (observer != null) observer.attached(value); }
-        @Override public void detached(RecipeProcess value) { if (observer != null) observer.detached(value); }
-        @Override public void stageCommitted(RecipeProcess value, RecipeStage stage) { if (observer != null) observer.stageCommitted(value, stage); }
-        @Override public void inputsCommitted(RecipeProcess value, RecipeStage stage, AEKey2LongMap amounts) { if (observer != null) observer.inputsCommitted(value, stage, amounts); }
+        @Override
+        public @Nullable ResourceStorage output() {
+            return source.output();
+        }
+
+        @Override
+        public @Nullable Object inputStorageIdentity() {
+            return source.inputStorageIdentity();
+        }
+
+        @Override
+        public @Nullable Object outputStorageIdentity() {
+            return source.outputStorageIdentity();
+        }
+
+        @Override
+        public ResourceInputGroup inputGroup() {
+            return source.inputGroup();
+        }
+
+        @Override
+        public boolean sharedInput() {
+            return source.sharedInput();
+        }
+
+        @Override
+        public List<? extends ResourceHatch> inputPartitions() {
+            return source.inputPartitions();
+        }
+
+        @Override
+        public boolean isValid() {
+            return source.isValid();
+        }
+
+        @Override
+        public Object observerIdentity() {
+            return observer == null ? this : observer.observerIdentity();
+        }
+
+        @Override
+        public void attached(RecipeProcess value) {
+            if (observer != null) observer.attached(value);
+        }
+
+        @Override
+        public void detached(RecipeProcess value) {
+            if (observer != null) observer.detached(value);
+        }
+
+        @Override
+        public void stageCommitted(RecipeProcess value, RecipeStage stage) {
+            if (observer != null) observer.stageCommitted(value, stage);
+        }
+
+        @Override
+        public void inputsCommitted(RecipeProcess value, RecipeStage stage, AEKey2LongMap amounts) {
+            if (observer != null) observer.inputsCommitted(value, stage, amounts);
+        }
     }
 
-    private record ObservedStorage(ResourceStorage delegate, @Nullable ResourceRecipeObserver observer, RecipeProcess process) implements ResourceStorage {
-        @Override public StorageContext context() { return delegate.context(); }
-        @Override public boolean isValid() { return delegate.isValid(); }
-        @Override public StorageSnapshot snapshot() { return delegate.snapshot(); }
-        @Override public StorageSnapshot snapshotFor(AEKey key) { return delegate.snapshotFor(key); }
-        @Override public QuantityCapture beginQuantityCapture() { return delegate.beginQuantityCapture(); }
-        @Override public QuantityCapture beginQuantityCapture(AEKey key) { return delegate.beginQuantityCapture(key); }
-        @Override public long amount(AEKey key) { return delegate.amount(key); }
-        @Override public long availableAmount(AEKey key) { return delegate.availableAmount(key); }
-        @Override public long insert(AEKey key, long amount, Actionable mode) { return delegate.insert(key, amount, mode); }
-        @Override public long extract(AEKey key, long amount, Actionable mode) { return delegate.extract(key, amount, mode); }
-        @Override public ReservationResult reserveInsert(StorageSnapshot snapshot, AEKey key, long amount) { return delegate.reserveInsert(snapshot, key, amount); }
-        @Override public ReservationCapture beginReserveInsert(StorageSnapshot snapshot, AEKey key, long amount) { return delegate.beginReserveInsert(snapshot, key, amount); }
+    private record ObservedStorage(ResourceStorage delegate, @Nullable ResourceRecipeObserver observer,
+                                   RecipeProcess process) implements ResourceStorage {
+        @Override
+        public StorageContext context() {
+            return delegate.context();
+        }
+
+        @Override
+        public boolean isValid() {
+            return delegate.isValid();
+        }
+
+        @Override
+        public StorageSnapshot snapshot() {
+            return delegate.snapshot();
+        }
+
+        @Override
+        public StorageSnapshot snapshotFor(AEKey key) {
+            return delegate.snapshotFor(key);
+        }
+
+        @Override
+        public QuantityCapture beginQuantityCapture() {
+            return delegate.beginQuantityCapture();
+        }
+
+        @Override
+        public QuantityCapture beginQuantityCapture(AEKey key) {
+            return delegate.beginQuantityCapture(key);
+        }
+
+        @Override
+        public long amount(AEKey key) {
+            return delegate.amount(key);
+        }
+
+        @Override
+        public long availableAmount(AEKey key) {
+            return delegate.availableAmount(key);
+        }
+
+        @Override
+        public long insert(AEKey key, long amount, Actionable mode) {
+            return delegate.insert(key, amount, mode);
+        }
+
+        @Override
+        public long extract(AEKey key, long amount, Actionable mode) {
+            return delegate.extract(key, amount, mode);
+        }
+
+        @Override
+        public ReservationResult reserveInsert(StorageSnapshot snapshot, AEKey key, long amount) {
+            return delegate.reserveInsert(snapshot, key, amount);
+        }
+
+        @Override
+        public ReservationCapture beginReserveInsert(StorageSnapshot snapshot, AEKey key, long amount) {
+            return delegate.beginReserveInsert(snapshot, key, amount);
+        }
 
         @Override
         public ReservationResult reserveExtract(StorageSnapshot snapshot, AEKey key, long amount) {
@@ -265,13 +409,40 @@ public final class ResourceInputReceipts {
             this.key = key;
         }
 
-        @Override public boolean advance(RecipeWorkBudget budget) { return delegate.advance(budget); }
-        @Override public long amount() { return delegate.amount(); }
-        @Override public boolean hasObligations() { return delegate.hasObligations(); }
-        @Override public boolean cancel(RecipeWorkBudget budget) { return delegate.cancel(budget); }
-        @Override public boolean cancel() { return delegate.cancel(); }
-        @Override public ResourceReservation.Resolution resolution() { return delegate.resolution(); }
-        @Override public ResourceReservation.@Nullable Resolution resolutionWithinBudget(RecipeWorkBudget budget) { return delegate.resolutionWithinBudget(budget); }
+        @Override
+        public boolean advance(RecipeWorkBudget budget) {
+            return delegate.advance(budget);
+        }
+
+        @Override
+        public long amount() {
+            return delegate.amount();
+        }
+
+        @Override
+        public boolean hasObligations() {
+            return delegate.hasObligations();
+        }
+
+        @Override
+        public boolean cancel(RecipeWorkBudget budget) {
+            return delegate.cancel(budget);
+        }
+
+        @Override
+        public boolean cancel() {
+            return delegate.cancel();
+        }
+
+        @Override
+        public ResourceReservation.Resolution resolution() {
+            return delegate.resolution();
+        }
+
+        @Override
+        public ResourceReservation.@Nullable Resolution resolutionWithinBudget(RecipeWorkBudget budget) {
+            return delegate.resolutionWithinBudget(budget);
+        }
 
         @Override
         public ReservationResult result() {

@@ -1,21 +1,9 @@
 package com.circulation.prototype_eng.proxy;
 
 import ae2.container.AEBaseContainer;
-import com.circulation.prototype_eng.container.MeResourceHatchContainer;
-import com.circulation.prototype_eng.container.MePatternAssemblyContainer;
-import com.circulation.prototype_eng.client.gui.MePatternAssemblyGui;
-import com.circulation.prototype_eng.container.ParallelControllerContainer;
-import com.circulation.prototype_eng.client.gui.MeResourceHatchGui;
-import com.circulation.prototype_eng.client.gui.ParallelControllerGui;
 import com.circulation.prototype_eng.PrototypeEngineering;
-import com.circulation.prototype_eng.research.reward.RewardItemEntity;
-import net.minecraft.client.renderer.entity.RenderEntityItem;
-import net.minecraftforge.fml.client.registry.RenderingRegistry;
 import com.circulation.prototype_eng.api.client.gui.MachineScreenRegistry;
 import com.circulation.prototype_eng.api.client.jei.ClientRecipeDeclarations;
-import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
-import com.circulation.prototype_eng.integration.jei.PrototypeJeiPlugin;
-import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
 import com.circulation.prototype_eng.api.client.render.MachineRenderBindings;
 import com.circulation.prototype_eng.api.client.render.MachineRenderRegistrationEvent;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
@@ -26,18 +14,22 @@ import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
 import com.circulation.prototype_eng.block.HatchBlocks;
 import com.circulation.prototype_eng.client.MachineControllerModels;
 import com.circulation.prototype_eng.client.OrientationToolModels;
-import com.circulation.prototype_eng.client.gui.BuilderInstrumentGui;
 import com.circulation.prototype_eng.client.gui.ClientHatchConfigurations;
-import com.circulation.prototype_eng.client.gui.EnergyHatchGui;
-import com.circulation.prototype_eng.client.gui.ResearchGui;
-import com.circulation.prototype_eng.client.gui.ResourceHatchGui;
-import com.circulation.prototype_eng.client.gui.ScannerInstrumentGui;
+import com.circulation.prototype_eng.client.gui.GuiBuilderInstrument;
+import com.circulation.prototype_eng.client.gui.GuiEnergyHatch;
+import com.circulation.prototype_eng.client.gui.GuiMEPatternAssembly;
+import com.circulation.prototype_eng.client.gui.GuiMEResourceHatch;
+import com.circulation.prototype_eng.client.gui.GuiParallelController;
+import com.circulation.prototype_eng.client.gui.GuiResearch;
+import com.circulation.prototype_eng.client.gui.GuiResourceHatch;
+import com.circulation.prototype_eng.client.gui.GuiScannerInstrument;
 import com.circulation.prototype_eng.client.preview.PreviewClientOpenQueue;
 import com.circulation.prototype_eng.client.preview.PreviewEmbeddedInput;
 import com.circulation.prototype_eng.client.preview.PreviewGuiResources;
 import com.circulation.prototype_eng.client.preview.ProjectionInteractions;
 import com.circulation.prototype_eng.client.preview.StructurePreviewCommand;
 import com.circulation.prototype_eng.client.preview.WorldProjectionManager;
+import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
 import com.circulation.prototype_eng.client.render.BasicMachineControllerRenderer;
 import com.circulation.prototype_eng.client.render.ClientMachineRenderSnapshots;
 import com.circulation.prototype_eng.client.render.DirectVertexBufferPool;
@@ -51,19 +43,26 @@ import com.circulation.prototype_eng.client.render.ModelBuildCache;
 import com.circulation.prototype_eng.client.render.ModelBuildExecutor;
 import com.circulation.prototype_eng.client.render.ModelClientThread;
 import com.circulation.prototype_eng.client.render.ReusableModelVboUploader;
-import com.circulation.prototype_eng.container.EnergyHatchContainer;
-import com.circulation.prototype_eng.container.ResearchContainer;
-import com.circulation.prototype_eng.container.ResourceHatchContainer;
-import com.circulation.prototype_eng.container.StructureToolContainer;
+import com.circulation.prototype_eng.container.ContainerEnergyHatch;
+import com.circulation.prototype_eng.container.ContainerMEPatternAssembly;
+import com.circulation.prototype_eng.container.ContainerMEResourceHatch;
+import com.circulation.prototype_eng.container.ContainerParallelController;
+import com.circulation.prototype_eng.container.ContainerResearch;
+import com.circulation.prototype_eng.container.ContainerResourceHatch;
+import com.circulation.prototype_eng.container.ContainerStructureTool;
+import com.circulation.prototype_eng.integration.jei.PrototypeJeiPlugin;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
 import com.circulation.prototype_eng.network.clientbound.HatchConfigurationPacket;
-import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
+import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
 import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
+import com.circulation.prototype_eng.research.reward.RewardItemEntity;
+import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.network.NetHandlerPlayClient;
 import net.minecraft.client.renderer.block.model.ModelResourceLocation;
+import net.minecraft.client.renderer.entity.RenderEntityItem;
 import net.minecraft.client.resources.IReloadableResourceManager;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
@@ -78,8 +77,9 @@ import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.client.model.ModelLoader;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.world.WorldEvent;
-import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
+import net.minecraftforge.fml.client.registry.RenderingRegistry;
 import net.minecraftforge.fml.common.Loader;
+import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -116,6 +116,13 @@ public class ClientProxy extends CommonProxy {
             }
         if (failure instanceof Error error) throw error;
         if (failure instanceof RuntimeException exception) throw exception;
+    }
+
+    private static Minecraft packetOwner() {
+        var minecraft = Minecraft.getMinecraft();
+        if (!minecraft.isCallingFromMinecraftThread())
+            throw new IllegalStateException("Clientbound handling requires the client owner");
+        return minecraft;
     }
 
     public StructurePreviews previews() {
@@ -412,12 +419,6 @@ public class ClientProxy extends CommonProxy {
         }
     }
 
-    private static Minecraft packetOwner() {
-        var minecraft = Minecraft.getMinecraft();
-        if (!minecraft.isCallingFromMinecraftThread()) throw new IllegalStateException("Clientbound handling requires the client owner");
-        return minecraft;
-    }
-
     @SubscribeEvent
     public void connected(FMLNetworkEvent.ClientConnectedToServerEvent event) {
         Minecraft.getMinecraft().addScheduledTask(() -> {
@@ -471,7 +472,10 @@ public class ClientProxy extends CommonProxy {
 
     @SubscribeEvent
     public void registerModels(ModelRegistryEvent event) {
-        for (var block : HatchBlocks.all()) {
+        var BLOCKS = HatchBlocks.all();
+        var size = BLOCKS.size();
+        for (var i = 0; i < size; i++) {
+            var block = BLOCKS.get(i);
             ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(block), 0,
                 new ModelResourceLocation(Objects.requireNonNull(block.getRegistryName()), "inventory"));
         }
@@ -487,15 +491,15 @@ public class ClientProxy extends CommonProxy {
     @Override
     public Object getClientGuiElement(int id, EntityPlayer player, World world, int x, int y, int z) {
         return switch (getServerGuiElement(id, player, world, x, y, z)) {
-            case StructureToolContainer tool -> tool.builder()
-                ? new BuilderInstrumentGui(tool, player.inventory)
-                : new ScannerInstrumentGui(tool, player.inventory);
-            case ResearchContainer research -> new ResearchGui(research, player.inventory);
-            case MePatternAssemblyContainer pattern -> new MePatternAssemblyGui(pattern, player.inventory);
-            case MeResourceHatchContainer me -> new MeResourceHatchGui(me, player.inventory);
-            case ParallelControllerContainer parallel -> new ParallelControllerGui(parallel, player.inventory);
-            case ResourceHatchContainer resource -> new ResourceHatchGui(resource, player.inventory);
-            case EnergyHatchContainer energy -> new EnergyHatchGui(energy, player.inventory);
+            case ContainerStructureTool tool -> tool.builder()
+                ? new GuiBuilderInstrument(tool, player.inventory)
+                : new GuiScannerInstrument(tool, player.inventory);
+            case ContainerResearch research -> new GuiResearch(research, player.inventory);
+            case ContainerMEPatternAssembly pattern -> new GuiMEPatternAssembly(pattern, player.inventory);
+            case ContainerMEResourceHatch me -> new GuiMEResourceHatch(me, player.inventory);
+            case ContainerParallelController parallel -> new GuiParallelController(parallel, player.inventory);
+            case ContainerResourceHatch resource -> new GuiResourceHatch(resource, player.inventory);
+            case ContainerEnergyHatch energy -> new GuiEnergyHatch(energy, player.inventory);
             case AEBaseContainer container when container.getTarget() instanceof MachineControllerHost machine ->
                 MachineScreenRegistry.create(machine.type().id(), container, player.inventory);
             case null, default -> null;

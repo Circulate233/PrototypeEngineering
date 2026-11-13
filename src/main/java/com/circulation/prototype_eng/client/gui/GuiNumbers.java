@@ -5,7 +5,9 @@ import java.text.DecimalFormatSymbols;
 import java.text.NumberFormat;
 import java.util.Locale;
 
-/** Original PM label/tooltip formatting, including off-owner search-tree tooltips. */
+/**
+ * Original PM label/tooltip formatting, including off-owner search-tree tooltips.
+ */
 final class GuiNumbers {
     private static final ThreadLocal<NumberFormat> GROUPED = ThreadLocal.withInitial(() -> NumberFormat.getIntegerInstance(Locale.US));
     private static final ThreadLocal<DecimalFormat> DECIMAL = ThreadLocal.withInitial(() -> new DecimalFormat("0.0", DecimalFormatSymbols.getInstance(Locale.US)));

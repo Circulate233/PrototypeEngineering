@@ -6,7 +6,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
-/** Routes one unpacked AE resource package to a single hatch side and keeps any remainder. */
+/**
+ * Routes one unpacked AE resource package to a single hatch side and keeps any remainder.
+ */
 public final class HatchPackageTransfer {
     private HatchPackageTransfer() {
     }

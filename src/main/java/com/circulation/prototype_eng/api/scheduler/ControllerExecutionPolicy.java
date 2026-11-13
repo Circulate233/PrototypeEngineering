@@ -10,7 +10,9 @@ public enum ControllerExecutionPolicy {
     ASYNC_WORK(false, true),
     SYNCHRONOUS(false, false);
 
-    /** Shared declaration order; callers must not modify this array. */
+    /**
+     * Shared declaration order; callers must not modify this array.
+     */
     public static final ControllerExecutionPolicy[] VALUES = values();
 
     private final boolean scanAsync;

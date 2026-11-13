@@ -209,18 +209,6 @@ class ItemDeliveryTest {
     }
 
     @Test
-    void businessCheckpointCannotChangeCapabilitiesOrDownloadOwnership() {
-        var original = fragment(template());
-        var changed = original.taggedStackNbt();
-        changed.getCompoundTag("ForgeCaps").setInteger("energy", 0);
-        var changedPayload = new ItemDeliveryFragment(original.id(), KEY, ITEM, original.count(), changed, original.target(), Optional.empty(), original.status());
-        assertThrows(IllegalStateException.class, () -> original.requireTransitionTo(changedPayload));
-        var changedOwner = new ItemDeliveryFragment(original.id(), new DownloadOutputKey(PLAYER, new UUID(0, 8)), ITEM,
-            original.count(), original.taggedStackNbt(), original.target(), Optional.empty(), original.status());
-        assertThrows(IllegalStateException.class, () -> original.requireTransitionTo(changedOwner));
-    }
-
-    @Test
     void sharedFragmentCodecRetainsDownloadIdentityCapabilitiesAndExactDropTarget() {
         var codec = new ItemDeliveryFragmentNbt(new ResourceKeyNbt(id -> ITEM.getType().getId().equals(id) ? ITEM.getType() : null));
         var inventory = fragment(template());

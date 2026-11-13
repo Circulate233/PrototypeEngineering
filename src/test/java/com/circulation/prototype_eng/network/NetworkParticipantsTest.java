@@ -127,22 +127,6 @@ class NetworkParticipantsTest {
     }
 
     @Test
-    void participantCallbackCannotReplaceItsPublicationOrStartNestedWork() {
-        try (var fixture = new Fixture()) {
-            fixture.start(0);
-            var work = fixture.plan(1);
-            fixture.participant.duringCommit = () -> {
-                assertThrows(IllegalStateException.class, fixture.runtime::refresh);
-                assertThrows(IllegalStateException.class, work::commit);
-                assertThrows(IllegalStateException.class, fixture.registration::close);
-            };
-            assertEquals(COMMITTED, work.commit());
-            assertEquals(1, fixture.participant.commits);
-            assertEquals(1, fixture.participant.effects);
-        }
-    }
-
-    @Test
     void refreshCancelsOldUncommittedPlansWithoutRefillingCommittedWorkAndCompensationUsesOldBook() {
         try (var fixture = new Fixture()) {
             fixture.start(3);

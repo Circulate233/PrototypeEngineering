@@ -38,7 +38,9 @@ public final class HatchSlotActions {
         }
     }
 
-    /** Inserts the resource represented by an AE package and returns its uninserted amount. */
+    /**
+     * Inserts the resource represented by an AE package and returns its uninserted amount.
+     */
     @Nullable
     public static GenericStack insertPackage(SlottedResourceStorage inventory, int slot, GenericStack packaged) {
         if (slot < -1) throw new IllegalArgumentException("Invalid resource hatch slot");

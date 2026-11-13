@@ -9,7 +9,9 @@ import java.time.Duration;
 import java.util.Locale;
 import java.util.Objects;
 
-/** Server defaults and explicit reloads; running sessions apply requests at a joined tick boundary. */
+/**
+ * Server defaults and explicit reloads; running sessions apply requests at a joined tick boundary.
+ */
 public final class SchedulerConfig {
     private static final int PROCESSORS = Runtime.getRuntime().availableProcessors();
     private static Settings settings = new Settings(Math.max(2, PROCESSORS), Math.clamp(PROCESSORS, 2, 8));
@@ -59,7 +61,9 @@ public final class SchedulerConfig {
         return WorkerStrategy.PLATFORM_POOL;
     }
 
-    /** Actual executor creation choices inside the original scheduler, with identical ownership rules. */
+    /**
+     * Actual executor creation choices inside the original scheduler, with identical ownership rules.
+     */
     public enum WorkerStrategy {
         PLATFORM_POOL, VIRTUAL_PER_TASK;
 

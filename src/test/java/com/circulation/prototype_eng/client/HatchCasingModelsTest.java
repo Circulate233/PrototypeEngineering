@@ -1,13 +1,7 @@
 package com.circulation.prototype_eng.client;
 
-import com.circulation.prototype_eng.block.EnergyHatchBlock;
-import com.circulation.prototype_eng.block.MachineControllerBlock;
-import com.circulation.prototype_eng.block.MePatternAssemblyBlock;
-import com.circulation.prototype_eng.block.MeResourceHatchBlock;
-import com.circulation.prototype_eng.block.ParallelControllerBlock;
-import com.circulation.prototype_eng.block.ResourceHatchBlock;
 import com.circulation.prototype_eng.client.render.CasingTextureType;
-import net.minecraft.block.Block;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.FaceBakery;
@@ -17,7 +11,6 @@ import net.minecraft.client.renderer.block.model.ModelRotation;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.EnumFacing;
-import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 import org.junit.jupiter.api.Test;
@@ -51,13 +44,60 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HatchCasingModelsTest {
-    private static final class Sprite extends TextureAtlasSprite {
-        private Sprite(String name) {
-            super(name);
-            setIconWidth(16);
-            setIconHeight(16);
-            initSprite(16, 16, 0, 0, false);
+    private static IBakedModel model(String name, ModelRotation rotation) throws Exception {
+        var resource = "/assets/prototype_eng/models/block/" + name + ".json";
+        ModelBlock definition;
+        try (var input = new InputStreamReader(Objects.requireNonNull(HatchCasingModelsTest.class.getResourceAsStream(resource)), StandardCharsets.UTF_8)) {
+            definition = ModelBlock.deserialize(input);
         }
+        var textures = new HashMap<String, ICTMTexture<?>>();
+        var quads = new ArrayList<BakedQuad>();
+        var bakery = new FaceBakery();
+        for (var element : definition.getElements()) {
+            for (var face : element.mapFaces.entrySet()) {
+                var sprite = new Sprite(definition.resolveTextureName(face.getValue().texture));
+                try (var input = HatchCasingModelsTest.class.getResourceAsStream("/assets/prototype_eng/textures/" + sprite.getIconName().split(":")[1] + ".png.mcmeta")) {
+                    boolean casing = input != null && new String(input.readAllBytes(), StandardCharsets.UTF_8).contains("prototype_eng:casing");
+                    textures.put(sprite.getIconName(), casing ? new CasingTextureType().makeTexture(info(sprite.getIconName(), BlockRenderLayer.CUTOUT))
+                        : TextureTypeNormal.INSTANCE.makeTexture(info(sprite.getIconName(), BlockRenderLayer.CUTOUT)));
+                }
+                quads.add(bakery.makeBakedQuad(element.positionFrom, element.positionTo, face.getValue(), sprite, face.getKey(),
+                    rotation, element.partRotation, false, element.shade));
+            }
+        }
+        IModelCTM ctm = proxy(IModelCTM.class, (method, arguments) -> "getTexture".equals(method) ? textures.get((String) arguments[0]) : null);
+        IBakedModel parent = proxy(IBakedModel.class, (method, arguments) -> "getQuads".equals(method)
+            ? arguments[1] == null ? quads : List.of() : null);
+        return wrapped(ctm, parent);
+    }
+
+    private static ModelBakedCTM wrapped(IModelCTM model, IBakedModel parent) {
+        return new ModelBakedCTM(model, parent) {
+            @Override
+            public List<BakedQuad> getQuads(IBlockState state, EnumFacing side, long rand) {
+                throw new AssertionError("Membership must not recursively enter CTM rendering: " + state + ", " + side + ", " + rand);
+            }
+        };
+    }
+
+    private static TextureInfo info(String name, BlockRenderLayer layer) {
+        return new TextureInfo(new TextureAtlasSprite[]{new Sprite(name), new Sprite(name + "-ctm")}, Optional.empty(), layer);
+    }
+
+    private static IBlockState state(String name) {
+        return proxy(IBlockState.class, (method, ignoredArguments) -> "toString".equals(method) ? name : null);
+    }
+
+    private static IBlockAccess world(Map<BlockPos, IBlockState> states, IBlockState empty) {
+        return proxy(IBlockAccess.class, (method, arguments) -> "getBlockState".equals(method) ? states.getOrDefault((BlockPos) arguments[0], empty) : null);
+    }
+
+    private static <T> T proxy(Class<T> type, Call call) {
+        return type.cast(Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, (proxy, method, arguments) -> {
+            if ("hashCode".equals(method.getName())) return System.identityHashCode(proxy);
+            if ("equals".equals(method.getName())) return proxy == arguments[0];
+            return call.invoke(method.getName(), arguments);
+        }));
     }
 
     @Test
@@ -107,7 +147,7 @@ class HatchCasingModelsTest {
                 var top = Dir.TOP.applyConnection(origin, face);
                 var right = Dir.RIGHT.applyConnection(origin, face);
                 var corner = Dir.TOP_RIGHT.applyConnection(origin, face);
-                var blocks = new HashMap<BlockPos, IBlockState>();
+                var blocks = new BlockPos2ObjectMap<IBlockState>();
                 blocks.put(origin, state);
                 blocks.put(top, neighbor);
                 blocks.put(right, neighbor);
@@ -126,13 +166,7 @@ class HatchCasingModelsTest {
     }
 
     @Test
-    void eligibilityAndFaceMembershipExcludeOtherBlocksAndReloadCannotPublishAnOldLookup() throws Exception {
-        for (var family : List.of(ResourceHatchBlock.class, EnergyHatchBlock.class, MeResourceHatchBlock.class, MePatternAssemblyBlock.class))
-            assertTrue(HatchCasingModels.eligible(family, new ResourceLocation("external", "custom_hatch")));
-        assertTrue(HatchCasingModels.eligible(Block.class, new ResourceLocation("prototype_eng", "block_casing")));
-        for (var other : List.of(Block.class, ParallelControllerBlock.class, MachineControllerBlock.class))
-            assertFalse(HatchCasingModels.eligible(other, new ResourceLocation("external", "same_casing_texture")));
-
+    void faceMembershipAndReloadCannotPublishAnOldLookup() throws Exception {
         var source = model("me_input_assembly", ModelRotation.X0_Y0);
         var fixture = state("only-east-casing");
         var ctm = (ModelBakedCTM) source;
@@ -141,7 +175,7 @@ class HatchCasingModelsTest {
             if (!"getQuads".equals(method)) return null;
             if (arguments[1] != null) return List.of();
             return parent.getQuads(fixture, null, 0).stream()
-                .filter(quad -> quad.getFace() == EnumFacing.EAST).toList();
+                         .filter(quad -> quad.getFace() == EnumFacing.EAST).toList();
         });
         var onlyEast = wrapped(ctm.getModel(), filtered);
         assertEquals(1 << EnumFacing.EAST.ordinal(), HatchCasingModels.findFaces(fixture, onlyEast));
@@ -171,63 +205,16 @@ class HatchCasingModelsTest {
         }
     }
 
-    private static IBakedModel model(String name, ModelRotation rotation) throws Exception {
-        var resource = "/assets/prototype_eng/models/block/" + name + ".json";
-        ModelBlock definition;
-        try (var input = new InputStreamReader(Objects.requireNonNull(HatchCasingModelsTest.class.getResourceAsStream(resource)), StandardCharsets.UTF_8)) {
-            definition = ModelBlock.deserialize(input);
-        }
-        var textures = new HashMap<String, ICTMTexture<?>>();
-        var quads = new ArrayList<BakedQuad>();
-        var bakery = new FaceBakery();
-        for (var element : definition.getElements()) {
-            for (var face : element.mapFaces.entrySet()) {
-                var sprite = new Sprite(definition.resolveTextureName(face.getValue().texture));
-                try (var input = HatchCasingModelsTest.class.getResourceAsStream("/assets/prototype_eng/textures/" + sprite.getIconName().split(":")[1] + ".png.mcmeta")) {
-                    boolean casing = input != null && new String(input.readAllBytes(), StandardCharsets.UTF_8).contains("prototype_eng:casing");
-                    textures.put(sprite.getIconName(), casing ? new CasingTextureType().makeTexture(info(sprite.getIconName(), BlockRenderLayer.CUTOUT))
-                        : TextureTypeNormal.INSTANCE.makeTexture(info(sprite.getIconName(), BlockRenderLayer.CUTOUT)));
-                }
-                quads.add(bakery.makeBakedQuad(element.positionFrom, element.positionTo, face.getValue(), sprite, face.getKey(),
-                    rotation, element.partRotation, false, element.shade));
-            }
-        }
-        IModelCTM ctm = proxy(IModelCTM.class, (method, arguments) -> "getTexture".equals(method) ? textures.get((String) arguments[0]) : null);
-        IBakedModel parent = proxy(IBakedModel.class, (method, arguments) -> "getQuads".equals(method)
-            ? arguments[1] == null ? quads : List.of() : null);
-        return wrapped(ctm, parent);
-    }
-
-    private static ModelBakedCTM wrapped(IModelCTM model, IBakedModel parent) {
-        return new ModelBakedCTM(model, parent) {
-            @Override
-            public List<BakedQuad> getQuads(IBlockState state, EnumFacing side, long rand) {
-                throw new AssertionError("Membership must not recursively enter CTM rendering: " + state + ", " + side + ", " + rand);
-            }
-        };
-    }
-
-    private static TextureInfo info(String name, BlockRenderLayer layer) {
-        return new TextureInfo(new TextureAtlasSprite[]{new Sprite(name), new Sprite(name + "-ctm")}, Optional.empty(), layer);
-    }
-
-    private static IBlockState state(String name) {
-        return proxy(IBlockState.class, (method, ignoredArguments) -> "toString".equals(method) ? name : null);
-    }
-
-    private static IBlockAccess world(Map<BlockPos, IBlockState> states, IBlockState empty) {
-        return proxy(IBlockAccess.class, (method, arguments) -> "getBlockState".equals(method) ? states.getOrDefault((BlockPos) arguments[0], empty) : null);
-    }
-
     private interface Call {
         Object invoke(String name, Object[] arguments);
     }
 
-    private static <T> T proxy(Class<T> type, Call call) {
-        return type.cast(Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, (proxy, method, arguments) -> {
-            if ("hashCode".equals(method.getName())) return System.identityHashCode(proxy);
-            if ("equals".equals(method.getName())) return proxy == arguments[0];
-            return call.invoke(method.getName(), arguments);
-        }));
+    private static final class Sprite extends TextureAtlasSprite {
+        private Sprite(String name) {
+            super(name);
+            setIconWidth(16);
+            setIconHeight(16);
+            initSprite(16, 16, 0, 0, false);
+        }
     }
 }

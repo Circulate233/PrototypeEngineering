@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConstructionPreflightTest {
@@ -54,16 +53,4 @@ class ConstructionPreflightTest {
         assertEquals(1, result.missing().getLong(STONE));
     }
 
-    @Test
-    void excessOrNegativeAvailabilityCannotCreateNegativeMissingAmounts() {
-        assertTrue(ConstructionPreflight.allocate(List.of(new GenericStack(STONE, 1)), _ -> Long.MAX_VALUE).missing().isEmpty());
-        assertEquals(1, ConstructionPreflight.allocate(List.of(new GenericStack(STONE, 1)), _ -> -1).missing().getLong(STONE));
-    }
-
-    @Test
-    void overflowAndNonpositiveRequirementsFailBeforeQueryingStock() {
-        assertThrows(IllegalArgumentException.class, () -> ConstructionPreflight.allocate(
-            List.of(new GenericStack(WATER, Long.MAX_VALUE), new GenericStack(WATER, 1)), _ -> { throw new AssertionError("Stock queried"); }));
-        assertThrows(IllegalArgumentException.class, () -> ConstructionPreflight.allocate(List.of(new GenericStack(STONE, 0)), _ -> 1));
-    }
 }

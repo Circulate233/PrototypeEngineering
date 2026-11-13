@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.recipe.requirement;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.Tags;
-import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -24,13 +23,16 @@ public final class InputAllocation {
     private final ResourceLocation id;
     @Nullable
     private final Strategy strategy;
+
     private InputAllocation(Kind kind, ResourceLocation id, @Nullable Strategy strategy) {
         this.kind = kind;
         this.id = Objects.requireNonNull(id);
         this.strategy = strategy;
     }
 
-    /** The strategy and its captured state must remain immutable for the definition's lifetime. */
+    /**
+     * The strategy and its captured state must remain immutable for the definition's lifetime.
+     */
     public static InputAllocation custom(ResourceLocation id, Strategy strategy) {
         return new InputAllocation(Kind.CUSTOM, id, Objects.requireNonNull(strategy));
     }
@@ -43,7 +45,9 @@ public final class InputAllocation {
         return id;
     }
 
-    /** Called by acquisition on its owner, once per frozen proposal, never under a storage lock. */
+    /**
+     * Called by acquisition on its owner, once per frozen proposal, never under a storage lock.
+     */
     public List<Portion> allocate(Context context) {
         if (strategy == null) throw new IllegalStateException("Built-in allocation has no custom callback");
         return Objects.requireNonNull(strategy.allocate(context), "Custom allocation returned null");
@@ -58,11 +62,14 @@ public final class InputAllocation {
          * with no duplicate or unknown source index. Empty and partial proposals are invalid.
          * No world, storage, process, reservation or mutable context is supplied. Do not retain
          * external mutable state or perform effects: probes and later attempts may call this again.
+         * The returned list and its entries must remain unchanged until this allocation is resolved.
          */
         List<Portion> allocate(Context context);
     }
 
-    /** Frozen facts only. A null resource denotes independent FE, never an artificial AEKey. */
+    /**
+     * Frozen facts only. A null resource denotes independent FE, never an artificial AEKey.
+     */
     public interface Context {
         RecipeStage stage();
 
@@ -76,19 +83,18 @@ public final class InputAllocation {
     }
 
     /**
-     * Immutable identity and initial snapshot facts, plus availability remaining for this projection.
+     * Initial snapshot facts and availability remaining for this projection, addressed by source index.
      * resources contains every AEKey balance captured before this requirement's first projection;
      * FE sources have an empty resource map and expose their independent energy balance/limit.
-     * A revision or identity is diagnostic data, never permission to access or reserve a source.
+     * The revision describes the snapshot; reservations use the actual storage context.
+     * The resources map is borrowed as an immutable snapshot and must not be changed after construction.
      */
-    public record Source(int index, String identity, long revision, long available,
+    public record Source(int index, long revision, long available,
                          AEKey2LongMap resources, long energyAvailable, long maxExtract) {
         public Source {
-            Objects.requireNonNull(identity);
             Objects.requireNonNull(resources);
-            if (index < 0 || identity.isBlank() || revision < 0 || available < 0 || energyAvailable < 0 || maxExtract < 0)
+            if (index < 0 || revision < 0 || available < 0 || energyAvailable < 0 || maxExtract < 0)
                 throw new IllegalArgumentException("Invalid allocation source");
-            resources = ImmutableResourceAmounts.copyOf(resources);
         }
     }
 

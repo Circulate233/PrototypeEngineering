@@ -1,6 +1,6 @@
 # 研究界面与服务器操作
 
-研究界面使用具体 `ResearchGui extends AEBaseGui<ResearchContainer>` 和 `ResearchContainer extends AEBaseContainer`。复用 AE2 的 `GuiSync`、`PacketWritable` 和带 windowId 的窗口动作包，没有新增网络频道、GUI 基类或编辑器。库不注册用于打开界面的正式机器或物品。
+研究界面使用具体 `GuiResearch extends AEBaseGui<ContainerResearch>` 和 `ContainerResearch extends AEBaseContainer`。复用 AE2 的 `GuiSync`、`PacketWritable` 和带 windowId 的窗口动作包，没有新增网络频道、GUI 基类或编辑器。库不注册用于打开界面的正式机器或物品。
 
 ## 公开 Java 入口
 

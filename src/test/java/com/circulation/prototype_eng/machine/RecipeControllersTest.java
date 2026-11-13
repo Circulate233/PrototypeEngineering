@@ -25,41 +25,41 @@ import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
-import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
-import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
-import com.circulation.prototype_eng.api.storage.HatchMode;
-import com.circulation.prototype_eng.storage.BufferedResourceHatch;
-import com.circulation.prototype_eng.testsupport.TestResources.Key;
-import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
-import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
+import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
+import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeParallelismConstraint;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeParallelismSelection;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeProcessFactory;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanning;
 import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
+import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.energy.EnergyBuffer;
 import com.circulation.prototype_eng.localization.RecipeText;
+import com.circulation.prototype_eng.storage.BufferedResourceHatch;
+import com.circulation.prototype_eng.testsupport.TestResources.Key;
+import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
-import org.junit.jupiter.api.Test;
 import org.jetbrains.annotations.Nullable;
+import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -73,10 +73,42 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RecipeControllersTest {
     private static final ScanLimits LIMITS = new ScanLimits(32, 32);
 
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("controllers_test", path);
+    }
+
+    private static MachineRecipe recipe(String name, int quantity, int threads, Set<ResourceLocation> groups) {
+        return new MachineRecipe(id(name), 4, List.of(), groups, threads, RecipeParallelismSelection.fixed(quantity));
+    }
+
+    private static RecipeCatalog catalog(MachineRecipe... recipes) {
+        return new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "controller.pool", List.of(recipes))));
+    }
+
+    private static void allowance(MachineInstance owner, int parallel, int threads) {
+        owner.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, parallel);
+        owner.attributes().setBase(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, threads);
+    }
+
+    private static RecipeScanner.Result retained(RecipeScanner scanner) {
+        var attempt = scanner.beginScan(LIMITS);
+        RecipeScanner.Result result = null;
+        for (int step = 0; step < 10000 && !attempt.finished(); step++) {
+            result = attempt.advance(new RecipeWorkBudget(1), () -> true);
+            assertTrue(attempt.sources().isEmpty(), "Free recipes cannot create source obligations");
+        }
+        assertTrue(attempt.finished(), "One-unit slices must finish the stable scan");
+        return Objects.requireNonNull(result);
+    }
+
     @Test
     void batchWeightsIncludeCommittedStartQuantitiesAndShareOneSpeedClock() {
         var change = new RecipeRequirementType<>(id("start_quantity"), new RecipeRequirementSystem<String>() {
-            @Override public @Nullable Object crossRecipeTickIo(String payload) { return null; }
+            @Override
+            public @Nullable Object crossRecipeTickIo(String payload) {
+                return null;
+            }
+
             @Override
             public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
                 return new StartQuantity(process);
@@ -111,19 +143,34 @@ class RecipeControllersTest {
         var water = new Key(type, "water");
         var steam = new Key(type, "steam");
         var product = new Key(type, "product");
-        var hatch = new BufferedResourceHatch(HatchMode.MIXED, 8, Reference2LongMaps.singleton(type, 1000L), () -> { });
-        var energy = new EnergyBuffer(1000, () -> { });
+        var hatch = new BufferedResourceHatch(HatchMode.MIXED, 8, Reference2LongMaps.singleton(type, 1000L), () -> {
+        });
+        var energy = new EnergyBuffer(1000, () -> {
+        });
         assertEquals(100, Objects.requireNonNull(hatch.input()).insert(water, 100, Actionable.MODULATE));
         assertEquals(200, energy.receiveEnergy(200, Actionable.MODULATE));
         var blocked = new AtomicBoolean(true);
         var endGate = new RecipeRequirementType<>(id("batch_end_gate"), new RecipeRequirementSystem<String>() {
-            @Override public @Nullable Object crossRecipeTickIo(String payload) { return null; }
+            @Override
+            public @Nullable Object crossRecipeTickIo(String payload) {
+                return null;
+            }
+
             @Override
             public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
                 return blocked.get() ? new RequirementTransaction() {
-                    @Override public ProcessResult result() { return RecipeText.StorageChanged.blocked(); }
-                    @Override public void commit() { }
-                    @Override public void rollback() { }
+                    @Override
+                    public ProcessResult result() {
+                        return RecipeText.StorageChanged.blocked();
+                    }
+
+                    @Override
+                    public void commit() {
+                    }
+
+                    @Override
+                    public void rollback() {
+                    }
                 } : RequirementTransaction.SUCCESS;
             }
         });
@@ -171,40 +218,6 @@ class RecipeControllersTest {
         assertEquals(3, hatch.output().amount(product));
         assertEquals(157, energy.savedEnergy(), "Retrying END cannot charge another TICK");
         assertTrue(restored.activeProcesses().isEmpty());
-    }
-
-    private static ResourceLocation id(String path) {
-        return new ResourceLocation("controllers_test", path);
-    }
-
-    private record StartQuantity(RecipeProcess process) implements RequirementTransaction {
-        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-        @Override public void commit() { process.attributes().setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, 3); }
-        @Override public void rollback() { process.attributes().setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, 1); }
-    }
-
-    private static MachineRecipe recipe(String name, int quantity, int threads, Set<ResourceLocation> groups) {
-        return new MachineRecipe(id(name), 4, List.of(), groups, threads, RecipeParallelismSelection.fixed(quantity));
-    }
-
-    private static RecipeCatalog catalog(MachineRecipe... recipes) {
-        return new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "controller.pool", List.of(recipes))));
-    }
-
-    private static void allowance(MachineInstance owner, int parallel, int threads) {
-        owner.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, parallel);
-        owner.attributes().setBase(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, threads);
-    }
-
-    private static RecipeScanner.Result retained(RecipeScanner scanner) {
-        var attempt = scanner.beginScan(LIMITS);
-        RecipeScanner.Result result = null;
-        for (int step = 0; step < 10000 && !attempt.finished(); step++) {
-            result = attempt.advance(new RecipeWorkBudget(1), () -> true);
-            assertTrue(attempt.sources().isEmpty(), "Free recipes cannot create source obligations");
-        }
-        assertTrue(attempt.finished(), "One-unit slices must finish the stable scan");
-        return Objects.requireNonNull(result);
     }
 
     @Test
@@ -264,14 +277,33 @@ class RecipeControllersTest {
             assertEquals(previous.id(), host.requireSlot("main").lastCompletedRecipe());
             int[] discoveries = {0};
             var pool = new RecipePool() {
-                @Override public ResourceLocation id() { return RecipeControllersTest.id("retry_pool"); }
-                @Override public String translationKey() { return "retry.pool"; }
-                @Override public List<MachineRecipe> recipes() { return List.of(first, previous); }
-                @Override public List<MachineType> machines() { return List.of(); }
-                @Override public RecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines) {
+                @Override
+                public ResourceLocation id() {
+                    return RecipeControllersTest.id("retry_pool");
+                }
+
+                @Override
+                public String translationKey() {
+                    return "retry.pool";
+                }
+
+                @Override
+                public List<MachineRecipe> recipes() {
+                    return List.of(first, previous);
+                }
+
+                @Override
+                public List<MachineType> machines() {
+                    return List.of();
+                }
+
+                @Override
+                public RecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines) {
                     throw new AssertionError("The fixture uses an already canonical directory");
                 }
-                @Override public @Nullable RecipeCandidateIndex.Cursor beginCandidates(MachineInstance machine, Set<ResourceLocation> groups) {
+
+                @Override
+                public @Nullable RecipeCandidateIndex.Cursor beginCandidates(MachineInstance machine, Set<ResourceLocation> groups) {
                     discoveries[0]++;
                     return null;
                 }
@@ -724,6 +756,23 @@ class RecipeControllersTest {
         assertTrue(creations[0] <= 4, "Only an actual shared-balance change may rebuild a candidate");
         assertTrue(checks[0] <= 4);
         assertEquals(0, host.sharedUsage(recipe).available());
+    }
+
+    private record StartQuantity(RecipeProcess process) implements RequirementTransaction {
+        @Override
+        public ProcessResult result() {
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public void commit() {
+            process.attributes().setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, 3);
+        }
+
+        @Override
+        public void rollback() {
+            process.attributes().setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
+        }
     }
 
     private static final class Host implements MachineLifecycleHost {

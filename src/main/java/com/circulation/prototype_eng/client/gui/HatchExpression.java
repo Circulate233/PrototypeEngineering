@@ -4,7 +4,9 @@ import ae2.client.gui.MathExpressionParser;
 
 import java.text.DecimalFormat;
 
-/** AE's number-entry parser; -1 disables the additional user rate limit and zero forbids transfer. */
+/**
+ * AE's number-entry parser; -1 disables the additional user rate limit and zero forbids transfer.
+ */
 final class HatchExpression {
     private static final DecimalFormat FORMAT = new DecimalFormat("###.###");
 

@@ -406,7 +406,7 @@ public final class PlayerResearchState {
                 levels.put(entry.getKey(), entry.getIntValue());
             }
             levels.defaultReturnValue(0);
-            completedLevels = ResearchSnapshots.levels(levels);
+            completedLevels = levels;
             var claims = new ObjectArrayList<RewardClaim>(rewardClaims.size());
             var keys = new ObjectOpenHashSet<RewardClaim.Key>(rewardClaims.size());
             for (var claim : Objects.requireNonNull(rewardClaims, "rewardClaims")) {

@@ -6,7 +6,9 @@ import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
 
 import java.io.Serial;
 
-/** AE quantities in insertion order with an explicit expected entry count. */
+/**
+ * AE quantities in insertion order with an explicit expected entry count.
+ */
 @SuppressWarnings("CloneableClassInSecureContext") // Mutable fastutil clones own independent key/value arrays.
 public final class AEKeyLinkedOpenHashMap extends Object2LongLinkedOpenHashMap<AEKey> implements AEKey2LongMap {
     @Serial

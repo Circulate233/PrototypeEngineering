@@ -25,12 +25,10 @@ import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import com.circulation.prototype_eng.recipe.PreparedRequirement;
 import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.AbstractList;
 import java.util.List;
 import java.util.Objects;
 
@@ -74,9 +72,9 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
     }
 
     private static CapturedTransaction capture(RequirementTransaction child) {
-        var reservations = new ObjectArrayList<ResourceReservation>(6);
+        List<? extends ResourceReservation> reservations = List.of();
         try {
-            reservations.addAll(Objects.requireNonNull(child.reservations(), "selected child reservations"));
+            reservations = child.reservations();
             var result = Objects.requireNonNull(child.result(), "selected child result");
             return new CapturedTransaction(result, reservations, child);
         } catch (RuntimeException | Error failure) {
@@ -85,7 +83,7 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         }
     }
 
-    private static void rollbackAfterFailure(RequirementTransaction child, List<ResourceReservation> reservations, Throwable primary) {
+    private static void rollbackAfterFailure(RequirementTransaction child, List<? extends ResourceReservation> reservations, Throwable primary) {
         try {
             ResourceTransactions.rollback(reservations, () -> {
                 try {
@@ -234,7 +232,7 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         public RequirementTransaction acquire() {
             var budget = process.preparationBudget();
             if (!candidate.capture(budget) || !budget.take()) return new PreparedRequirement(this);
-            var child = new CapturedTransaction(candidate.result(), new FrozenReservations(candidate.reservations()), candidate.transaction());
+            var child = new CapturedTransaction(candidate.result(), candidate.reservations(), candidate.transaction());
             candidate.transfer();
             return stage == RecipeStage.END ? new EndTransaction(child, selection) : child;
         }
@@ -452,7 +450,7 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
                 return new PreparedRequirement(new FlatPreparation(process, preparation.path, preparation.payload, preparation.index + 1));
             }
             if (!budget.take()) return new PreparedRequirement(this);
-            var child = new CapturedTransaction(candidate.result(), new FrozenReservations(candidate.reservations()), new PreparedChild(TransactionGroup.frozen(candidate.transactions())));
+            var child = new CapturedTransaction(candidate.result(), candidate.reservations(), new PreparedChild(new TransactionGroup(candidate.transactions())));
             var transaction = begin(process, SelectiveState.getOrCreate(process), preparation.path, preparation.index, child, preparation.payload.modifiers());
             candidate.transfer();
             return transaction;
@@ -621,27 +619,6 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
     }
 
     /**
-     * Private proof of an inventory frozen item by item by the exact flat candidate handle.
-     */
-    private static final class FrozenReservations extends AbstractList<ResourceReservation> {
-        private final List<ResourceReservation> reservations;
-
-        private FrozenReservations(List<ResourceReservation> reservations) {
-            this.reservations = reservations;
-        }
-
-        @Override
-        public ResourceReservation get(int index) {
-            return reservations.get(index);
-        }
-
-        @Override
-        public int size() {
-            return reservations.size();
-        }
-    }
-
-    /**
      * Candidate steps belong to the outer batch; only successful selection installs its effects.
      */
     private static final class Selecting implements RequirementTransaction, RequirementAlternatives {
@@ -725,13 +702,11 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         }
     }
 
-    private record CapturedTransaction(ProcessResult result, List<ResourceReservation> reservations,
+    /**
+     * Borrows the child's stable inventory through the enclosing stage settlement.
+     */
+    private record CapturedTransaction(ProcessResult result, List<? extends ResourceReservation> reservations,
                                        RequirementTransaction child) implements RequirementTransaction {
-        private CapturedTransaction {
-            if (!(reservations instanceof FrozenReservations))
-                reservations = ObjectLists.unmodifiable(new ObjectArrayList<>(reservations));
-        }
-
         @Override
         public @Nullable RequirementContinuation continuation() {
             return child.continuation();
@@ -833,7 +808,7 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         }
 
         @Override
-        public List<ResourceReservation> reservations() {
+        public List<? extends ResourceReservation> reservations() {
             return child.reservations();
         }
 
@@ -1040,7 +1015,7 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         }
 
         @Override
-        public List<ResourceReservation> reservations() {
+        public List<? extends ResourceReservation> reservations() {
             return child.reservations();
         }
 

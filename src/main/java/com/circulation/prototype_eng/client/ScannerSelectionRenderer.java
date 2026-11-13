@@ -16,7 +16,9 @@ import net.minecraftforge.fml.relauncher.Side;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL14;
 
-/** PM scanner endpoint, selected region and small-region block outlines. */
+/**
+ * PM scanner endpoint, selected region and small-region block outlines.
+ */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID, value = Side.CLIENT)
 public final class ScannerSelectionRenderer {
     private ScannerSelectionRenderer() {
@@ -72,12 +74,7 @@ public final class ScannerSelectionRenderer {
 
     private static void outline(World world, BlockPos pos, double x, double y, double z, float red, float blue, float alpha) {
         if (!world.isBlockLoaded(pos) || world.isAirBlock(pos)) return;
-        AxisAlignedBB bounds;
-        try {
-            bounds = world.getBlockState(pos).getSelectedBoundingBox(world, pos);
-        } catch (RuntimeException invalidBounds) {
-            bounds = new AxisAlignedBB(pos);
-        }
+        var bounds = world.getBlockState(pos).getSelectedBoundingBox(world, pos);
         RenderGlobal.drawSelectionBoundingBox(bounds.grow(.002).offset(-x, -y, -z), red, .9f, blue, alpha);
     }
 }

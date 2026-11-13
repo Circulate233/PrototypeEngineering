@@ -60,7 +60,8 @@ class RecipeCatalogCompositionTest {
     }
 
     @Test
-    @SuppressWarnings("resource") // Bounded finally proves this real discovery worker exits after success or failure.
+    @SuppressWarnings("resource")
+        // Bounded finally proves this real discovery worker exits after success or failure.
     void selectedMixedProvidersReuseTheirCombinationWithoutReenumeratingRecipesAndPreserveLiveProofs() throws Exception {
         var first = free("first");
         var shared = free("shared");
@@ -126,7 +127,8 @@ class RecipeCatalogCompositionTest {
         var catalog = new RecipeCatalog(List.of(general, simple, custom));
         var machine = new CrossRecipeController();
         machine.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 3);
-        var hatch = new BufferedResourceHatch(HatchMode.MIXED, 2, Reference2LongMaps.singleton(type, 100L), () -> { });
+        var hatch = new BufferedResourceHatch(HatchMode.MIXED, 2, Reference2LongMaps.singleton(type, 100L), () -> {
+        });
         Objects.requireNonNull(hatch.input()).insert(input, 1, Actionable.MODULATE);
         machine.components().put(MachineHatches.TYPE, new MachineHatches(List.of(hatch), List.of(), List.of()));
         var host = machine.createRecipeHost(List.of(), Set.of(GROUP));
@@ -140,10 +142,14 @@ class RecipeCatalogCompositionTest {
         assertEquals(1, Objects.requireNonNull(hatch.output()).availableAmount(output));
     }
 
-    private record Provider(ResourceLocation id, List<MachineRecipe> definitions, @Nullable Collection<MachineRecipe> opinion,
-                            int bound, int[] enumerations, boolean[] valid, Thread[] enumerationThread) implements RecipePool {
+    private record Provider(ResourceLocation id, List<MachineRecipe> definitions,
+                            @Nullable Collection<MachineRecipe> opinion,
+                            int bound, int[] enumerations, boolean[] valid,
+                            Thread[] enumerationThread) implements RecipePool {
         @Override
-        public String translationKey() { return "pool.provider"; }
+        public String translationKey() {
+            return "pool.provider";
+        }
 
         @Override
         public List<MachineRecipe> recipes() {
@@ -153,7 +159,9 @@ class RecipeCatalogCompositionTest {
         }
 
         @Override
-        public List<MachineType> machines() { return List.of(); }
+        public List<MachineType> machines() {
+            return List.of();
+        }
 
         @Override
         public RecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines) {
@@ -165,16 +173,24 @@ class RecipeCatalogCompositionTest {
         public RecipeCandidateIndex.Cursor beginCandidates(MachineInstance machine, Set<ResourceLocation> groups) {
             return new RecipeCandidateIndex.Cursor() {
                 @Override
-                public boolean advance(RecipeWorkBudget budget) { return budget.take(); }
+                public boolean advance(RecipeWorkBudget budget) {
+                    return budget.take();
+                }
 
                 @Override
-                public @Nullable Collection<MachineRecipe> result() { return opinion; }
+                public @Nullable Collection<MachineRecipe> result() {
+                    return opinion;
+                }
 
                 @Override
-                public int inputParallelismLimit(MachineRecipe recipe) { return bound; }
+                public int inputParallelismLimit(MachineRecipe recipe) {
+                    return bound;
+                }
 
                 @Override
-                public boolean current() { return valid[0]; }
+                public boolean current() {
+                    return valid[0];
+                }
             };
         }
     }

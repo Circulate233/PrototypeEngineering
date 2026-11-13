@@ -19,7 +19,9 @@ public interface StructureReadSource {
      */
     @Nullable <T> T read(StructureQuery<T> query, BlockPos position);
 
-    /** Unknown area overrides keep their actual whole-area cooperative call. */
+    /**
+     * Unknown area overrides keep their actual whole-area cooperative call.
+     */
     default StructureOperation<Boolean> beginAreaRead(StructureBounds bounds) {
         requireServerThread();
         return StructureOperation.call(() -> {
@@ -28,7 +30,9 @@ public interface StructureReadSource {
         });
     }
 
-    /** Explicit native preparation may visit loaded columns incrementally; final proof uses beginAreaRead. */
+    /**
+     * Explicit native preparation may visit loaded columns incrementally; final proof uses beginAreaRead.
+     */
     default StructureOperation<Boolean> beginWorkerAreaRead(StructureBounds bounds) {
         return beginAreaRead(bounds);
     }

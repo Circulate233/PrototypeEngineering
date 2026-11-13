@@ -1,8 +1,6 @@
 package com.circulation.prototype_eng.machine;
 
 import ae2.api.orientation.BlockOrientation;
-import com.circulation.prototype_eng.api.component.ComponentType;
-import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineRuntimeRegistrationEvent;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
@@ -15,12 +13,9 @@ import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.localization.RecipeText;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
-import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 
-import java.util.AbstractCollection;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -93,66 +88,6 @@ class MachineRuntimeRegistryTest {
     }
 
     @Test
-    void assemblyValidationCannotObserveStructuresEarlyOrReenterPublicationAndNeverCallsFactories() {
-        var component = new ComponentType<MachineInstance, Object>(id("component"), _ -> fail("Runtime registration cannot create components"), List.of());
-        var type = MachineType.builder(id("machine"), RecipeText.Cancelled, id("shape")).component(component).build();
-        var assembly = MachineAssembly.builder(type, "v1").recreated(component).build();
-        var shape = new Shape(type.structureId());
-        var structures = Map.of(shape.id(), shape);
-        var registry = frozen(type);
-        var definitions = new AbstractCollection<MachineAssembly>() {
-            @Override
-            public @NotNull Iterator<MachineAssembly> iterator() {
-                assertUnpublished(registry, type);
-                assertThrows(IllegalStateException.class, () -> registry.resolveStructures(structures));
-                return List.of(assembly).iterator();
-            }
-
-            @Override
-            public int size() {
-                return 1;
-            }
-        };
-
-        registry.resolveRuntime(structures, definitions);
-        assertSame(shape, registry.structure(type));
-        assertSame(assembly, registry.assembly(type));
-    }
-
-    @Test
-    void structureCallbacksCannotReenterRuntimePublicationAndFailureRemainsRetryable() {
-        var type = type("machine", "shape");
-        var registry = frozen(type);
-        var assembly = assembly(type);
-        var reentrant = new Shape(type.structureId(), () -> registry.resolveRuntime(Map.of(), List.of()));
-        assertThrows(IllegalStateException.class, () -> registry.resolveRuntime(Map.of(type.structureId(), reentrant), List.of(assembly)));
-        assertUnpublished(registry, type);
-
-        var shape = new Shape(type.structureId());
-        registry.resolveRuntime(Map.of(shape.id(), shape), List.of(assembly));
-        assertSame(shape, registry.structure(type));
-        assertSame(assembly, registry.assembly(type));
-    }
-
-    @Test
-    void runtimeRequiresFrozenDeclarationsAndCannotUpgradeLegacyStructurePublication() {
-        var registry = new MachineTypeRegistry();
-        var type = type("machine", "shape");
-        var shape = new Shape(type.structureId());
-        var assembly = assembly(type);
-        registry.register(type);
-        assertThrows(IllegalStateException.class, () -> registry.resolveRuntime(Map.of(shape.id(), shape), List.of(assembly)));
-        assertThrows(IllegalStateException.class, () -> registry.assembly(type));
-        registry.freeze();
-        registry.resolveStructures(Map.of(shape.id(), shape));
-
-        assertSame(shape, registry.structure(type));
-        assertThrows(IllegalStateException.class, () -> registry.assembly(type));
-        assertThrows(IllegalStateException.class, () -> registry.resolveRuntime(Map.of(shape.id(), shape), List.of(assembly)));
-        assertSame(shape, registry.structure(type));
-    }
-
-    @Test
     void eventRejectsDuplicateAndForeignDefinitionsAndKeepsStableSnapshotsWithoutPublishing() {
         var first = type("first", "shape");
         var second = type("second", "other_shape");
@@ -170,8 +105,6 @@ class MachineRuntimeRegistryTest {
         assertThrows(IllegalArgumentException.class, () -> event.structure(new Shape(firstShape.id())));
         assertThrows(IllegalArgumentException.class, () -> event.assembly(assembly(first)));
         assertThrows(IllegalArgumentException.class, () -> event.assembly(assembly(type("second", "other_shape"))));
-        assertThrows(UnsupportedOperationException.class, () -> oldStructures.put(secondShape.id(), secondShape));
-        assertThrows(UnsupportedOperationException.class, () -> oldAssemblies.add(secondAssembly));
         event.structure(secondShape);
         event.assembly(secondAssembly);
         assertEquals(Map.of(firstShape.id(), firstShape), oldStructures);
@@ -185,18 +118,7 @@ class MachineRuntimeRegistryTest {
         assertSame(secondAssembly, registry.assembly(second));
     }
 
-    private record Shape(ResourceLocation shapeId, Runnable onReadId) implements MachineStructure {
-        private Shape(ResourceLocation id) {
-            this(id, () -> {
-            });
-        }
-
-        @Override
-        public ResourceLocation id() {
-            onReadId.run();
-            return shapeId;
-        }
-
+    private record Shape(ResourceLocation id) implements MachineStructure {
         @Override
         public BlockOrientation orientation() {
             return fail("Registration must not inspect orientation");

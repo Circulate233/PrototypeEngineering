@@ -3,7 +3,7 @@ package com.circulation.prototype_eng.client.preview;
 import ae2.client.gui.AEBaseGui;
 import ae2.container.slot.AppEngSlot;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
-import com.circulation.prototype_eng.client.gui.StructurePreviewGui;
+import com.circulation.prototype_eng.client.gui.GuiStructurePreview;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiScreen;
@@ -13,11 +13,14 @@ import net.minecraft.inventory.Container;
 import net.minecraft.inventory.Slot;
 import org.jetbrains.annotations.Nullable;
 
-/** Navigation for the preview's own screens and the native AE sub-screen API. */
+/**
+ * Navigation for the preview's own screens and the native AE sub-screen API.
+ */
 public final class PreviewScreenTransitions {
     private static @Nullable Session opening;
 
-    private PreviewScreenTransitions() {}
+    private PreviewScreenTransitions() {
+    }
 
     public static Session capture(StructurePreviews service) {
         return new Session(service);
@@ -52,7 +55,7 @@ public final class PreviewScreenTransitions {
         private final int window;
         private final @Nullable GuiScreen parent;
         private final ObjectArrayList<SavedSlot> originalSlots;
-        private StructurePreviewGui<?> viewer;
+        private GuiStructurePreview<?> viewer;
 
         private Session(StructurePreviews service) {
             var mc = Minecraft.getMinecraft();
@@ -74,11 +77,11 @@ public final class PreviewScreenTransitions {
                 && player.isEntityAlive() && !service.closed();
         }
 
-        public boolean viewerCurrent(StructurePreviewGui<?> screen) {
+        public boolean viewerCurrent(GuiStructurePreview<?> screen) {
             return viewer == screen && Minecraft.getMinecraft().currentScreen == screen && ownerCurrent();
         }
 
-        public boolean open(StructurePreviewGui<?> screen) {
+        public boolean open(GuiStructurePreview<?> screen) {
             var mc = Minecraft.getMinecraft();
             if (viewer != null || !ownerCurrent() || mc.currentScreen != parent) return false;
             viewer = screen;
@@ -101,7 +104,7 @@ public final class PreviewScreenTransitions {
             for (var saved : originalSlots) if (container.inventorySlots.contains(saved.slot)) saved.restore();
         }
 
-        public void suspendNativeSlots(StructurePreviewGui<?> screen) {
+        public void suspendNativeSlots(GuiStructurePreview<?> screen) {
             if (screen.getContainer() != container || !viewerCurrent(screen)) return;
             for (var saved : originalSlots) if (container.inventorySlots.contains(saved.slot)) saved.suspend();
         }

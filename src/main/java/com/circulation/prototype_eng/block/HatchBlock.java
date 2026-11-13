@@ -13,11 +13,11 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.NonNullList;
 import net.minecraft.util.ResourceLocation;
-import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
@@ -47,7 +47,9 @@ public abstract class HatchBlock<T extends AEBaseTile> extends AEBaseTileBlock<T
         setHarvestLevel("pickaxe", 1);
     }
 
-    /** Sparse emissive overlays require alpha testing even when CTM is not installed. */
+    /**
+     * Sparse emissive overlays require alpha testing even when CTM is not installed.
+     */
     @Override
     @SideOnly(Side.CLIENT)
     public @NotNull BlockRenderLayer getRenderLayer() {
@@ -110,7 +112,9 @@ public abstract class HatchBlock<T extends AEBaseTile> extends AEBaseTileBlock<T
         drops.add(stack);
     }
 
-    /** Resource hatches keep settings here and eject their contents through AE's additional drops. */
+    /**
+     * Resource hatches keep settings here and eject their contents through AE's additional drops.
+     */
     protected NBTTagCompound itemDropData(T tile) {
         return tile.writeToNBT(new NBTTagCompound());
     }

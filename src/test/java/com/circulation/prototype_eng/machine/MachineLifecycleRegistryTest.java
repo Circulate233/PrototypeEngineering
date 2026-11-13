@@ -75,8 +75,6 @@ class MachineLifecycleRegistryTest {
         assertEquals(List.of(first, removed), visited);
         assertEquals(List.of(first, removed), captured);
         assertEquals(List.of(first, added), registry.snapshot());
-        assertThrows(UnsupportedOperationException.class, captured::removeFirst);
-        assertThrows(UnsupportedOperationException.class, () -> registry.snapshot().add(removed));
     }
 
     @Test

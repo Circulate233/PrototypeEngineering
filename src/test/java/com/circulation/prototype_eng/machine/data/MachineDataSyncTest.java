@@ -88,10 +88,11 @@ class MachineDataSyncTest {
         assertNull(terminal.hosts().getLast().slots().getFirst().process());
         assertEquals(terminal, MachineDataSnapshotCodec.decode(MachineDataSnapshotCodec.encode(terminal)));
         var machineFact = Objects.requireNonNull(terminal.machine());
-        var exported = machineFact.data();
-        exported.getCompoundTag("nested").setString("foreign", "mutation");
+        var changedNested = new NBTTagCompound();
+        changedNested.setString("foreign", "mutation");
+        machineData.set("nested", changedNested);
         assertFalse(machineFact.data().getCompoundTag("nested").hasKey("foreign"));
-        assertFalse(machineData.snapshot().data().getCompoundTag("nested").hasKey("foreign"));
+        assertTrue(machineData.snapshot().data().getCompoundTag("nested").hasKey("foreign"));
         assertNotNull(before.hosts().getFirst().slots().getFirst().process());
         machine.components().remove(DataComponents.MACHINE);
         assertNull(observer.observe(machine, 1).machine());
@@ -140,9 +141,10 @@ class MachineDataSyncTest {
         assertNull(assembler.receiveData(next.getLast()));
         assertFalse(assembler.current(display, parts.getFirst().catalog()));
         assertNull(assembler.receiveData(parts.getFirst()));
-        var corrupt = next.getLast().bytes();
+        var conflictTag = next.getLast().encode().copy();
+        var corrupt = conflictTag.getByteArray("Bytes");
         corrupt[corrupt.length - 1] ^= 1;
-        var conflict = new ControllerRenderChunks.Part(nextDisplay, next.getLast().catalog(), next.getLast().totalBytes(), next.getLast().index(), corrupt);
+        var conflict = ControllerRenderChunks.Part.decode(nextDisplay, conflictTag);
         assertThrows(IllegalArgumentException.class, () -> assembler.receiveData(conflict));
         for (var part : next) assertNull(assembler.receiveData(part));
         var withdrawn = new ControllerDisplayData(TYPE, BlockOrientation.NORTH_UP, false, 1, 3);

@@ -42,6 +42,23 @@ public final class RecipeRegistry {
         return true;
     }
 
+    private static Map<ResourceLocation, MachineRecipe> canonicalRecipes(RecipeCatalog catalog) {
+        var recipes = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineRecipe>();
+        for (var recipe : catalog.recipes()) recipes.put(recipe.id(), recipe);
+        return Object2ObjectMaps.unmodifiable(recipes);
+    }
+
+    private static void addRevision(Reference2ObjectOpenHashMap<MachineRecipe, String> revisions,
+                                    Object2ObjectLinkedOpenHashMap<RecipeDefinitionRevision, MachineRecipe> history,
+                                    MachineRecipe recipe, String revision) {
+        var previousRevision = revisions.putIfAbsent(recipe, revision);
+        var identity = new RecipeDefinitionRevision(recipe.id(), revision);
+        var previousRecipe = history.putIfAbsent(identity, recipe);
+        if (previousRevision != null && !previousRevision.equals(revision) || previousRecipe != null && previousRecipe != recipe) {
+            throw new IllegalArgumentException("Conflicting recipe revision: " + identity);
+        }
+    }
+
     public void register(RecipePool pool) {
         requireRegistration();
         Objects.requireNonNull(pool, "pool");
@@ -72,7 +89,9 @@ public final class RecipeRegistry {
         pool.recipes.put(recipe.id(), recipe);
     }
 
-    /** Declare a current canonical recipe's behavior revision, without requiring a persistence codec. */
+    /**
+     * Declare a current canonical recipe's behavior revision, without requiring a persistence codec.
+     */
     public void declareRevision(MachineRecipe recipe, String revision) {
         requireRegistration();
         var definition = new Definition(recipe, revision);
@@ -82,13 +101,17 @@ public final class RecipeRegistry {
         }
     }
 
-    /** Explicit cold-start history; these objects do not become automatic scan candidates. */
+    /**
+     * Explicit cold-start history; these objects do not become automatic scan candidates.
+     */
     public void declareHistoricalRevision(MachineRecipe recipe, String revision) {
         requireRegistration();
         historicalDeclarations.add(new Definition(recipe, revision));
     }
 
-    /** Optional shared resolver for machines that explicitly follow this registry with persistence. */
+    /**
+     * Optional shared resolver for machines that explicitly follow this registry with persistence.
+     */
     public void bindProcessCodecs(RecipeProcessCodecs codecs) {
         requireRegistration();
         if (processCodecs != null) throw new IllegalStateException("Process codecs are already bound");
@@ -166,7 +189,8 @@ public final class RecipeRegistry {
             addRevision(revisions, history, definition.recipe(), definition.revision());
         }
         if (processCodecs != null) {
-            for (var codec : processCodecs.snapshot().codecs()) addRevision(revisions, history, codec.recipe(), codec.revision());
+            for (var codec : processCodecs.snapshot().codecs())
+                addRevision(revisions, history, codec.recipe(), codec.revision());
         }
         frozen = new Snapshot(this, 0, Object2ObjectMaps.unmodifiable(pools), frozenPools, catalog, canonical, revisions, history);
         registrations.clear();
@@ -182,14 +206,19 @@ public final class RecipeRegistry {
         return frozen == Objects.requireNonNull(expected);
     }
 
-    /** Adopts a frozen directory for one actual scheduler/session; closed bindings never become standalone again. */
+    /**
+     * Adopts a frozen directory for one actual scheduler/session; closed bindings never become standalone again.
+     */
     public synchronized Publication bindPublication(TaskScheduler scheduler, UUID sessionId) {
-        if (!canBindPublication(scheduler)) throw new IllegalStateException("Recipe publication is active or its scheduler is closing");
+        if (!canBindPublication(scheduler))
+            throw new IllegalStateException("Recipe publication is active or its scheduler is closing");
         publication = new Publication(this, scheduler, Objects.requireNonNull(sessionId));
         return publication;
     }
 
-    /** Pure owner preflight used while a combined publisher holds registry and PN monitors. */
+    /**
+     * Pure owner preflight used while a combined publisher holds registry and PN monitors.
+     */
     public synchronized boolean canBindPublication(TaskScheduler scheduler) {
         var status = Objects.requireNonNull(scheduler).status();
         requireFrozen();
@@ -209,7 +238,7 @@ public final class RecipeRegistry {
      * but independent recipes without persistence bindings remain supported.
      */
     public Prepared prepareReplacement(Snapshot expected, Collection<Definition> replacements,
-                                                    Collection<RecipeProcessNbt> codecs) {
+                                       Collection<RecipeProcessNbt> codecs) {
         var publisher = publication;
         if (!isCurrent(expected)) throw new IllegalArgumentException("Foreign or stale recipe snapshot");
         if (publisher != null && !publisher.live()) throw new IllegalStateException("Recipe publication is closed");
@@ -220,8 +249,10 @@ public final class RecipeRegistry {
             Objects.requireNonNull(definition, "replacement");
             var recipe = definition.recipe();
             var old = expected.recipes.get(recipe.id());
-            if (old == null || old == recipe) throw new IllegalArgumentException("Replacement needs a new object for an existing recipe: " + recipe.id());
-            if (definitions.putIfAbsent(recipe.id(), definition) != null) throw new IllegalArgumentException("Duplicate replacement: " + recipe.id());
+            if (old == null || old == recipe)
+                throw new IllegalArgumentException("Replacement needs a new object for an existing recipe: " + recipe.id());
+            if (definitions.putIfAbsent(recipe.id(), definition) != null)
+                throw new IllegalArgumentException("Duplicate replacement: " + recipe.id());
             addRevision(revisions, history, recipe, definition.revision());
         }
         if (definitions.isEmpty()) throw new IllegalArgumentException("A replacement batch must not be empty");
@@ -234,12 +265,14 @@ public final class RecipeRegistry {
                 throw new IllegalArgumentException("Codec does not match a replacement definition: " + codec.recipe().id());
             }
             var previous = supplied.putIfAbsent(codec.recipe(), codec);
-            if (previous != null && previous != codec) throw new IllegalArgumentException("Conflicting replacement codec: " + codec.recipe().id());
+            if (previous != null && previous != codec)
+                throw new IllegalArgumentException("Conflicting replacement codec: " + codec.recipe().id());
             if (previous == null) bindings.add(codec);
         }
         RecipeProcessCodecs.Prepared codecPreparation = null;
         if (processCodecs == null) {
-            if (!bindings.isEmpty()) throw new IllegalArgumentException("Replacement codecs require the registry's shared resolver");
+            if (!bindings.isEmpty())
+                throw new IllegalArgumentException("Replacement codecs require the registry's shared resolver");
         } else {
             var currentCodecs = processCodecs.snapshot();
             for (var definition : definitions.values()) {
@@ -302,7 +335,8 @@ public final class RecipeRegistry {
      * those monitors across the entire interval excludes independent public installation calls.
      */
     public synchronized void install(Prepared prepared) {
-        if (publication != null) throw new IllegalStateException("Adopted recipe registries publish only through their session owner");
+        if (publication != null)
+            throw new IllegalStateException("Adopted recipe registries publish only through their session owner");
         installWithCodecs(prepared);
     }
 
@@ -315,27 +349,12 @@ public final class RecipeRegistry {
     }
 
     private void installLocked(Prepared prepared) {
-        if (!matchesPrepared(prepared)) throw new IllegalStateException("Foreign, stale or consumed recipe preparation");
-        if (prepared.codecPreparation != null) Objects.requireNonNull(codecPublisher).install(prepared.codecPreparation);
+        if (!matchesPrepared(prepared))
+            throw new IllegalStateException("Foreign, stale or consumed recipe preparation");
+        if (prepared.codecPreparation != null)
+            Objects.requireNonNull(codecPublisher).install(prepared.codecPreparation);
         prepared.consumed = true;
         frozen = prepared.next;
-    }
-
-    private static Map<ResourceLocation, MachineRecipe> canonicalRecipes(RecipeCatalog catalog) {
-        var recipes = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineRecipe>();
-        for (var recipe : catalog.recipes()) recipes.put(recipe.id(), recipe);
-        return Object2ObjectMaps.unmodifiable(recipes);
-    }
-
-    private static void addRevision(Reference2ObjectOpenHashMap<MachineRecipe, String> revisions,
-                                    Object2ObjectLinkedOpenHashMap<RecipeDefinitionRevision, MachineRecipe> history,
-                                    MachineRecipe recipe, String revision) {
-        var previousRevision = revisions.putIfAbsent(recipe, revision);
-        var identity = new RecipeDefinitionRevision(recipe.id(), revision);
-        var previousRecipe = history.putIfAbsent(identity, recipe);
-        if (previousRevision != null && !previousRevision.equals(revision) || previousRecipe != null && previousRecipe != recipe) {
-            throw new IllegalArgumentException("Conflicting recipe revision: " + identity);
-        }
     }
 
     /**
@@ -376,11 +395,14 @@ public final class RecipeRegistry {
     public record Definition(MachineRecipe recipe, String revision) {
         public Definition {
             Objects.requireNonNull(recipe, "recipe");
-            if (Objects.requireNonNull(revision, "revision").isBlank()) throw new IllegalArgumentException("Recipe revision must not be blank");
+            if (Objects.requireNonNull(revision, "revision").isBlank())
+                throw new IllegalArgumentException("Recipe revision must not be blank");
         }
     }
 
-    /** Immutable canonical directory and declared history; identity, not generation alone, proves currency. */
+    /**
+     * Immutable canonical directory and declared history; identity, not generation alone, proves currency.
+     */
     public static final class Snapshot {
         private final RecipeRegistry owner;
         private final long generation;
@@ -409,24 +431,50 @@ public final class RecipeRegistry {
             historicalDefinitions = ObjectLists.unmodifiable(definitions);
         }
 
-        public RecipeRegistry owner() { return owner; }
-        public long generation() { return generation; }
-        public List<RecipePool> orderedPools() { return orderedPools; }
-        public RecipeCatalog catalog() { return catalog; }
-        public Map<ResourceLocation, RecipePool> pools() { return pools; }
+        public RecipeRegistry owner() {
+            return owner;
+        }
 
-        /** Declared current and historical objects for accurate cold-start dependency preparation. */
-        public List<Definition> historicalDefinitions() { return historicalDefinitions; }
+        public long generation() {
+            return generation;
+        }
 
-        /** Null means this object has no explicit revision declaration, never an implied latest revision. */
+        public List<RecipePool> orderedPools() {
+            return orderedPools;
+        }
+
+        public RecipeCatalog catalog() {
+            return catalog;
+        }
+
+        public Map<ResourceLocation, RecipePool> pools() {
+            return pools;
+        }
+
+        /**
+         * Declared current and historical objects for accurate cold-start dependency preparation.
+         */
+        public List<Definition> historicalDefinitions() {
+            return historicalDefinitions;
+        }
+
+        /**
+         * Null means this object has no explicit revision declaration, never an implied latest revision.
+         */
         @Nullable
-        public String revision(MachineRecipe recipe) { return revisions.get(Objects.requireNonNull(recipe)); }
+        public String revision(MachineRecipe recipe) {
+            return revisions.get(Objects.requireNonNull(recipe));
+        }
 
         @Nullable
-        public MachineRecipe historicalRecipe(RecipeDefinitionRevision identity) { return history.get(Objects.requireNonNull(identity)); }
+        public MachineRecipe historicalRecipe(RecipeDefinitionRevision identity) {
+            return history.get(Objects.requireNonNull(identity));
+        }
     }
 
-    /** Single-use directory preparation; callers can prepare dependencies against next before installation. */
+    /**
+     * Single-use directory preparation; callers can prepare dependencies against next before installation.
+     */
     public static final class Prepared {
         private final RecipeRegistry owner;
         private final Snapshot expected;
@@ -448,14 +496,27 @@ public final class RecipeRegistry {
             this.publication = publication;
         }
 
-        public Snapshot expected() { return expected; }
-        public Snapshot next() { return next; }
-        public List<Definition> replacements() { return replacements; }
+        public Snapshot expected() {
+            return expected;
+        }
+
+        public Snapshot next() {
+            return next;
+        }
+
+        public List<Definition> replacements() {
+            return replacements;
+        }
+
         @Nullable
-        public RecipeProcessCodecs.Prepared codecPreparation() { return codecPreparation; }
+        public RecipeProcessCodecs.Prepared codecPreparation() {
+            return codecPreparation;
+        }
     }
 
-    /** Concrete publication capability retained by the session owner, never retrieved from the registry. */
+    /**
+     * Concrete publication capability retained by the session owner, never retrieved from the registry.
+     */
     public static final class Publication implements AutoCloseable {
         private final RecipeRegistry registry;
         private final TaskScheduler scheduler;
@@ -469,11 +530,17 @@ public final class RecipeRegistry {
             this.sessionId = sessionId;
         }
 
-        public UUID sessionId() { return sessionId; }
+        public UUID sessionId() {
+            return sessionId;
+        }
 
-        public boolean live() { return registry.publication == this && !closed; }
+        public boolean live() {
+            return registry.publication == this && !closed;
+        }
 
-        public void requireOwner() { scheduler.status(); }
+        public void requireOwner() {
+            scheduler.status();
+        }
 
         public void requireOwnerBoundary() {
             scheduler.requireOwnerBoundary();
@@ -494,7 +561,9 @@ public final class RecipeRegistry {
             }
         }
 
-        /** Shutdown may run after scheduler termination; it still belongs to the original owner. */
+        /**
+         * Shutdown may run after scheduler termination; it still belongs to the original owner.
+         */
         @Override
         public void close() {
             var status = scheduler.status();

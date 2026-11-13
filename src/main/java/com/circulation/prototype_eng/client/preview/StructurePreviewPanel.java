@@ -2,36 +2,37 @@ package com.circulation.prototype_eng.client.preview;
 
 import ae2.api.stacks.AEFluidKey;
 import ae2.api.stacks.GenericStack;
-import net.minecraftforge.fluids.Fluid;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectIntBiConsumer;
+import ae2.container.slot.AppEngSlot;
+import ae2.util.inv.AppEngInternalInventory;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.client.gui.GuiAtlas;
 import com.circulation.prototype_eng.client.gui.GuiClip;
 import com.circulation.prototype_eng.client.gui.GuiLabel;
+import com.circulation.prototype_eng.client.render.GuiItemLighting;
 import com.circulation.prototype_eng.localization.PreviewUiText;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
-import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.util.math.BlockPos;
+import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectIntBiConsumer;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.audio.PositionedSoundRecord;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderHelper;
-import com.circulation.prototype_eng.client.render.GuiItemLighting;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.SoundEvents;
 import net.minecraft.inventory.Container;
-import net.minecraft.item.ItemStack;
 import net.minecraft.inventory.Slot;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.math.BlockPos;
+import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fml.client.config.GuiUtils;
-import ae2.util.inv.AppEngInternalInventory;
-import ae2.container.slot.AppEngSlot;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
@@ -39,7 +40,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-/** PM's implemented 184x220 preview UI, shared unchanged by the standalone and JEI hosts. */
+/**
+ * PM's implemented 184x220 preview UI, shared unchanged by the standalone and JEI hosts.
+ */
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
 public final class StructurePreviewPanel implements AutoCloseable {
     public static final int WIDTH = 184, HEIGHT = 220;
@@ -59,20 +62,25 @@ public final class StructurePreviewPanel implements AutoCloseable {
     private final ObjectArrayList<ItemSlot> itemSlots = new ObjectArrayList<>();
     private final AppEngInternalInventory displayInventory = new AppEngInternalInventory(null, 64, Integer.MAX_VALUE);
     private final ObjectArrayList<Slot> displaySlots = new ObjectArrayList<>();
-    private SlotRenderer ingredientSlots;
-    private Runnable clearIngredients = () -> { };
     private final PreviewListScroll alternativesScroll = new PreviewListScroll(), materialsScroll = new PreviewListScroll();
+    private SlotRenderer ingredientSlots;
+    private Runnable clearIngredients = () -> {
+    };
     private int alternativesCount, materialsCount;
     private boolean construction;
     private ItemStack builderTool = ItemStack.EMPTY;
     private Supplier<NBTTagCompound> builderBinding = NBTTagCompound::new;
-    private Runnable materialsRequested = () -> { };
-    private ObjectIntBiConsumer<StructurePreviewModel.Cell> cellAlternativeSelected = (_, _) -> { };
+    private Runnable materialsRequested = () -> {
+    };
+    private ObjectIntBiConsumer<StructurePreviewModel.Cell> cellAlternativeSelected = (_, _) -> {
+    };
     private StructureDisplay constructionChoice;
     private BlockPos constructionCell;
     private StructurePreviewModel.Cell lastConstructionPick;
     private Object constructionMaterialsToken;
     private List<ConstructionMaterial> constructionMaterials = List.of();
+    private StructureDisplay constructionOptionsFor;
+    private List<ConstructionMaterial> constructionOptions = List.of();
     private ObjectIntBiConsumer<StructureDisplay> alternativeSelected = (_, _) -> {
     };
     private GuiScreen host;
@@ -84,6 +92,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
     private int pressedButton = -1;
     private int mouseX, mouseY;
     private Rect currentClip;
+
     public StructurePreviewPanel(StructurePreviewView view) {
         this.view = Objects.requireNonNull(view);
         var mc = Minecraft.getMinecraft();
@@ -112,7 +121,9 @@ public final class StructurePreviewPanel implements AutoCloseable {
         }
     }
 
-    private ItemStack optionStack(StructureDisplay display, int option) { return scene.item(display, option); }
+    private ItemStack optionStack(StructureDisplay display, int option) {
+        return scene.item(display, option);
+    }
 
     public void construction() {
         construction = true;
@@ -125,13 +136,17 @@ public final class StructurePreviewPanel implements AutoCloseable {
         builderBinding = Objects.requireNonNull(binding);
     }
 
-    public void onMaterialsRequested(Runnable listener) { materialsRequested = Objects.requireNonNull(listener); }
+    public void onMaterialsRequested(Runnable listener) {
+        materialsRequested = Objects.requireNonNull(listener);
+    }
 
     public void onCellAlternativeSelected(ObjectIntBiConsumer<StructurePreviewModel.Cell> listener) {
         cellAlternativeSelected = Objects.requireNonNull(listener);
     }
 
-    /** Tree double-click selects a requirement class; a preview click selects only its exact cell. */
+    /**
+     * Tree double-click selects a requirement class; a preview click selects only its exact cell.
+     */
     public void openMaterialChoices(StructureDisplay display) {
         if (!construction || display.options().size() <= 1) return;
         constructionChoice = display;
@@ -145,15 +160,12 @@ public final class StructurePreviewPanel implements AutoCloseable {
         alternativeSelected = Objects.requireNonNull(listener);
     }
 
-    /** Embedded hosts publish the visible cells as their own native ingredient slots. */
+    /**
+     * Embedded hosts publish the visible cells as their own native ingredient slots.
+     */
     public void ingredientSlots(SlotRenderer renderer, Runnable clear) {
         ingredientSlots = Objects.requireNonNull(renderer);
         clearIngredients = Objects.requireNonNull(clear);
-    }
-
-    @FunctionalInterface
-    public interface SlotRenderer {
-        void render(int index, ItemStack stack, int x, int y);
     }
 
     public StructurePreviewView view() {
@@ -183,7 +195,9 @@ public final class StructurePreviewPanel implements AutoCloseable {
         if (!ownerCurrent()) close();
     }
 
-    /** Width/height are retained in the public host contract; PM's panel itself has a fixed size. */
+    /**
+     * Width/height are retained in the public host contract; PM's panel itself has a fixed size.
+     */
     public void draw(int width, int height, int mouseX, int mouseY, float partialTicks, boolean embedded) {
         if (width <= 0 || height <= 0) return;
         if (!ownerCurrent()) {
@@ -371,7 +385,8 @@ public final class StructurePreviewPanel implements AutoCloseable {
             }
             int choice = representative(selected);
             var stack = optionStack(selected, choice);
-            if (ingredientSlots != null && selected.options().size() > 1) choiceSlot("selected", stack, x, 31, selected, choice);
+            if (ingredientSlots != null && selected.options().size() > 1)
+                choiceSlot("selected", stack, x, 31, selected, choice);
             else slot("selected", stack, x, 31, false, List.of(), null);
             var candidates = new IntArrayList(selected.options().size());
             for (int index = 0; index < selected.options().size(); index++)
@@ -396,7 +411,8 @@ public final class StructurePreviewPanel implements AutoCloseable {
         }
         var cell = view.picked();
         slot(id, stack, x, y, false, List.of(PreviewUiText.ChooseCell.getLocal(), PreviewUiText.ChooseAll.getLocal()), () -> {
-            if (cell != null && view.alternativeCell(drawnToken, cell, option)) cellAlternativeSelected.accept(cell, option);
+            if (cell != null && view.alternativeCell(drawnToken, cell, option))
+                cellAlternativeSelected.accept(cell, option);
         });
         var action = actions.removeLast();
         actions.add(new Action(action.id, action.bounds, action.clip, action.tooltip, action.run, () -> {
@@ -412,9 +428,14 @@ public final class StructurePreviewPanel implements AutoCloseable {
         var cell = constructionCell;
         List<ConstructionMaterial> rows;
         if (display != null) {
-            var choices = new ObjectArrayList<ConstructionMaterial>(display.options().size());
-            for (int option = 0; option < display.options().size(); option++) choices.add(new ConstructionMaterial(display, option, 1));
-            rows = choices;
+            if (constructionOptionsFor != display) {
+                var choices = new ObjectArrayList<ConstructionMaterial>(display.options().size());
+                for (int option = 0; option < display.options().size(); option++)
+                    choices.add(new ConstructionMaterial(display, option, 1));
+                constructionOptionsFor = display;
+                constructionOptions = choices;
+            }
+            rows = constructionOptions;
         } else {
             rows = completeMaterials();
         }
@@ -428,8 +449,12 @@ public final class StructurePreviewPanel implements AutoCloseable {
             var counts = new Object2LongLinkedOpenHashMap<ConstructionChoice>();
             for (var line : model.bom())
                 counts.addTo(new ConstructionChoice(line.display(), view.alternative(line.display())), line.count());
-            for (var entry : view.settings().cellOptions().entrySet()) {
-                var represented = view.at(entry.getKey());
+            var position = new BlockPos.MutableBlockPos();
+            for (var entries = view.settings().cellOptions().fastIterator(); entries.hasNext(); ) {
+                var entry = entries.next();
+                long packed = entry.getLongKey();
+                position.setPos(BlockPos2ObjectMap.unpackX(packed), BlockPos2ObjectMap.unpackY(packed), BlockPos2ObjectMap.unpackZ(packed));
+                var represented = view.at(position);
                 var choice = entry.getValue();
                 if (represented == null || !choice.display().equals(represented.display())) continue;
                 int global = view.alternative(choice.display());
@@ -440,7 +465,8 @@ public final class StructurePreviewPanel implements AutoCloseable {
             }
             var materials = new ObjectArrayList<ConstructionMaterial>(counts.size());
             for (var entry : counts.object2LongEntrySet())
-                if (entry.getLongValue() > 0) materials.add(new ConstructionMaterial(entry.getKey().display, entry.getKey().option, entry.getLongValue()));
+                if (entry.getLongValue() > 0)
+                    materials.add(new ConstructionMaterial(entry.getKey().display, entry.getKey().option, entry.getLongValue()));
             materials.sort(Comparator.comparingLong(ConstructionMaterial::amount).reversed());
             constructionMaterials = ObjectLists.unmodifiable(materials);
         }
@@ -449,7 +475,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
 
     private void materialGrid(List<ConstructionMaterial> rows, @Nullable StructureDisplay display, @Nullable BlockPos cell) {
         sprite("base_material_preview_ui", 29, 31, 134, 163);
-        materialsScroll.identity(new ConstructionChoice(display, 0));
+        materialsScroll.identity(display);
         materialsCount = (rows.size() + MATERIAL_COLUMNS - 1) / MATERIAL_COLUMNS;
         clipped(MATERIAL_CONTENT.x, MATERIAL_CONTENT.y, (int) MATERIAL_CONTENT.width, (int) MATERIAL_CONTENT.height, () -> {
             int first = materialsScroll.first(materialsCount, MATERIAL_ROWS) * MATERIAL_COLUMNS;
@@ -492,9 +518,6 @@ public final class StructurePreviewPanel implements AutoCloseable {
         }
     }
 
-    private record ConstructionChoice(@Nullable StructureDisplay display, int option) { }
-    private record ConstructionMaterial(@Nullable StructureDisplay display, int option, long amount) { }
-
     private void slot(String id, ItemStack stack, float x, float y, boolean amount, List<String> tooltip, @Nullable Runnable run) {
         if (!amount && !stack.isEmpty()) stack.setCount(1);
         int index = itemSlots.size();
@@ -513,7 +536,8 @@ public final class StructurePreviewPanel implements AutoCloseable {
             if (!stack.isEmpty() && fullyVisible && ingredientSlots == null) {
                 RenderHelper.enableGUIStandardItemLighting();
                 displayInventory.setItemDirect(index, stack);
-                if (host instanceof PreviewNativeGui.Slots nativeSlots) nativeSlots.prototype_eng$renderSlot(nativeSlot);
+                if (host instanceof GuiPreviewNative.Slots nativeSlots)
+                    nativeSlots.prototype_eng$renderSlot(nativeSlot);
                 else {
                     // HEI RecipesGui is a GuiScreen, so use its ordinary native item renderer.
                     var mc = Minecraft.getMinecraft();
@@ -665,7 +689,8 @@ public final class StructurePreviewPanel implements AutoCloseable {
         }
         if (!view.threeDimensional && new Rect(165, 33, 10, 158).contains(x, y)) {
             var bounds = view.sceneBounds();
-            if (bounds != null) view.layer = Math.clamp(view.layer + Integer.signum(delta), bounds.min().getY(), bounds.max().getY());
+            if (bounds != null)
+                view.layer = Math.clamp(view.layer + Integer.signum(delta), bounds.min().getY(), bounds.max().getY());
             return true;
         }
         for (var action : actions) if (action.contains(x, y)) return true;
@@ -693,7 +718,8 @@ public final class StructurePreviewPanel implements AutoCloseable {
         if (ingredientSlots != null) return false;
         var stack = itemAt(localX, localY);
         if (stack.isEmpty()) return false;
-        if (host instanceof PreviewNativeGui nativeGui) nativeGui.prototype_eng$renderItemTooltip(stack, screenX, screenY);
+        if (host instanceof GuiPreviewNative nativeGui)
+            nativeGui.prototype_eng$renderItemTooltip(stack, screenX, screenY);
         else {
             var mc = Minecraft.getMinecraft();
             var font = stack.getItem().getFontRenderer(stack);
@@ -732,8 +758,6 @@ public final class StructurePreviewPanel implements AutoCloseable {
         return slot != null && displaySlots.contains(slot);
     }
 
-    private record ItemSlot(ItemStack stack, Slot slot, Rect bounds, @Nullable Rect clip, List<String> tooltip) { }
-
     @Override
     public void close() {
         if (closed) return;
@@ -743,16 +767,32 @@ public final class StructurePreviewPanel implements AutoCloseable {
         scene.close();
     }
 
+    @FunctionalInterface
+    public interface SlotRenderer {
+        void render(int index, ItemStack stack, int x, int y);
+    }
+
+    private record ConstructionChoice(@Nullable StructureDisplay display, int option) {
+    }
+
+    private record ConstructionMaterial(@Nullable StructureDisplay display, int option, long amount) {
+    }
+
+    private record ItemSlot(ItemStack stack, Slot slot, Rect bounds, @Nullable Rect clip, List<String> tooltip) {
+    }
+
     private record Rect(float x, float y, float width, float height) {
         boolean contains(int px, int py) {
             return px >= x && py >= y && px < x + width && py < y + height;
         }
     }
 
-    private record Action(String id, Rect bounds, @Nullable Rect clip, List<String> tooltip, @Nullable Runnable run, @Nullable Runnable rightRun) {
+    private record Action(String id, Rect bounds, @Nullable Rect clip, List<String> tooltip, @Nullable Runnable run,
+                          @Nullable Runnable rightRun) {
         private Action(String id, Rect bounds, @Nullable Rect clip, List<String> tooltip, @Nullable Runnable run) {
             this(id, bounds, clip, tooltip, run, null);
         }
+
         boolean contains(int x, int y) {
             return bounds.contains(x, y) && (clip == null || clip.contains(x, y));
         }

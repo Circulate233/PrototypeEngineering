@@ -4,7 +4,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.RayTraceResult;
 
-/** PM's pointed block, with player-position fallback, only used to locate display intent. */
+/**
+ * PM's pointed block, with player-position fallback, only used to locate display intent.
+ */
 public final class StructurePreviewScreensAnchor {
     private StructurePreviewScreensAnchor() {
     }

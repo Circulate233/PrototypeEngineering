@@ -6,7 +6,6 @@ import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistr
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
-import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.NetworkWorkState;
 import org.jetbrains.annotations.Nullable;
@@ -81,12 +80,8 @@ public final class ResearchDataCenters {
             if (bindings == null || bindings.role().state() != NetworkWorkState.ACTIVE_DATA_CENTER) return null;
             var permit = bindings.role().workPermit();
             if (permit == null || !permit.current() || !permit.teamId().equals(teamId)) return null;
-            var device = permit.deviceSnapshot();
-            if (!device.identity().equals(identity.identity()) || device.loadOrder() != identity.loadOrder()
-                || device.role() != NetworkDeviceRole.DATA_CENTER || !device.formed()) return null;
             var backend = Objects.requireNonNull(bindings.storage().capture(), "Data-center storage capture");
-            if (!backend.snapshot().equals(device.dataCenterResearch())
-                || !backend.snapshot().equals(permit.dataCenterResearch())) return null;
+            if (!backend.snapshot().equals(permit.dataCenterResearch())) return null;
             var result = new Capture(this, revision, identity, machine, bindings, permit, backend);
             return result.current() ? result : null;
         }
@@ -161,6 +156,10 @@ public final class ResearchDataCenters {
         }
 
         public boolean current() {
+            return currentBinding() && binding.storage().snapshot().dataCenterId().equals(identity.identity().machineId());
+        }
+
+        private boolean currentBinding() {
             selector.ownerCheck.run();
             var lifecycle = machine.lifecycle();
             if (selector.identities.revision() != revision || !identity.unique() || identity.runtimeIdentity() != machine
@@ -169,8 +168,7 @@ public final class ResearchDataCenters {
                 return false;
             }
             var current = storageBinding(machine);
-            return current != null && current.type() == binding.type() && current.storage() == binding.storage()
-                && binding.storage().snapshot().dataCenterId().equals(identity.identity().machineId());
+            return current != null && current.type() == binding.type() && current.storage() == binding.storage();
         }
     }
 
@@ -182,22 +180,16 @@ public final class ResearchDataCenters {
      * The original storage instance and contents remain usable only while this exact authority is current.
      */
     public static final class Capture {
-        private final ResearchDataCenters selector;
-        private final long revision;
-        private final MachineIdentityRegistry.Registration identity;
-        private final MachineInstance machine;
-        private final Bindings bindings;
+        private final ComponentType<MachineInstance, ?> roleType;
+        private final MachineNetworkDevice role;
         private final NetworkRuntime.WorkPermit permit;
         private final DataCenterStorage.Capture backend;
         private final PhysicalCapture physical;
 
         private Capture(ResearchDataCenters selector, long revision, MachineIdentityRegistry.Registration identity,
                         MachineInstance machine, Bindings bindings, NetworkRuntime.WorkPermit permit, DataCenterStorage.Capture backend) {
-            this.selector = selector;
-            this.revision = revision;
-            this.identity = identity;
-            this.machine = machine;
-            this.bindings = bindings;
+            roleType = bindings.roleType();
+            role = bindings.role();
             this.permit = permit;
             this.backend = backend;
             physical = new PhysicalCapture(selector, revision, identity, machine, new StorageBinding(bindings.storageType(), bindings.storage()));
@@ -208,7 +200,7 @@ public final class ResearchDataCenters {
         }
 
         public DataCenterStorage storage() {
-            return bindings.storage();
+            return physical.storage();
         }
 
         public Target target() {
@@ -223,34 +215,25 @@ public final class ResearchDataCenters {
         }
 
         public UUID ownerId() {
-            return identity.identity().ownerId();
+            return physical.identity.identity().ownerId();
         }
 
         /**
          * Revalidate before publishing a write; a successful content update invalidates this capture.
          */
         public boolean current() {
-            selector.ownerCheck.run();
             if (!physicallyCurrent() || !contentsCurrent() || !permit.authorized()) return false;
-            return physicallyCurrent() && contentsCurrent() && physicallyCurrent() && permit.current();
+            return physicallyCurrent() && contentsCurrent() && physicallyCurrent();
         }
 
         private boolean contentsCurrent() {
             return backend.current().getAsBoolean()
-                && bindings.storage().current(Objects.requireNonNull(permit.dataCenterResearch()));
+                && physical.storage().current(Objects.requireNonNull(permit.dataCenterResearch()));
         }
 
         private boolean physicallyCurrent() {
-            var lifecycle = machine.lifecycle();
-            if (selector.identities.revision() != revision || !identity.unique() || identity.runtimeIdentity() != machine
-                || lifecycle == null || lifecycle.state() != MachineLifecycle.State.LOADED
-                || !lifecycle.schedulingAllowed() || !lifecycle.formed()
-                || lifecycle.host().worldIdentity() != identity.worldIdentity()
-                || !lifecycle.host().identity().equals(identity.location()) || !permit.current()
-                || bindings.role().state() != NetworkWorkState.ACTIVE_DATA_CENTER) return false;
-            var now = bindings(machine);
-            return now != null && now.roleType() == bindings.roleType() && now.role() == bindings.role()
-                && now.storageType() == bindings.storageType() && now.storage() == bindings.storage();
+            return physical.currentBinding() && Objects.requireNonNull(physical.machine.lifecycle()).formed() && permit.current()
+                && physical.machine.components().get(roleType) == role && role.state() == NetworkWorkState.ACTIVE_DATA_CENTER;
         }
     }
 }
