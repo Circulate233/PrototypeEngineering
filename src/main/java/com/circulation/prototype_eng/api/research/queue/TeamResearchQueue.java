@@ -172,12 +172,13 @@ public final class TeamResearchQueue {
     }
 
     /**
-     * Each station contributes one segment limit: min(available, limit * stationCount, remaining).
+     * Station capacity is the sum of the participating stations' rates: min(available, capacity, remaining).
      * Callers must acquire the stations' logical leases independently. No tokens are acquired here.
      * Available quantities are borrowed read-only for this synchronous planning call.
      */
     public Optional<SegmentPlan> planSegment(Key expectedHead, Collection<UUID> stationIds,
-                                             Object2LongMap<NetworkResourceType> availableResources, long worldTime) {
+                                             Object2LongMap<NetworkResourceType> availableResources,
+                                             Object2LongMap<NetworkResourceType> stationCapacity, long worldTime) {
         requireBoundary();
         var head = requireHead(expectedHead);
         if (worldTime < 0) {
@@ -193,6 +194,7 @@ public final class TeamResearchQueue {
         }
         var stations = stations(stationIds);
         NetworkResourceModifier.validateResources(availableResources);
+        NetworkResourceModifier.validateResources(stationCapacity);
         for (var type : availableResources.keySet()) {
             resources.canonical(type);
         }
@@ -211,7 +213,7 @@ public final class TeamResearchQueue {
             if (remaining <= 0) {
                 continue;
             }
-            long cap = Math.multiplyExact(stage.segmentGrantLimits().getLong(type), (long) stations.size());
+            long cap = stationCapacity.getOrDefault(type, 0L);
             long grant = Math.min(remaining, Math.min(availableResources.getOrDefault(type, 0L), cap));
             if (grant > 0) {
                 grants.put(type, grant);

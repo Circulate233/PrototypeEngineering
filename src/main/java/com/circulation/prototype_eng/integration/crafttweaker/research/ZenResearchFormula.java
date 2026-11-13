@@ -19,14 +19,14 @@ public final class ZenResearchFormula {
     }
 
     @ZenMethod
-    public ZenResearchFormula constant(ZenComputingResource type, long demand, long segmentLimit) {
-        builder.constant(type.value(), demand, segmentLimit);
+    public ZenResearchFormula constant(ZenComputingResource type, long demand) {
+        builder.constant(type.value(), demand);
         return this;
     }
 
     @ZenMethod
-    public ZenResearchFormula affine(ZenComputingResource type, long base, long slope, long segmentLimit) {
-        builder.affine(type.value(), base, slope, segmentLimit);
+    public ZenResearchFormula affine(ZenComputingResource type, long base, long slope) {
+        builder.affine(type.value(), base, slope);
         return this;
     }
 

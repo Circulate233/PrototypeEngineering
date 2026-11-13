@@ -1,10 +1,20 @@
 # 研究站材料与推进
 
-2026-11-07。研究站已接入 `ResearchWorld` / `ServerResearch` 自动推进、原 pending 所有权、世界会话保存恢复与永久破坏清理。正 tier 入队、研究界面/packet、领取、普通下载及接口式用户盘共同导入均已接；盘物品、tier、布局由外部注册，库不注册正式研究内容或内置盘。
+2026-11-13。研究站已接入 `ResearchWorld` / `ServerResearch` 自动推进、原 pending 所有权、世界会话保存恢复与永久破坏清理。正 tier 入队、领取、普通下载及接口式用户盘共同导入的后台能力保留；研究 GUI 及其专用接线已移除，仍延缓实现。盘物品、tier、布局由外部注册，库不注册正式研究内容或内置盘。
+
+## 研究站控制器与速率
+
+`api.research.station.ResearchStation` 提供 `researchLevel()`、`researchRates()` 和 `energyPerTick()`。默认 `ResearchStationController(type, level, rates, energyPerTick)` 直接继承 `MachineInstance`，不安装配方工位，不登记机器业务 tick；实际推进由共享研究服务负责。自定义运行时可实现该接口并声明 `MachineOwnership.TYPE`、`ResearchStation.DEVICE`，装配将 DEVICE 标为 recreated。专用研究站始终保留网络角色，不受普通控制器默认配置影响。
+
+`rates` 是按只读契约借用的数值资源速率表，缺项为 0。每站等级为正、耗能与速率非负，资源类型的正 `maxPerTickValue` 限制单站速率。不同站可提供不同的速率与 FE 定义。研究公式只提供 `constant(type, demand)` / `affine(type, base, slope)`，不再存储单站限额；旧 API 调用须移除最后的 limit 参数，把速率移到站点定义。
+
+新段候选排除无力支付本 tick FE 的站。END 获取每站的能源预留，与阶段材料、队列进度及研究完成共同提交；任何未成功提交的费用沿同一 ResourceBatch 补偿。只有成功推进收费，同站同服务器 tick 不重复扣费，待机不扣；材料需求自带的 FE 仍独立按 START/TICK/END 规则执行。保存恢复保留已支付材料阶段，后续仍需取得当前站点许可。
+
+Java 示例为 `run/visual-examples/src/main/java/pe/visual/examples/ResearchStationExamples.java`：等级 1、COMPUTE 速率 10、8 FE/推进 tick，左输入、右输出、后能源仓。ZS 的 `MachineType.researchStation(id, title, structure, level, rates, energyPerTick)` 使用同一默认实现，run 的 net_station 提供 net_compute 速率 10、8 FE。使用与普通联网开关见 [API](../api.md#研究与计算网络)。未增加 HTML 或 GUI。
 
 ## 对齐旧实现与 R29
 
-复核 PN `ResearchStationRuntimeImpl` / `ResearchStationTickImpl` 和 PM 的真实需求系统。保留同队、成型、加载、等级、活动物理数据中心门限，维度轮换与维度内 UUID 顺序，各站共享整机 THREAD 租约。多个站合摊一份材料，每种 numeric 的推进量仍为 `min(研究供给, 每站限额 × 站数, 剩余需求)`；研究读取独立供给，不扣普通配方余额。
+复核 PN `ResearchStationRuntimeImpl` / `ResearchStationTickImpl` 和 PM 的真实需求系统。保留同队、成型、加载、等级、活动物理数据中心门限，维度轮换与维度内 UUID 顺序，各站共享整机 THREAD 租约。多个站合摊一份材料，每种 numeric 的推进量改为 `min(研究供给, 各参与站该资源速率之和, 剩余需求)`；研究读取独立供给，不扣普通配方余额。
 
 R29 确认每次有效推进完整执行材料 START、TICK、END。旧 PN 投影丢掉属性/输出并混合部分阶段，不沿用该缺口。新材料保留完整 `RecipeRequirement`，不新增投影 DTO；每段只在 END 成功后授予研究进度。
 
@@ -23,7 +33,7 @@ R29 确认每次有效推进完整执行材料 START、TICK、END。旧 PN 投�
 
 START 完成 source apply → business commit → 全部终态确认后，才获取 TICK；TICK 完成后才获取 END。因此 START 选择修改器与产物可供后续阶段使用。后续阶段缺料/输出满或授权失效时，保留先前成功阶段，只重试未成功阶段，不重付 START。取消也不退款历史成功阶段，沿用正常配方规则。
 
-材料周期以一次成功 TICK 作为 END 门限，速度 0、0.5、2 都不会多执行或跳过 TICK；TICK 的 scaled/unscaled 上下文仍保留实际速度时间线，供属性和检查点使用。材料本地并行基数为 1，阻断主站普通配方并行对一份材料的放大；材料自身随后添加的 selector/属性修改器仍可生效。站数只影响研究 numeric 限额，不直接复制材料。
+材料周期以一次成功 TICK 作为 END 门限，速度 0、0.5、2 都不会多执行或跳过 TICK；TICK 的 scaled/unscaled 上下文仍保留实际速度时间线，供属性和检查点使用。材料本地并行基数为 1，阻断主站普通配方并行对一份材料的放大；材料自身随后添加的 selector/属性修改器仍可生效。各站贡献速率相加，不直接复制材料。
 
 结束业务被拒时，只补偿该次 END 的物料/FE、grant 和 completion，历史 START/TICK 不回滚。结束已经决定 COMPLETE 后，即使外部 complete 结果未知，也保留原 grant/完成结果与原 token，仅查询或执行有明确可重试证明的终态确认，不重放完整材料或重新发放研究。
 

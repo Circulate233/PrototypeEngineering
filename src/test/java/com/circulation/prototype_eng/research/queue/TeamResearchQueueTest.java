@@ -17,6 +17,7 @@ import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import com.circulation.prototype_eng.research.ResearchEligibility;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.nbt.NBTTagCompound;
@@ -49,13 +50,13 @@ class TeamResearchQueueTest {
         for (int index = 0; index < 6; index++) {
             var formula = ResearchResourceFormula.builder();
             if (tier != 0) {
-                formula.constant(NetworkResources.COMPUTE, demand, cap);
+                formula.constant(NetworkResources.COMPUTE, demand);
             }
             registry.register(ResearchDefinition.builder(id(index)).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY)
                                                 .stage(ResearchLevelStage.builder(1, 1).researchTier(tier).resourceFormula(formula.build()).build()).build());
         }
         registry.freeze(resources);
-        return new Fixture(registry, resources, new TeamResearchQueue(registry, resources, "team"));
+        return new Fixture(registry, resources, new TeamResearchQueue(registry, resources, "team"), amounts(cap > Long.MAX_VALUE / 2 ? Long.MAX_VALUE : cap * 2));
     }
 
     private static TeamResearchView view(Fixture fixture, int retained) {
@@ -103,10 +104,11 @@ class TeamResearchQueueTest {
     void sumsStationLimitsAndSeparatelyCapsEachNumericResource() {
         var fixture = fixture(10, 2, 1);
         var queue = fixture.queue();
+        var capacity = fixture.capacity();
         var head = queue.enqueue(id(0), 1, PLAYER, 1);
         var available = amounts(100);
         available.put(NetworkResources.THREAD, 100);
-        var plan = queue.planSegment(head.key(), STATIONS, available, 2).orElseThrow();
+        var plan = queue.planSegment(head.key(), STATIONS, available, capacity, 2).orElseThrow();
         assertEquals(4, plan.grantedResources().getLong(NetworkResources.COMPUTE));
         assertFalse(plan.grantedResources().containsKey(NetworkResources.THREAD));
         assertFalse(plan.completesResearch());
@@ -117,16 +119,17 @@ class TeamResearchQueueTest {
         assertThrows(IllegalStateException.class, () -> queue.enqueue(id(1), 1, PLAYER, 2));
         mutation.complete();
         assertFalse(queue.busy());
-        assertTrue(queue.planSegment(head.key(), STATIONS, available, 2).isEmpty());
-        assertThrows(IllegalStateException.class, () -> queue.planSegment(head.key(), STATIONS, available, 1));
+        assertTrue(queue.planSegment(head.key(), STATIONS, available, capacity, 2).isEmpty());
+        assertThrows(IllegalStateException.class, () -> queue.planSegment(head.key(), STATIONS, available, capacity, 1));
     }
 
     @Test
     void grantRollbackRestoresWorkButPermanentlyInvalidatesEarlierPlans() {
         var fixture = fixture(10, 2, 1);
         var queue = fixture.queue();
+        var capacity = fixture.capacity();
         var head = queue.enqueue(id(0), 1, PLAYER, 1);
-        var plan = queue.planSegment(head.key(), STATIONS, amounts(100), 2).orElseThrow();
+        var plan = queue.planSegment(head.key(), STATIONS, amounts(100), capacity, 2).orElseThrow();
         var mutation = queue.prepareGrantSegment(plan);
         mutation.commit();
         var result = mutation.result();
@@ -140,16 +143,17 @@ class TeamResearchQueueTest {
         assertTrue(queue.resourceProgressSnapshot().isEmpty());
         assertEquals(ReversibleTransaction.Resolution.ROLLED_BACK, mutation.resolution());
         assertThrows(IllegalStateException.class, () -> queue.prepareGrantSegment(plan));
-        assertTrue(queue.planSegment(head.key(), STATIONS, amounts(100), 2).isPresent());
+        assertTrue(queue.planSegment(head.key(), STATIONS, amounts(100), capacity, 2).isPresent());
     }
 
     @Test
     void completedGrantRemovesOnlyItsHeadAndCannotUndoLaterWrites() {
         var fixture = fixture(3, 2, 1);
         var queue = fixture.queue();
+        var capacity = fixture.capacity();
         var head = queue.enqueue(id(0), 1, PLAYER, 1);
         var tail = queue.enqueue(id(1), 1, PLAYER, 1);
-        var plan = queue.planSegment(head.key(), STATIONS, amounts(100), 2).orElseThrow();
+        var plan = queue.planSegment(head.key(), STATIONS, amounts(100), capacity, 2).orElseThrow();
         var mutation = queue.prepareGrantSegment(plan);
         mutation.commit();
         assertTrue(mutation.result().completedResearch());
@@ -168,9 +172,10 @@ class TeamResearchQueueTest {
     void pruningLaterTargetsPreservesHeadWorkAndPruningHeadClearsItReversibly() {
         var fixture = fixture(10, 2, 1);
         var queue = fixture.queue();
+        var capacity = fixture.capacity();
         var head = queue.enqueue(id(0), 1, PLAYER, 1);
         var tail = queue.enqueue(id(1), 1, PLAYER, 1);
-        var grant = queue.prepareGrantSegment(queue.planSegment(head.key(), STATIONS, amounts(100), 2).orElseThrow());
+        var grant = queue.prepareGrantSegment(queue.planSegment(head.key(), STATIONS, amounts(100), capacity, 2).orElseThrow());
         grant.commit();
         grant.complete();
         var prune = queue.preparePrune(view(fixture, 0));
@@ -190,12 +195,13 @@ class TeamResearchQueueTest {
     void tierZeroStationPlanningAndUnstartedHeadRemovalDoNotDiscardWork() {
         var manual = fixture(0, 2, 0);
         var head = manual.queue().enqueue(id(0), 1, PLAYER, 1);
-        assertThrows(IllegalStateException.class, () -> manual.queue().planSegment(head.key(), STATIONS, amounts(100), 2));
+        assertThrows(IllegalStateException.class, () -> manual.queue().planSegment(head.key(), STATIONS, amounts(100), manual.capacity(), 2));
         var fixture = fixture(10, 2, 1);
         var queue = fixture.queue();
+        var capacity = fixture.capacity();
         var active = queue.enqueue(id(0), 1, PLAYER, 1);
         var tail = queue.enqueue(id(1), 1, PLAYER, 1);
-        var grant = queue.prepareGrantSegment(queue.planSegment(active.key(), STATIONS, amounts(100), 2).orElseThrow());
+        var grant = queue.prepareGrantSegment(queue.planSegment(active.key(), STATIONS, amounts(100), capacity, 2).orElseThrow());
         grant.commit();
         grant.complete();
         assertThrows(IllegalStateException.class, () -> queue.removeUnstarted(active.key()));
@@ -207,8 +213,9 @@ class TeamResearchQueueTest {
     void saveRoundTripPreservesProgressTickDedupIdsAndRejectsRestoredPlanAuthority() {
         var fixture = fixture(10, 2, 1);
         var queue = fixture.queue();
+        var capacity = fixture.capacity();
         var head = queue.enqueue(id(0), 1, PLAYER, 1);
-        var oldPlan = queue.planSegment(head.key(), STATIONS, amounts(100), 2).orElseThrow();
+        var oldPlan = queue.planSegment(head.key(), STATIONS, amounts(100), capacity, 2).orElseThrow();
         var mutation = queue.prepareGrantSegment(oldPlan);
         mutation.commit();
         mutation.complete();
@@ -217,7 +224,7 @@ class TeamResearchQueueTest {
         var restored = TeamResearchQueue.restore(fixture.registry(), fixture.resources(), saved);
         assertEquals(queue.snapshot(), restored.snapshot());
         assertThrows(IllegalStateException.class, () -> restored.prepareGrantSegment(oldPlan));
-        assertTrue(restored.planSegment(head.key(), STATIONS, amounts(100), 2).isEmpty());
+        assertTrue(restored.planSegment(head.key(), STATIONS, amounts(100), capacity, 2).isEmpty());
         restored.removeHead(head.key());
         var again = TeamResearchQueue.restore(fixture.registry(), fixture.resources(), codec.decode(codec.encode(restored.snapshot())));
         assertEquals(2, again.enqueue(id(1), 1, PLAYER, 3).key().queueEntryId());
@@ -253,13 +260,14 @@ class TeamResearchQueueTest {
     }
 
     @Test
-    void plansRejectDuplicateStationsAndOverflowWithoutPublishingPartialState() {
+    void plansRejectDuplicateStationsAndAcceptSaturatedCapacityWithoutMutation() {
         var fixture = fixture(Long.MAX_VALUE, Long.MAX_VALUE, 1);
         var queue = fixture.queue();
+        var capacity = fixture.capacity();
         var head = queue.enqueue(id(0), 1, PLAYER, 1);
         var before = queue.snapshot();
-        assertThrows(IllegalArgumentException.class, () -> queue.planSegment(head.key(), List.of(STATIONS.getFirst(), STATIONS.getFirst()), amounts(1), 2));
-        assertThrows(ArithmeticException.class, () -> queue.planSegment(head.key(), STATIONS, amounts(1), 2));
+        assertThrows(IllegalArgumentException.class, () -> queue.planSegment(head.key(), List.of(STATIONS.getFirst(), STATIONS.getFirst()), amounts(1), capacity, 2));
+        assertEquals(1, queue.planSegment(head.key(), STATIONS, amounts(1), capacity, 2).orElseThrow().grantedResources().getLong(NetworkResources.COMPUTE));
         assertEquals(before, queue.snapshot());
     }
 
@@ -271,11 +279,13 @@ class TeamResearchQueueTest {
         var material = RecipeRequirements.RESOURCES.requirement(new ResourceLocation("test", "material"), new ResourceRequirement(List.of(), List.of()));
         registry.register(ResearchDefinition.builder(id(0)).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY)
                                             .stage(ResearchLevelStage.builder(1, 1).researchTier(1).materialRequirement(material)
-                                                                     .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 1, 1).build()).build()).build());
+                                                                     .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 1).build()).build()).build());
         registry.freeze(resources);
         var queue = new TeamResearchQueue(registry, resources, "team");
+        var capacity = amounts(4);
+        capacity.put(NetworkResources.QUBIT, 4);
         var head = queue.enqueue(id(0), 1, PLAYER, 1);
-        var plan = queue.planSegment(head.key(), STATIONS, amounts(1), 2).orElseThrow();
+        var plan = queue.planSegment(head.key(), STATIONS, amounts(1), capacity, 2).orElseThrow();
         assertSame(material, plan.materialRequirements().getFirst());
     }
 
@@ -286,13 +296,15 @@ class TeamResearchQueueTest {
         var registry = new ResearchRegistry();
         registry.register(ResearchDefinition.builder(id(0)).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY)
                                             .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder()
-                                                                                                                                           .constant(NetworkResources.COMPUTE, 5, 4).constant(NetworkResources.QUBIT, 9, 2).build()).build()).build());
+                                                                                                                                           .constant(NetworkResources.COMPUTE, 5).constant(NetworkResources.QUBIT, 9).build()).build()).build());
         registry.freeze(resources);
         var queue = new TeamResearchQueue(registry, resources, "team");
+        var capacity = amounts(8);
+        capacity.put(NetworkResources.QUBIT, 4);
         var head = queue.enqueue(id(0), 1, PLAYER, 1);
         var available = amounts(100);
         available.put(NetworkResources.QUBIT, 3);
-        var first = queue.planSegment(head.key(), STATIONS, available, 2).orElseThrow();
+        var first = queue.planSegment(head.key(), STATIONS, available, capacity, 2).orElseThrow();
         assertEquals(5, first.grantedResources().getLong(NetworkResources.COMPUTE));
         assertEquals(3, first.grantedResources().getLong(NetworkResources.QUBIT));
         assertFalse(first.completesResearch());
@@ -300,22 +312,23 @@ class TeamResearchQueueTest {
         mutation.commit();
         mutation.complete();
         available.put(NetworkResources.QUBIT, 100);
-        var second = queue.planSegment(head.key(), STATIONS, available, 3).orElseThrow();
+        var second = queue.planSegment(head.key(), STATIONS, available, capacity, 3).orElseThrow();
         assertFalse(second.grantedResources().containsKey(NetworkResources.COMPUTE));
         assertEquals(4, second.grantedResources().getLong(NetworkResources.QUBIT));
         assertFalse(second.completesResearch());
         var next = queue.prepareGrantSegment(second);
         next.commit();
         next.complete();
-        assertEquals(2, queue.planSegment(head.key(), STATIONS, available, 4).orElseThrow().grantedResources().getLong(NetworkResources.QUBIT));
+        assertEquals(2, queue.planSegment(head.key(), STATIONS, available, capacity, 4).orElseThrow().grantedResources().getLong(NetworkResources.QUBIT));
     }
 
     @Test
     void preparedRollbackInvalidatesObservedPlansAndExhaustionLeavesStateUntouched() {
         var fixture = fixture(10, 2, 1);
         var queue = fixture.queue();
+        var capacity = fixture.capacity();
         var head = queue.enqueue(id(0), 1, PLAYER, 1);
-        var plan = queue.planSegment(head.key(), STATIONS, amounts(100), 2).orElseThrow();
+        var plan = queue.planSegment(head.key(), STATIONS, amounts(100), capacity, 2).orElseThrow();
         var mutation = queue.prepareGrantSegment(plan);
         mutation.rollback();
         assertThrows(IllegalStateException.class, () -> queue.prepareGrantSegment(plan));
@@ -325,7 +338,7 @@ class TeamResearchQueueTest {
         var restored = TeamResearchQueue.restore(fixture.registry(), fixture.resources(), exhausted);
         assertThrows(ArithmeticException.class, () -> restored.enqueue(id(1), 1, PLAYER, 2));
         assertEquals(exhausted, restored.snapshot());
-        var lastPlan = restored.planSegment(head.key(), STATIONS, amounts(100), 2).orElseThrow();
+        var lastPlan = restored.planSegment(head.key(), STATIONS, amounts(100), capacity, 2).orElseThrow();
         assertThrows(IllegalStateException.class, () -> restored.prepareGrantSegment(lastPlan));
         assertFalse(restored.busy());
         assertEquals(exhausted, restored.snapshot());
@@ -344,13 +357,15 @@ class TeamResearchQueueTest {
                                                 return enabled.get();
                                             })
                                             .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder()
-                                                                                                                                           .constant(NetworkResources.COMPUTE, 10, 2).build()).build()).build());
+                                                                                                                                           .constant(NetworkResources.COMPUTE, 10).build()).build()).build());
         registry.freeze(resources);
         var eligibility = new ResearchEligibility(registry);
         var player = new PlayerResearchState(PLAYER);
         var view = eligibility.calculate("team", Set.of(PLAYER), Map.of(PLAYER, player), new Object2IntOpenHashMap<>(), 1, Set.of(), amounts(100));
         assertTrue(eligibility.canStart(view, id(0), 1, PLAYER, amounts(100), 1));
         var queue = new TeamResearchQueue(registry, resources, "team");
+        var capacity = amounts(4);
+        capacity.put(NetworkResources.QUBIT, 4);
         var head = queue.enqueue(id(0), 1, PLAYER, 1);
         enabled.set(false);
         var laterView = eligibility.calculate("team", Set.of(PLAYER), Map.of(PLAYER, player), new Object2IntOpenHashMap<>(), 1, Set.of(), amounts(100));
@@ -368,8 +383,9 @@ class TeamResearchQueueTest {
     void queueAndMutationReadsWritesAndTerminalRetriesRequireTheActualOwnerThread() {
         var fixture = fixture(10, 2, 1);
         var queue = fixture.queue();
+        var capacity = fixture.capacity();
         var head = queue.enqueue(id(0), 1, PLAYER, 1);
-        var plan = queue.planSegment(head.key(), STATIONS, amounts(100), 2).orElseThrow();
+        var plan = queue.planSegment(head.key(), STATIONS, amounts(100), capacity, 2).orElseThrow();
         var grant = queue.prepareGrantSegment(plan);
         CompletableFuture.runAsync(() -> {
             assertThrows(IllegalStateException.class, queue::epoch);
@@ -401,6 +417,7 @@ class TeamResearchQueueTest {
         CompletableFuture.runAsync(() -> assertThrows(IllegalStateException.class, restored::queueSnapshot)).join();
     }
 
-    private record Fixture(ResearchRegistry registry, NetworkResourceRegistry resources, TeamResearchQueue queue) {
+    private record Fixture(ResearchRegistry registry, NetworkResourceRegistry resources, TeamResearchQueue queue,
+                           Object2LongMap<NetworkResourceType> capacity) {
     }
 }

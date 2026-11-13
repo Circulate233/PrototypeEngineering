@@ -1,5 +1,15 @@
 # 实施进度
 
+## 2026-11-13 研究站控制器、实际供能与统一联网策略
+
+- 按当前用户要求新增 `ResearchStation` 接口与 `ResearchStationController`，直接使用通用生命周期，无配方工位、无机器业务 tick。Java/ZS 默认控制器均可创建；独立实现可使用相同接口与角色组件。未增加 HTML、GUI 或其他设备实现。
+- 研究公式删除单站限额，Java/ZS 的 constant/affine 只定义总需求；各站自己配置数值资源速率和 FE。每段推进为 `min(网络研究供给, 各参与站速率之和, 剩余需求)`；材料仍合摊一份 START/TICK/END。研究站在 END 与进度同批结算 FE，待机不收费；中心在生效时支付 FE，缺能改选。同设备同服务器 tick 不重复收费，费用预留共用原 ResourceBatch 的来源事务和补偿路径。
+- 所有普通控制器在 `MachineInstance` 中处理联网门限：controllers.cfg 的默认值 false，Java/ZS 的 requiresNetwork 可显式覆盖，显式角色本身视为选择接网；专用中心/研究站保留职责。需要网络且无自定义角色时自动补等级0、无供给的 DEVICE。真实玩家新放置的离线物理机器也保存所有权，旧存档完全没有身份时不猜测放置者。详见 [API](../api.md#控制器是否需要网络)。
+- 示例：中心等级1、4 FE/t、上铁块后能源仓；研究站等级1、速率10、8 FE/推进 tick，Java 与 ZS 均使用专用运行时。API、ZS参考、需求、网络与研究站文档同步。
+- 验证完成：受影响网络/研究站/队列 79 tests/8 suites 全通过；保留异构速率、缺料/缺能、按 tick 收费、中心切换和真实配方离线覆盖的行为检查，不保留需要初始化 FML 的配置 getter 测试。完整 Gradle build 的 1859 tests/269 suites 全通过，Spotless、JAR/reobf 与 IDEA MCP 构建成功。首轮 Spotless 发现5个新增源码为LF，统一为仓库CRLF后通过，没有跳过格式检查。
+- 36份修改/新增Java使用本机 IDEA MCP 格式化；逐文件 `get_file_problems(errorsOnly:false)` 后33份主/测试源码错误、警告、弱警告全零，3份run示例被IDE排除并单独记录。实际23Java addon编译安装成功，实际CT SDK的13份run脚本全部编译通过，既有97核心断言通过。证据目录 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261113/research-station-controllers/`，包括 `idea-summary.json`、`idea-build.json`、`build-summary.json`、`addon-result.json` 和 `sdk/script-verifier-result.json`。
+- 下一步仅由用户实机复验控制器成型/读档、FTB队伍许可、异构研究站速率与FE；编译和行为测试不替代原生World结果。本阶段本地提交，不推送，不启动Minecraft客户端/服务端，不恢复研究GUI。
+
 ## 2026-11-13 网络中心控制器
 
 - 仅按本轮要求实现控制器和Java/ZS创建示例，未生成HTML、未绘制或新增GUI。研究相关GUI继续延缓。

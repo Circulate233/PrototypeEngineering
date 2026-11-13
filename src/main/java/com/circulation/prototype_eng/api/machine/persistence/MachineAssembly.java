@@ -4,6 +4,7 @@ import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.component.TopologicalComponentMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
@@ -81,6 +82,7 @@ public final class MachineAssembly {
         var copy = builder.bindings;
         add(copy, new Binding<>(MachineScheduling.TYPE, SCHEDULING));
         add(copy, new Binding<>(MachineOwnership.TYPE, MachineOwnership.CODEC));
+        add(copy, new Binding<>(MachineNetworkDevice.DEFAULT, null));
         bindings = copy;
         for (var declared : type.componentTypes()) {
             if (isStructureDerived(declared)) {
@@ -224,6 +226,10 @@ public final class MachineAssembly {
             if (machine.components().get(MachineScheduling.TYPE) == null) {
                 createBinding(machine, require(MachineScheduling.TYPE));
             }
+            // Keep the original owner even while a physical controller is configured to work offline.
+            if (host.controllerBlockId() != null && host.placementPlayer() != null && !hasOwnership(machine)) {
+                createBinding(machine, require(MachineOwnership.TYPE));
+            }
             supplementDefaults(machine);
             validate(machine);
         });
@@ -341,7 +347,19 @@ public final class MachineAssembly {
         validate(machine);
     }
 
+    private static boolean hasOwnership(MachineInstance machine) {
+        for (var binding : machine.components().assemblyBindings()) {
+            if (binding.component() instanceof MachineOwnership) return true;
+        }
+        return false;
+    }
+
     private void supplementDefaults(MachineInstance machine) {
+        if (machine.requiresNetwork() && machine.networkDevice() == null) {
+            if (machine.components().get(MachineOwnership.TYPE) == null)
+                createBinding(machine, require(MachineOwnership.TYPE));
+            createBinding(machine, require(MachineNetworkDevice.DEFAULT));
+        }
         var current = machine.attributes().localSnapshot();
         type.defaultAttributeBases().object2DoubleEntrySet().forEach(entry -> {
             if (!current.containsKey(entry.getKey())) {

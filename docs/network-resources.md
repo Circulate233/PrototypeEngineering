@@ -43,9 +43,9 @@
 | `impl/component/NetworkComputerResourceCalculatorImpl.canonicalProvidedResource` | 旧计算器仅比 logicalConcurrency，没有检查 maxPerTickValue；新捕获对照完整注册元数据，不接受放宽上限的同名类型。 |
 | `impl/component/NetworkComputerComponentImpl` | 保留 resourcesPerItem 上限后乘安装数量、汇总电脑和全队；真实供给改为 AEItemKey 注册、公开 committed 槽与版本回执。 |
 | `impl/component/NetworkComputerComponentInventoryImpl` / `NetworkComputerResourceCalculatorImpl` | 保留跨仓供给、未知普通物品忽略及溢出拒绝；去掉 PMKey/字符串 ID/纯栈转换、supports 全表扫描、逐 getter/callback catch-log 与 int 数量限制。 |
-| `impl/research/ResearchResourceFormulaImpl.validateGrantLimit` | 类型上限也约束研究阶段的 segmentGrantLimit；不约束累计需求总量。研究公式仍待迁移。 |
+| `impl/research/ResearchResourceFormulaImpl.validateGrantLimit` | 2026-11-13 按用户新要求移除研究阶段单站限额；类型上限改为约束研究站自己定义的速率，不约束研究累计总需求。 |
 
-单物品供给上限已由真实物品捕获执行器强制执行；研究阶段限额按其独立消费链路核对，不能用组件供给验证替代。
+单物品供给上限已由真实物品捕获执行器强制执行；研究站速率在控制器定义时校验，推进按各参与站速率求和，不能用组件供给验证替代。见[研究站控制器](research-stations.md#研究站控制器与速率)。
 
 ## 后续预算与 lease 的准确边界
 

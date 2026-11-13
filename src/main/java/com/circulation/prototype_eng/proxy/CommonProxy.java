@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.proxy;
 
 import com.circulation.prototype_eng.BuilderConfig;
+import com.circulation.prototype_eng.ControllerConfig;
 import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.MEAssemblyConfig;
 import com.circulation.prototype_eng.OrientationToolConfig;
@@ -97,6 +98,7 @@ public class CommonProxy implements IGuiHandler {
     public void preInit(FMLPreInitializationEvent event) {
         HatchConfig.load(event.getModConfigurationDirectory());
         BuilderConfig.load(event.getModConfigurationDirectory());
+        ControllerConfig.load(event.getModConfigurationDirectory());
         MEAssemblyConfig.load(event.getModConfigurationDirectory());
         ParallelControllerConfig.load(event.getModConfigurationDirectory());
         SchedulerConfig.load(event.getModConfigurationDirectory());

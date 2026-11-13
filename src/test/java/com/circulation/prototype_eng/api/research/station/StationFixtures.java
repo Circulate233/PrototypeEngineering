@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.api.research.station;
 import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.ResearchStationController;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
@@ -92,14 +93,22 @@ final class StationFixtures implements AutoCloseable {
 
     static ResearchDefinition defaultDefinition() {
         return ResearchDefinition.builder(id("research")).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                 .stage(ResearchLevelStage.builder(1, 1).researchTier(2).resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 10, 3).build()).build()).build();
+                                 .stage(ResearchLevelStage.builder(1, 1).researchTier(2).resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 10).build()).build()).build();
     }
 
     Entry station(int level, int dimension) {
         return role(NetworkDeviceRole.RESEARCH_STATION, level, dimension, OWNER, world);
     }
 
+    Entry station(int level, long rate, long energyPerTick) {
+        return role(NetworkDeviceRole.RESEARCH_STATION, level, 0, OWNER, world, rate, energyPerTick);
+    }
+
     Entry role(NetworkDeviceRole role, int level, int dimension, UUID player, Object worldIdentity) {
+        return role(role, level, dimension, player, worldIdentity, 3, 0);
+    }
+
+    private Entry role(NetworkDeviceRole role, int level, int dimension, UUID player, Object worldIdentity, long rate, long energyPerTick) {
         var vector = new Object2LongOpenHashMap<NetworkResourceType>();
         if (role == NetworkDeviceRole.NETWORK_CENTER) {
             vector.put(NetworkResources.THREAD, threads);
@@ -109,7 +118,11 @@ final class StationFixtures implements AutoCloseable {
             (machine, identity) -> new NetworkDeviceSnapshot(identity.identity(), role, level, Objects.requireNonNull(machine.lifecycle()).formed(),
                 identity.loadOrder(), vector, NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
         var type = MachineType.builder(id("machine_" + positions), GuiText.ResourceStorage, id("structure")).component(ownership).component(attached).build();
-        var assembly = MachineAssembly.builder(type, "v1").component(ownership, MachineOwnership.CODEC).recreated(attached).build();
+        var builder = MachineAssembly.builder(type, "v1").component(ownership, MachineOwnership.CODEC).recreated(attached);
+        if (role == NetworkDeviceRole.RESEARCH_STATION)
+            builder.instanceFactory(value -> new ResearchStationController(value, level,
+                Object2LongMaps.singleton(NetworkResources.COMPUTE, rate), energyPerTick));
+        var assembly = builder.build();
         return attach(assembly.create(host(type.id(), dimension, player, worldIdentity), listeners), assembly, attached);
     }
 

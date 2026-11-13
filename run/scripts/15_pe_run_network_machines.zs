@@ -11,14 +11,13 @@ import mods.prototype_eng.network.NetworkRequirements;
 var names = Bindings.scope("pe_run_tests:bindings");
 var compute = ComputingResource.create("pe_run_tests:net_compute", false, 0);
 var empty = ComputingResources.create();
-MachineType.networkCenter("pe_run_tests:net_center", Text.NetCenter.key, "pe_run_tests:net_center_shape", 1)
+MachineType.networkCenter("pe_run_tests:net_center", Text.NetCenter.key, "pe_run_tests:net_center_shape", 1, 4)
     .register("network-center-v1");
 MachineType.create("pe_run_tests:net_computer", Text.NetComputer.key, "pe_run_tests:net_shape")
     .network(NetworkConfiguration.create("pe_run_tests:net_computer", "COMPUTER", 0, empty,
         ComputingModifier.create().flat(compute, 2).multiplierPpm(compute, 1000000), 0, NetworkRequirements.create())).register("v1");
-MachineType.create("pe_run_tests:net_station", Text.NetStation.key, "pe_run_tests:net_shape")
-    .network(NetworkConfiguration.create("pe_run_tests:net_station", "RESEARCH_STATION", 1, empty,
-        ComputingModifier.create(), 0, NetworkRequirements.create())).register("v1");
+MachineType.researchStation("pe_run_tests:net_station", Text.NetStation.key, "pe_run_tests:net_shape", 1,
+    ComputingResources.create().add(compute, 10), 8).register("research-station-v1");
 MachineType.create("pe_run_tests:net_database", Text.NetDatabase.key, "pe_run_tests:net_shape")
     .network(NetworkConfiguration.create("pe_run_tests:net_database", "DATA_CENTER", 1, empty,
         ComputingModifier.create(), 16, NetworkRequirements.create())).register("v1");

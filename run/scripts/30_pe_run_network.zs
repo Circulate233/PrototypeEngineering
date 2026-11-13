@@ -48,7 +48,7 @@ Research.create("pe_run_tests:research_manual", 2, false, "ITEM_ONLY", 1, [manua
     return context.playerId != "" && context.teamId != "";
 }).unlock("pe_run_tests:research_unlock", "pe_run_tests:net_device", 1).register();
 
-var station = ResearchStage.create(1, 2, 1, ResearchFormula.create().affine(compute, 1200, 100, 10))
+var station = ResearchStage.create(1, 2, 1, ResearchFormula.create().affine(compute, 1200, 100))
     .prerequisite("pe_run_tests:research_manual", 1)
     .material(Requirement.resourceIO("pe_run_tests:research_station_material",
         [Resource.item(<minecraft:gold_ingot>, 1)], [Resource.item(<minecraft:redstone>, 1)],
@@ -62,10 +62,10 @@ Research.create("pe_run_tests:research_mutex", 1, false, "ITEM_ONLY", 0,
     [ResearchStage.create(1, 1, 0, ResearchFormula.create()).mutex("pe_run_tests:research_manual", 1)],
     Research.alwaysAllowed()).register();
 Research.create("pe_run_tests:research_loop", 2147483647, false, "DATABASE_AND_ITEM", 0,
-    [ResearchStage.create(1, 2147483647, 1, ResearchFormula.create().constant(compute, 10, 10))],
+    [ResearchStage.create(1, 2147483647, 1, ResearchFormula.create().constant(compute, 10))],
     Research.alwaysAllowed()).register();
 Research.create("pe_run_tests:research_special", 1, true, "DATABASE_AND_ITEM", 0,
-    [ResearchStage.create(1, 1, 1, ResearchFormula.create().constant(compute, 10, 10))],
+    [ResearchStage.create(1, 1, 1, ResearchFormula.create().constant(compute, 10))],
     Research.alwaysAllowed()).register();
 ResearchServer.permissions(function(action, context) { return context.standardDecision(action); });
 ResearchDownloads.register(<minecraft:paper>, function(context) {
@@ -88,4 +88,5 @@ Structure.template("pe_run_tests:net_shape", "NORTH_UP", 0, 0, 0, false,
         .put(-1, 0, 0, Predicate.resourceHatch()).put(0, 0, 1, Predicate.energyInputHatch()), [], []).translated(Text.NetworkStructure.key).register();
 
 Structure.template("pe_run_tests:net_center_shape", "NORTH_UP", 0, 0, 0, false,
-    Pattern.create().put(0, 1, 0, Predicate.block("minecraft:iron_block")), [], []).register();
+    Pattern.create().put(0, 1, 0, Predicate.block("minecraft:iron_block"))
+        .put(0, 0, 1, Predicate.energyInputHatch()), [], []).register();

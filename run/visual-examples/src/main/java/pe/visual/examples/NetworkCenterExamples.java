@@ -19,12 +19,13 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.registry.ForgeRegistries;
 
 import java.util.List;
 import java.util.Objects;
 
 /**
- * Java counterpart to the run script's center: controller with one iron block above it.
+ * Java center: one iron block above the controller, an energy hatch behind it, and 4 FE/t while active.
  */
 @Mod.EventBusSubscriber(modid = VisualExamples.MOD_ID)
 public final class NetworkCenterExamples {
@@ -53,11 +54,13 @@ public final class NetworkCenterExamples {
     public static void runtime(MachineRuntimeRegistrationEvent event) {
         var pattern = new BlockPos2ObjectMap<StructurePredicate>();
         pattern.put(new BlockPos(0, 1, 0), StructurePredicates.state(Blocks.IRON_BLOCK.getDefaultState()));
+        pattern.put(new BlockPos(0, 0, 1), StructurePredicates.state(Objects.requireNonNull(
+            ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng", "energy_input_hatch_1"))).getDefaultState()));
         event.structure(StructureDefinitions.template(SHAPE, BlockOrientation.NORTH_UP, BlockPos.ORIGIN,
             false, new StructurePattern(pattern), List.of(), List.of()));
         var type = Objects.requireNonNull(event.registry().get(ID));
         event.assembly(MachineAssembly.builder(type, "network-center-v1")
-                                      .instanceFactory(value -> new NetworkCenterController(value, 1))
+                                      .instanceFactory(value -> new NetworkCenterController(value, 1, 4))
                                       .recreated(NetworkCenter.DEVICE).build());
     }
 }

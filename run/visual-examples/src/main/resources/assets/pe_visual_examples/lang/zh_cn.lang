@@ -123,3 +123,4 @@ pe_run_tests.me.check=%s：%s；实际结果%s
 pe_run_tests.me.galleryentry=%s：展台起点%s
 pe_run_tests.me.galleryready=PASS 方块覆盖：%s种、共%s格均已加载且匹配；连接纹理画面仍需目视核对。
 pe_run_tests.java_network_center=Java 网络中心
+pe_run_tests.java_research_station=Java 研究站

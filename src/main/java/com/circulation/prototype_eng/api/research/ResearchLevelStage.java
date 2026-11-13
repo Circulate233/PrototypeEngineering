@@ -117,10 +117,6 @@ public final class ResearchLevelStage {
         return resourceFormula.demandsAt(firstLevel, level);
     }
 
-    public Object2LongMap<NetworkResourceType> segmentGrantLimits() {
-        return resourceFormula.segmentGrantLimits();
-    }
-
     public ObjectList<RecipeRequirement<?>> materialRequirements() {
         return materialRequirements;
     }

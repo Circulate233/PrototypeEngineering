@@ -65,10 +65,10 @@ class ResearchStationWorkTest {
     private static final TestResources.Key RAW = new TestResources.Key(TYPE, "raw");
     private static final TestResources.Key PRODUCT = new TestResources.Key(TYPE, "product");
 
-    private static ResearchDefinition definition(long demand, long limit, RecipeRequirement<?>... requirements) {
+    private static ResearchDefinition definition(long demand, RecipeRequirement<?>... requirements) {
         var formula = ResearchResourceFormula.builder();
         if (demand > 0) {
-            formula.constant(NetworkResources.COMPUTE, demand, limit);
+            formula.constant(NetworkResources.COMPUTE, demand);
         }
         var stage = ResearchLevelStage.builder(1, 1).researchTier(2).resourceFormula(formula.build());
         for (var requirement : requirements) {
@@ -136,7 +136,7 @@ class ResearchStationWorkTest {
             phases.add(phase);
             return RequirementTransaction.SUCCESS;
         }));
-        var definition = definition(1, 1, roots.toArray(RecipeRequirement<?>[]::new));
+        var definition = definition(1, roots.toArray(RecipeRequirement<?>[]::new));
         try (var fixture = new StationFixtures(1, 100, 2, definition); var lanes = new Lanes()) {
             fixture.station(2, 0);
             fixture.refresh();
@@ -237,7 +237,7 @@ class ResearchStationWorkTest {
         });
         var random = controlled.requirement(id("random"), new ResourceRequirement(List.of(), List.of(), List.of(), List.of(),
             false, new ResourceChance(12_800, null), new RandomOutputPool(pool, 3)));
-        var definition = definition(1, 1, io(1, 1, 1), random, observe(phase -> {
+        var definition = definition(1, io(1, 1, 1), random, observe(phase -> {
             phases.add(phase);
             return RequirementTransaction.SUCCESS;
         }));
@@ -276,9 +276,52 @@ class ResearchStationWorkTest {
     }
 
     @Test
+    void differentStationRatesPayTheirOwnPowerOnlyWhenProgressCommits() {
+        try (var fixture = new StationFixtures(2, 100, 2, definition(10, io(2, 1, 1))); var lanes = new Lanes()) {
+            var first = fixture.station(2, 2, 3);
+            var second = fixture.station(3, 5, 4);
+            fixture.refresh();
+            var state = new State(fixture);
+            var capture = Objects.requireNonNull(fixture.selector.capture("team", 2));
+            assertEquals(ResearchStationWork.Status.WAITING, state.work.advance(capture, context(1), lanes.tasks, deadline()).status());
+            assertEquals(10, first.energy().storedEnergy());
+            assertEquals(10, second.energy().storedEnergy());
+            put(first, 6);
+            assertEquals(ResearchStationWork.Status.ADVANCED, state.work.advance(capture, context(1), lanes.tasks, deadline()).status());
+            assertEquals(7, state.queue.resourceProgressSnapshot().getLong(NetworkResources.COMPUTE));
+            assertEquals(7, first.energy().storedEnergy());
+            assertEquals(6, second.energy().storedEnergy());
+            assertEquals(ResearchStationWork.Status.WAITING, state.work.advance(capture, context(1), lanes.tasks, deadline()).status());
+            assertEquals(7, first.energy().storedEnergy());
+            fixture.nextTick();
+            capture = Objects.requireNonNull(fixture.selector.capture("team", 2));
+            assertEquals(ResearchStationWork.Status.COMPLETED, state.work.advance(capture, context(2), lanes.tasks, deadline()).status());
+            assertEquals(4, first.energy().storedEnergy());
+            assertEquals(2, second.energy().storedEnergy());
+            assertEquals(2, output(first) + output(second));
+        }
+    }
+
+    @Test
+    void unpoweredStationDoesNotContributeSpeedOrBlockThePoweredStation() {
+        try (var fixture = new StationFixtures(2, 100, 2, definition(10)); var lanes = new Lanes()) {
+            var first = fixture.station(2, 2, 3);
+            var second = fixture.station(3, 5, 20);
+            fixture.refresh();
+            var state = new State(fixture);
+            var capture = Objects.requireNonNull(fixture.selector.capture("team", 2));
+            assertEquals(1, capture.stationIds().size());
+            assertEquals(ResearchStationWork.Status.ADVANCED, state.work.advance(capture, context(1), lanes.tasks, deadline()).status());
+            assertEquals(2, state.queue.resourceProgressSnapshot().getLong(NetworkResources.COMPUTE));
+            assertEquals(7, first.energy().storedEnergy());
+            assertEquals(10, second.energy().storedEnergy());
+        }
+    }
+
+    @Test
     void stationsShareOneMaterialCyclePerSegmentAndLeaveOrdinaryNumericBudgetUntouched() {
         var phases = new ObjectArrayList<RecipeStage>();
-        var definition = definition(10, 3, io(3, 3, 2), energy(), observe(phase -> {
+        var definition = definition(10, io(3, 3, 2), energy(), observe(phase -> {
             phases.add(phase);
             return RequirementTransaction.SUCCESS;
         }));
@@ -319,7 +362,7 @@ class ResearchStationWorkTest {
             calls[0]++;
             return RequirementTransaction.SUCCESS;
         });
-        try (var fixture = new StationFixtures(1, 0, 2, definition(10, 3, io(2, 1, 1), observer)); var lanes = new Lanes()) {
+        try (var fixture = new StationFixtures(1, 0, 2, definition(10, io(2, 1, 1), observer)); var lanes = new Lanes()) {
             var station = fixture.station(2, 0);
             put(station, 10);
             fixture.refresh();
@@ -329,7 +372,7 @@ class ResearchStationWorkTest {
             assertEquals(10, input(station));
             assertNull(state.work.sources());
         }
-        try (var fixture = new StationFixtures(1, 0, 2, definition(0, 0, io(2, 1, 1), observer)); var lanes = new Lanes()) {
+        try (var fixture = new StationFixtures(1, 0, 2, definition(0, io(2, 1, 1), observer)); var lanes = new Lanes()) {
             var station = fixture.station(2, 0);
             put(station, 10);
             fixture.refresh();
@@ -344,7 +387,7 @@ class ResearchStationWorkTest {
     @Test
     void blockedEndRetainsPaidStartAndTickAtZeroSpeedAndRenewsTheSameSources() {
         var phases = new ObjectArrayList<RecipeStage>();
-        try (var fixture = new StationFixtures(1, 100, 2, definition(3, 3, io(2, 1, 2), observe(phase -> {
+        try (var fixture = new StationFixtures(1, 100, 2, definition(3, io(2, 1, 2), observe(phase -> {
             phases.add(phase);
             return RequirementTransaction.SUCCESS;
         }))); var lanes = new Lanes()) {
@@ -373,7 +416,7 @@ class ResearchStationWorkTest {
 
     @Test
     void busyCompletionWaitsAtEndAndDoesNotBuyAnotherMaterialCycle() {
-        try (var fixture = new StationFixtures(1, 100, 2, definition(3, 3, io(2, 1, 2))); var lanes = new Lanes()) {
+        try (var fixture = new StationFixtures(1, 100, 2, definition(3, io(2, 1, 2))); var lanes = new Lanes()) {
             var station = fixture.station(2, 0);
             put(station, 10);
             fixture.refresh();
@@ -415,7 +458,7 @@ class ResearchStationWorkTest {
             public void rollback() {
             }
         } : RequirementTransaction.SUCCESS);
-        try (var fixture = new StationFixtures(1, 100, 2, definition(3, 3, io(2, 1, 2), observer)); var lanes = new Lanes()) {
+        try (var fixture = new StationFixtures(1, 100, 2, definition(3, io(2, 1, 2), observer)); var lanes = new Lanes()) {
             var station = fixture.station(2, 0);
             put(station, 10);
             fixture.refresh();
@@ -469,7 +512,7 @@ class ResearchStationWorkTest {
                 return confirmed[0] ? Resolution.COMPLETED : Resolution.UNKNOWN;
             }
         } : RequirementTransaction.SUCCESS);
-        try (var fixture = new StationFixtures(1, 100, 2, definition(3, 3, io(2, 1, 2), observer)); var lanes = new Lanes()) {
+        try (var fixture = new StationFixtures(1, 100, 2, definition(3, io(2, 1, 2), observer)); var lanes = new Lanes()) {
             var station = fixture.station(2, 0);
             put(station, 10);
             fixture.refresh();

@@ -65,6 +65,7 @@ public final class ExampleRecipeRegistration {
 | `workSlot(definition)`     | 添加一个逻辑工位，多线程控制器可分别给各工位安排配方。 |
 | `attribute(id, base)`      | 设置并行数、速度等属性的初始值。                       |
 | `executionPolicy(policy)`  | 选择配方扫描和工作回调能否异步执行。                   |
+| `requiresNetwork(boolean)` | 显式设置普通控制器是否必须接入逻辑队伍网络才能执行配方。 |
 | `controllerModel(modelId)` | 选择控制器使用的模型声明。                             |
 
 默认控制器左下角提供16个物品格。`controllerInventorySlots(int)` 设置开放数量，默认0；`controllerInventorySlots(ToIntFunction<MachineInstance>)` 按当前机器实例计算数量。配置动态函数后优先使用其返回值；没有函数、函数被设为null、机器尚未装配或已注销时使用固定值。返回值必须在0到16之间，越界会抛出 `IllegalArgumentException`，不会自动裁剪。动态函数在服务端工作线程结束后的边界执行，必须只读取状态，禁止在函数内修改机器、库存或世界。
@@ -121,6 +122,22 @@ public final class MachineRegistration {
 ```
 
 类型注册时库据此创建控制器，装配注册后控制器才能创建机器实例和恢复其组件。装配必须使用注册时的同一个 `MachineType` 对象；重新构造相同 ID 的类型不能代替它。
+
+### 控制器是否需要网络
+
+普通控制器的共同基类 `MachineInstance` 负责网络门限，多线程和跨配方控制器继承相同规则。配置文件 `config/prototype_eng/controllers.cfg` 在启动时读取：
+
+```properties
+network {
+    B:defaultRequiresNetwork=false
+}
+```
+
+未显式设置的普通控制器默认不需要网络；改成 `true` 后要求逻辑 FTB 队伍网络。Java 的 `MachineType.Builder.requiresNetwork(true/false)` 和 ZS 的 `MachineType.requiresNetwork(true/false)` 优先于该默认值。显式安装 `MachineNetworkDevice` 角色本身也表示选择接网；普通控制器显式 `false` 可关闭共同配方门限，但不会取消额外声明的 `NetworkRecipeWork` 研究或资源需求。
+
+需要网络且未自定义角色时，装配自动添加等级 0、无资源供给的 `DEVICE` 及所有权组件，不必逐个控制器重复接线。缺少活动中心或失去许可时暂停配方，恢复后继续。网络中心和研究站保留专用角色，不受普通控制器默认开关控制。此处网络为逻辑队伍网络，不要求 ME 电缆或距离连通。
+
+真实玩家新放置的物理控制器即使离线也保存所有者和机器 UUID，读档不改变所有者。此改动前完全没有所有权数据的旧离线存档无法推导原放置者，启用网络前需换用未携带旧机器存档的新控制器；不会在加载时凭空生成身份。自定义非方块宿主继续显式提供自己的所有权组件和网络运行时。没有机器类型的独立库执行对象不应用服务器默认值。
 
 ### 物料需求、能源与配方
 
@@ -209,9 +226,26 @@ Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 
 
 `ResearchDefinition.builder(id)` 创建研究。`ResearchLevelStage.builder(first, last)` 为一段等级设置研究阶数、资源公式、前置、互斥、材料和奖励，多个阶段必须完整覆盖 `1..maxLevel`。阶数为 0 时使用玩家手动投料，正阶使用研究站。
 
-`ResearchResourceFormula.affine(type, base, slope, limit)` 按阶段内的等级偏移计算资源量：`base + slope × (当前等级 - 阶段首级)`。`limit` 限制一次工作分段授予的数量。`DATABASE_AND_ITEM` 允许个人研究写入数据库或下载成物品；`ITEM_ONLY` 的普通完成量归队伍并通过物品下载交付。奖励组可以含物品或自定义事件。
+`ResearchResourceFormula.builder().constant(type, demand)` 定义固定总需求；同一 builder 的 `.affine(type, base, slope)` 按阶段内的等级偏移计算总需求：`base + slope × (当前等级 - 阶段首级)`，最后调用 `.build()`。研究公式不设置单站速率，旧 `segmentGrantLimit` 参数已移除。`DATABASE_AND_ITEM` 允许个人研究写入数据库或下载成物品；`ITEM_ONLY` 的普通完成量归队伍并通过物品下载交付。奖励组可以含物品或自定义事件。
 
 计算网络资源通过 `NetworkResourceRegistrationEvent` 注册，提供该资源的物品通过 `NetworkComputerComponentRegistrationEvent` 注册。机器用 `MachineOwnership` 保存所有者，以 `MachineNetworkDevice` 声明网络中心、计算机、研究站、数据中心或普通设备角色；`NetworkRecipeWork` 处理配方的研究和计算资源要求。给资源数量本身不会授予研究权限。
+
+默认 `NetworkCenterController(type, level, energyPerTick)` 提供网络等级；默认 `ResearchStationController(type, level, rates, energyPerTick)` 提供研究等级、各资源每 tick 推进速率及 FE 消耗。二者直接继承 `MachineInstance`，不安装配方工位或机器业务 tick。中心通过网络发布服务工作，研究站通过共享研究服务工作。中心旧的两参数构造器仍表示零耗能。
+
+Java 分别给类型声明 `MachineOwnership.TYPE` 和 `NetworkCenter.DEVICE` / `ResearchStation.DEVICE`，给装配指定实例工厂并将对应 `DEVICE` 标为 `recreated`。例如研究站装配：
+
+```java
+MachineAssembly.builder(type, "research-station-v1")
+    .instanceFactory(value -> new ResearchStationController(value, 1,
+        Object2LongMaps.singleton(NetworkResources.COMPUTE, 10), 8))
+    .recreated(ResearchStation.DEVICE).build();
+```
+
+`rates` 是 `Object2LongMap<NetworkResourceType>`，未列资源速率为 0；定义后按只读契约借用，不复制。速率不得为负，不能包含逻辑线程类型；资源类型有正 `maxPerTickValue` 时，每站速率不能超过它。等级与耗能在当前加载代固定，耗能非负。自定义运行时可直接实现 `api.network.NetworkCenter` 或 `api.research.station.ResearchStation` 并安装对应角色组件，无需继承默认控制器；无机器业务 tick 的实现覆写 `requiresTick()` 返回 `false`。
+
+每段每种资源增加 `min(网络研究供给, 各参与站该资源速率之和, 剩余需求)`。站点等级决定是否合格，速率由站点定义；多个站仍合摊一份 START → TICK → END 材料，不按站数复制。研究站只在成功推进的 END 与进度一起结算自己的 FE，待机或材料周期未完成时不扣这笔电费；材料定义自身的阶段 FE 按原规则另行结算。缺能站不进入新段候选。网络中心只对本次生效者收费，缺能时重选可供电中心。同一设备同一服务器 tick 只成功付费一次，重新发布或调用不会重复扣费。
+
+完整 Java 示例见 [NetworkCenterExamples.java](run/visual-examples/src/main/java/pe/visual/examples/NetworkCenterExamples.java) 和 [ResearchStationExamples.java](run/visual-examples/src/main/java/pe/visual/examples/ResearchStationExamples.java)。当前只提供控制器和接线，没有新增 HTML 或 GUI。
 
 ### GUI、模型与 JEI
 
@@ -397,7 +431,18 @@ ParallelController.create("example:parallel_module", "tile.example.parallel_modu
 
 仓室容量由 `ResourceSide.itemEquivalent(slots, capacity)` 和 `EnergySide.create(capacity, transfer)` 定义，再交给 `Configuration.resources/energy(tier, input, output)`。两侧可以只提供一侧，不能都为空。`configureDefaults` 设置启动默认值，运行中调用 `request` 返回更新任务。
 
-研究用 `Research.create(...)` 声明，`ResearchStage.create(...)` 设置每段等级，`ResearchFormula.affine(...)` 给出资源量。stage 上的 `.prerequisite(...)` 和 `.mutex(...)` 分别添加前置和互斥研究，`.material(...)` 添加研究材料，`.reward(...)` 添加可领取奖励。研究站的有状态材料配方要同时提供 `.materialPersistence(...)`。
+研究用 `Research.create(...)` 声明，`ResearchStage.create(...)` 设置每段等级，`ResearchFormula.constant(type, demand)` / `.affine(type, base, slope)` 给出资源总量，不接受单站限额。stage 上的 `.prerequisite(...)` 和 `.mutex(...)` 分别添加前置和互斥研究，`.material(...)` 添加研究材料，`.reward(...)` 添加可领取奖励。研究站的有状态材料配方要同时提供 `.materialPersistence(...)`。
+
+在 preinit 脚本中，专用控制器使用下面的快捷入口（`compute` 是已经声明的数值计算资源）；它们不调用 `processing` 或添加配方工位：
+
+```zenscript
+MachineType.networkCenter("example:center", "example.center", "example:center_shape", 1, 4)
+    .register("center-v1");
+MachineType.researchStation("example:station", "example.station", "example:station_shape", 1,
+    ComputingResources.create().add(compute, 10), 8).register("station-v1");
+```
+
+最后一项是 FE/t。普通 `MachineType.create(...)` 可链式调用 `.requiresNetwork(true)` 或 `.requiresNetwork(false)`；省略时遵循上述配置和显式角色规则。
 
 计算资源用 `ComputingResource` 定义，`ComputingResources` 累加资源数量，`ComputingModifier` 设置数量修饰。`NetworkConfiguration.create(...)` 组合机器角色、等级、供给和配方需求，然后传给 preinit 中的 `.network(...)`。内置 `thread/compute/qubit` 已注册，禁止再次注册。
 

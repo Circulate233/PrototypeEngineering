@@ -99,7 +99,7 @@ class ResearchWorldStationTest {
 
     private static ResearchDefinition definition(long demand, Observations observations, ResearchStartCondition condition) {
         var stage = ResearchLevelStage.builder(1, 1).researchTier(2)
-                                      .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, demand, 3).build())
+                                      .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, demand).build())
                                       .materialPersistence("world-station-v1", builder -> builder.resources(KEYS))
                                       .materialRequirement(observations.requirement())
                                       .materialRequirement(RecipeRequirements.RESOURCES.requirement(id("world_io"), new ResourceRequirement(

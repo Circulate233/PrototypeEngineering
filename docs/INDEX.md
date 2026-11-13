@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-13 研究站控制器、设备耗能与普通控制器联网默认：新增 ResearchStation 接口及无配方/无业务 tick 的默认控制器；研究移除单站限额，推进取网络供给、各站速率之和及剩余需求的最小值。研究站实际推进时结算 FE，中心生效时结算 FE，同 tick 不重复。普通控制器共同基类读取 controllers.cfg 默认 false，Java/ZS 可显式覆盖；专用角色保留。真实玩家新放置的物理机器即使离线也保存所有权。Java/ZS 示例与 [API](../api.md#控制器是否需要网络)、[网络中心](network-runtime.md)、[研究站](research-stations.md)同步，无 HTML/GUI。36Java经IDEA格式化，33主/测试全级零、3run被排除；1859测试、完整构建、MCP构建、23Java addon和13脚本编译通过，证据见[实施进度](implementation-status.md)。下一步用户实机复验成型/读档、队伍许可、速率及FE；本地提交，不推送或启动游戏。
+
 - 2026-11-13 网络中心控制器：新增NetworkCenter等级接口与默认NetworkCenterController，直接使用通用机器生命周期，不继承多线程/跨配方控制器、不创建配方工位/费用组件、不登记机器业务tick。沿现有结构检查和网络唯一活动中心选择；Java/ZS示例均为控制器上方铁块、等级1。只处理控制器，未制作HTML/GUI。入口[网络中心控制器](network-runtime.md#网络中心控制器2026-11-13)，验证见[实施进度](implementation-status.md)；后续界面等待用户逐项要求。
 
 - 2026-11-13 按用户要求移除全部现有研究相关GUI：研究/队列/奖励/数据库/遗忘与管理员页面、专用容器/入口/同步/图标注册/文案与测试删除；后台研究能力保留。研究GUI恢复为延缓实现，后续仅按用户逐项要求处理。入口[研究GUI状态](research-gui.md)，删除范围与必要验证见[实施进度](implementation-status.md)。此前研究GUI已完成或待验记录已撤销。

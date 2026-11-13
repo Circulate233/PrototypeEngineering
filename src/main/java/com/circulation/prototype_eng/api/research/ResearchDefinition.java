@@ -131,10 +131,6 @@ public final class ResearchDefinition {
         return stageForLevel(level).resourceDemandForLevel(level);
     }
 
-    public Object2LongMap<NetworkResourceType> segmentGrantLimitsForLevel(int level) {
-        return stageForLevel(level).segmentGrantLimits();
-    }
-
     public ObjectList<RecipeRequirement<?>> materialRequirementsForLevel(int level) {
         return stageForLevel(level).materialRequirements();
     }

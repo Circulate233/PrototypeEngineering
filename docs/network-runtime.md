@@ -6,16 +6,24 @@
 
 每队只有一个活动中心，沿既有规则选择最高等级、同级最早加载者；其他已成型中心为`SAME_TYPE_CONFLICT`。默认控制器只提供正整数网络等级，资源供给为空、没有资源修饰。等级属于当前机器定义，在该加载代内保持不变；所有权沿既有`MachineOwnership`保存，网络登记在加载时建立、卸载时撤销。
 
-Java声明时给机器添加`MachineOwnership.TYPE`和`NetworkCenter.DEVICE`，装配指定`type -> new NetworkCenterController(type, level)`并将`NetworkCenter.DEVICE`标为recreated。自定义实现只需实现`NetworkCenter`并使用相同role组件；无业务tick的自定义运行时同样覆写`requiresTick()`，无需继承默认控制器。
+Java声明时给机器添加`MachineOwnership.TYPE`和`NetworkCenter.DEVICE`，装配指定`type -> new NetworkCenterController(type, level, energyPerTick)`并将`NetworkCenter.DEVICE`标为recreated。自定义实现提供`NetworkCenter`的等级和非负FE定义并使用相同role组件；无业务tick的自定义运行时同样覆写`requiresTick()`，无需继承默认控制器。原两参数构造器保留为零费用入口。
+
+中心只在生效时支付当前服务器 tick 的费用，网络重复刷新不重复扣费；待机冲突中心不收费，缺能中心从本次候选排除后重新选择。费用预留与网络发布共同提交，证明过期或发布失败时释放/补偿；不增加机器业务 tick。中心建立网络，因此不要求自身已有网络许可。
 
 ZS提供完整快捷入口：
 
 ```zenscript
-MachineType.networkCenter("example:center", "example.center", "example:center_shape", 1)
+MachineType.networkCenter("example:center", "example.center", "example:center_shape", 1, 4)
     .register("network-center-v1");
 ```
 
-入口使用相同Java契约与装配工厂，返回原`MachineType`声明句柄。网络中心不调用`processing`或声明配方工位。Java可直接用的注册示例为`run/visual-examples/src/main/java/pe/visual/examples/NetworkCenterExamples.java`；ZS示例为`run/scripts/15_pe_run_network_machines.zs`，结构在`30_pe_run_network.zs`。两例均为控制器上方一个铁块，等级1，不需要仓室/能源。装有run addon及脚本后可取得`pe_run_tests:java_network_center_controller`或`pe_run_tests:net_center_controller`。
+入口使用相同Java契约与装配工厂，返回原`MachineType`声明句柄。网络中心不调用`processing`或声明配方工位。Java可直接用的注册示例为`run/visual-examples/src/main/java/pe/visual/examples/NetworkCenterExamples.java`；ZS示例为`run/scripts/15_pe_run_network_machines.zs`，结构在`30_pe_run_network.zs`。两例均为控制器上方一个铁块、后方能源仓，等级1，生效时4 FE/t。装有run addon及脚本后可取得`pe_run_tests:java_network_center_controller`或`pe_run_tests:net_center_controller`。
+
+## 普通控制器的联网默认值
+
+`MachineInstance.requiresNetwork()` 先取 `MachineType.Builder.requiresNetwork(boolean)` 显式值，其次把显式网络角色视为主动接网，最后使用 `config/prototype_eng/controllers.cfg` 中 `network.defaultRequiresNetwork=false`。ZS 同名链式方法可显式覆盖；所有普通控制器共用基类门限。需要网络且无角色时由装配添加等级0、无供给的普通 DEVICE；默认false不会强迫普通机器入网。显式false仅关闭共同配方门限，不移除额外网络资源需求。专用网络中心、研究站保留固定职责。
+
+真实玩家新放置的物理机器即使当前离线也保存所有权，保证之后更改默认值时可据此入网；自定义非方块宿主继续显式提供身份。此前未保存身份的旧离线控制器需要换用未携带旧机器存档的新控制器，不能在读档时猜测所有者。配置启动时读取；裸 `new MachineInstance()` 独立库执行对象不应用服务器默认值。详细Java/ZS用法见 [API](../api.md#控制器是否需要网络)。
 
 以下为既有网络运行时记录。
 
@@ -25,9 +33,9 @@ MachineType.networkCenter("example:center", "example.center", "example:center_sh
 
 机器声明 `MachineOwnership.TYPE`，再声明 `MachineNetworkDevice.component(id, source)`。source 是标准 Java BiFunction，接收当前 MachineInstance 和准确身份 Registration，返回既有 `NetworkDeviceSnapshot`；因此动态资源、数据中心已有研究数等可以直接读取使用方自己的组件，不需要另一份机器类型或接口镜像。source 只在 owner 线程运行，必须只读；它返回的身份、loadOrder 和 formed 必须与实际宿主一致。
 
-MachineAssembly 为该网络组件使用 `recreated`，身份仍用 MachineOwnership 内置 codec。新实例在工厂阶段安装永久的配方条件，初始关闭；按组件依赖顺序加载 ownership 后才登记网络角色。恢复不保存或复用旧 epoch、权限或角色 Registration，scanner 也继续 recreated。自定义宿主重载显式提供 ownership descriptor 和 NetworkRuntime，不依赖内置 TileEntity。
+MachineAssembly 为该网络组件使用 `recreated`，身份仍用 MachineOwnership 内置 codec。角色在工厂阶段绑定到共同基类，所需网络许可初始关闭；按组件依赖顺序加载 ownership 后才登记网络角色。恢复不保存或复用旧 epoch、权限或角色 Registration，scanner 也继续 recreated。自定义宿主重载显式提供 ownership descriptor 和 NetworkRuntime，不依赖内置 TileEntity。
 
-组件加载时捕获自己的准确绑定，重复角色或重复绑定拒绝。卸载/部分加载失败只关闭本次句柄；永久 gate 保持关闭，不通过删除 gate 变成无条件允许。组件被非法移除也不能借旧句柄授权。
+组件加载时捕获自己的准确绑定，重复角色或重复绑定拒绝。卸载/部分加载失败只关闭本次句柄；需要网络的控制器继续受基类门限限制。组件被非法移除也不能借旧句柄授权。
 
 ## NetworkRuntime 的整批边界
 
@@ -55,7 +63,7 @@ prepare 失败沿用 scheduler 的永久 fault、真实 join 与完整清理协�
 
 ## 配方与普通组件
 
-`MachineInstance.addRecipeWorkGate(BooleanSupplier)` 仅用于未发布装配，支持多个独立条件取 AND；无网络角色的普通机器不自动增加网络限制。gate 必须读线程安全运行状态，不能在 worker 查询外部队伍或 World。`canProcessRecipes()` 结合原生命周期/成型门限和这些附加条件，供普通扫描/工位系统使用。
+`MachineInstance.addRecipeWorkGate(BooleanSupplier)` 仅用于未发布装配，支持多个额外条件取 AND；网络门限直接由共同基类根据上述配置和显式设置执行。gate 必须读线程安全运行状态，不能在 worker 查询外部队伍或 World。`canProcessRecipes()` 结合原生命周期/成型门限和这些附加条件，供普通扫描/工位系统使用。
 
 低层 scanner、工位直接 admission/tick 和 RecipeProcess 的阶段边界也检查 `recipeWorkAllowed()`，不能绕过网络条件。原低层宿主自行管理 formation 的契约仍保留；这部分不会额外强迫独立执行入口成型。已经获取并提交的事务照常 complete，再在后续阶段或工位暂停，不退历史消耗、不重 START。
 

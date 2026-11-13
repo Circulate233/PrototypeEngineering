@@ -73,7 +73,7 @@ class ResearchWorldViewTest {
         resources.register(COMPUTE);
         resources.freeze();
         var registry = new ResearchRegistry();
-        var ordinary = ResearchResourceFormula.builder().constant(COMPUTE, 10, 3).build();
+        var ordinary = ResearchResourceFormula.builder().constant(COMPUTE, 10).build();
         registry.register(ResearchDefinition.builder(BASE).maxLevel(3).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                             .startCondition(_ -> fail("GUI refreshed an external start condition"))
                                             .stage(ResearchLevelStage.builder(1, 3).researchTier(1).resourceFormula(ordinary).build()).build());

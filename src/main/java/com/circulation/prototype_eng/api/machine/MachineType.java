@@ -37,6 +37,8 @@ public final class MachineType {
     private final ExecutionMode executionMode;
     private final boolean explicitExecutionMode;
     @Nullable
+    private final Boolean requiresNetwork;
+    @Nullable
     private final ControllerExecutionPolicy executionPolicy;
     @Nullable
     private final ResourceLocation controllerModel;
@@ -56,6 +58,7 @@ public final class MachineType {
         defaultAttributeBases = builder.attributes;
         executionMode = builder.executionMode;
         explicitExecutionMode = builder.explicitExecutionMode;
+        requiresNetwork = builder.requiresNetwork;
         executionPolicy = builder.executionPolicy;
         controllerModel = builder.controllerModel;
         controllerInventorySlots = builder.controllerInventorySlots;
@@ -129,6 +132,13 @@ public final class MachineType {
     }
 
     /**
+     * Null follows the runtime's role and server default; explicit values override ordinary controllers.
+     */
+    public @Nullable Boolean networkRequirement() {
+        return requiresNetwork;
+    }
+
+    /**
      * Null retains the existing execution-mode selection and the runtime controller's default.
      */
     @Nullable
@@ -156,6 +166,8 @@ public final class MachineType {
         private final Object2DoubleLinkedOpenHashMap<ResourceLocation> attributes = new Object2DoubleLinkedOpenHashMap<>();
         private ExecutionMode executionMode = ExecutionMode.CONCURRENT;
         private boolean explicitExecutionMode;
+        @Nullable
+        private Boolean requiresNetwork;
         @Nullable
         private ControllerExecutionPolicy executionPolicy;
         @Nullable
@@ -218,6 +230,11 @@ public final class MachineType {
         public Builder executionMode(ExecutionMode mode) {
             executionMode = Objects.requireNonNull(mode);
             explicitExecutionMode = true;
+            return this;
+        }
+
+        public Builder requiresNetwork(boolean required) {
+            requiresNetwork = required;
             return this;
         }
 

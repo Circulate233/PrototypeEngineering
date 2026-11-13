@@ -4,6 +4,7 @@ import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.energy.EnergyInput;
 import com.circulation.prototype_eng.api.energy.EnergyOutput;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.ControllerEnergy;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
 import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
@@ -19,10 +20,13 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
+import com.circulation.prototype_eng.api.storage.ResourceReservation;
+import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -97,6 +101,7 @@ public final class ResearchStations {
 
     @Nullable
     private static Station candidate(MachineIdentityRegistry.Registration identity, MachineInstance machine, String teamId, int tier) {
+        if (!(machine instanceof ResearchStation)) return null;
         var binding = attachment(machine);
         if (binding == null) {
             return null;
@@ -105,6 +110,7 @@ public final class ResearchStations {
         if (!eligible(permit, identity, teamId, tier)) {
             return null;
         }
+        if (!machine.canPayPower(Objects.requireNonNull(permit).tick())) return null;
         var result = new Station(identity, machine, binding.type, binding.role, MachineHatches.get(machine), Objects.requireNonNull(permit));
         return result.physicallyCurrent() ? result : null;
     }
@@ -193,7 +199,8 @@ public final class ResearchStations {
                     throw new IllegalStateException("Team has multiple active physical network centers");
                 }
                 center = new AdmissionDevice(identity, machine, binding, permit, NetworkWorkState.ACTIVE_CENTER);
-            } else if (state == NetworkWorkState.ACTIVE_DEVICE && snapshot.role() == NetworkDeviceRole.RESEARCH_STATION) {
+            } else if (state == NetworkWorkState.ACTIVE_DEVICE && snapshot.role() == NetworkDeviceRole.RESEARCH_STATION
+                && machine instanceof ResearchStation) {
                 stations.add(new AdmissionDevice(identity, machine, binding, permit, NetworkWorkState.ACTIVE_DEVICE));
             }
         }
@@ -217,7 +224,7 @@ public final class ResearchStations {
     }
 
     /**
-     * Lease acquisition precedes queue.planSegment; station count scales numeric grant limits, not material copies.
+     * Lease acquisition precedes queue.planSegment; individual station rates add, material copies do not.
      */
     @Nullable
     public Capture capture(String teamId, int requiredTier) {
@@ -519,6 +526,7 @@ public final class ResearchStations {
         private final List<MachineInstance> machines;
         private final ObjectSet<UUID> stationIds;
         private final MachineHatches hatches;
+        private final Object2LongMap<NetworkResourceType> capacity;
 
         private Capture(ResearchStations selector, String teamId, int requiredTier, int dimension, List<Station> stations, MachineHatches hatches) {
             this(selector, teamId, requiredTier, dimension, stations, hatches, null);
@@ -542,6 +550,17 @@ public final class ResearchStations {
             sites = capturedSites == null ? originalSites : ObjectLists.unmodifiable(capturedSites);
             machines = ObjectLists.unmodifiable(capturedMachines);
             this.hatches = hatches;
+            var rates = new Object2LongOpenHashMap<NetworkResourceType>();
+            for (var station : stations) {
+                for (var entry : ((ResearchStation) station.machine()).researchRates().object2LongEntrySet()) {
+                    var resource = entry.getKey();
+                    long rate = entry.getLongValue();
+                    long before = rates.getLong(resource);
+                    if (rate > Long.MAX_VALUE - before) rates.put(resource, Long.MAX_VALUE);
+                    else rates.addTo(resource, rate);
+                }
+            }
+            capacity = rates;
             var ids = new ObjectLinkedOpenHashSet<UUID>();
             stations.forEach(station -> ids.add(station.identity.identity().machineId()));
             stationIds = ObjectSets.unmodifiable(ids);
@@ -582,6 +601,43 @@ public final class ResearchStations {
 
         public Object2LongMap<NetworkResourceType> numericResources() {
             return stations.getFirst().permit.numericResources();
+        }
+
+        public Object2LongMap<NetworkResourceType> capacity() {
+            return capacity;
+        }
+
+        /**
+         * Returns acquired power participants for the same END transaction as the progress grant.
+         */
+        public @Nullable List<ControllerEnergy.Payment> reservePower() {
+            var payments = new ObjectArrayList<ControllerEnergy.Payment>();
+            try {
+                for (var station : stations) {
+                    var payment = station.machine().reservePower(station.permit.tick());
+                    if (payment == null) {
+                        rollbackPower(payments);
+                        return null;
+                    }
+                    if (payment != ControllerEnergy.Payment.FREE) payments.add(payment);
+                }
+            } catch (RuntimeException | Error failure) {
+                try {
+                    rollbackPower(payments);
+                } catch (RuntimeException | Error cleanup) {
+                    if (cleanup != failure) failure.addSuppressed(cleanup);
+                }
+                throw failure;
+            }
+            return payments;
+        }
+
+        public static void rollbackPower(List<ControllerEnergy.Payment> payments) {
+            if (payments.isEmpty()) return;
+            var tokens = new ObjectArrayList<ResourceReservation>();
+            for (var payment : payments) tokens.addAll(payment.reservations());
+            payments.clear();
+            ResourceTransactions.rollback(tokens);
         }
 
         /**

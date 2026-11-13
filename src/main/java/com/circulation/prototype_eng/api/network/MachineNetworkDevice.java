@@ -1,6 +1,9 @@
 package com.circulation.prototype_eng.api.network;
 
 import com.circulation.prototype_eng.api.component.ComponentType;
+import com.circulation.prototype_eng.Tags;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
+import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
 import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
@@ -21,6 +24,11 @@ import java.util.function.Function;
  * Explicit role attachment; its runtime state is recreated while MachineOwnership persists identity.
  */
 public final class MachineNetworkDevice implements MachineLifecycleListener {
+    public static final ComponentType<MachineInstance, MachineNetworkDevice> DEFAULT = capturedComponent(
+        new ResourceLocation(Tags.MOD_ID, "default_network_device"), (owner, identity) ->
+            new NetworkRuntime.Capture(new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.DEVICE, 0,
+                Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(),
+                NetworkResourceModifier.EMPTY, 0, 0), () -> true));
     private final MachineInstance owner;
     private final ComponentType<MachineInstance, MachineOwnership> ownershipType;
     private final BiFunction<MachineInstance, MachineIdentityRegistry.Registration, NetworkRuntime.Capture> source;
@@ -38,7 +46,11 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
         this.ownershipType = ownership;
         this.source = source;
         this.runtime = runtime;
-        owner.addRecipeWorkGate(this::allowsNetworkWork);
+        owner.bindNetworkDevice(this);
+    }
+
+    public boolean automatic() {
+        return boundType == DEFAULT;
     }
 
     /**
@@ -107,6 +119,7 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
     @Override
     @SuppressWarnings("resource") // The runtime belongs to the server owner; this component owns only its registration.
     public void onLoaded(MachineLifecycleEvent.Loaded event) {
+        if (automatic() && !owner.requiresNetwork()) return;
         var ownership = Objects.requireNonNull(owner.components().get(ownershipType), "Network role requires declared ownership");
         var identity = Objects.requireNonNull(ownership.registration(), "Ownership must load before its network role");
         registration = runtime.apply(event.context().host()).register(identity, this::capture);
@@ -133,7 +146,7 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
         }
         return new NetworkRuntime.Capture(snapshot, () -> lifecycle.schedulingAllowed() && lifecycle.formed() == formed
             && owner.components().get(boundType) == this && (structureHost == null || structureHost.structureConfiguration() == configuration)
-            && captured.current().getAsBoolean());
+            && captured.current().getAsBoolean(), captured.centerPower());
     }
 
     @Override

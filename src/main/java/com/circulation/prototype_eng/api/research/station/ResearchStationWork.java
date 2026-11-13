@@ -12,6 +12,7 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import com.circulation.prototype_eng.scheduler.planned.PlannedRecipeCoordinator;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
@@ -338,7 +339,7 @@ public final class ResearchStationWork {
             if (stage.researchTier() == 0 || sources.requiredTier() < stage.researchTier()) {
                 return set(Status.WAITING, null);
             }
-            var plan = queue.planSegment(head.key(), sources.stationIds(), sources.numericResources(), context.time()).orElse(null);
+            var plan = queue.planSegment(head.key(), sources.stationIds(), sources.numericResources(), sources.capacity(), context.time()).orElse(null);
             if (plan == null || !context.current().getAsBoolean() || !sources.current()) {
                 return set(Status.WAITING, null);
             }
@@ -649,14 +650,23 @@ public final class ResearchStationWork {
             if (!current() || queue.busy()) {
                 return null;
             }
-            var prepared = plan.completesResearch() ? completion.prepare(plan.key().researchId(), plan.key().targetLevel(),
-                context.members(), players, team, context.time()) : null;
-            if (plan.completesResearch() && prepared == null) {
-                return null;
-            }
+            var power = sources.reservePower();
+            if (power == null) return null;
+            TeamResearchCompletion.Prepared prepared = null;
             try {
+                prepared = plan.completesResearch() ? completion.prepare(plan.key().researchId(), plan.key().targetLevel(),
+                    context.members(), players, team, context.time()) : null;
+                if (plan.completesResearch() && prepared == null) {
+                    ResearchStations.Capture.rollbackPower(power);
+                    return null;
+                }
                 grant = queue.prepareGrantSegment(plan);
             } catch (RuntimeException | Error failure) {
+                try {
+                    ResearchStations.Capture.rollbackPower(power);
+                } catch (RuntimeException | Error cleanup) {
+                    if (cleanup != failure) failure.addSuppressed(cleanup);
+                }
                 if (prepared != null) {
                     try {
                         prepared.rollback();
@@ -700,7 +710,11 @@ public final class ResearchStationWork {
                     return Objects.requireNonNull(grant).resolution();
                 }
             };
-            return prepared == null ? List.of(tracked) : List.of(tracked, prepared);
+            var participants = new ObjectArrayList<ReversibleTransaction>(power.size() + 2);
+            participants.addAll(power);
+            participants.add(tracked);
+            if (prepared != null) participants.add(prepared);
+            return participants;
         }
     }
 }

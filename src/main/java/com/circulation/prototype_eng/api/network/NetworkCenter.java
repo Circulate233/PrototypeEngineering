@@ -11,7 +11,8 @@ import java.util.Objects;
 
 /**
  * A structure that supplies its team's network level. Custom machine runtimes may implement this
- * interface without inheriting the default controller. The level is fixed for the loaded generation.
+ * interface without inheriting the default controller. The positive level and nonnegative FE upkeep
+ * are fixed for the loaded generation.
  * Declare MachineOwnership.TYPE and DEVICE, and bind DEVICE as recreated in the machine assembly.
  */
 public interface NetworkCenter {
@@ -19,7 +20,10 @@ public interface NetworkCenter {
         new ResourceLocation(Tags.MOD_ID, "network_center"), (owner, identity) ->
             new NetworkRuntime.Capture(new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER,
                 ((NetworkCenter) owner).networkLevel(), Objects.requireNonNull(owner.lifecycle()).formed(),
-                identity.loadOrder(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), () -> true));
+                identity.loadOrder(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), () -> true,
+                owner.energyPerTick() == 0 ? null : owner::reservePower));
+
+    long energyPerTick();
 
     int networkLevel();
 }

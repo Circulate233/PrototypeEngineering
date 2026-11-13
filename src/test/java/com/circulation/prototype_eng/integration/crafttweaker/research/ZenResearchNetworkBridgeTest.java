@@ -98,7 +98,7 @@ class ZenResearchNetworkBridgeTest {
                 if event.groupId == "ct_research:choice" && event.level == 1 { return "RETRY_LATER"; }
                 return "APPLIED";
             });
-            var stage = ResearchStage.create(1, 2, 1, ResearchFormula.create().affine(compute, 3000000000L, 7, 100))
+            var stage = ResearchStage.create(1, 2, 1, ResearchFormula.create().affine(compute, 3000000000L, 7))
                 .reward(1, reward);
             Research.create("ct_research:research", 2, false, "ITEM_ONLY", 1, [stage], function(context) {
                 return context.playerId != "" && context.teamId == "team" && context.available(compute) >= 100;

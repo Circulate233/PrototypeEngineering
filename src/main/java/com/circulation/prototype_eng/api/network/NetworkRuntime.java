@@ -1,6 +1,9 @@
 package com.circulation.prototype_eng.api.network;
 
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
+import com.circulation.prototype_eng.api.machine.ControllerEnergy;
+import com.circulation.prototype_eng.api.storage.ResourceReservation;
+import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkResources;
@@ -141,6 +144,9 @@ public final class NetworkRuntime implements AutoCloseable {
         long revision = identities.revision();
         captureRevoked = false;
         preparing = true;
+        var upkeep = new ObjectArrayList<ControllerEnergy.Payment>();
+        boolean powerSettled = false;
+        Throwable failure = null;
         try {
             var captures = new Reference2ObjectOpenHashMap<Registration, Capture>(registrations.size());
             var devices = new ObjectArrayList<NetworkDeviceSnapshot>(registrations.size());
@@ -165,9 +171,28 @@ public final class NetworkRuntime implements AutoCloseable {
             var external = this.participants.capture(tick, epoch);
             var contributions = new ObjectArrayList<>(external.contributions);
             contributions.addAll(Objects.requireNonNull(participants.apply(epoch)));
-            var inputs = NetworkPlanner.capture(resources, epoch, devices, contributions, teams);
-            external.bindOwners(inputs);
-            var plan = NetworkPlanner.plan(inputs);
+            NetworkPlan plan;
+            while (true) {
+                var inputs = NetworkPlanner.capture(resources, epoch, devices, contributions, teams);
+                external.bindOwners(inputs);
+                plan = NetworkPlanner.plan(inputs);
+                Registration unavailable = null;
+                for (var entry : captures.reference2ObjectEntrySet()) {
+                    var capture = entry.getValue();
+                    if (capture.centerPower() == null || plan.workStates().get(capture.snapshot().identity().machineId()) != NetworkWorkState.ACTIVE_CENTER)
+                        continue;
+                    var payment = capture.centerPower().apply(tick);
+                    if (payment == null) {
+                        unavailable = entry.getKey();
+                        break;
+                    }
+                    if (payment != ControllerEnergy.Payment.FREE) upkeep.add(payment);
+                }
+                if (unavailable == null) break;
+                rollbackPower(upkeep);
+                var absent = captures.remove(unavailable);
+                devices.remove(absent.snapshot());
+            }
             for (var entry : captures.reference2ObjectEntrySet()) {
                 if (!entry.getKey().identity.unique() || !entry.getValue().current().getAsBoolean()) {
                     return false;
@@ -190,13 +215,46 @@ public final class NetworkRuntime implements AutoCloseable {
             if (captureRevoked || identities.revision() != revision) {
                 return false;
             }
-            // Existing teams retain their first accepted capacity and all consumption for this tick.
-            budgets.putAll(additions);
-            published = new Publication(revision, plan, states, captures, external);
-            return true;
+            var publication = new Publication(revision, plan, states, captures, external);
+            if (upkeep.isEmpty()) {
+                budgets.putAll(additions);
+                published = publication;
+                powerSettled = true;
+                return true;
+            }
+            var tokens = new ObjectArrayList<ResourceReservation>();
+            for (var payment : upkeep) tokens.addAll(payment.reservations());
+            powerSettled = true; // ResourceTransactions now owns all completion/compensation paths.
+            return ResourceTransactions.commit(tokens, () -> {
+                for (var payment : upkeep) payment.commit();
+                // Existing teams retain their first accepted capacity and all consumption for this tick.
+                budgets.putAll(additions);
+                published = publication;
+            }, () -> upkeep.forEach(ControllerEnergy.Payment::complete), () -> {
+                published = null;
+                for (int i = upkeep.size() - 1; i >= 0; i--) upkeep.get(i).rollback();
+            });
+        } catch (RuntimeException | Error cause) {
+            failure = cause;
+            throw cause;
         } finally {
-            preparing = false;
+            try {
+                if (!powerSettled) rollbackPower(upkeep);
+            } catch (RuntimeException | Error cleanup) {
+                if (failure == null) throw cleanup;
+                if (cleanup != failure) failure.addSuppressed(cleanup);
+            } finally {
+                preparing = false;
+            }
         }
+    }
+
+    private static void rollbackPower(List<ControllerEnergy.Payment> payments) {
+        if (payments.isEmpty()) return;
+        var tokens = new ObjectArrayList<ResourceReservation>();
+        for (var payment : payments) tokens.addAll(payment.reservations());
+        payments.clear();
+        ResourceTransactions.rollback(tokens);
     }
 
     /**
@@ -293,7 +351,12 @@ public final class NetworkRuntime implements AutoCloseable {
     /**
      * A detached snapshot plus an owner-only exact-state proof, also checked before budget work.
      */
-    public record Capture(NetworkDeviceSnapshot snapshot, BooleanSupplier current) {
+    public record Capture(NetworkDeviceSnapshot snapshot, BooleanSupplier current,
+                          @Nullable LongFunction<ControllerEnergy.Payment> centerPower) {
+        public Capture(NetworkDeviceSnapshot snapshot, BooleanSupplier current) {
+            this(snapshot, current, null);
+        }
+
         public Capture {
             Objects.requireNonNull(snapshot);
             Objects.requireNonNull(current);

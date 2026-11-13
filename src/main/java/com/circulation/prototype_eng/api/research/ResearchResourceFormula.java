@@ -11,18 +11,16 @@ import net.minecraft.util.ResourceLocation;
 import java.util.Objects;
 
 /**
- * PN's stage-relative exact affine demand, with a separate limit for each committed segment.
+ * Stage-relative exact affine total demand. Advancement rates belong to research stations.
  */
 @SuppressWarnings("unused")
 public final class ResearchResourceFormula {
     private final Object2LongMap<NetworkResourceType> baseDemands;
     private final Object2LongMap<NetworkResourceType> demandSlopes;
-    private final Object2LongMap<NetworkResourceType> segmentGrantLimits;
 
     private ResearchResourceFormula(Builder builder) {
         baseDemands = immutable(builder.baseDemands);
         demandSlopes = immutable(builder.demandSlopes);
-        segmentGrantLimits = immutable(builder.segmentGrantLimits);
     }
 
     public static Builder builder() {
@@ -47,10 +45,6 @@ public final class ResearchResourceFormula {
 
     public Object2LongMap<NetworkResourceType> demandSlopes() {
         return demandSlopes;
-    }
-
-    public Object2LongMap<NetworkResourceType> segmentGrantLimits() {
-        return segmentGrantLimits;
     }
 
     public Object2LongMap<NetworkResourceType> demandsAt(int stageFirstLevel, int level) {
@@ -86,28 +80,25 @@ public final class ResearchResourceFormula {
     public static final class Builder {
         private final Object2LongOpenHashMap<NetworkResourceType> baseDemands = new Object2LongOpenHashMap<>();
         private final Object2LongOpenHashMap<NetworkResourceType> demandSlopes = new Object2LongOpenHashMap<>();
-        private final Object2LongOpenHashMap<NetworkResourceType> segmentGrantLimits = new Object2LongOpenHashMap<>();
         private final ObjectOpenHashSet<ResourceLocation> ids = new ObjectOpenHashSet<>();
 
         private Builder() {
         }
 
-        public Builder constant(NetworkResourceType type, long demand, long segmentGrantLimit) {
-            return affine(type, demand, 0, segmentGrantLimit);
+        public Builder constant(NetworkResourceType type, long demand) {
+            return affine(type, demand, 0);
         }
 
-        public Builder affine(NetworkResourceType type, long base, long slope, long segmentGrantLimit) {
+        public Builder affine(NetworkResourceType type, long base, long slope) {
             Objects.requireNonNull(type);
-            if (type.logicalConcurrency() || base < 0 || slope < 0 || segmentGrantLimit <= 0
-                || type.maxPerTickValue() > 0 && segmentGrantLimit > type.maxPerTickValue()) {
-                throw new IllegalArgumentException("Invalid numeric research formula or segment limit for " + type.id());
+            if (type.logicalConcurrency() || base < 0 || slope < 0) {
+                throw new IllegalArgumentException("Invalid numeric research demand for " + type.id());
             }
             if (!ids.add(type.id())) {
                 throw new IllegalArgumentException("Duplicate research formula resource " + type.id());
             }
             baseDemands.put(type, base);
             demandSlopes.put(type, slope);
-            segmentGrantLimits.put(type, segmentGrantLimit);
             return this;
         }
 

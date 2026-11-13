@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.api.storage;
 
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
+import com.circulation.prototype_eng.api.transaction.ReservedTransaction;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
@@ -913,6 +914,7 @@ public final class ResourceBatch {
         private final Iterator<StorageContext> declared;
         private final Iterator<? extends ResourceReservation> reservations;
         private final Iterator<? extends ReversibleTransaction> transactions;
+        private @Nullable Iterator<? extends ResourceReservation> participantTokens;
         private int phase;
         private boolean cancelled, done;
         private @Nullable StorageFence.Acquire claim;
@@ -952,6 +954,13 @@ public final class ResourceBatch {
                 batch.addContext(Objects.requireNonNull(declared.next()));
             }
             while (phase == 1) {
+                if (participantTokens != null) {
+                    while (participantTokens.hasNext()) {
+                        if (!budget.take()) return false;
+                        addReservation(Objects.requireNonNull(participantTokens.next()));
+                    }
+                    participantTokens = null;
+                }
                 if (!transactions.hasNext()) {
                     phase = 2;
                     break;
@@ -964,6 +973,8 @@ public final class ResourceBatch {
                     throw new IllegalArgumentException("Repeated business transaction");
                 }
                 batch.transactions.add(new Participant(transaction));
+                if (transaction instanceof ReservedTransaction reserved)
+                    participantTokens = reserved.reservations().iterator();
             }
             while (phase == 2) {
                 if (!reservations.hasNext()) {
@@ -973,16 +984,7 @@ public final class ResourceBatch {
                 if (!budget.take()) {
                     return false;
                 }
-                var token = Objects.requireNonNull(reservations.next());
-                if (!batch.tokenIdentities.add(token)) {
-                    throw new IllegalArgumentException("Repeated reservation token");
-                }
-                if (batch.sequential && !token.supportsSequentialUse()) {
-                    throw new IllegalArgumentException("Reservation does not support sequential use");
-                }
-                var context = Objects.requireNonNull(token.context());
-                batch.addContext(context);
-                batch.addToken(context, token);
+                addReservation(Objects.requireNonNull(reservations.next()));
             }
             if (claim == null) {
                 claim = StorageFence.beginAcquire(batch.contextList);
@@ -993,6 +995,15 @@ public final class ResourceBatch {
             batch.fence = claim.result();
             done = true;
             return true;
+        }
+
+        private void addReservation(ResourceReservation token) {
+            if (!batch.tokenIdentities.add(token)) throw new IllegalArgumentException("Repeated reservation token");
+            if (batch.sequential && !token.supportsSequentialUse())
+                throw new IllegalArgumentException("Reservation does not support sequential use");
+            var context = Objects.requireNonNull(token.context());
+            batch.addContext(context);
+            batch.addToken(context, token);
         }
 
         public void cancel() {
@@ -1079,6 +1090,7 @@ public final class ResourceBatch {
         private final ReferenceOpenHashSet<ReversibleTransaction> businessSet = new ReferenceOpenHashSet<>();
         private int phase, index;
         private boolean rollbackOnly;
+        private @Nullable Iterator<? extends ResourceReservation> participantTokens;
 
         private Append(List<? extends ResourceReservation> tokens, List<? extends ReversibleTransaction> business, boolean rollbackOnly) {
             inputTokens = Objects.requireNonNull(tokens);
@@ -1088,6 +1100,13 @@ public final class ResourceBatch {
 
         private boolean advance(RecipeWorkBudget budget) {
             while (phase < 4) {
+                if (participantTokens != null) {
+                    while (participantTokens.hasNext()) {
+                        if (!budget.take()) return false;
+                        captureToken(Objects.requireNonNull(participantTokens.next()));
+                    }
+                    participantTokens = null;
+                }
                 int size = phase == 0 ? inputTokens.size() : phase == 1 ? inputBusiness.size() : phase == 2 ? tokens.size() : business.size();
                 if (index == size) {
                     phase++;
@@ -1098,25 +1117,15 @@ public final class ResourceBatch {
                     return false;
                 }
                 if (phase == 0) {
-                    var token = Objects.requireNonNull(inputTokens.get(index));
-                    if (tokenIdentities.contains(token) || !tokenSet.add(token)) {
-                        throw new IllegalArgumentException("Repeated reservation token");
-                    }
-                    if (!rollbackOnly && !token.supportsSequentialUse()) {
-                        throw new IllegalArgumentException("Reservation does not support sequential use");
-                    }
-                    var context = Objects.requireNonNull(token.context());
-                    if (!contexts.contains(context)) {
-                        throw new IllegalArgumentException("Reservation domain was not declared");
-                    }
-                    tokens.add(token);
-                    domains.add(context);
+                    captureToken(Objects.requireNonNull(inputTokens.get(index)));
                 } else if (phase == 1) {
                     var transaction = Objects.requireNonNull(inputBusiness.get(index));
                     if (businessIdentities.contains(transaction) || !businessSet.add(transaction)) {
                         throw new IllegalArgumentException("Repeated business transaction");
                     }
                     business.add(transaction);
+                    if (transaction instanceof ReservedTransaction reserved)
+                        participantTokens = reserved.reservations().iterator();
                 } else if (phase == 2) {
                     var token = tokens.get(index);
                     tokenIdentities.add(token);
@@ -1129,6 +1138,17 @@ public final class ResourceBatch {
                 index++;
             }
             return true;
+        }
+
+        private void captureToken(ResourceReservation token) {
+            if (tokenIdentities.contains(token) || !tokenSet.add(token))
+                throw new IllegalArgumentException("Repeated reservation token");
+            if (!rollbackOnly && !token.supportsSequentialUse())
+                throw new IllegalArgumentException("Reservation does not support sequential use");
+            var context = Objects.requireNonNull(token.context());
+            if (!contexts.contains(context)) throw new IllegalArgumentException("Reservation domain was not declared");
+            tokens.add(token);
+            domains.add(context);
         }
     }
 

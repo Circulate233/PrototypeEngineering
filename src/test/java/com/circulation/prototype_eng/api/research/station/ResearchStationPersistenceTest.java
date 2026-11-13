@@ -4,6 +4,7 @@ import ae2.api.config.Actionable;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.ResearchStationController;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
@@ -117,7 +118,7 @@ class ResearchStationPersistenceTest {
             }
         }).requirement(id("saved_observer"), action);
         var stage = ResearchLevelStage.builder(1, 1).researchTier(2)
-                                      .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 3, 3).build())
+                                      .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 3).build())
                                       .materialPersistence("saved-station-v1", codec -> codec.resources(KEYS))
                                       .materialRequirement(RecipeRequirements.RESOURCES.requirement(id("saved_io"), new ResourceRequirement(
                                           List.of(new GenericStack(RAW, 2)), List.of(new GenericStack(RAW, 1)), List.of(), List.of(new GenericStack(PRODUCT, 2)), false)))
@@ -662,7 +663,7 @@ class ResearchStationPersistenceTest {
             var component = MachineNetworkDevice.component(id("moving_role_" + fixture.positions), fixture.ownership,
                 (machine, identity) -> new NetworkDeviceSnapshot(identity.identity(), role, 2, Objects.requireNonNull(machine.lifecycle()).formed(),
                     identity.loadOrder(), supply, NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
-            return attach(component, null);
+            return attach(component, null, role == NetworkDeviceRole.RESEARCH_STATION);
         }
 
         private void dataCenter() {
@@ -671,16 +672,18 @@ class ResearchStationPersistenceTest {
             var component = MachineNetworkDevice.capturedComponent(id("moving_data_role"), fixture.ownership,
                 (machine, identity) -> Objects.requireNonNull(machine.components().get(storage)).networkCapture(identity,
                     Objects.requireNonNull(machine.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
-            attach(component, storage);
+            attach(component, storage, false);
         }
 
-        private Entry attach(ComponentType<MachineInstance, MachineNetworkDevice> role, ComponentType<MachineInstance, MachineDataCenterStorage> storage) {
+        private Entry attach(ComponentType<MachineInstance, MachineNetworkDevice> role, ComponentType<MachineInstance, MachineDataCenterStorage> storage, boolean station) {
             var typeBuilder = MachineType.builder(id("moving_machine_" + fixture.positions), GuiText.ResourceStorage, id("structure")).component(fixture.ownership).component(role);
             if (storage != null) {
                 typeBuilder.component(storage);
             }
             var type = typeBuilder.build();
             var builder = MachineAssembly.builder(type, "moving-v1").component(fixture.ownership, MachineOwnership.CODEC).recreated(role);
+            if (station) builder.instanceFactory(value -> new ResearchStationController(value, 2,
+                Object2LongMaps.singleton(NetworkResources.COMPUTE, 3), 0));
             if (storage != null) {
                 builder.component(storage, MachineDataCenterStorage.CODEC);
             }

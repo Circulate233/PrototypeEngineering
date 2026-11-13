@@ -90,7 +90,7 @@ class ResearchStationsTest {
             assertEquals(70, permit.availableResources().getLong(NetworkResources.COMPUTE));
             var queue = new TeamResearchQueue(fixture.research, fixture.resources, repeated.teamId());
             var head = queue.enqueue(id("research"), 1, OWNER, 0);
-            var plan = queue.planSegment(head.key(), repeated.stationIds(), repeated.numericResources(), 0).orElseThrow();
+            var plan = queue.planSegment(head.key(), repeated.stationIds(), repeated.numericResources(), repeated.capacity(), 0).orElseThrow();
             assertEquals(3, plan.grantedResources().getLong(NetworkResources.COMPUTE));
             assertEquals(70, permit.availableResources().getLong(NetworkResources.COMPUTE));
         }

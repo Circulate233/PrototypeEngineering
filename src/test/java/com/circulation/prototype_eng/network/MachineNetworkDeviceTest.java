@@ -117,6 +117,21 @@ class MachineNetworkDeviceTest {
     }
 
     @Test
+    void explicitOfflinePolicyAllowsRealRecipeWorkWithoutNetworkPermission() {
+        try (var fixture = new Fixture(false)) {
+            var machine = fixture.create();
+            machine.owner.onSchedule();
+            assertEquals(1, machine.process("first").state().successfulTicks());
+            assertEquals(45, machine.input.storedEnergy());
+            fixture.rejected = true;
+            assertTrue(fixture.network.refresh());
+            machine.owner.onSchedule();
+            assertEquals(2, machine.process("first").state().successfulTicks());
+            assertEquals(38, machine.input.storedEnergy());
+        }
+    }
+
+    @Test
     void aCopiedSavePausesBothInstancesAndTheRestoredSurvivorNeedsAFreshCaptureBeforeResuming() {
         try (var fixture = new Fixture()) {
             var original = fixture.create();
@@ -216,16 +231,22 @@ class MachineNetworkDeviceTest {
         private boolean rejected;
 
         private Fixture() {
+            this(null);
+        }
+
+        private Fixture(@Nullable Boolean requiresNetwork) {
             network.beginTick(0);
             networkType = MachineNetworkDevice.component(id("network"),
                 ownershipType, (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER,
                     1, Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(),
                     NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
-            var type = MachineType.builder(id("machine"), GuiText.ResourceStorage, id("structure"))
-                                  .component(ownershipType).component(networkType).component(MachineWorkSlots.TYPE)
-                                  .component(scannerType).component(ordinaryType).recipePool(id("recipes"))
-                                  .workSlot(new WorkSlotDefinition("first")).workSlot(new WorkSlotDefinition("second"))
-                                  .attribute(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 2).build();
+            var builder = MachineType.builder(id("machine"), GuiText.ResourceStorage, id("structure"))
+                                     .component(ownershipType).component(networkType).component(MachineWorkSlots.TYPE)
+                                     .component(scannerType).component(ordinaryType).recipePool(id("recipes"))
+                                     .workSlot(new WorkSlotDefinition("first")).workSlot(new WorkSlotDefinition("second"))
+                                     .attribute(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 2);
+            if (requiresNetwork != null) builder.requiresNetwork(requiresNetwork);
+            var type = builder.build();
             var codec = new MachineWorkSlotsNbt("slots-v1", List.of(
                 RecipeProcessNbt.builder(firstRecipe, "recipe-v1").build(),
                 RecipeProcessNbt.builder(secondRecipe, "recipe-v1").build()));

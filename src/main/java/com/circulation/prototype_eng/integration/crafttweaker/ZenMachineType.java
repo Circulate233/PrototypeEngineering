@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.data.DataComponents;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.machine.NetworkCenterController;
+import com.circulation.prototype_eng.api.machine.ResearchStationController;
 import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
 import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
@@ -12,6 +13,8 @@ import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotRestartPolicy;
 import com.circulation.prototype_eng.api.network.NetworkCenter;
+import com.circulation.prototype_eng.api.research.station.ResearchStation;
+import com.circulation.prototype_eng.integration.crafttweaker.resource.ZenComputingResources;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessCodecs;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
@@ -72,13 +75,33 @@ public final class ZenMachineType {
      */
     @ZenMethod
     public static ZenMachineType networkCenter(String id, String translationKey, String structureId, int level) {
-        if (level < 1) throw new IllegalArgumentException("Network center level must be positive");
+        return networkCenter(id, translationKey, structureId, level, 0);
+    }
+
+    @ZenMethod
+    public static ZenMachineType networkCenter(String id, String translationKey, String structureId, int level, long energyPerTick) {
+        if (level < 1 || energyPerTick < 0)
+            throw new IllegalArgumentException("Invalid network center level or energy cost");
         var declaration = create(id, translationKey, structureId);
-        declaration.factory(new ZenMachineFactory(type -> new NetworkCenterController(type, level)));
+        declaration.factory(new ZenMachineFactory(type -> new NetworkCenterController(type, level, energyPerTick)));
         declaration.network(new ZenNetworkConfiguration(builder -> builder
             .component(MachineOwnership.TYPE)
             .component(NetworkCenter.DEVICE),
             builder -> builder.recreated(NetworkCenter.DEVICE)));
+        return declaration;
+    }
+
+    @ZenMethod
+    public static ZenMachineType researchStation(String id, String translationKey, String structureId, int level,
+                                                 ZenComputingResources rates, long energyPerTick) {
+        if (level < 1 || energyPerTick < 0)
+            throw new IllegalArgumentException("Invalid research station level or energy cost");
+        var speed = rates.value();
+        var declaration = create(id, translationKey, structureId);
+        declaration.factory(new ZenMachineFactory(type -> new ResearchStationController(type, level, speed, energyPerTick)));
+        declaration.network(new ZenNetworkConfiguration(builder -> builder
+            .component(MachineOwnership.TYPE).component(ResearchStation.DEVICE),
+            builder -> builder.recreated(ResearchStation.DEVICE)));
         return declaration;
     }
 
@@ -160,6 +183,13 @@ public final class ZenMachineType {
     public ZenMachineType executionMode(String mode) {
         open();
         builder.executionMode(ExecutionMode.valueOf(mode.toUpperCase(Locale.ROOT)));
+        return this;
+    }
+
+    @ZenMethod
+    public ZenMachineType requiresNetwork(boolean required) {
+        open();
+        builder.requiresNetwork(required);
         return this;
     }
 

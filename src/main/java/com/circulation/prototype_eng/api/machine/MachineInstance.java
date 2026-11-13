@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.machine;
 
 import ae2.api.inventories.InternalInventory;
+import com.circulation.prototype_eng.ControllerConfig;
 import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.AffinityKeyProvider;
@@ -10,6 +11,7 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
+import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
@@ -59,6 +61,10 @@ public class MachineInstance implements PlannedMachineTask {
     private MachineLifecycle lifecycle;
     @Nullable
     private ObjectArrayList<BooleanSupplier> recipeWorkGates;
+    @Nullable
+    private MachineNetworkDevice networkDevice;
+    @Nullable
+    private ControllerEnergy controllerEnergy;
 
     /**
      * Standalone execution has no declared machine type or world authority.
@@ -81,6 +87,47 @@ public class MachineInstance implements PlannedMachineTask {
      */
     public boolean requiresTick() {
         return true;
+    }
+
+    /**
+     * Explicit type override, then explicit role attachment, then the server's ordinary default.
+     */
+    public boolean requiresNetwork() {
+        if (type != null && type.networkRequirement() != null) return type.networkRequirement();
+        return networkDevice != null && !networkDevice.automatic() || type != null && ControllerConfig.defaultRequiresNetwork();
+    }
+
+    /**
+     * Called by the role component during assembly; the binding stays fixed for the loaded generation.
+     */
+    public void bindNetworkDevice(MachineNetworkDevice device) {
+        networkDevice = device;
+    }
+
+    public @Nullable MachineNetworkDevice networkDevice() {
+        return networkDevice;
+    }
+
+    /**
+     * Default controller upkeep is free. Nonnegative values are fixed for this loaded generation.
+     */
+    public long energyPerTick() {
+        return 0;
+    }
+
+    public boolean canPayPower(long tick) {
+        if (energyPerTick() == 0) return true;
+        if (controllerEnergy == null) controllerEnergy = new ControllerEnergy();
+        return controllerEnergy.canPay(this, tick);
+    }
+
+    /**
+     * Owner boundary only; the caller must settle returned tokens and skip the shared FREE result.
+     */
+    public @Nullable ControllerEnergy.Payment reservePower(long tick) {
+        if (energyPerTick() == 0) return ControllerEnergy.Payment.FREE;
+        if (controllerEnergy == null) controllerEnergy = new ControllerEnergy();
+        return controllerEnergy.reserve(this, tick);
     }
 
     /**
@@ -211,6 +258,7 @@ public class MachineInstance implements PlannedMachineTask {
      * Additional permissions for low-level recipe APIs; formation remains the scheduler host's condition.
      */
     public boolean recipeWorkAllowed() {
+        if (requiresNetwork() && (networkDevice == null || !networkDevice.allowsNetworkWork())) return false;
         if (recipeWorkGates != null) {
             for (var permission : recipeWorkGates) {
                 if (!permission.getAsBoolean()) {
@@ -226,6 +274,7 @@ public class MachineInstance implements PlannedMachineTask {
      * thread-safe runtime state; they may not read a World or team backend on recipe workers.
      * Gates are recreated by component factories, never persisted, removed, or used to retire ordinary components.
      */
+    @SuppressWarnings("unused") // Public extension for additional recipe permissions.
     public void addRecipeWorkGate(BooleanSupplier permission) {
         Objects.requireNonNull(permission);
         if (lifecycle != null) {

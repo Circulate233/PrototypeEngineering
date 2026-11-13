@@ -47,7 +47,7 @@ class ResearchStationAdmissionTest {
     private static ResearchDefinition definition(int tier, ResearchStartCondition condition) {
         return ResearchDefinition.builder(id("research")).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                  .startCondition(condition).stage(ResearchLevelStage.builder(1, 1).researchTier(tier)
-                                                                                    .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 10, 3).build())
+                                                                                    .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 10).build())
                                                                                     .materialRequirement(RecipeRequirements.RESOURCES.requirement(id("admission_io"), new ResourceRequirement(
                                                                                         List.of(new GenericStack(MATERIAL, 5)), List.of(), List.of(), List.of(), false))).build()).build();
     }

@@ -1,5 +1,11 @@
 package com.circulation.prototype_eng.network;
 
+import ae2.api.config.Actionable;
+import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.machine.NetworkCenterController;
+import com.circulation.prototype_eng.api.machine.component.MachineHatches;
+import com.circulation.prototype_eng.energy.EnergyBuffer;
+import com.circulation.prototype_eng.localization.GuiText;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
 import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
@@ -66,6 +72,55 @@ class NetworkRuntimeTest {
 
     private static OwnerTeamResolution team(UUID owner) {
         return OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER, ObjectSet.of(owner), Optional.empty());
+    }
+
+    @Test
+    void activeCenterPaysOncePerTickAndAnUnpoweredCenterYieldsToTheNextCandidate() {
+        try (var identities = new MachineIdentityRegistry(() -> {
+        });
+             var runtime = runtime(identities, resources(), NetworkRuntimeTest::team, () -> {
+             })) {
+            var type = MachineType.builder(TYPE, GuiText.ResourceStorage, TYPE).build();
+            var high = new NetworkCenterController(type, 2, 4);
+            var low = new NetworkCenterController(type, 1, 3);
+            var highPower = new EnergyBuffer(100, () -> {
+            });
+            var lowPower = new EnergyBuffer(100, () -> {
+            });
+            highPower.receiveEnergy(7, Actionable.MODULATE);
+            lowPower.receiveEnergy(20, Actionable.MODULATE);
+            high.components().put(MachineHatches.TYPE, new MachineHatches(List.of(), List.of(highPower), List.of()));
+            low.components().put(MachineHatches.TYPE, new MachineHatches(List.of(), List.of(lowPower), List.of()));
+            var world = new Object();
+            var highIdentity = identity(identities, world, 1, 1);
+            var lowIdentity = identity(identities, world, 2, 2);
+            var valid = new boolean[]{true};
+            var highRole = runtime.register(highIdentity, () -> new NetworkRuntime.Capture(
+                new NetworkDeviceSnapshot(highIdentity.identity(), NetworkDeviceRole.NETWORK_CENTER, 2, true,
+                    highIdentity.loadOrder(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), () -> valid[0], high::reservePower));
+            var lowRole = runtime.register(lowIdentity, () -> new NetworkRuntime.Capture(snapshot(lowIdentity), () -> true, low::reservePower));
+            assertTrue(runtime.refresh());
+            assertTrue(highRole.allowsNetworkWork());
+            assertEquals(3, highPower.storedEnergy());
+            assertEquals(20, lowPower.storedEnergy());
+            assertTrue(runtime.refresh());
+            assertEquals(3, highPower.storedEnergy());
+            runtime.endTick();
+            runtime.beginTick(1);
+            assertTrue(runtime.refresh());
+            assertFalse(highRole.allowsNetworkWork());
+            assertTrue(lowRole.allowsNetworkWork());
+            assertEquals(17, lowPower.storedEnergy());
+            highPower.receiveEnergy(10, Actionable.MODULATE);
+            runtime.endTick();
+            runtime.beginTick(2);
+            valid[0] = false;
+            assertFalse(runtime.refresh());
+            assertEquals(13, highPower.storedEnergy());
+            valid[0] = true;
+            assertTrue(runtime.refresh());
+            assertEquals(9, highPower.storedEnergy());
+        }
     }
 
     @Test

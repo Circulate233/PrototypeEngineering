@@ -211,6 +211,11 @@ public final class RunNetworkRender {
         if (controller == null || controller == Blocks.AIR) return null;
         var result = new BlockPos2ObjectMap<Block>();
         result.put(BlockPos.ORIGIN, controller);
+        if (machine.equals("net_center")) {
+            result.put(new BlockPos(0, 1, 0), Blocks.IRON_BLOCK);
+            result.put(new BlockPos(0, 0, 1), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng:energy_input_hatch_4"))));
+            return result;
+        }
         result.put(new BlockPos(1, 0, 0), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng:input_hatch_10"))));
         result.put(new BlockPos(-1, 0, 0), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng:output_hatch_10"))));
         if (machine.startsWith("net_"))
@@ -233,7 +238,7 @@ public final class RunNetworkRender {
                 var research = ResearchRegistry.INSTANCE.require(id("research_station"));
                 var compute = com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry.INSTANCE.require(id("net_compute"));
                 NativeChecks.check("research_actual_stage_formula", research.totalResourceDemandForLevel(1).getLong(compute) == 1200
-                    && research.totalResourceDemandForLevel(2).getLong(compute) == 1300 && research.segmentGrantLimitsForLevel(1).getLong(compute) == 10);
+                    && research.totalResourceDemandForLevel(2).getLong(compute) == 1300);
                 NativeChecks.check("research_actual_prerequisite_mutex", research.prerequisitesForLevel(1).getInt(id("research_manual")) == 1
                     && !ResearchRegistry.INSTANCE.require(id("research_mutex")).mutexRulesForLevel(1).isEmpty());
                 var canonical = Objects.requireNonNull(RecipeRegistry.INSTANCE.catalog().recipes().stream().filter(r -> r.id().equals(id("net_recipe"))).findFirst().orElse(null));

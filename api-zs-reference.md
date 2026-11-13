@@ -55,6 +55,7 @@ machine.register("v1");
 | `executionPolicy(policy)`                       | 选择扫描和可异步配方工作使用主线程还是工作线程。默认值为 `FULL_ASYNC`。                                     |
 | `executionMode(mode)`                           | 设置机器调度方式，与上述配方执行策略分别生效。                                                              |
 | `network(configuration)`                        | 给机器添加对应网络角色、身份及网络配方组件。                                                                |
+| `requiresNetwork(required)`                     | 显式覆盖普通控制器的联网门限；省略时遵循 `controllers.cfg` 的默认值（false）及显式角色声明。 |
 | `controllerModel(modelId)`                      | 绑定控制器模型声明，不会改变机器的结构或配方。                                                              |
 
 机器 API 不会替调用者创建对应的配方池和结构；这些定义必须在其它阶段注册。`MachineComponent` 只接收 Java addon 已经创建的组件，脚本没有无 codec 地生成任意 Java 组件的入口。
@@ -245,7 +246,7 @@ ParallelController.create("example:parallel_module", "tile.example.parallel_modu
 
 ## 研究与奖励
 
-`ResearchFormula.create()` 创建资源公式，随后调用 `.constant(type, demand, segmentLimit)` 给各等级设置相同需求，或 `.affine(type, base, slope, segmentLimit)` 按 `base + slope × (当前等级 - 阶段首级)` 计算需求。type 必须是数值计算资源，segmentLimit 限制一次工作分段授予量，逻辑线程数不能作为累计研究进度。
+`ResearchFormula.create()` 创建资源公式，随后调用 `.constant(type, demand)` 给各等级设置相同总需求，或 `.affine(type, base, slope)` 按 `base + slope × (当前等级 - 阶段首级)` 计算总需求。type 必须是数值计算资源，逻辑线程数不能作为累计研究进度。单站速率由研究站定义，研究公式不再接受 segmentLimit。
 
 `ResearchStage.create(first, last, tier, formula)` 创建连续等级段。随后用 `prerequisite(...)` 和 `mutex(...)` 添加研究前置及互斥项，用 `material(requirement)` 指定研究站材料配方，用 `reward(level, reward)` 在指定等级添加可领取奖励。各 stage 合并后必须无重叠且完整覆盖 `1..maxLevel`。
 
@@ -264,6 +265,10 @@ first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表�
 `ResearchDownloads.register(material, callback)` 将一种消耗材料与输出函数配对。输出函数只返回有效 `IItemStack`，材料、研究等级和物品交付均由研究流程处理。
 
 ## 计算资源与机器网络角色
+
+专用控制器在 preinit 用 `MachineType.networkCenter(id, translationKey, structureId, level, energyPerTick)` 或 `MachineType.researchStation(id, translationKey, structureId, level, rates, energyPerTick)` 创建，随后 `register(revision)`。`rates` 为 `ComputingResources`，按资源设置该站每 tick 速率；最后参数是 FE/t。中心只在生效时扣费，站点只在实际推进成功时扣费，同 tick 不重复。中心省略 energyPerTick 的旧入口表示免费。二者使用专用 Java 运行时，不调用 `processing` 或添加工作槽；接口与完整示例见 [API](api.md#研究与计算网络)。
+
+普通控制器的 `.requiresNetwork(true/false)` 优先于 `config/prototype_eng/controllers.cfg` 中 `network.defaultRequiresNetwork`（默认 false）。显式 `.network(...)` 仍表示选择网络角色；显式 false 只豁免共同配方门限，保留自定义配方的资源/研究条件。专用网络中心、研究站保留各自角色。
 
 `ComputingResource.create(id, logicalConcurrency, maxPerTickValue)` 创建新的计算资源种类，随后调用 `register()` 提交。logicalConcurrency 表示该资源以并发占用管理，例如线程数；普通数值资源可以参与按 tick 的资源工作。maxPerTickValue 为正时限制单组件可提供的数值，不是整队伍的总上限。`thread()`、`compute()` 和 `qubit()` 是库提供的类型，不应再次注册。
 
