@@ -92,7 +92,7 @@ class ZenResearchNetworkBridgeTest {
             import mods.prototype_eng.research.ResearchReward;
             import mods.prototype_eng.research.ResearchServer;
             import tests.prototype_eng.ResearchHarness;
-            var compute = ComputingResource.create("ct_research:compute", false, 0);
+            var compute = ComputingResource.create("ct_research:compute", false);
             compute.register();
             var reward = ResearchReward.create("ct_research:choice").event("ct_research:event", function(event) {
                 if event.groupId == "ct_research:choice" && event.level == 1 { return "RETRY_LATER"; }

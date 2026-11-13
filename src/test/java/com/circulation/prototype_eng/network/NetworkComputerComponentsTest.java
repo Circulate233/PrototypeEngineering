@@ -51,7 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class NetworkComputerComponentsTest {
     private static final AEKey CARD = ComputerSupplyFixtures.key("card");
-    private static final NetworkResourceType CAPPED = new NetworkResourceType(id("capped"), false, 5);
+    private static final NetworkResourceType CUSTOM = new NetworkResourceType(id("custom"), false);
 
     private static NetworkComputerComponentInventory capture(NetworkComputerComponentRegistry registry, SlottedResourceStorage... storage) {
         return NetworkComputerComponentInventory.capture(registry, new MachineInstance(), List.of(storage));
@@ -75,7 +75,7 @@ class NetworkComputerComponentsTest {
 
     private static NetworkResourceRegistry resources() {
         var resources = new NetworkResourceRegistry();
-        resources.register(CAPPED);
+        resources.register(CUSTOM);
         resources.freeze();
         return resources;
     }
@@ -91,8 +91,8 @@ class NetworkComputerComponentsTest {
     }
 
     @Test
-    void longQuantitiesMultiplyPerItemCapAcrossSourcesWithoutCountingAliases() {
-        var registry = registry(vector(CAPPED, 5));
+    void longQuantitiesMultiplyPerItemSupplyAcrossSourcesWithoutCountingAliases() {
+        var registry = registry(vector(CUSTOM, 5));
         var first = buffer(2);
         var second = buffer(2);
         put(first, 0, CARD, (long) Integer.MAX_VALUE + 1);
@@ -100,7 +100,7 @@ class NetworkComputerComponentsTest {
         put(second, 0, CARD, 3);
         put(second, 1, ComputerSupplyFixtures.key("ordinary_unregistered"), Long.MAX_VALUE);
         var captured = capture(registry, first, second, first);
-        assertEquals(((long) Integer.MAX_VALUE + 6) * 5, captured.resourcesPerTick().getLong(CAPPED));
+        assertEquals(((long) Integer.MAX_VALUE + 6) * 5, captured.resourcesPerTick().getLong(CUSTOM));
         assertTrue(captured.current());
         put(first, 0, CARD, 1);
         assertFalse(captured.current());
@@ -128,14 +128,19 @@ class NetworkComputerComponentsTest {
     }
 
     @Test
-    void canonicalLimitsAndOverflowAreCheckedBeforePublishingSupply() {
+    void developerDefinedSupplyChecksMetadataAndOverflowBeforePublication() {
         var storage = buffer(2);
         put(storage, 0, CARD, 17);
-        assertEquals(17, capture(registry(vector(NetworkResources.THREAD, 1)), storage).resourcesPerTick().getLong(NetworkResources.THREAD));
-        assertThrows(IllegalArgumentException.class, () -> capture(registry(vector(NetworkResources.THREAD, 2)), storage));
-        var drifted = new NetworkResourceType(CAPPED.id(), false, 0);
+        var supply = vector(NetworkResources.THREAD, 64);
+        supply.put(NetworkResources.COMPUTE, 2_048);
+        supply.put(CUSTOM, 10_000);
+        var captured = capture(registry(supply), storage).resourcesPerTick();
+        assertEquals(1_088, captured.getLong(NetworkResources.THREAD));
+        assertEquals(34_816, captured.getLong(NetworkResources.COMPUTE));
+        assertEquals(170_000, captured.getLong(CUSTOM));
+        var drifted = new NetworkResourceType(CUSTOM.id(), true);
         assertThrows(IllegalArgumentException.class, () -> capture(registry(vector(drifted, 6)), storage));
-        var unknown = new NetworkResourceType(id("unknown"), false, 0);
+        var unknown = new NetworkResourceType(id("unknown"), false);
         assertThrows(IllegalArgumentException.class, () -> capture(registry(vector(unknown, 0)), storage));
         assertThrows(ArithmeticException.class, () -> capture(registry(vector(NetworkResources.COMPUTE, Long.MAX_VALUE)), storage));
         var registry = new NetworkComputerComponentRegistry();

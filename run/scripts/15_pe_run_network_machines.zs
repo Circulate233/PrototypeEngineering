@@ -9,9 +9,9 @@ import mods.prototype_eng.network.NetworkConfiguration;
 import mods.prototype_eng.network.NetworkRequirements;
 
 var names = Bindings.scope("pe_run_tests:bindings");
-var compute = ComputingResource.create("pe_run_tests:net_compute", false, 0);
+var compute = ComputingResource.create("pe_run_tests:net_compute", false);
 var empty = ComputingResources.create();
-MachineType.networkCenter("pe_run_tests:net_center", Text.NetCenter.key, "pe_run_tests:net_center_shape", 1, 4)
+MachineType.networkCenter("pe_run_tests:net_center", Text.NetCenter.key, "pe_run_tests:net_center_shape", 1, 4, 4)
     .register("network-center-v1");
 MachineType.create("pe_run_tests:net_computer", Text.NetComputer.key, "pe_run_tests:net_shape")
     .network(NetworkConfiguration.create("pe_run_tests:net_computer", "COMPUTER", 0, empty,

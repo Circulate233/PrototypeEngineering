@@ -37,9 +37,9 @@ NETWORK_CENTER 和 RESEARCH_STATION 保留正等级约束。COMPUTER、DATA_CENT
 
 ## 计算资源与参与者
 
-NetworkResourceType 是计算预算的 metadata：ResourceLocation、logicalConcurrency、maxPerTickValue，承接 PN 的 thread/compute/qubit 等维度。物料身份仍使用 AEKey/AEKeyType，FE 仍独立；这些计算预算不作为仓室资源类型注册。
+NetworkResourceType 是计算预算的 metadata：ResourceLocation、logicalConcurrency，承接 thread/compute/qubit 等维度。供给量由开发者定义，类型不设上限。物料身份仍使用 AEKey/AEKeyType，FE 仍独立；这些计算预算不作为仓室资源类型注册。
 
-元数据 record 默认按所有字段比较；每个向量、modifier 的多张表按 ID 拒绝不同元数据，完整 capture 另行对照冻结的 canonical 注册表，避免未注册或跨批次元数据漂移。Java 注册事件和标准 thread/compute/qubit 已接入，详见[计算资源](network-resources.md)。`maxPerTickValue` 作用于固定计算组件的单物品供给和研究阶段 grant limit，不能限制堆叠、设备或全队总量；这两处执行约束随组件供给及研究公式继续迁移。
+元数据 record 默认按所有字段比较；每个向量、modifier 的多张表按 ID 拒绝不同元数据，完整 capture 另行对照冻结的 canonical 注册表，避免未注册或跨批次元数据漂移。Java 注册事件和标准 thread/compute/qubit 已接入，详见[计算资源](network-resources.md)。旧maxPerTickValue字段及单物品/研究阶段约束已于2026-11-13取消；中心、计算机与物品供给按既有网络规则汇总，保留实际数量溢出检查。
 
 每队基础贡献为：活动中心 + 成型且等级合格的 COMPUTER + 当前队伍的 ACTIVE 参与者贡献。其他中心、研究站、数据中心与通用 DEVICE 的资源不参与合计。所有贡献完成后，只应用一次活动中心 modifier。参与者不按种类或等级过滤；`NetworkContribution` 只是经过宿主验证的参与者资源投影，保留 epoch/version，尚未迁入其工位、材料来源、注册状态机或提交校验。
 

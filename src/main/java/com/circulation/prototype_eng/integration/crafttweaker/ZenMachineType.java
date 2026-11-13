@@ -80,10 +80,15 @@ public final class ZenMachineType {
 
     @ZenMethod
     public static ZenMachineType networkCenter(String id, String translationKey, String structureId, int level, long energyPerTick) {
-        if (level < 1 || energyPerTick < 0)
-            throw new IllegalArgumentException("Invalid network center level or energy cost");
+        return networkCenter(id, translationKey, structureId, level, 0, energyPerTick);
+    }
+
+    @ZenMethod
+    public static ZenMachineType networkCenter(String id, String translationKey, String structureId, int level, long threadCapacity, long energyPerTick) {
+        if (level < 1 || threadCapacity < 0 || energyPerTick < 0)
+            throw new IllegalArgumentException("Invalid network center level, thread capacity or energy cost");
         var declaration = create(id, translationKey, structureId);
-        declaration.factory(new ZenMachineFactory(type -> new NetworkCenterController(type, level, energyPerTick)));
+        declaration.factory(new ZenMachineFactory(type -> new NetworkCenterController(type, level, threadCapacity, energyPerTick)));
         declaration.network(new ZenNetworkConfiguration(builder -> builder
             .component(MachineOwnership.TYPE)
             .component(NetworkCenter.DEVICE),

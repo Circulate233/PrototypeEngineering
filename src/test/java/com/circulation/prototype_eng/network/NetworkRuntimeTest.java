@@ -16,6 +16,8 @@ import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
+import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolver;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
@@ -75,14 +77,15 @@ class NetworkRuntimeTest {
     }
 
     @Test
+    @SuppressWarnings("DataFlowIssue") // Successful refresh publishes the plan and all three active clients' permits.
     void activeCenterPaysOncePerTickAndAnUnpoweredCenterYieldsToTheNextCandidate() {
         try (var identities = new MachineIdentityRegistry(() -> {
         });
              var runtime = runtime(identities, resources(), NetworkRuntimeTest::team, () -> {
              })) {
             var type = MachineType.builder(TYPE, GuiText.ResourceStorage, TYPE).build();
-            var high = new NetworkCenterController(type, 2, 4);
-            var low = new NetworkCenterController(type, 1, 3);
+            var high = new NetworkCenterController(type, 2, 2, 4);
+            var low = new NetworkCenterController(type, 1, 1, 3);
             var highPower = new EnergyBuffer(100, () -> {
             });
             var lowPower = new EnergyBuffer(100, () -> {
@@ -97,20 +100,36 @@ class NetworkRuntimeTest {
             var valid = new boolean[]{true};
             var highRole = runtime.register(highIdentity, () -> new NetworkRuntime.Capture(
                 new NetworkDeviceSnapshot(highIdentity.identity(), NetworkDeviceRole.NETWORK_CENTER, 2, true,
-                    highIdentity.loadOrder(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), () -> valid[0], high::reservePower));
-            var lowRole = runtime.register(lowIdentity, () -> new NetworkRuntime.Capture(snapshot(lowIdentity), () -> true, low::reservePower));
+                    highIdentity.loadOrder(), high.networkResources(), NetworkResourceModifier.EMPTY, 0, 0), () -> valid[0], high::reservePower));
+            var lowRole = runtime.register(lowIdentity, () -> new NetworkRuntime.Capture(
+                new NetworkDeviceSnapshot(lowIdentity.identity(), NetworkDeviceRole.NETWORK_CENTER, 1, true,
+                    lowIdentity.loadOrder(), low.networkResources(), NetworkResourceModifier.EMPTY, 0, 0), () -> true, low::reservePower));
+            var clients = new NetworkRuntime.Registration[3];
+            for (int i = 0; i < clients.length; i++) {
+                clients[i] = runtime.register(identity(identities, world, i + 3, i + 3), registration -> new NetworkRuntime.Capture(
+                    new NetworkDeviceSnapshot(registration.identity(), NetworkDeviceRole.DEVICE, 0, true,
+                        registration.loadOrder(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), () -> true));
+            }
             assertTrue(runtime.refresh());
             assertTrue(highRole.allowsNetworkWork());
             assertEquals(3, highPower.storedEnergy());
             assertEquals(20, lowPower.storedEnergy());
+            assertEquals(2, runtime.plan().teams().get("team").resourcesPerTick().getLong(NetworkResources.THREAD));
+            assertEquals(NetworkTeamBudget.LeaseStatus.GRANTED, clients[0].workPermit().requestLease());
+            assertEquals(NetworkTeamBudget.LeaseStatus.GRANTED, clients[1].workPermit().requestLease());
+            assertEquals(NetworkTeamBudget.LeaseStatus.INSUFFICIENT_CAPACITY, clients[2].workPermit().requestLease());
             assertTrue(runtime.refresh());
             assertEquals(3, highPower.storedEnergy());
+            assertEquals(NetworkTeamBudget.LeaseStatus.INSUFFICIENT_CAPACITY, clients[2].workPermit().requestLease());
             runtime.endTick();
             runtime.beginTick(1);
             assertTrue(runtime.refresh());
             assertFalse(highRole.allowsNetworkWork());
             assertTrue(lowRole.allowsNetworkWork());
             assertEquals(17, lowPower.storedEnergy());
+            assertEquals(1, runtime.plan().teams().get("team").resourcesPerTick().getLong(NetworkResources.THREAD));
+            assertEquals(NetworkTeamBudget.LeaseStatus.GRANTED, clients[0].workPermit().requestLease());
+            assertEquals(NetworkTeamBudget.LeaseStatus.INSUFFICIENT_CAPACITY, clients[1].workPermit().requestLease());
             highPower.receiveEnergy(10, Actionable.MODULATE);
             runtime.endTick();
             runtime.beginTick(2);
@@ -279,10 +298,10 @@ class NetworkRuntimeTest {
     @Test
     void capturedSupplyModifiersAndParticipantsMustUseRegisteredMetadataBeforeReauthorizing() {
         var resources = new NetworkResourceRegistry();
-        var registered = resources.register(new NetworkResourceType(new ResourceLocation("test", "supply"), false, 7));
+        var registered = resources.register(new NetworkResourceType(new ResourceLocation("test", "supply"), false));
         resources.freeze();
         // A loader may reconstruct an equal record; it must not need the exact registration object.
-        var equalCopy = new NetworkResourceType(registered.id(), false, 7);
+        var equalCopy = new NetworkResourceType(registered.id(), false);
         var supplied = new NetworkResourceType[]{equalCopy};
         var modifier = new NetworkResourceModifier[]{NetworkResourceModifier.EMPTY};
         try (var identities = new MachineIdentityRegistry(() -> {
@@ -293,14 +312,12 @@ class NetworkRuntimeTest {
             var device = runtime.register(identity, () -> new NetworkRuntime.Capture(new NetworkDeviceSnapshot(
                 identity.identity(), NetworkDeviceRole.NETWORK_CENTER, 1, true, identity.loadOrder(),
                 Object2LongMaps.singleton(supplied[0], 14), modifier[0], 0, 0), () -> true));
-            for (var invalid : List.of(new NetworkResourceType(registered.id(), false, 8),
-                new NetworkResourceType(registered.id(), true, 7),
-                new NetworkResourceType(new ResourceLocation("test", "unknown"), false, 7))) {
+            for (var invalid : List.of(new NetworkResourceType(registered.id(), true),
+                new NetworkResourceType(new ResourceLocation("test", "unknown"), false))) {
                 assertTrue(runtime.refresh());
                 assertTrue(device.allowsNetworkWork());
                 var plan = runtime.plan();
                 assertNotNull(plan);
-                // Device totals may exceed the per-item limit.
                 assertEquals(14, plan.teams().get("team").resourcesPerTick().getLong(registered));
                 supplied[0] = invalid;
                 assertThrows(IllegalArgumentException.class, runtime::refresh);
@@ -308,7 +325,7 @@ class NetworkRuntimeTest {
                 assertFalse(device.allowsNetworkWork());
                 supplied[0] = equalCopy;
             }
-            var unknown = new NetworkResourceType(new ResourceLocation("test", "modifier_only"), false, 0);
+            var unknown = new NetworkResourceType(new ResourceLocation("test", "modifier_only"), false);
             for (var invalidModifier : List.of(NetworkResourceModifier.builder().flat(unknown, 1).build(),
                 NetworkResourceModifier.builder().multiplierPpm(unknown, 1).build())) {
                 assertTrue(runtime.refresh());

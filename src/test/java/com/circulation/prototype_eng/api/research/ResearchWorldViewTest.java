@@ -66,7 +66,7 @@ class ResearchWorldViewTest {
     private static final ResourceLocation REWARD = id("reward");
     private static final ResourceLocation GROUP = id("choice");
     private static final ResourceLocation OTHER_GROUP = id("other_choice");
-    private static final NetworkResourceType COMPUTE = new NetworkResourceType(id("compute"), false, 0);
+    private static final NetworkResourceType COMPUTE = new NetworkResourceType(id("compute"), false);
 
     private static ResearchWorld world(ResearchPermissionPolicy permissions, Consumer<ResearchWorldSnapshot> writer) {
         var resources = new NetworkResourceRegistry();

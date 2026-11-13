@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class NetworkPlannerTest {
     private static final UUID OWNER = uuid(100);
     private static final UUID OTHER_OWNER = uuid(200);
-    private static final NetworkResourceType COMPUTE = new NetworkResourceType(new ResourceLocation("test", "compute"), false, 1);
+    private static final NetworkResourceType COMPUTE = new NetworkResourceType(new ResourceLocation("test", "compute"), false);
 
     private static final NetworkResourceRegistry RESOURCES = registry();
 
@@ -115,7 +115,6 @@ class NetworkPlannerTest {
         var contributions = List.of(new NetworkContribution(uuid(20), OWNER, 4, 1, resources(5)),
             new NetworkContribution(uuid(21), OTHER_OWNER, 4, 1, resources(1_000)));
         var plan = NetworkPlanner.plan(NetworkPlanner.capture(RESOURCES, 4, devices, contributions, teams()));
-        // maxPerTickValue=1 is per-item metadata, not a limit on this team's aggregate.
         assertEquals(21, plan.teams().get("team").resourcesPerTick().getLong(COMPUTE));
         assertEquals(uuid(6), plan.teams().get("team").dataCenterId());
         assertEquals(NetworkWorkState.ACTIVE_DATA_CENTER, plan.workStates().get(uuid(6)));
@@ -157,7 +156,7 @@ class NetworkPlannerTest {
         var contribution = new NetworkContribution(uuid(10), OWNER, 1, 0, resources(3));
         assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(contribution, contribution), forbidden));
         assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(RESOURCES, 2, List.of(center), List.of(contribution), forbidden));
-        var conflicting = new NetworkResourceType(COMPUTE.id(), true, 1);
+        var conflicting = new NetworkResourceType(COMPUTE.id(), true);
         var resources = new Object2LongOpenHashMap<NetworkResourceType>();
         resources.put(conflicting, 1);
         var conflict = new NetworkContribution(uuid(11), OWNER, 1, 0, resources);
@@ -203,12 +202,12 @@ class NetworkPlannerTest {
     }
 
     @Test
-    void accumulationAndExactModifierOverflowAbortTheWholePlan() {
+    void unmodifiedSupplyAcceptsLongMaxWhileAccumulationRejectsOverflow() {
         var center = device(1, NetworkDeviceRole.NETWORK_CENTER, 1, true, 0, Long.MAX_VALUE, 0);
         var computer = device(2, NetworkDeviceRole.COMPUTER, 1, true, 1, 1, 0);
         var overflow = NetworkPlanner.capture(RESOURCES, 1, List.of(center, computer), List.of(), teams());
         assertThrows(ArithmeticException.class, () -> NetworkPlanner.plan(overflow));
-        var intermediate = NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(), teams());
-        assertThrows(ArithmeticException.class, () -> NetworkPlanner.plan(intermediate));
+        var unmodified = NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(), teams());
+        assertEquals(Long.MAX_VALUE, NetworkPlanner.plan(unmodified).teams().get("team").resourcesPerTick().getLong(COMPUTE));
     }
 }

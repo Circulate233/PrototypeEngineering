@@ -81,7 +81,7 @@ class NetworkTeamBudgetTest {
     @Test
     void machineSlotsShareOneLeaseWhileCustomLogicalDimensionsHaveIndependentLongCapacity() {
         var registry = new NetworkResourceRegistry();
-        var custom = registry.register(new NetworkResourceType(new ResourceLocation("test", "parallel"), true, 0L));
+        var custom = registry.register(new NetworkResourceType(new ResourceLocation("test", "parallel"), true));
         registry.freeze();
         var capacity = amounts(NetworkResources.THREAD, 1L);
         capacity.put(custom, Long.MAX_VALUE);

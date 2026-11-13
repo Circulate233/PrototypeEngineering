@@ -20,8 +20,8 @@ public record ZenComputingResource(NetworkResourceType value) {
     }
 
     @ZenMethod
-    public static ZenComputingResource create(String id, boolean logicalConcurrency, long maxPerTickValue) {
-        return new ZenComputingResource(new NetworkResourceType(new ResourceLocation(id), logicalConcurrency, maxPerTickValue));
+    public static ZenComputingResource create(String id, boolean logicalConcurrency) {
+        return new ZenComputingResource(new NetworkResourceType(new ResourceLocation(id), logicalConcurrency));
     }
 
     @ZenMethod
@@ -47,11 +47,6 @@ public record ZenComputingResource(NetworkResourceType value) {
     @ZenGetter("logicalConcurrency")
     public boolean logicalConcurrency() {
         return value.logicalConcurrency();
-    }
-
-    @ZenGetter("maxPerTickValue")
-    public long maxPerTickValue() {
-        return value.maxPerTickValue();
     }
 
     @ZenMethod

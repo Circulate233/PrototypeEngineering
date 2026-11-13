@@ -22,7 +22,7 @@ public class ResearchStationController extends MachineInstance implements Resear
         for (var entry : rates.object2LongEntrySet()) {
             var resource = entry.getKey();
             long rate = entry.getLongValue();
-            if (resource.logicalConcurrency() || rate < 0 || resource.maxPerTickValue() > 0 && rate > resource.maxPerTickValue())
+            if (resource.logicalConcurrency() || rate < 0)
                 throw new IllegalArgumentException("Invalid station rate for " + resource.id());
         }
         researchLevel = level;

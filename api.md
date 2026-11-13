@@ -230,7 +230,11 @@ Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 
 
 计算网络资源通过 `NetworkResourceRegistrationEvent` 注册，提供该资源的物品通过 `NetworkComputerComponentRegistrationEvent` 注册。机器用 `MachineOwnership` 保存所有者，以 `MachineNetworkDevice` 声明网络中心、计算机、研究站、数据中心或普通设备角色；`NetworkRecipeWork` 处理配方的研究和计算资源要求。给资源数量本身不会授予研究权限。
 
-默认 `NetworkCenterController(type, level, energyPerTick)` 提供网络等级；默认 `ResearchStationController(type, level, rates, energyPerTick)` 提供研究等级、各资源每 tick 推进速率及 FE 消耗。二者直接继承 `MachineInstance`，不安装配方工位或机器业务 tick。中心通过网络发布服务工作，研究站通过共享研究服务工作。中心旧的两参数构造器仍表示零耗能。
+默认 `NetworkCenterController(type, level, threadCapacity, energyPerTick)` 提供网络等级和线程额度；默认 `ResearchStationController(type, level, rates, energyPerTick)` 提供研究等级、各资源每 tick 推进速率及 FE 消耗。二者直接继承 `MachineInstance`，不安装配方工位或机器业务 tick。中心通过网络发布服务工作，研究站通过共享研究服务工作。中心旧的两参数/三参数构造器保留，省略的线程额度为 0，两参数时耗能也为 0。
+
+只有当前活动中心的供给计入队伍，并与计算机和外部参与者的供给相加；中心缺能或失效后按新活动中心重新取供给。`THREAD` 是已有的逻辑并发额度，研究站和普通配方共用整机租约，不是 JVM 工作线程数量。`NetworkCenter.networkResources()` 返回当前加载代固定的只读资源表；默认控制器只声明配置的 THREAD，并复用同一张表，自定义中心可返回自己的资源向量。
+
+计算资源类型用 `new NetworkResourceType(id, logicalConcurrency)` 声明。资源类型不限制单件物品、整台计算机或研究站的资源量；线程、算力和自定义资源均由开发者决定供给或速率。计算物品的 `resourcesPerItem` 按实际安装数量相乘，再与机器直接声明的供给汇总。例如一件物品可声明 64 THREAD、2048 COMPUTE 和任意自定义资源量。旧 `maxPerTickValue` 字段及构造参数已删除；数量仍使用非负 long，实际累加/倍增不能溢出。
 
 Java 分别给类型声明 `MachineOwnership.TYPE` 和 `NetworkCenter.DEVICE` / `ResearchStation.DEVICE`，给装配指定实例工厂并将对应 `DEVICE` 标为 `recreated`。例如研究站装配：
 
@@ -241,7 +245,7 @@ MachineAssembly.builder(type, "research-station-v1")
     .recreated(ResearchStation.DEVICE).build();
 ```
 
-`rates` 是 `Object2LongMap<NetworkResourceType>`，未列资源速率为 0；定义后按只读契约借用，不复制。速率不得为负，不能包含逻辑线程类型；资源类型有正 `maxPerTickValue` 时，每站速率不能超过它。等级与耗能在当前加载代固定，耗能非负。自定义运行时可直接实现 `api.network.NetworkCenter` 或 `api.research.station.ResearchStation` 并安装对应角色组件，无需继承默认控制器；无机器业务 tick 的实现覆写 `requiresTick()` 返回 `false`。
+`rates` 是 `Object2LongMap<NetworkResourceType>`，未列资源速率为 0；定义后按只读契约借用，不复制。速率不得为负，不能包含逻辑线程类型，具体速率由开发者定义。等级与耗能在当前加载代固定，耗能非负。自定义运行时可直接实现 `api.network.NetworkCenter` 或 `api.research.station.ResearchStation` 并安装对应角色组件，无需继承默认控制器；无机器业务 tick 的实现覆写 `requiresTick()` 返回 `false`。
 
 每段每种资源增加 `min(网络研究供给, 各参与站该资源速率之和, 剩余需求)`。站点等级决定是否合格，速率由站点定义；多个站仍合摊一份 START → TICK → END 材料，不按站数复制。研究站只在成功推进的 END 与进度一起结算自己的 FE，待机或材料周期未完成时不扣这笔电费；材料定义自身的阶段 FE 按原规则另行结算。缺能站不进入新段候选。网络中心只对本次生效者收费，缺能时重选可供电中心。同一设备同一服务器 tick 只成功付费一次，重新发布或调用不会重复扣费。
 
@@ -436,13 +440,13 @@ ParallelController.create("example:parallel_module", "tile.example.parallel_modu
 在 preinit 脚本中，专用控制器使用下面的快捷入口（`compute` 是已经声明的数值计算资源）；它们不调用 `processing` 或添加配方工位：
 
 ```zenscript
-MachineType.networkCenter("example:center", "example.center", "example:center_shape", 1, 4)
+MachineType.networkCenter("example:center", "example.center", "example:center_shape", 1, 4, 4)
     .register("center-v1");
 MachineType.researchStation("example:station", "example.station", "example:station_shape", 1,
     ComputingResources.create().add(compute, 10), 8).register("station-v1");
 ```
 
-最后一项是 FE/t。普通 `MachineType.create(...)` 可链式调用 `.requiresNetwork(true)` 或 `.requiresNetwork(false)`；省略时遵循上述配置和显式角色规则。
+中心在等级后依次填写线程额度、FE/t，研究站最后一项是 FE/t。资源类型使用 `ComputingResource.create(id, logicalConcurrency)`，不再传上限。普通 `MachineType.create(...)` 可链式调用 `.requiresNetwork(true)` 或 `.requiresNetwork(false)`；省略时遵循上述配置和显式角色规则。
 
 计算资源用 `ComputingResource` 定义，`ComputingResources` 累加资源数量，`ComputingModifier` 设置数量修饰。`NetworkConfiguration.create(...)` 组合机器角色、等级、供给和配方需求，然后传给 preinit 中的 `.network(...)`。内置 `thread/compute/qubit` 已注册，禁止再次注册。
 

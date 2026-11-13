@@ -73,8 +73,8 @@ public final class NetworkComputerComponentRegistry {
         for (var entry : supplied.object2LongEntrySet()) {
             var type = current.resources.canonical(entry.getKey());
             long amount = entry.getLongValue();
-            if (amount < 0 || type.maxPerTickValue() > 0 && amount > type.maxPerTickValue()) {
-                throw new IllegalArgumentException("Computer component per-item supply exceeds resource limits: " + type.id());
+            if (amount < 0) {
+                throw new IllegalArgumentException("Negative computer component supply: " + type.id());
             }
             validated.put(type, amount);
         }

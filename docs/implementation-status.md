@@ -1,5 +1,13 @@
 # 实施进度
 
+## 2026-11-13 网络中心线程额度与开发者供给定义
+
+- 网络中心增加 `NetworkCenterController(type, level, threadCapacity, energyPerTick)` 和对应6参数ZS入口；通过 `NetworkCenter.networkResources()` 进入原中心供给链，只有活动中心计入共享预算，与计算机/参与者相加。默认控制器的供给表构造一次后按只读契约复用，仍无配方工位或业务tick；Java/ZS示例显式提供4线程、4 FE/t。旧重载省略线程时保持0。
+- 按用户纠正删除 `NetworkResourceType.maxPerTickValue` 和 ZS对应参数/属性，单件物品可提供多份线程及开发者决定的算力、自定义资源；机器直接声明供给和研究站速率同样没有类型硬上限。Java资源类型构造及ZS create均改为 `(id, logicalConcurrency)`，所有源码、测试和run调用已迁移。保留非负long、已注册类型及实际累加/倍增溢出检查。
+- 默认倍率跳过无效的乘百万再除百万，修复合法Long.MAX_VALUE供给因中间乘法而拒绝的问题。更新原有行为测试，覆盖每件64 THREAD/2048 COMPUTE/10000自定义资源乘17件的实际供给、活动中心2→1线程后的真实租约准入与同tick不补额度；删除旧上限拒绝断言，不另加getter/常量测试。
+- 验证：完整Gradle build/Spotless/JAR/reobf成功，1859 tests/269 suites全通过。18份Java使用IDEA MCP格式化并逐文件 `get_file_problems(errorsOnly:false)`；17份主/测试源码错误、警告、弱警告全零，1份run示例被IDE排除；MCP build成功。实际23Java addon编译安装和13份CT SDK脚本编译全部通过，既有97核心断言通过。证据目录 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261113/network-supply/`。
+- API、ZS参考、需求、规划、资源和研究站文档同步；旧文档中“线程每物品上限1”和类型上限规则已撤销。下一步用户实机复验网络中心并发和自定义物品/计算机供给。本阶段本地提交，不推送，不制作GUI或启动Minecraft客户端/服务端。
+
 ## 2026-11-13 研究站控制器、实际供能与统一联网策略
 
 - 按当前用户要求新增 `ResearchStation` 接口与 `ResearchStationController`，直接使用通用生命周期，无配方工位、无机器业务 tick。Java/ZS 默认控制器均可创建；独立实现可使用相同接口与角色组件。未增加 HTML、GUI 或其他设备实现。

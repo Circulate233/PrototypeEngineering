@@ -28,7 +28,7 @@ import mods.pe_run_tests.NativeChecks;
 import mods.pe_run_tests.CoreCases;
 
 var names = Bindings.scope("pe_run_tests:bindings");
-var compute = ComputingResource.create("pe_run_tests:net_compute", false, 0);
+var compute = ComputingResource.create("pe_run_tests:net_compute", false);
 compute.register();
 var supply = ComputingResources.create().add(compute, 100).add(ComputingResource.thread(), 1);
 NativeChecks.check("net_supply_addTo", supply.amount(compute) == 100);

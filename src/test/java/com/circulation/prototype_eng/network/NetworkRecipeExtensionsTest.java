@@ -159,10 +159,9 @@ class NetworkRecipeExtensionsTest {
     }
 
     @Test
-    void authoritativeValidationRejectsUnregisteredAndChangedCapOrLogicalMetadata() {
-        for (var type : List.of(new NetworkResourceType(id("unknown_resource"), false, 0),
-            new NetworkResourceType(NetworkResources.COMPUTE.id(), false, 10),
-            new NetworkResourceType(NetworkResources.THREAD.id(), false, 1))) {
+    void authoritativeValidationRejectsUnregisteredAndChangedLogicalMetadata() {
+        for (var type : List.of(new NetworkResourceType(id("unknown_resource"), false),
+            new NetworkResourceType(NetworkResources.THREAD.id(), false))) {
             var extensions = new NetworkRecipeExtensions();
             var retained = new ObjectArrayList<NetworkWorkRequirements.Builder>();
             extensions.register((_, builder) -> {

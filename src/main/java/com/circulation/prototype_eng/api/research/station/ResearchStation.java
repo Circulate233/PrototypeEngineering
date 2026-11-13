@@ -18,7 +18,7 @@ import java.util.Objects;
 /**
  * Research-station capability. Rates and upkeep are fixed for the loaded generation; rate maps are
  * borrowed read-only with zero as their default return value. Levels are positive, upkeep and numeric
- * rates are nonnegative, and each rate respects its resource type's positive maxPerTickValue, if any.
+ * rates are nonnegative. Station definitions choose their own rates without a resource-type cap.
  * Missing resource types contribute zero. Custom runtimes may implement this
  * interface and declare DEVICE with MachineOwnership.TYPE without extending the default controller.
  */

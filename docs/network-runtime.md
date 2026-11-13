@@ -2,22 +2,22 @@
 
 ## 网络中心控制器（2026-11-13）
 
-本轮仅实现控制器与Java/ZS创建示例，不制作HTML或GUI。`api.network.NetworkCenter`是网络等级职责接口；自定义机器运行时可独立实现它。默认`api.machine.NetworkCenterController`直接继承通用`MachineInstance`，不继承多线程或跨配方控制器，不声明配方、工位或`NetworkRecipeWork`。它的`requiresTick()`返回false，物理控制器不将它登记到机器业务tick队列；原有物理宿主、结构成型检查及网络发布服务仍负责加载、结构变化、卸载和选中中心。
+本轮仅实现控制器与Java/ZS创建示例，不制作HTML或GUI。`api.network.NetworkCenter`是网络等级与供给职责接口；自定义机器运行时可独立实现它。默认`api.machine.NetworkCenterController`直接继承通用`MachineInstance`，不继承多线程或跨配方控制器，不声明配方、工位或`NetworkRecipeWork`。它的`requiresTick()`返回false，物理控制器不将它登记到机器业务tick队列；原有物理宿主、结构成型检查及网络发布服务仍负责加载、结构变化、卸载和选中中心。
 
-每队只有一个活动中心，沿既有规则选择最高等级、同级最早加载者；其他已成型中心为`SAME_TYPE_CONFLICT`。默认控制器只提供正整数网络等级，资源供给为空、没有资源修饰。等级属于当前机器定义，在该加载代内保持不变；所有权沿既有`MachineOwnership`保存，网络登记在加载时建立、卸载时撤销。
+每队只有一个活动中心，沿既有规则选择最高等级、同级最早加载者；其他已成型中心为`SAME_TYPE_CONFLICT`。默认控制器提供正整数网络等级和开发者配置的 THREAD 额度；只计入活动中心，并与合格计算机及外部参与者供给相加。等级和供给属于当前机器定义，在该加载代内保持不变；所有权沿既有`MachineOwnership`保存，网络登记在加载时建立、卸载时撤销。`NetworkCenter.networkResources()` 按只读契约交接资源向量，默认控制器复用构造时建立的表。
 
-Java声明时给机器添加`MachineOwnership.TYPE`和`NetworkCenter.DEVICE`，装配指定`type -> new NetworkCenterController(type, level, energyPerTick)`并将`NetworkCenter.DEVICE`标为recreated。自定义实现提供`NetworkCenter`的等级和非负FE定义并使用相同role组件；无业务tick的自定义运行时同样覆写`requiresTick()`，无需继承默认控制器。原两参数构造器保留为零费用入口。
+Java声明时给机器添加`MachineOwnership.TYPE`和`NetworkCenter.DEVICE`，装配指定`type -> new NetworkCenterController(type, level, threadCapacity, energyPerTick)`并将`NetworkCenter.DEVICE`标为recreated。自定义实现提供`NetworkCenter`的等级、供给和非负FE定义并使用相同role组件；无业务tick的自定义运行时同样覆写`requiresTick()`，无需继承默认控制器。旧构造器省略的线程额度为0，两参数入口也为零费用。
 
 中心只在生效时支付当前服务器 tick 的费用，网络重复刷新不重复扣费；待机冲突中心不收费，缺能中心从本次候选排除后重新选择。费用预留与网络发布共同提交，证明过期或发布失败时释放/补偿；不增加机器业务 tick。中心建立网络，因此不要求自身已有网络许可。
 
 ZS提供完整快捷入口：
 
 ```zenscript
-MachineType.networkCenter("example:center", "example.center", "example:center_shape", 1, 4)
+MachineType.networkCenter("example:center", "example.center", "example:center_shape", 1, 4, 4)
     .register("network-center-v1");
 ```
 
-入口使用相同Java契约与装配工厂，返回原`MachineType`声明句柄。网络中心不调用`processing`或声明配方工位。Java可直接用的注册示例为`run/visual-examples/src/main/java/pe/visual/examples/NetworkCenterExamples.java`；ZS示例为`run/scripts/15_pe_run_network_machines.zs`，结构在`30_pe_run_network.zs`。两例均为控制器上方一个铁块、后方能源仓，等级1，生效时4 FE/t。装有run addon及脚本后可取得`pe_run_tests:java_network_center_controller`或`pe_run_tests:net_center_controller`。
+入口使用相同Java契约与装配工厂，返回原`MachineType`声明句柄。网络中心不调用`processing`或声明配方工位。Java可直接用的注册示例为`run/visual-examples/src/main/java/pe/visual/examples/NetworkCenterExamples.java`；ZS示例为`run/scripts/15_pe_run_network_machines.zs`，结构在`30_pe_run_network.zs`。两例均为控制器上方一个铁块、后方能源仓，等级1、4线程额度，生效时4 FE/t。装有run addon及脚本后可取得`pe_run_tests:java_network_center_controller`或`pe_run_tests:net_center_controller`。
 
 ## 普通控制器的联网默认值
 

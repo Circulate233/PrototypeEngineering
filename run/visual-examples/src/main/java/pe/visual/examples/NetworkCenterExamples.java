@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Java center: one iron block above the controller, an energy hatch behind it, and 4 FE/t while active.
+ * Java center: one iron block above, an energy hatch behind, 4 thread capacity and 4 FE/t while active.
  */
 @Mod.EventBusSubscriber(modid = VisualExamples.MOD_ID)
 public final class NetworkCenterExamples {
@@ -60,7 +60,7 @@ public final class NetworkCenterExamples {
             false, new StructurePattern(pattern), List.of(), List.of()));
         var type = Objects.requireNonNull(event.registry().get(ID));
         event.assembly(MachineAssembly.builder(type, "network-center-v1")
-                                      .instanceFactory(value -> new NetworkCenterController(value, 1, 4))
+                                      .instanceFactory(value -> new NetworkCenterController(value, 1, 4, 4))
                                       .recreated(NetworkCenter.DEVICE).build());
     }
 }

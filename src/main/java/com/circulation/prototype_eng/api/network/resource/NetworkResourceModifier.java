@@ -98,11 +98,11 @@ public final class NetworkResourceModifier {
         for (var type : metadata.values()) {
             long adjustedBase = Math.addExact(base.getOrDefault(type, 0L), flat.getLong(type));
             long factor = Math.addExact(ONE_MILLION, multiplierPpm.getLong(type));
-            long numerator = Math.multiplyExact(adjustedBase, factor);
             if (adjustedBase < 0L) {
                 throw new IllegalArgumentException("Computing resource modifier produces a negative value for " + type.id());
             }
-            result.put(type, Math.floorDiv(numerator, ONE_MILLION));
+            result.put(type, factor == ONE_MILLION ? adjustedBase
+                : Math.floorDiv(Math.multiplyExact(adjustedBase, factor), ONE_MILLION));
         }
         return result;
     }

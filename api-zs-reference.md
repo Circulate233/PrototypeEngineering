@@ -266,11 +266,11 @@ first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表�
 
 ## 计算资源与机器网络角色
 
-专用控制器在 preinit 用 `MachineType.networkCenter(id, translationKey, structureId, level, energyPerTick)` 或 `MachineType.researchStation(id, translationKey, structureId, level, rates, energyPerTick)` 创建，随后 `register(revision)`。`rates` 为 `ComputingResources`，按资源设置该站每 tick 速率；最后参数是 FE/t。中心只在生效时扣费，站点只在实际推进成功时扣费，同 tick 不重复。中心省略 energyPerTick 的旧入口表示免费。二者使用专用 Java 运行时，不调用 `processing` 或添加工作槽；接口与完整示例见 [API](api.md#研究与计算网络)。
+专用控制器在 preinit 用 `MachineType.networkCenter(id, translationKey, structureId, level, threadCapacity, energyPerTick)` 或 `MachineType.researchStation(id, translationKey, structureId, level, rates, energyPerTick)` 创建，随后 `register(revision)`。中心的 threadCapacity 为逻辑并发额度；`rates` 为 `ComputingResources`，按资源设置研究站每 tick 速率；最后参数是 FE/t。中心只在生效时贡献供给并扣费，站点只在实际推进成功时扣费，同 tick 不重复。中心旧入口省略的线程额度为0，省略 energyPerTick 时免费。二者使用专用 Java 运行时，不调用 `processing` 或添加工作槽；接口与完整示例见 [API](api.md#研究与计算网络)。
 
 普通控制器的 `.requiresNetwork(true/false)` 优先于 `config/prototype_eng/controllers.cfg` 中 `network.defaultRequiresNetwork`（默认 false）。显式 `.network(...)` 仍表示选择网络角色；显式 false 只豁免共同配方门限，保留自定义配方的资源/研究条件。专用网络中心、研究站保留各自角色。
 
-`ComputingResource.create(id, logicalConcurrency, maxPerTickValue)` 创建新的计算资源种类，随后调用 `register()` 提交。logicalConcurrency 表示该资源以并发占用管理，例如线程数；普通数值资源可以参与按 tick 的资源工作。maxPerTickValue 为正时限制单组件可提供的数值，不是整队伍的总上限。`thread()`、`compute()` 和 `qubit()` 是库提供的类型，不应再次注册。
+`ComputingResource.create(id, logicalConcurrency)` 创建新的计算资源种类，随后调用 `register()` 提交。logicalConcurrency 表示该资源以并发占用管理，例如线程数；普通数值资源可以参与按 tick 的资源工作。单件物品与自定义计算机的线程、算力和自定义资源量均由开发者定义，不存在类型固有上限；旧 maxPerTickValue 参数和属性已删除。`thread()`、`compute()` 和 `qubit()` 是库提供的类型，不应再次注册。
 
 `ComputingResources.create()` 创建资源数量表，链式 `add(resource, amount)` 累加供应量，`amount(resource)` 查询数值。`ComputingModifier` 用 `flat` 添加固定量，用 `multiplierPpm` 表示百万分比增量，`500000` 为额外 50%。
 

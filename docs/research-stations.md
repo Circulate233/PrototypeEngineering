@@ -6,7 +6,7 @@
 
 `api.research.station.ResearchStation` 提供 `researchLevel()`、`researchRates()` 和 `energyPerTick()`。默认 `ResearchStationController(type, level, rates, energyPerTick)` 直接继承 `MachineInstance`，不安装配方工位，不登记机器业务 tick；实际推进由共享研究服务负责。自定义运行时可实现该接口并声明 `MachineOwnership.TYPE`、`ResearchStation.DEVICE`，装配将 DEVICE 标为 recreated。专用研究站始终保留网络角色，不受普通控制器默认配置影响。
 
-`rates` 是按只读契约借用的数值资源速率表，缺项为 0。每站等级为正、耗能与速率非负，资源类型的正 `maxPerTickValue` 限制单站速率。不同站可提供不同的速率与 FE 定义。研究公式只提供 `constant(type, demand)` / `affine(type, base, slope)`，不再存储单站限额；旧 API 调用须移除最后的 limit 参数，把速率移到站点定义。
+`rates` 是按只读契约借用的数值资源速率表，缺项为 0。每站等级为正、耗能与速率非负，具体速率由开发者定义，没有资源类型固有上限。不同站可提供不同的速率与 FE 定义。研究公式只提供 `constant(type, demand)` / `affine(type, base, slope)`，不再存储单站限额；旧 API 调用须移除最后的 limit 参数，把速率移到站点定义。
 
 新段候选排除无力支付本 tick FE 的站。END 获取每站的能源预留，与阶段材料、队列进度及研究完成共同提交；任何未成功提交的费用沿同一 ResourceBatch 补偿。只有成功推进收费，同站同服务器 tick 不重复扣费，待机不扣；材料需求自带的 FE 仍独立按 START/TICK/END 规则执行。保存恢复保留已支付材料阶段，后续仍需取得当前站点许可。
 
