@@ -1,0 +1,281 @@
+<div id="pe-research-station">
+  <style>
+    #pe-research-station { --rs-base:#cbccd4; --rs-panel:#9a9fb4; --rs-slot:#adb0c4; --rs-light:#f2f2f2; --rs-dark:#413f54; --rs-line:#696d88; --rs-text:#404040; --rs-frame:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAADyCAYAAABEWhLBAAADuklEQVR4nO3YsW0CQRBA0TuLOgjtMhAFIBIqoCeHpgeLaiCkhGsAhC0kN2DO8n8v2GCTneyvZlyvdtcBgJzF/fg8HobT+fJ18fa6nHsmAH7ZdrP/DsBPjxAA8D89Pvovcw8CwDwEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKLGaZqucw8BwHNtN/th8f5xfPKzAPwFVkAAUeN6tbMCAhh6brlyFUbPokkcAAAAAElFTkSuQmCC); --rs-button:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAAUAgMAAAC1yppZAAAACXBIWXMAAAsTAAALEwEAmpwYAAAADFBMVEWtsMRpbYian7RBP1TFg3A3AAAALElEQVQoz2P4TzJgOMBAImBmOLWKRLB4VMuoFpprISMlXw0lEYTTSQvpGRkAEMNJfplgmvYAAAAASUVORK5CYII=); --rs-button-hover:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAAUBAMAAAA6im/5AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAD1BMVEVHcExwjLra//9BP1Sc0//2meR8AAAAAXRSTlMAQObYZgAAADNJREFUOMtjYKAHMKYDYDBSojlQZjByoTkYtWTUklFLRi0ZopbQoxQ2FKQ5EKaPJfSoGQEAYqbfOaAPDgAAAABJRU5ErkJggg==); width:100%; }
+    #pe-research-station * { box-sizing:border-box; }
+    #pe-research-station .rs-stage { display:flex; justify-content:center; padding:10px 2px 16px; }
+    #pe-research-station .rs-window { width:100%; max-width:640px; height:480px; padding:10px 12px; border:7px solid transparent; border-image:var(--rs-frame) 4 / 7px stretch; background:var(--rs-base); color:var(--rs-text); font:14px/20px "Microsoft YaHei","Segoe UI",sans-serif; display:grid; grid-template-rows:24px 80px minmax(0,1fr); gap:8px; }
+    #pe-research-station .rs-title { display:flex; justify-content:space-between; align-items:center; padding:0 10px; }
+    #pe-research-station .rs-inset { background:var(--rs-panel); border:2px solid var(--rs-light); }
+    #pe-research-station .rs-current { display:grid; grid-template-columns:30px minmax(0,1fr) auto; gap:4px 10px; align-items:center; padding:8px; min-width:0; }
+    #pe-research-station .rs-icon { width:30px; height:30px; object-fit:contain; image-rendering:pixelated; flex:none; }
+    #pe-research-station .rs-current-info { min-width:0; flex:1; }
+    #pe-research-station .rs-research-name { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    #pe-research-station .rs-research-name strong { font-weight:500; }
+    #pe-research-station .rs-small { font-size:12px; line-height:20px; }
+    #pe-research-station .rs-time { grid-column:1 / -1; }
+    #pe-research-station .rs-bar { height:4px; background:var(--rs-slot); margin-top:3px; }
+    #pe-research-station .rs-fill { height:100%; background:var(--rs-dark); }
+    #pe-research-station .rs-time .rs-bar { height:18px; position:relative; }
+    #pe-research-station .rs-time-percent { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--rs-light); font-size:12px; line-height:18px; text-shadow:1px 1px var(--rs-dark); font-variant-numeric:tabular-nums; }
+    #pe-research-station .rs-state { font-size:12px; white-space:nowrap; }
+    #pe-research-station .rs-good { color:#006600; }
+    #pe-research-station .rs-columns { display:grid; grid-template-columns:1.12fr 1fr; gap:10px; min-height:0; }
+    #pe-research-station .rs-pane { padding:8px; min-width:0; min-height:0; display:flex; flex-direction:column; gap:6px; }
+    #pe-research-station .rs-heading { display:flex; align-items:center; justify-content:space-between; gap:6px; min-height:20px; }
+    #pe-research-station .rs-scroll { min-height:0; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#878fa5 var(--rs-panel); }
+    #pe-research-station .rs-requirements { flex:1; padding-right:4px; }
+    #pe-research-station .rs-resource-heading { margin-top:8px; }
+    #pe-research-station .rs-resource { padding:4px 0; }
+    #pe-research-station .rs-resource + .rs-resource { border-top:1px solid var(--rs-line); }
+    #pe-research-station .rs-pair { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:20px; }
+    #pe-research-station .rs-number { white-space:nowrap; font-variant-numeric:tabular-nums; }
+    #pe-research-station .rs-material { display:grid; grid-template-columns:18px minmax(0,1fr) auto; align-items:center; gap:6px; min-height:27px; }
+    #pe-research-station .rs-material img { width:18px; height:18px; image-rendering:pixelated; }
+    #pe-research-station .rs-material-name { min-width:0; }
+    #pe-research-station .rs-total { font-size:12px; line-height:18px; }
+    #pe-research-station .rs-participation { padding:7px 0 0; border-top:1px solid var(--rs-line); }
+    #pe-research-station .rs-queue { list-style:none; margin:0; padding:0; flex:1; }
+    #pe-research-station .rs-queue li + li { border-top:1px solid var(--rs-line); }
+    #pe-research-station .rs-entry { display:grid; grid-template-columns:16px minmax(0,1fr) 36px 28px; align-items:center; gap:6px; width:100%; height:36px; border:0; padding:3px 5px; background:transparent; color:inherit; font:inherit; text-align:left; }
+    #pe-research-station .rs-entry[aria-pressed=true] { background:var(--rs-slot); }
+    #pe-research-station .rs-entry:hover { background:#b6baca; }
+    #pe-research-station .rs-order { text-align:center; }
+    #pe-research-station .rs-entry-label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    #pe-research-station .rs-current-mark { font-size:12px; color:#006600; text-align:right; }
+    #pe-research-station .rs-level { font-size:12px; text-align:right; }
+    #pe-research-station .rs-actions { display:grid; grid-template-columns:34px 34px 1fr 1fr; gap:4px; }
+    #pe-research-station .rs-action { display:flex; align-items:center; justify-content:center; height:30px; min-width:0; font:12px/18px "Microsoft YaHei","Segoe UI",sans-serif; color:#f2f2f2; padding:0; background:transparent; border:5px solid transparent; border-image:var(--rs-button) 3 fill / 5px stretch; white-space:nowrap; }
+    #pe-research-station .rs-action:hover:not(:disabled) { color:#517497; border-image-source:var(--rs-button-hover); }
+    #pe-research-station .rs-action:disabled { opacity:0.5; cursor:default; }
+    #pe-research-station .rs-empty { display:flex; align-items:center; justify-content:center; min-height:90px; font-size:13px; }
+    #pe-research-station [hidden] { display:none !important; }
+    @media(max-width:540px) {
+      #pe-research-station .rs-window { height:auto; min-height:404px; grid-template-rows:auto auto auto; padding:8px; }
+      #pe-research-station .rs-columns { grid-template-columns:1fr; }
+      #pe-research-station .rs-title { min-height:24px; }
+      #pe-research-station .rs-current { grid-template-columns:24px minmax(0,1fr); }
+      #pe-research-station .rs-current .rs-icon { width:24px; height:24px; }
+      #pe-research-station .rs-state { grid-column:2; }
+      #pe-research-station .rs-scroll { overflow:visible; }
+      #pe-research-station .rs-pane { min-height:180px; }
+      #pe-research-station .rs-actions { grid-template-columns:40px 40px 1fr 1fr; }
+    }
+    @media(pointer:coarse) {
+      #pe-research-station .rs-entry, #pe-research-station .rs-action { min-height:44px; }
+      #pe-research-station .rs-window { height:auto; min-height:480px; grid-template-rows:auto auto auto; }
+    }
+  </style>
+  <div class="rs-stage viz-dotted-background">
+    <section class="rs-window" aria-label="研究站界面预览">
+      <div class="rs-title"><span>研究站</span><span class="rs-small">工程组</span></div>
+      <div class="rs-current rs-inset" aria-live="polite">
+        <img class="rs-icon" id="rs-icon" alt="">
+        <div class="rs-current-info">
+          <div class="rs-research-name"><strong id="rs-name"></strong><span class="rs-small" id="rs-level"></span></div>
+        </div>
+        <span class="rs-state" id="rs-state"></span>
+        <div class="rs-time" id="rs-time">
+          <div class="rs-bar" id="rs-time-bar" role="progressbar" aria-label="研究时间进度" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill" id="rs-time-fill"></div><span class="rs-time-percent" id="rs-time-percent"></span></div>
+        </div>
+      </div>
+      <div class="rs-columns">
+        <section class="rs-pane rs-inset" aria-label="当前研究资源">
+          <div class="rs-requirements rs-scroll" id="rs-requirements">
+            <div class="rs-heading"><span>资源</span><span class="rs-small">本站可用 / 剩余需求</span></div>
+            <div id="rs-materials"></div>
+            <div class="rs-heading rs-resource-heading"><span>网络资源</span><span class="rs-small">占用 / 上限（/t）</span></div>
+            <div id="rs-resources"></div>
+          </div>
+          <div class="rs-participation">参与研究站 <span class="rs-number" id="rs-stations"></span></div>
+        </section>
+        <section class="rs-pane rs-inset" aria-label="队伍研究队列">
+          <div class="rs-heading"><span>研究队列</span><span class="rs-small" id="rs-count"></span></div>
+          <ol class="rs-queue" id="rs-queue"></ol>
+          <div class="rs-actions">
+            <button class="rs-action cursor-interaction" type="button" data-action="up" data-tooltip="上移">上移</button>
+            <button class="rs-action cursor-interaction" type="button" data-action="down" data-tooltip="下移">下移</button>
+            <button class="rs-action cursor-interaction" type="button" data-action="current">设为当前</button>
+            <button class="rs-action cursor-interaction" type="button" data-action="remove" data-tooltip="移出队列，保留研究进度">移出队列</button>
+          </div>
+        </section>
+      </div>
+    </section>
+  </div>
+  <script>
+    (() => {
+      const root = document.getElementById("pe-research-station");
+      const assets = {"calculation": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAALVBMVEVHcEwNDRQiJDMsMUIxSmMZGyaKu++qISs1Qk9HZ4d9qdJETVdYZmvYPDqc0/8s9BJGAAAAAXRSTlMAQObYZgAAAFVJREFUCNdjYMAGGAWgtHgglA4qBQsJKV0KAgtJKCmZKoGEJjYbKyspAhle0sbGFo1ABsvCzTYbJUGK3GQOSpaAGCyJklcSwCa5LUl4AGawODzAZjMA1fsQFfrYadUAAAAASUVORK5CYII=", "logic": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAMFBMVEVHcEwNDRQsMUJ1KAIiJDOqISuyZBE1Qk/61kr99V8ZGyZETVdYZmvYPDrpsRXclhPKMKYIAAAAAXRSTlMAQObYZgAAAFBJREFUCNdjYMAKGAWgtOhCKL0qRABMq1xxcQQyRJQuObkXAhniSkrahWJARuImnY1iwUCGvcxBseAGIIO5UexywwSQdrvHEJqB2WACA14AAFoVEF57IMHWAAAAAElFTkSuQmCC", "engineering": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAALVBMVEVHcEwNDRQiJDMsMUIUXlMZGyaqISsgxbU1Qk8RcnrYPDpETVcaqqdK7dlYZms/ezpLAAAAAXRSTlMAQObYZgAAAGFJREFUCNdjYEAGgjA6VQBKhwVCaC3VpUAhRiUtpaAgRSCjSUlZVUlJgIFTwtjIyKhDgIHl4GZj4x2CExgYfKSNXwtOc2BgYCl8JzjNHaTfXXCWOy+IwVIDoRkYXHgZsAEA2PQRhetk6lAAAAAASUVORK5CYII="};
+      const definitions = {
+        parallel: { name:"并行处理", level:2, icon:"calculation", time:600, elapsed:240, stations:2, materials:[
+          {name:"运算处理器",icon:"calculation",total:10,paid:5,available:64},
+          {name:"逻辑处理器",icon:"logic",total:20,paid:10,available:4}
+        ], resources:[
+          {name:"算力",limit:160,occupied:192,completed:31200},
+          {name:"信号",limit:2.5,occupied:2.5,completed:720},
+          {name:"存储带宽",limit:64,occupied:32,completed:11520}
+        ]},
+        compression: {name:"数据压缩",level:1,icon:"logic",time:400,elapsed:100,stations:2,materials:[
+          {name:"逻辑处理器",icon:"logic",total:8,paid:4,available:4}
+        ],resources:[
+          {name:"算力",limit:64,occupied:128,completed:6400},
+          {name:"存储带宽",limit:32,occupied:16,completed:640}
+        ]},
+        automation: {name:"自动化协调",level:3,icon:"engineering",time:1200,elapsed:660,stations:2,materials:[
+          {name:"工程处理器",icon:"engineering",total:20,paid:12,available:8},
+          {name:"逻辑处理器",icon:"logic",total:10,paid:6,available:4}
+        ],resources:[
+          {name:"算力",limit:120,occupied:144,completed:72000},
+          {name:"信号",limit:3.5,occupied:3.5,completed:2184},
+          {name:"物流调度",limit:5,occupied:5,completed:2700},
+          {name:"存储带宽",limit:16,occupied:16,completed:11136}
+        ]},
+        sampling: {name:"精密采样",level:1,icon:"calculation",time:200,elapsed:60,stations:1,materials:[
+          {name:"运算处理器",icon:"calculation",total:10,paid:3,available:64}
+        ],resources:[]},
+        connection: {name:"高速连接",level:2,icon:"engineering",time:1000,elapsed:360,stations:2,materials:[
+          {name:"工程处理器",icon:"engineering",total:10,paid:4,available:8},
+          {name:"运算处理器",icon:"calculation",total:20,paid:8,available:64},
+          {name:"逻辑处理器",icon:"logic",total:10,paid:4,available:4}
+        ],resources:[
+          {name:"算力",limit:200,occupied:192,completed:60000},
+          {name:"信号",limit:5,occupied:2.5,completed:1250},
+          {name:"存储带宽",limit:128,occupied:32,completed:38400},
+          {name:"扫描",limit:16,occupied:8,completed:4800},
+          {name:"物流调度",limit:6,occupied:3,completed:2100}
+        ]}
+      };
+      let queue = ["parallel","compression","automation","sampling","connection"];
+      let selected = queue[0];
+      let renderedCurrent;
+      const byId = id => root.querySelector("#" + id);
+      const number = value => value.toLocaleString("zh-CN",{maximumFractionDigits:3});
+
+      function emptyRow(parent, text) {
+        const empty = document.createElement("div");
+        empty.className = "rs-small";
+        empty.textContent = text;
+        parent.append(empty);
+      }
+
+      function render() {
+        const currentId = queue[0];
+        const current = definitions[currentId];
+        if (currentId !== renderedCurrent) {
+          byId("rs-requirements").scrollTop = 0;
+          renderedCurrent = currentId;
+        }
+        byId("rs-name").textContent = current ? current.name : "暂无研究";
+        byId("rs-level").textContent = current ? "目标等级 " + current.level : "";
+        byId("rs-icon").hidden = !current;
+        if (current) byId("rs-icon").src = assets[current.icon];
+        byId("rs-state").textContent = current ? "研究中" : "空闲";
+        byId("rs-state").className = "rs-state " + (current ? "rs-good" : "");
+        byId("rs-time").hidden = !current;
+        if (current) {
+          const percent = current.elapsed / current.time * 100;
+          byId("rs-time-percent").textContent = number(percent) + "%";
+          byId("rs-time-fill").style.width = percent + "%";
+          byId("rs-time-bar").setAttribute("aria-valuenow", String(percent));
+        }
+        const materials = byId("rs-materials");
+        materials.replaceChildren();
+        if (!current || !current.materials.length) emptyRow(materials, "无资源需求");
+        else for (const material of current.materials) {
+          const row = document.createElement("div");
+          row.className = "rs-material";
+          row.innerHTML = '<img alt="" src="' + assets[material.icon] + '"><span class="rs-material-name">' + material.name +
+            '</span><span class="rs-number">' + number(material.available) + " / " + number(material.total - material.paid) + "</span>";
+          materials.append(row);
+        }
+        const resourceList = byId("rs-resources");
+        resourceList.replaceChildren();
+        if (!current || !current.resources.length) emptyRow(resourceList, "无网络资源需求");
+        else for (const resource of current.resources) {
+          const total = resource.limit * current.time;
+          const percent = resource.completed / total * 100;
+          const row = document.createElement("div");
+          row.className = "rs-resource";
+          row.innerHTML = '<div class="rs-pair"><span>' + resource.name + '</span><span class="rs-number">' +
+            number(resource.occupied) + " / " + number(resource.limit * current.stations) + '</span></div>' +
+            '<div class="rs-pair rs-total"><span>累计</span><span class="rs-number">' +
+            number(resource.completed) + " / " + number(total) + '</span></div>' +
+            '<div class="rs-bar" role="progressbar" aria-label="' + resource.name + '累计进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + percent +
+            '"><div class="rs-fill" style="width:' + percent + '%"></div></div>';
+          resourceList.append(row);
+        }
+        byId("rs-stations").textContent = current ? number(current.stations) : "0";
+        byId("rs-count").textContent = queue.length + " / 5";
+        const list = byId("rs-queue");
+        list.replaceChildren();
+        queue.forEach((id,index) => {
+          const entry = definitions[id];
+          const item = document.createElement("li");
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "rs-entry cursor-interaction";
+          button.dataset.research = id;
+          button.setAttribute("aria-pressed", String(id === selected));
+          button.setAttribute("aria-label", entry.name + "，目标等级 " + entry.level + (index === 0 ? "，当前研究" : ""));
+          button.innerHTML = '<span class="rs-order">' + (index + 1) + '</span><span class="rs-entry-label" data-tooltip="' + entry.name + '">' +
+            entry.name + '</span><span class="rs-level">Lv.' + entry.level + '</span>' +
+            '<span class="rs-current-mark">' + (index === 0 ? "当前" : "") + "</span>";
+          item.append(button);
+          list.append(item);
+        });
+        if (!queue.length) {
+          const empty = document.createElement("li");
+          empty.className = "rs-empty";
+          empty.textContent = "队列为空";
+          list.append(empty);
+        }
+        const index = queue.indexOf(selected);
+        root.querySelector('[data-action="up"]').disabled = index < 1;
+        root.querySelector('[data-action="down"]').disabled = index < 0 || index === queue.length - 1;
+        root.querySelector('[data-action="current"]').disabled = index < 1;
+        root.querySelector('[data-action="remove"]').disabled = index < 0;
+      }
+
+      function save() {
+        if (!window.openai?.setWidgetState) return;
+        window.openai.setWidgetState({
+          modelContent:{current:queue[0] ? definitions[queue[0]].name : null,queue:queue.map(id=>definitions[id].name)},
+          privateContent:{researchStation:{queue,selected}}
+        }).catch(error=>console.warn("研究站预览状态保存失败",error));
+      }
+      function restore(saved) {
+        const state = saved?.privateContent?.researchStation;
+        if (!state) return;
+        queue = state.queue;
+        selected = state.selected;
+      }
+      root.addEventListener("click", event => {
+        const entry = event.target.closest("[data-research]");
+        if (entry) {
+          selected = entry.dataset.research;
+          render();
+          save();
+          return;
+        }
+        const button = event.target.closest("[data-action]");
+        if (!button || button.disabled) return;
+        const index = queue.indexOf(selected);
+        switch (button.dataset.action) {
+          case "up": [queue[index-1],queue[index]] = [queue[index],queue[index-1]]; break;
+          case "down": [queue[index+1],queue[index]] = [queue[index],queue[index+1]]; break;
+          case "current": queue.splice(index,1); queue.unshift(selected); break;
+          case "remove": queue.splice(index,1); selected = queue[Math.min(index,queue.length-1)]; break;
+        }
+        render();
+        save();
+      });
+      restore(window.openai?.widgetState);
+      render();
+      window.addEventListener("openai:set_globals", event => {
+        if (event.detail?.globals?.widgetState) {
+          restore(event.detail.globals.widgetState);
+          render();
+        }
+      });
+    })();
+  </script>
+</div>
