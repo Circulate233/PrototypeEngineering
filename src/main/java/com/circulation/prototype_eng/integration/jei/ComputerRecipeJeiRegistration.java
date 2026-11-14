@@ -57,7 +57,7 @@ final class ComputerRecipeJeiRegistration {
             var id = new ResourceLocation(Tags.MOD_ID, "computer/" + machine.id().getNamespace() + "/" + machine.id().getPath());
             var pool = new DefaultRecipePool(id, machine.displayName().getTranslationKey(), materials);
             var page = new AutoLayoutRecipePage(pool, helper, descriptions::get, JeiRenderOptions.defaults(),
-                AutoLayoutRecipePage.minecraftFont(), false);
+                AutoLayoutRecipePage.minecraftFont(), false, false);
             pages.add(new Page(machine, page));
             registration.addRecipeCategories(page);
         }
@@ -66,11 +66,10 @@ final class ComputerRecipeJeiRegistration {
     private static JeiRecipeDisplay describe(ComputerRecipe recipe) {
         var display = new JeiRecipeDisplay.Builder();
         for (var stack : recipe.unitInputs()) display.resource(stack, INPUT, of(JeiText.ComputerUnit));
-        display.information(of(JeiText.ComputerSupplyRecipe));
         for (var entry : recipe.unitResources().reference2DoubleEntrySet()) {
             if (entry.getDoubleValue() == 0) continue;
             var resource = entry.getKey();
-            display.information(of(JeiText.ComputerInternalSupply,
+            display.information(of(JeiText.ComputerUnitResource,
                 resource.displayName(), resource.format(entry.getDoubleValue())));
         }
         return display.build();

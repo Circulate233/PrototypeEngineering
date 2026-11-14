@@ -46,6 +46,7 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
     private final RecipeInformationLayout.Font font;
     private final JeiRenderOptions options;
     private final boolean singleInput;
+    private final boolean showArrow;
     private Data data;
 
     public AutoLayoutRecipePage(RecipePool pool, IGuiHelper guiHelper, RecipeJeiDisplays displays) {
@@ -84,11 +85,17 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
 
     AutoLayoutRecipePage(RecipePool pool, IGuiHelper guiHelper, Function<MachineRecipe, JeiRecipeDisplay> describe,
                          JeiRenderOptions options, RecipeInformationLayout.Font font, boolean singleInput) {
+        this(pool, guiHelper, describe, options, font, singleInput, true);
+    }
+
+    AutoLayoutRecipePage(RecipePool pool, IGuiHelper guiHelper, Function<MachineRecipe, JeiRecipeDisplay> describe,
+                         JeiRenderOptions options, RecipeInformationLayout.Font font, boolean singleInput, boolean showArrow) {
         this.font = Objects.requireNonNull(font);
         Objects.requireNonNull(pool);
         Objects.requireNonNull(guiHelper);
         this.options = Objects.requireNonNull(options);
         this.singleInput = singleInput;
+        this.showArrow = showArrow;
         data = measure(pool, describe);
     }
 
@@ -162,14 +169,15 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
         int outputColumns = columns(outputCount, singleInput ? 6 : 4);
         int inputHeight = rows(inputCount, inputColumns) * STRIDE;
         int outputHeight = rows(outputCount, outputColumns) * STRIDE;
-        int height = Math.max(STRIDE, Math.max(inputHeight, outputHeight));
-        int width = (inputColumns + outputColumns) * STRIDE + 24;
+        int height = Math.max(showArrow ? STRIDE : 0, Math.max(inputHeight, outputHeight));
+        int gap = showArrow ? 24 : 0;
+        int width = (inputColumns + outputColumns) * STRIDE + gap;
         int x = (WIDTH - width) / 2;
         int arrowX = x + inputColumns * STRIDE + 3;
         return new Geometry(slots(inputCount, inputColumns, x, 3 + (height - inputHeight) / 2),
-            slots(outputCount, outputColumns, arrowX + 21, 3 + (height - outputHeight) / 2),
-            ObjectArrayList.of(new JeiRecipeDecorator.Placement(arrowX, 3 + (height - STRIDE) / 2,
-                JeiVisuals.Progress.module(JeiVisuals.Module.RIGHT, JeiVisuals.Direction.RIGHT))), 3 + height + 6);
+            slots(outputCount, outputColumns, x + inputColumns * STRIDE + gap, 3 + (height - outputHeight) / 2),
+            showArrow ? List.of(new JeiRecipeDecorator.Placement(arrowX, 3 + (height - STRIDE) / 2,
+                JeiVisuals.Progress.module(JeiVisuals.Module.RIGHT, JeiVisuals.Direction.RIGHT))) : List.of(), 3 + height + 6);
     }
 
     /**

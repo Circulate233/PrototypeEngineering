@@ -1,12 +1,6 @@
 package com.circulation.prototype_eng.container;
 
 import ae2.container.AEBaseContainer;
-import ae2.api.stacks.GenericStack;
-import com.circulation.prototype_eng.api.network.ComputerInputWork;
-import com.circulation.prototype_eng.api.network.resource.ComputerInputRecipe;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
-import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
-import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import ae2.container.guisync.GuiSync;
 import com.circulation.prototype_eng.api.machine.ComputerController;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
@@ -38,10 +32,7 @@ public final class ContainerComputer extends AEBaseContainer {
     private final ReferenceOpenHashSet<StorageContext> energySources = new ReferenceOpenHashSet<>();
     private NetworkComputerComponentInventory installed;
     public List<ComputerDetailsPacket.Component> components = List.of();
-    public List<ComputerDetailsPacket.Recipe> recipes = List.of();
-    public byte[] recipeStates = new byte[0];
-    public double[] recipeProgress = new double[0];
-    private boolean definitionsRead, captureQueued;
+    private boolean captureQueued;
     @GuiSync(0)
     public @Nullable NetworkWorkState networkState;
     @GuiSync(1)
@@ -115,8 +106,6 @@ public final class ContainerComputer extends AEBaseContainer {
                     context.unlock();
                 }
             }
-            List<ComputerDetailsPacket.Component> componentUpdate = null;
-            List<ComputerDetailsPacket.Recipe> recipeUpdate = null;
             if (installed != inventory && (installed == null || !MachineComputerComponents.sameComposition(installed, inventory))) {
                 var rows = new ObjectArrayList<ComputerDetailsPacket.Component>(inventory.components().size());
                 installedCount = 0;
@@ -126,59 +115,10 @@ public final class ContainerComputer extends AEBaseContainer {
                     rows.add(new ComputerDetailsPacket.Component(item.item(), item.count(), definition.concurrencyPerItem(),
                         definition.energyPerTick(), definition.resourcesPerItem(), definition.requiredResources()));
                 }
-                components = componentUpdate = rows;
+                components = rows;
+                details = new ComputerDetailsPacket(rows);
             }
             installed = inventory;
-            if (!definitionsRead) {
-                var rows = new ObjectArrayList<ComputerDetailsPacket.Recipe>();
-                for (var recipe : computer.supplyRecipes())
-                    rows.add(new ComputerDetailsPacket.Recipe(recipe.id(), recipe.unitInputs(), recipe.unitResources(), -1, List.of(), List.of()));
-                for (var definition : Objects.requireNonNull(computer.type()).computerInputRecipes()) {
-                    var start = new ObjectArrayList<GenericStack>();
-                    var ticks = new ObjectArrayList<GenericStack>();
-                    var end = new ObjectArrayList<GenericStack>();
-                    for (var requirement : definition.inputDefinition().orderedRequirements()) {
-                        if (requirement.payload() instanceof ResourceRequirement material) {
-                            start.addAll(material.inputs());
-                            ticks.addAll(material.inputsPerTick());
-                        } else if (requirement.type() == ComputerInputRecipe.END_INPUT
-                            && ((RecipeRequirement<?>) requirement.payload()).payload() instanceof ResourceRequirement material) {
-                            end.addAll(material.inputs());
-                        }
-                    }
-                    rows.add(new ComputerDetailsPacket.Recipe(definition.recipe().id(), start, Reference2DoubleMaps.emptyMap(), definition.recipe().durationTicks(), ticks, end));
-                }
-                recipes = recipeUpdate = rows;
-                recipeStates = new byte[rows.size()];
-                recipeProgress = new double[rows.size()];
-                definitionsRead = true;
-            }
-            ObjectArrayList<ComputerDetailsPacket.RecipeState> changes = null;
-            var states = computer.recipeStates();
-            var inputWork = computer.components().get(ComputerInputWork.TYPE);
-            for (int index = 0; index < recipes.size(); index++) {
-                byte state = ComputerController.RECIPE_WAITING;
-                double progress = 0;
-                if (index < states.length) state = active ? states[index] : ComputerController.RECIPE_WAITING;
-                else {
-                    var process = Objects.requireNonNull(inputWork).process(index - states.length);
-                    if (process != null) {
-                        progress = process.state().progress();
-                        if (active) state = switch (process.state().result()) {
-                            case ProcessResult.Success ignored -> ComputerController.RECIPE_ACTIVE;
-                            case ProcessResult.Blocked ignored -> ComputerController.RECIPE_INPUT;
-                            case ProcessResult.Failure ignored -> ComputerController.RECIPE_FAILED;
-                        };
-                    }
-                }
-                if (state == recipeStates[index] && progress == recipeProgress[index]) continue;
-                recipeStates[index] = state;
-                recipeProgress[index] = progress;
-                if (changes == null) changes = new ObjectArrayList<>();
-                changes.add(new ComputerDetailsPacket.RecipeState(index, state, progress));
-            }
-            if (componentUpdate != null || recipeUpdate != null || changes != null)
-                details = new ComputerDetailsPacket(componentUpdate, recipeUpdate, changes == null ? List.of() : changes);
             var demand = demands.capture(active ? computer.componentDemand() : inventory.requiredResources(), available);
             if (demand != null) demandUpdate = demand;
             var produced = output.capture(active ? computer.providedResources() : Reference2DoubleMaps.emptyMap(), _ -> 0);
@@ -191,10 +131,7 @@ public final class ContainerComputer extends AEBaseContainer {
 
     @Override
     public void addListener(IContainerListener listener) {
-        var states = new ObjectArrayList<ComputerDetailsPacket.RecipeState>(recipeStates.length);
-        for (int index = 0; index < recipeStates.length; index++)
-            states.add(new ComputerDetailsPacket.RecipeState(index, recipeStates[index], recipeProgress[index]));
-        details = new ComputerDetailsPacket(components, recipes, states);
+        details = new ComputerDetailsPacket(components);
         demandUpdate = demands.fullPacket();
         outputUpdate = output.fullPacket();
         super.addListener(listener);
@@ -202,18 +139,7 @@ public final class ContainerComputer extends AEBaseContainer {
 
     @Override
     public void onServerDataSync(ShortSet updatedFields) {
-        if (updatedFields.contains((short) 8)) {
-            if (details.components() != null) components = details.components();
-            if (details.recipes() != null) {
-                recipes = details.recipes();
-                recipeStates = new byte[recipes.size()];
-                recipeProgress = new double[recipes.size()];
-            }
-            for (var changed : details.changed()) {
-                recipeStates[changed.index()] = changed.state();
-                recipeProgress[changed.index()] = changed.progress();
-            }
-        }
+        if (updatedFields.contains((short) 8)) components = details.components();
         if (updatedFields.contains((short) 9)) demandView.receive(demandUpdate);
         if (updatedFields.contains((short) 10)) outputView.receive(outputUpdate);
         super.onServerDataSync(updatedFields);

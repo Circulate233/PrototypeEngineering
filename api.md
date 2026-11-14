@@ -258,7 +258,7 @@ MachineAssembly.builder(type, "research-station-v1")
 
 ### 计算机与运算仓
 
-默认 `ComputerController.DEVICE` 自动使用计算机专用的概览、组件和供给配方GUI，无需Java或ZS另行注册。自定义显示继续使用 `MachineGuiRegistry` 和 `MachineScreenRegistry`。`NetworkComputer` 接口只暴露并发和外部资源；默认控制器的 `installedInventory()`、`supplyRecipes()`、`supplyState()`、`recipeStates()`、`availableForComponents(resource)` 供所属线程边界读取，返回的列表、状态数组与资源Map必须保持只读，禁止跨提交周期保留状态数组。
+默认 `ComputerController.DEVICE` 自动使用计算机专用的概览和组件GUI，无需Java或ZS另行注册。自定义显示继续使用 `MachineGuiRegistry` 和 `MachineScreenRegistry`。`NetworkComputer` 接口只暴露并发和外部资源；默认控制器的 `installedInventory()`、`supplyState()`、`availableForComponents(resource)` 供所属线程边界读取，返回的列表与资源Map必须保持只读。
 
 `NetworkComputer` 只暴露独立整数 `providedConcurrency()` 和R2D资源表 `providedResources()`。默认可继承 `ComputerController` 组合现有组件、材料事务和网络发布，无普通配方工位，本体不耗FE；声明纯输入配方时在所属线程执行普通配方进程。
 
@@ -274,7 +274,7 @@ Java 装配必须用 `MachineAssembly.Builder.computerRecipes(recipes)` 提供�
 
 计算机启动须先取得中心或其他已获准设备提供的1份并发，不能用自己的待生效供给启动；活动数据库占用1份，研究站推进时申请，中心不占用。三类网络设备优先于普通设备，高优先级申请可收回普通租约并使其未提交凭据失效；同条件使用持久UUID，避免加载顺序决定结果。尚未获准的计算机只预留、不支付材料或组件FE。
 
-ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, recipes)`；单位转换用 `ComputerRecipe.create(id, Resource[] unitInputs, ComputingResources unitResources)`；资源用 `ComputingResource.network(id, translationKey, pattern)` / `.computer(...)`。自定义Java资源可经 `ZenComputingResource` 包装器交给脚本。计算机GUI已按获批三页预览实现，见[计算机](docs/computers.md)。
+ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, recipes)`；单位转换用 `ComputerRecipe.create(id, Resource[] unitInputs, ComputingResources unitResources)`；资源用 `ComputingResource.network(id, translationKey, pattern)` / `.computer(...)`。自定义Java资源可经 `ZenComputingResource` 包装器交给脚本。计算机GUI保留概览与组件两页，配方展示统一使用JEI，见[计算机](docs/computers.md)。
 
 所有接网控制器支持 `MachineType.Builder.networkEvent(callback)`，Java全局事件用 `NetworkDeviceEvents.register(callback)`，ZS全局事件用 `Events.onDevice(callback)`。事件公开同队全部已加载设备快照，允许修改本设备资源、并发、研究站速率和FE输入倍率。完整调用顺序、快照范围、只读要求及禁止外部副作用的说明见[网络设备事件](docs/network-events.md)。
 

@@ -1,5 +1,12 @@
 # 实施进度
 
+## 2026-11-14 计算机JEI与供给配方页精简
+
+- 资源转换JEI删除行为说明句和“本机资源”前缀，每种资源仅显示“每份资源名：数量”，材料tooltip仅标注“每份”。计算机分类关闭加工箭头及其占用的间距，材料重新居中；通用机器配方保留原箭头布局。仍使用资源自己的displayName与format方法。
+- 计算机控制器GUI移除供给配方页，概览和组件使用两枚等宽AE按钮。删除配方列表、选中项、文字缓存、配方状态与进度的容器采集/客户端同步；ComputerDetailsPacket仅在组成变化时同步组件。删除仅为原页面记录的控制器配方状态数组及其提交/回滚字段、读取方法和废弃语言项。
+- 迁移现有AE同步测试，保留组件定义、组成变化和清空同步验证；删除随配方页撤销的状态断言，没有新增删除、布局或文案测试。计算机结算、组件同步和JEI现有测试共30项/5 suites通过，无失败、错误或跳过。10Java经本机IDEA MCP格式化，逐文件errorsOnly:false错误/警告/弱警告均为0，MCP build_project成功。Gradle build -x test通过Spotless、JAR/reobf；测试沿前述已完成的针对性结果，不重复全仓运行。
+- 证据位于C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261114/：computer-jei-cleanup-idea.json、computer-jei-cleanup-tests.log、computer-jei-cleanup-tests/及computer-jei-cleanup-build.log。API、计算机、JEI与开发规范已同步。实际游戏画面仍待重启复验，本轮未启动游戏、未推送，本地提交。
+
 ## 2026-11-14 计算机单位换算、纯输入配方和网络设备事件
 
 - ComputerRecipe使用unitInputs/unitResources，按组件资源缺口向上取整请求份数，按声明顺序由多条转换补足缺口。已有完整份数即使不足也结算；用户最终确认“不满一份视为不存在”，余料不扣、不按比例产生资源。多输入的一份必须凑齐。无需求或资格条件不满足时不执行，未取得计算机并发时释放全部预留，组件FE不足仍结算已能转换的材料。转换多余产出仅留在本次本机计算，不能直接输出到网络。

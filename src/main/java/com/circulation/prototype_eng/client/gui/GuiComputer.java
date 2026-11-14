@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.client.gui;
 
-import ae2.api.stacks.AmountFormat;
 import ae2.client.Point;
 import ae2.client.gui.AEBaseGui;
 import ae2.client.gui.widgets.AE2Button;
@@ -29,23 +28,21 @@ import org.lwjgl.input.Mouse;
 public class GuiComputer extends AEBaseGui<ContainerComputer> {
     private static final ResourceLocation BACKGROUND = GuiAtlas.texture("gui_network_center");
     private static final int TEXT = 0x404040, BAD = 0xaa0000, GOOD = 0x006600;
-    private final AE2Button[] tabs = new AE2Button[3];
+    private final AE2Button[] tabs = new AE2Button[2];
     private final Scrollbar listScroll = new Scrollbar(), demandScroll = new Scrollbar(), outputScroll = new Scrollbar();
-    private int page, selectedComponent, selectedRecipe;
+    private int page, selectedComponent;
     private List<ComputerDetailsPacket.Component> knownComponents;
-    private List<ComputerDetailsPacket.Recipe> knownRecipes;
     private final ObjectArrayList<ComponentText> componentText = new ObjectArrayList<>();
-    private final ObjectArrayList<RecipeText> recipeText = new ObjectArrayList<>();
 
     public GuiComputer(ContainerComputer container, InventoryPlayer player) {
         super(container, player);
         xSize = 384;
         ySize = 242;
-        var labels = new ComputerGuiText[]{ComputerGuiText.Overview, ComputerGuiText.Components, ComputerGuiText.Recipes};
+        var labels = new ComputerGuiText[]{ComputerGuiText.Overview, ComputerGuiText.Components};
         for (int index = 0; index < tabs.length; index++) {
             int target = index;
-            tabs[index] = new AE2Button(0, 0, 117, 18, labels[index].text(), () -> selectPage(target));
-            widgets.add("page" + index, tabs[index], new Point(12 + index * 121, 99));
+            tabs[index] = new AE2Button(0, 0, 177, 18, labels[index].text(), () -> selectPage(target));
+            widgets.add("page" + index, tabs[index], new Point(12 + index * 183, 99));
         }
         listScroll.setPosition(new Point(359, 137));
         listScroll.setHeight(64);
@@ -70,7 +67,6 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
     public void initGui() {
         super.initGui();
         knownComponents = null;
-        knownRecipes = null;
         container.demandView.invalidateText();
         container.outputView.invalidateText();
     }
@@ -79,8 +75,8 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
     protected void updateBeforeRender() {
         super.updateBeforeRender();
         for (int index = 0; index < tabs.length; index++) tabs[index].setForceHighlighted(page == index);
-        listScroll.setRange(0, Math.max(0, (page == 1 ? container.components.size() : container.recipes.size()) - 4), 1);
-        listScroll.setVisible(page != 0 && (page == 1 ? container.components.size() : container.recipes.size()) > 4);
+        listScroll.setRange(0, Math.max(0, container.components.size() - 4), 1);
+        listScroll.setVisible(page != 0 && container.components.size() > 4);
         demandScroll.setRange(0, Math.max(0, container.demandView.rows().size() + 2 - 4), 1);
         demandScroll.setVisible(page == 0 && container.demandView.rows().size() + 2 > 4);
         outputScroll.setRange(0, Math.max(0, container.outputView.rows().size() - 6), 1);
@@ -96,29 +92,6 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
                     ComputerGuiText.ProvidedPerItem.getLocal(resources(row.provided()) + ", " + row.concurrency())));
             }
             selectedComponent = Math.clamp(selectedComponent, 0, Math.max(0, componentText.size() - 1));
-        }
-        if (knownRecipes != container.recipes) {
-            knownRecipes = container.recipes;
-            recipeText.clear();
-            for (var row : knownRecipes) {
-                var inputs = new ObjectArrayList<String>(row.inputs().size());
-                for (var input : row.inputs())
-                    inputs.add(input.what().getDisplayName().getFormattedText() + " " + input.what().formatAmount(input.amount(), AmountFormat.FULL));
-                if (!row.tickInputs().isEmpty()) {
-                    var ticks = new ObjectArrayList<String>();
-                    for (var input : row.tickInputs())
-                        ticks.add(input.what().getDisplayName().getFormattedText() + " " + input.what().formatAmount(input.amount(), AmountFormat.FULL));
-                    inputs.add(ComputerGuiText.TickInputs.getLocal(String.join(", ", ticks)));
-                }
-                if (!row.endInputs().isEmpty()) {
-                    var ends = new ObjectArrayList<String>();
-                    for (var input : row.endInputs())
-                        ends.add(input.what().getDisplayName().getFormattedText() + " " + input.what().formatAmount(input.amount(), AmountFormat.FULL));
-                    inputs.add(ComputerGuiText.EndInputs.getLocal(String.join(", ", ends)));
-                }
-                recipeText.add(new RecipeText(row.id().getPath(), String.join(", ", inputs), row.duration() < 0 ? resources(row.provided()) : ""));
-            }
-            selectedRecipe = Math.clamp(selectedRecipe, 0, Math.max(0, recipeText.size() - 1));
         }
     }
 
@@ -145,7 +118,7 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
             panel(x + 195, y + 121, 177, 109);
         } else {
             panel(x + 12, y + 118, 360, 112);
-            int selected = page == 1 ? selectedComponent : selectedRecipe;
+            int selected = selectedComponent;
             int offset = listScroll.getCurrentScroll();
             if (selected >= offset && selected < offset + 4)
                 Gui.drawRect(x + 19, y + 136 + (selected - offset) * 16, x + 356, y + 152 + (selected - offset) * 16, 0xffadb0c4);
@@ -208,8 +181,7 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
             container.concurrencyLimit == Long.MAX_VALUE ? "∞" : GuiNumbers.grouped(container.concurrencyLimit)), 20, 79, 180, TEXT);
         text(ComputerGuiText.Installed.getLocal(GuiNumbers.grouped(container.installedCount)), 210, 79, 150, TEXT);
         if (page == 0) drawOverview();
-        else if (page == 1) drawComponents();
-        else drawRecipes();
+        else drawComponents();
     }
 
     private void pair(String name, String amount, int x, int y, int width, int color) {
@@ -271,46 +243,11 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         }
     }
 
-    private ComputerGuiText recipeState(int index) {
-        return switch (container.recipeStates[index]) {
-            case ComputerController.RECIPE_ACTIVE -> ComputerGuiText.RecipeRunning;
-            case ComputerController.RECIPE_CONDITION -> ComputerGuiText.RecipeCondition;
-            case ComputerController.RECIPE_INPUT -> ComputerGuiText.RecipeInput;
-            case ComputerController.RECIPE_PARTIAL -> ComputerGuiText.Partial;
-            case ComputerController.RECIPE_FAILED -> ComputerGuiText.Failed;
-            case ComputerController.RECIPE_WAITING -> ComputerGuiText.RecipeWaiting;
-            default ->
-                throw new IllegalStateException("Unknown computer recipe state: " + container.recipeStates[index]);
-        };
-    }
-
-    private void drawRecipes() {
-        text(ComputerGuiText.Recipe.getLocal(), 20, 123, 82, TEXT);
-        text(ComputerGuiText.Inputs.getLocal(), 109, 123, 97, TEXT);
-        text(ComputerGuiText.OutputsProgress.getLocal(), 210, 123, 96, TEXT);
-        text(ComputerGuiText.State.getLocal(), 313, 123, 42, TEXT);
-        for (int row = 0, offset = listScroll.getCurrentScroll(); row < 4 && offset + row < recipeText.size(); row++) {
-            int index = offset + row, y = 140 + row * 16;
-            var value = recipeText.get(index);
-            text(value.name, 20, y, 82, TEXT);
-            text(value.inputs, 109, y, 97, TEXT);
-            text(container.recipes.get(index).duration() < 0 ? value.provided : GuiNumbers.grouped((long) container.recipeProgress[index]) + " / " + container.recipes.get(index).duration(), 210, y, 96, TEXT);
-            text(recipeState(index).getLocal(), 313, y, 42, container.recipeStates[index] == ComputerController.RECIPE_ACTIVE ? GOOD : BAD);
-        }
-        if (recipeText.isEmpty()) text(ComputerGuiText.EmptyRecipes.getLocal(), 20, 145, 325, TEXT);
-        else {
-            var selected = recipeText.get(selectedRecipe);
-            text(selected.inputs, 20, 207, 337, TEXT);
-            text(selected.provided, 20, 219, 337, TEXT);
-        }
-    }
-
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
         if (button == 0 && page != 0 && isPointInRegion(19, 136, 337, 64, mouseX, mouseY)) {
             int selected = listScroll.getCurrentScroll() + (mouseY - guiTop - 136) / 16;
-            if (page == 1 && selected < componentText.size()) selectedComponent = selected;
-            if (page == 2 && selected < recipeText.size()) selectedRecipe = selected;
+            if (selected < componentText.size()) selectedComponent = selected;
         }
         super.mouseClicked(mouseX, mouseY, button);
     }
@@ -329,20 +266,16 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
                 tooltip = outputTooltip(mouseX, mouseY);
         } else if (isPointInRegion(19, 136, 337, 64, mouseX, mouseY)) {
             int index = listScroll.getCurrentScroll() + (mouseY - guiTop - 136) / 16;
-            if (page == 1 && index < componentText.size()) {
+            if (index < componentText.size()) {
                 var value = componentText.get(index);
                 tooltip = List.of(value.name, value.required, value.provided);
-            } else if (page == 2 && index < recipeText.size()) {
-                var value = recipeText.get(index);
-                tooltip = List.of(value.name, value.inputs, value.provided, recipeState(index).getLocal());
+
             }
         } else if (isPointInRegion(19, 204, 337, 24, mouseX, mouseY)) {
-            if (page == 1 && !componentText.isEmpty()) {
+            if (!componentText.isEmpty()) {
                 var value = componentText.get(selectedComponent);
                 tooltip = List.of(value.required, value.provided);
-            } else if (page == 2 && !recipeText.isEmpty()) {
-                var value = recipeText.get(selectedRecipe);
-                tooltip = List.of(value.inputs, value.provided);
+
             }
         }
         if (tooltip != null) drawHoveringText(tooltip, mouseX, mouseY, fontRenderer);
@@ -359,6 +292,4 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
                                  String provided) {
     }
 
-    private record RecipeText(String name, String inputs, String provided) {
-    }
 }

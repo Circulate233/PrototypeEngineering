@@ -54,12 +54,9 @@ public class ComputerController extends MachineInstance implements NetworkComput
     private SupplyState supplyState = SupplyState.WAITING;
     private long energyPaid;
     private long energyRequired;
-    private byte[] recipeStates;
-    private byte[] preparingRecipeStates;
 
     public enum SupplyState {WAITING, ACTIVE, RESOURCE_SHORTAGE, ENERGY_SHORTAGE}
 
-    public static final byte RECIPE_WAITING = 0, RECIPE_ACTIVE = 1, RECIPE_CONDITION = 2, RECIPE_INPUT = 3, RECIPE_PARTIAL = 4, RECIPE_FAILED = 5;
 
     public ComputerController(MachineType type) {
         this(type, Long.MAX_VALUE, Reference2DoubleMaps.emptyMap(), List.of());
@@ -72,8 +69,6 @@ public class ComputerController extends MachineInstance implements NetworkComput
         this.concurrencyLimit = concurrencyLimit;
         this.limits = limits;
         this.recipes = recipes;
-        recipeStates = new byte[recipes.size()];
-        preparingRecipeStates = new byte[recipes.size()];
     }
 
     private static Reference2DoubleMap<NetworkResourceType> external(Reference2DoubleMap<NetworkResourceType> values) {
@@ -106,10 +101,6 @@ public class ComputerController extends MachineInstance implements NetworkComput
         return computerComponents().installed();
     }
 
-    public List<ComputerRecipe> supplyRecipes() {
-        return recipes;
-    }
-
     public long concurrencyLimit() {
         return concurrencyLimit;
     }
@@ -120,13 +111,6 @@ public class ComputerController extends MachineInstance implements NetworkComput
 
     public long energyPaid() {
         return energyPaid;
-    }
-
-    /**
-     * 返回已提交状态，调用方不得修改；下一次提交后必须重新取得数组。
-     */
-    public byte[] recipeStates() {
-        return recipeStates;
     }
 
     public double availableForComponents(NetworkResourceType resource) {
@@ -185,14 +169,14 @@ public class ComputerController extends MachineInstance implements NetworkComput
     }
 
     /**
-     * 只能在所属线程边界调用。必须完成或回滚当前事务后才可准备下一次供给；配方状态使用复用数组。
+     * 只能在所属线程边界调用。必须完成或回滚当前事务后才可准备下一次供给。
      */
     public NetworkSupplyTransaction prepareSupply(long tick) {
         var reader = computerComponents();
         var installed = reader.installed();
         if (suppliedTick == tick)
             return new Prepared(tick, reader.compositionVersion(), supplied, suppliedConcurrency, List.of(), List.of(),
-                componentOffers, componentDemand, supplyState, energyPaid, energyRequired, recipeStates);
+                componentOffers, componentDemand, supplyState, energyPaid, energyRequired);
         var transactions = new ObjectArrayList<ReversibleTransaction>();
         var tokens = new ObjectArrayList<ResourceReservation>();
         try {
@@ -207,19 +191,13 @@ public class ComputerController extends MachineInstance implements NetworkComput
             limit(values.resources);
             var available = new Reference2DoubleOpenHashMap<>(values.resources);
             var needed = values.required;
-            for (int index = 0; index < recipes.size(); index++) {
-                var recipe = recipes.get(index);
+            for (var recipe : recipes) {
                 long requested = recipe.unitsFor(needed, available);
-                preparingRecipeStates[index] = RECIPE_WAITING;
                 if (requested == 0) continue;
                 var conversion = recipe.prepare(this, requested);
-                if (conversion == null) {
-                    preparingRecipeStates[index] = RECIPE_CONDITION;
-                    continue;
-                }
+                if (conversion == null) continue;
                 tokens.addAll(conversion.reservations());
                 long units = conversion.units();
-                preparingRecipeStates[index] = units == 0 ? RECIPE_INPUT : units < requested ? RECIPE_PARTIAL : RECIPE_ACTIVE;
                 for (var entry : recipe.unitResources().reference2DoubleEntrySet()) {
                     double amount = NetworkResourceModifier.product(entry.getDoubleValue(), units);
                     NetworkResourceModifier.sum(available.getDouble(entry.getKey()), amount);
@@ -251,7 +229,7 @@ public class ComputerController extends MachineInstance implements NetworkComput
             }
             return new Prepared(tick, reader.compositionVersion(), powered ? external(values.resources) : Reference2DoubleMaps.emptyMap(),
                 powered ? Math.min(concurrencyLimit, values.concurrency) : 0, transactions, tokens,
-                available, needed, state, powered ? energy : 0, energy, preparingRecipeStates);
+                available, needed, state, powered ? energy : 0, energy);
         } catch (RuntimeException | Error failure) {
             try {
                 rollback(tokens, transactions);
@@ -277,7 +255,6 @@ public class ComputerController extends MachineInstance implements NetworkComput
         private final Reference2DoubleMap<NetworkResourceType> offers, demand;
         private final SupplyState state;
         private final long paid, requiredEnergy;
-        private final byte[] states;
         private final List<? extends ReversibleTransaction> transactions;
         private final List<ResourceReservation> reservations;
         private final long oldTick = suppliedTick;
@@ -287,12 +264,11 @@ public class ComputerController extends MachineInstance implements NetworkComput
         private final Reference2DoubleMap<NetworkResourceType> oldOffers = componentOffers, oldDemand = componentDemand;
         private final SupplyState oldState = supplyState;
         private final long oldPaid = energyPaid, oldRequiredEnergy = energyRequired;
-        private final byte[] oldStates = recipeStates;
         private Resolution resolution = Resolution.REVERSIBLE;
 
         private Prepared(long tick, long composition, Reference2DoubleMap<NetworkResourceType> result, long concurrency, List<? extends ReversibleTransaction> transactions,
                          List<ResourceReservation> reservations, Reference2DoubleMap<NetworkResourceType> offers,
-                         Reference2DoubleMap<NetworkResourceType> demand, SupplyState state, long paid, long requiredEnergy, byte[] states) {
+                         Reference2DoubleMap<NetworkResourceType> demand, SupplyState state, long paid, long requiredEnergy) {
             this.tick = tick;
             this.composition = composition;
             this.result = result;
@@ -304,7 +280,6 @@ public class ComputerController extends MachineInstance implements NetworkComput
             this.state = state;
             this.paid = paid;
             this.requiredEnergy = requiredEnergy;
-            this.states = states;
         }
 
         @Override
@@ -346,8 +321,6 @@ public class ComputerController extends MachineInstance implements NetworkComput
             supplyState = state;
             energyPaid = paid;
             energyRequired = requiredEnergy;
-            recipeStates = states;
-            if (states != oldStates) preparingRecipeStates = oldStates;
         }
 
         @Override
@@ -368,8 +341,6 @@ public class ComputerController extends MachineInstance implements NetworkComput
             supplyState = oldState;
             energyPaid = oldPaid;
             energyRequired = oldRequiredEnergy;
-            recipeStates = oldStates;
-            if (states != oldStates) preparingRecipeStates = states;
             resolution = Resolution.ROLLED_BACK;
         }
 

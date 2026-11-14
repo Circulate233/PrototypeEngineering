@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.container;
 
 import ae2.api.stacks.AEKey;
-import ae2.api.stacks.GenericStack;
 import ae2.container.guisync.PacketWritable;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourcePackets;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
@@ -10,50 +9,27 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import net.minecraft.network.PacketBuffer;
-import net.minecraft.util.ResourceLocation;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
 
 /**
- * 列表与资源定义在发送前必须完成。null 列表表示定义未变，配方状态按索引发送增量。
+ * 组件列表和资源定义在发送前必须完成，调用方不得修改。仅组成变化时发布。
  */
-public record ComputerDetailsPacket(@Nullable List<Component> components, @Nullable List<Recipe> recipes,
-                                    List<RecipeState> changed) implements PacketWritable {
-    public static final ComputerDetailsPacket EMPTY = new ComputerDetailsPacket(null, null, List.of());
+public record ComputerDetailsPacket(List<Component> components) implements PacketWritable {
+    public static final ComputerDetailsPacket EMPTY = new ComputerDetailsPacket(List.of());
 
     @SuppressWarnings("unused") // AE GuiSync 调用具体包类型的 ByteBuf 构造器。
     public ComputerDetailsPacket(ByteBuf data) {
-        this(readComponents(new PacketBuffer(data)), readRecipes(new PacketBuffer(data)), readStates(new PacketBuffer(data)));
+        this(readComponents(new PacketBuffer(data)));
     }
 
-    private static @Nullable List<Component> readComponents(PacketBuffer data) {
-        if (!data.readBoolean()) return null;
+    private static List<Component> readComponents(PacketBuffer data) {
         int count = data.readVarInt();
         var rows = new ObjectArrayList<Component>(count);
         for (int index = 0; index < count; index++)
             rows.add(new Component(Objects.requireNonNull(AEKey.readKey(data)), data.readVarLong(), data.readVarLong(),
                 data.readVarLong(), readResources(data), readResources(data)));
-        return rows;
-    }
-
-    private static @Nullable List<Recipe> readRecipes(PacketBuffer data) {
-        if (!data.readBoolean()) return null;
-        int count = data.readVarInt();
-        var rows = new ObjectArrayList<Recipe>(count);
-        for (int index = 0; index < count; index++) {
-            var id = new ResourceLocation(data.readString(32767));
-            int inputCount = data.readVarInt();
-            var inputs = new ObjectArrayList<GenericStack>(inputCount);
-            for (int input = 0; input < inputCount; input++)
-                inputs.add(Objects.requireNonNull(GenericStack.readBuffer(data)));
-            var provided = readResources(data);
-            int duration = data.readVarInt();
-            var tickInputs = readStacks(data);
-            var endInputs = readStacks(data);
-            rows.add(new Recipe(id, inputs, provided, duration, tickInputs, endInputs));
-        }
         return rows;
     }
 
@@ -64,60 +40,18 @@ public record ComputerDetailsPacket(@Nullable List<Component> components, @Nulla
         return resources;
     }
 
-    private static List<RecipeState> readStates(PacketBuffer data) {
-        int count = data.readVarInt();
-        var states = new ObjectArrayList<RecipeState>(count);
-        for (int index = 0; index < count; index++)
-            states.add(new RecipeState(data.readVarInt(), data.readByte(), data.readDouble()));
-        return states;
-    }
-
     @Override
     public void writeToPacket(ByteBuf buffer) {
         var data = new PacketBuffer(buffer);
-        data.writeBoolean(components != null);
-        if (components != null) {
-            data.writeVarInt(components.size());
-            for (var row : components) {
-                AEKey.writeKey(data, row.item);
-                data.writeVarLong(row.count);
-                data.writeVarLong(row.concurrency);
-                data.writeVarLong(row.energy);
-                writeResources(data, row.provided);
-                writeResources(data, row.required);
-            }
+        data.writeVarInt(components.size());
+        for (var row : components) {
+            AEKey.writeKey(data, row.item);
+            data.writeVarLong(row.count);
+            data.writeVarLong(row.concurrency);
+            data.writeVarLong(row.energy);
+            writeResources(data, row.provided);
+            writeResources(data, row.required);
         }
-        data.writeBoolean(recipes != null);
-        if (recipes != null) {
-            data.writeVarInt(recipes.size());
-            for (var row : recipes) {
-                data.writeString(row.id.toString());
-                data.writeVarInt(row.inputs.size());
-                for (var input : row.inputs) GenericStack.writeBuffer(input, data);
-                writeResources(data, row.provided);
-                data.writeVarInt(row.duration);
-                writeStacks(data, row.tickInputs);
-                writeStacks(data, row.endInputs);
-            }
-        }
-        data.writeVarInt(changed.size());
-        for (var state : changed) {
-            data.writeVarInt(state.index);
-            data.writeByte(state.state);
-            data.writeDouble(state.progress);
-        }
-    }
-
-    private static List<GenericStack> readStacks(PacketBuffer data) {
-        int count = data.readVarInt();
-        var stacks = new ObjectArrayList<GenericStack>(count);
-        for (int index = 0; index < count; index++) stacks.add(Objects.requireNonNull(GenericStack.readBuffer(data)));
-        return stacks;
-    }
-
-    private static void writeStacks(PacketBuffer data, List<GenericStack> stacks) {
-        data.writeVarInt(stacks.size());
-        for (var stack : stacks) GenericStack.writeBuffer(stack, data);
     }
 
     private static void writeResources(PacketBuffer data, Reference2DoubleMap<NetworkResourceType> resources) {
@@ -133,11 +67,4 @@ public record ComputerDetailsPacket(@Nullable List<Component> components, @Nulla
                             Reference2DoubleMap<NetworkResourceType> required) {
     }
 
-    public record Recipe(ResourceLocation id, List<GenericStack> inputs,
-                         Reference2DoubleMap<NetworkResourceType> provided, int duration, List<GenericStack> tickInputs,
-                         List<GenericStack> endInputs) {
-    }
-
-    public record RecipeState(int index, byte state, double progress) {
-    }
 }

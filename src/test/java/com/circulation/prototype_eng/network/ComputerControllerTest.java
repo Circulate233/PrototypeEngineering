@@ -97,7 +97,6 @@ class ComputerControllerTest {
             assertEquals(ComputerController.SupplyState.ACTIVE, fixture.computer.supplyState());
             assertEquals(10, fixture.computer.energyPaid());
             assertEquals(1_000, fixture.computer.availableForComponents(COOLING));
-            assertEquals(ComputerController.RECIPE_ACTIVE, fixture.computer.recipeStates()[0]);
             assertEquals(1, fixture.computer.installedComponents().size());
             assertEquals(1, fixture.captures);
             assertEquals(NetworkWorkState.ACTIVE_DATA_CENTER, fixture.database.state());
@@ -148,7 +147,6 @@ class ComputerControllerTest {
             assertEquals(100, fixture.power.storedEnergy());
             assertEquals(0, fixture.computer.providedResources().getDouble(ComputingResourceFixtures.QUBIT));
             assertEquals(ComputerController.SupplyState.WAITING, fixture.computer.supplyState());
-            assertEquals(ComputerController.RECIPE_WAITING, fixture.computer.recipeStates()[0]);
         }
     }
 
@@ -232,8 +230,6 @@ class ComputerControllerTest {
             assertEquals(0, fixture.hatch.buffer.amount(WATER));
             assertEquals(0, fixture.hatch.buffer.amount(lava));
             assertEquals(1_000, fixture.computer.availableForComponents(COOLING));
-            assertEquals(ComputerController.RECIPE_PARTIAL, fixture.computer.recipeStates()[0]);
-            assertEquals(ComputerController.RECIPE_ACTIVE, fixture.computer.recipeStates()[1]);
             assertEquals(ComputerController.SupplyState.ACTIVE, fixture.computer.supplyState());
         }
     }

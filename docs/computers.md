@@ -1,6 +1,6 @@
 # 计算机与运算仓
 
-2026-11-14。默认计算机控制器、运算仓及计算机三页GUI已实现。计算机GUI按用户批准的预览实现，运算仓纹理沿现有风格绘制。
+2026-11-14。默认计算机控制器、运算仓及计算机GUI已实现。计算机GUI保留概览与组件两页，配方展示统一使用JEI；运算仓纹理沿现有风格绘制。
 
 ## 计算机接口与装配
 
@@ -20,7 +20,7 @@ MachineAssembly.builder(type, "computer-v1")
 
 线程上限为非负 long，资源上限为 `Reference2DoubleMap<NetworkResourceType>`，没有列出的资源不增加控制器限额。`new ComputerController(type)` 使用 `Long.MAX_VALUE` 线程上限、无额外资源上限、无供给配方。上限属于具体控制器，不恢复已删除的资源类型固有限额。`installedComponents()` 直接提供运算仓中各组件的物品身份、数量及捕获定义。
 
-2026-11-14 计算机供给配方接入 JEI。必须将控制器使用的同一份完整列表传给装配的 `computerRecipes(recipes)`，并在装配整个生命周期内保持列表不变；ZS 的 `MachineType.computer(...)` 自动保存声明。每台有供给配方的计算机获得独立分类与控制器入口，复用原材料布局，输入按每 tick 消耗显示，供给按本机资源、网络资源分别显示。名称与 double 数量由资源的 `displayName()`、`format(double)` 生成。JEI 直接读取装配声明，不创建机器实例或执行资格条件。计算资源仅作为说明文字，不作为 AE 材料。
+2026-11-14 计算机供给配方接入 JEI。必须将控制器使用的同一份完整列表传给装配的 `computerRecipes(recipes)`，并在装配整个生命周期内保持列表不变；ZS 的 `MachineType.computer(...)` 自动保存声明。每台有供给配方的计算机获得独立分类与控制器入口，复用原材料布局，转换材料标注“每份”，每种资源仅显示“每份资源名：数量”，不绘制箭头；纯输入配方显示普通时长及阶段输入。名称与 double 数量由资源的 `displayName()`、`format(double)` 生成。JEI 直接读取装配声明，不创建机器实例或执行资格条件。计算资源仅作为说明文字，不作为 AE 材料。
 
 ## 运算仓
 
@@ -93,8 +93,8 @@ MachineType.computer("example:computer", "example.computer", "example:computer_s
 
 ## 计算机界面
 
-默认ComputerController.DEVICE自动使用384×242的无背包界面，预览见[computer.html](previews/computer.html)。AE2Button切换概览、组件与供给配方。概览展示已结算的并发、资源需求、FE实耗及外部供给；组件页选择查看每件需求和供给，配方页显示单位转换及纯输入配方；后者同步阶段输入、时长和进度。概览两栏等宽，资源名居左、数值居右，FE行紧跟需求资源。超出可见行使用AE滚动条，悬停查看完整内容。
+默认ComputerController.DEVICE自动使用384×242的无背包界面。AE2Button切换概览与组件，两枚按钮等宽。概览展示已结算的并发、资源需求、FE实耗及外部供给；组件页选择查看每件需求和供给。配方列表、输入和转换产出统一由JEI展示。概览两栏等宽，资源名居左、数值居右，FE行紧跟需求资源。超出可见行使用AE滚动条，悬停查看完整内容。
 
-服务端在网络工作完成后的所属线程边界采集。组件固定定义随组成变化发送，配方固定定义首次发送，后续状态和进度按索引增量更新，资源数量沿原double增量包。界面只读实际事务结果，禁止为显示重新执行配方条件、预留材料或消耗FE。
+服务端在网络工作完成后的所属线程边界采集。组件固定定义随组成变化发送，资源数量沿原double增量包；不再收集或同步GUI配方列表、状态与进度。界面只读实际事务结果，禁止为显示重新执行配方条件、预留材料或消耗FE。
 
-Java自定义容器与screen继续使用MachineGuiRegistry和MachineScreenRegistry。NetworkComputer接口仍只暴露并发和外部资源。默认控制器显示读取方法必须在所属线程边界调用；返回的声明列表、状态数组与资源Map必须按只读方式使用。
+Java自定义容器与screen继续使用MachineGuiRegistry和MachineScreenRegistry。NetworkComputer接口仍只暴露并发和外部资源。默认控制器显示读取方法必须在所属线程边界调用；返回的声明列表与资源Map必须按只读方式使用。
