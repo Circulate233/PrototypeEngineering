@@ -28,6 +28,8 @@ public final class NetworkComputerComponentInventory {
     private final Reference2DoubleMap<NetworkResourceType> resources;
     private final boolean capturedValid;
     private final List<Installed> components;
+    private final Reference2DoubleOpenHashMap<NetworkResourceType> required = new Reference2DoubleOpenHashMap<>();
+    private final long energy;
     private final long concurrency;
 
     private NetworkComputerComponentInventory(List<StorageContext> contexts, LongArrayList revisions,
@@ -38,10 +40,18 @@ public final class NetworkComputerComponentInventory {
         this.resources = resources;
         this.capturedValid = capturedValid;
         this.components = components;
-        long total = 0;
-        for (var component : components)
+        long total = 0, energyTotal = 0;
+        for (var component : components) {
             total = Math.addExact(total, Math.multiplyExact(component.count(), component.definition().concurrencyPerItem()));
+            energyTotal = Math.addExact(energyTotal, Math.multiplyExact(component.count(), component.definition().energyPerTick()));
+            for (var entry : component.definition().requiredResources().reference2DoubleEntrySet()) {
+                double amount = NetworkResourceModifier.product(entry.getDoubleValue(), component.count());
+                NetworkResourceModifier.sum(amount, required.getDouble(entry.getKey()));
+                required.addTo(entry.getKey(), amount);
+            }
+        }
         concurrency = total;
+        energy = energyTotal;
     }
 
     public static NetworkComputerComponentInventory capture(NetworkComputerComponentRegistry registry, MachineInstance computer,
@@ -133,6 +143,17 @@ public final class NetworkComputerComponentInventory {
 
     public long concurrencyPerTick() {
         return concurrency;
+    }
+
+    /**
+     * 必须按只读方式使用，组成变动时重新采集。
+     */
+    public Reference2DoubleMap<NetworkResourceType> requiredResources() {
+        return required;
+    }
+
+    public long energyPerTick() {
+        return energy;
     }
 
     /**

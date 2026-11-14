@@ -38,6 +38,8 @@
 
 ## 默认与自定义注册
 
+网络中心默认使用ContainerNetworkCenter/GuiNetworkCenter，计算机的ComputerController.DEVICE默认使用ContainerComputer/GuiComputer。二者均不添加玩家背包槽。计算机三页显示已结算的费用、资源和配方状态，详情见[计算机](computers.md)。显式注册的容器与screen继续优先使用调用方提供的工厂。
+
 common 入口 [MachineGuiRegistry](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/gui/MachineGuiRegistry.java) 按机器类型 ID 注册 `BiFunction<InventoryPlayer, MachineControllerHost, ? extends AEBaseContainer>`。两侧 mod 初始化时安装相同容器绑定；重复 ID、null 结果或容器目标不是宿主的准确 `blockEntity()` 都拒绝。没有绑定时创建默认容器。外部实体可独立实现宿主接口，无需继承默认控制器实体。
 
 客户端入口 [MachineScreenRegistry](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/client/gui/MachineScreenRegistry.java) 只在 client 初始化使用，以明确容器类和有类型的 factory 注册：

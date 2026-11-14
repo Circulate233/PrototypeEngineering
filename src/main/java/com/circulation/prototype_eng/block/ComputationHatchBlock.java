@@ -1,8 +1,7 @@
 package com.circulation.prototype_eng.block;
 
 import com.circulation.prototype_eng.Tags;
-import com.circulation.prototype_eng.localization.GuiText;
-import com.circulation.prototype_eng.storage.BufferedComputationHatch;
+import com.circulation.prototype_eng.client.gui.HatchItemTooltip;
 import com.circulation.prototype_eng.storage.ComputationHatchBlockEntity;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.util.ITooltipFlag;
@@ -39,7 +38,6 @@ public class ComputationHatchBlock extends HatchBlock<ComputationHatchBlockEntit
     @SideOnly(Side.CLIENT)
     public void addCheckedInformation(@NotNull ItemStack stack, @Nullable World world, @NotNull List<String> tooltip, @NotNull ITooltipFlag flag) {
         super.addCheckedInformation(stack, world, tooltip, flag);
-        tooltip.add(GuiText.ComputationCapacity.getLocal(tier, BufferedComputationHatch.nonItemCapacity(tier)));
-        tooltip.add(GuiText.ComputationComponentsOnly.getLocal());
+        HatchItemTooltip.computation(tier, tooltip);
     }
 }

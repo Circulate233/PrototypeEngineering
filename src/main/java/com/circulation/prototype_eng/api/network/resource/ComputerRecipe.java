@@ -18,9 +18,8 @@ import java.util.List;
 import java.util.function.Predicate;
 
 /**
- * Recurring resource-generation recipe. Each accepted tick pays its complete inputs once using the
- * shared recipe requirement transaction. Its produced computing resources exist only for that tick.
- * Lists/maps are borrowed immutable definitions; the condition runs read-only on the server owner.
+ * 每个启用的 tick 完整支付一次输入，产生的计算资源仅在该 tick 内有效。
+ * 列表与 Map 必须在创建前完成定义，后续不得修改；条件回调在服务器所属线程上只读执行。
  */
 public final class ComputerRecipe {
     private final MachineRecipe recipe;
@@ -45,6 +44,20 @@ public final class ComputerRecipe {
 
     public ResourceLocation id() {
         return recipe.id();
+    }
+
+    /**
+     * 每 tick 材料事务的固定定义。计算资源供给由 provided() 单独声明。
+     */
+    public MachineRecipe materialRecipe() {
+        return recipe;
+    }
+
+    /**
+     * 已完成的只读输入列表，调用方不得修改。
+     */
+    public List<GenericStack> inputsPerTick() {
+        return inputs.payload().inputsPerTick();
     }
 
     public Reference2DoubleMap<NetworkResourceType> provided() {

@@ -9,6 +9,7 @@ import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
 import com.circulation.prototype_eng.localization.GuiText;
 import com.circulation.prototype_eng.localization.HatchItemText;
 import com.circulation.prototype_eng.proxy.ClientProxy;
+import com.circulation.prototype_eng.storage.BufferedComputationHatch;
 import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
 import com.circulation.prototype_eng.storage.HatchItemProfiles;
 import net.minecraft.client.Minecraft;
@@ -20,12 +21,16 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-/**
- * Native block-item tooltip; all resource capacities are explicitly per slot.
- */
 @SideOnly(Side.CLIENT)
 public final class HatchItemTooltip {
     private HatchItemTooltip() {
+    }
+
+    public static void computation(int tier, List<String> tooltip) {
+        tooltip.add(HatchItemText.Slots.getLocal(GuiNumbers.grouped(tier)));
+        tooltip.add(HatchItemText.ItemEquivalentCapacity.getLocal(GuiNumbers.grouped(1)));
+        tooltip.add(GuiText.ComputationCapacity.getLocal(GuiNumbers.grouped(BufferedComputationHatch.nonItemCapacity(tier))));
+        tooltip.add(GuiText.ComputationComponentsOnly.getLocal());
     }
 
     public static void resource(ItemStack stack, HatchTier tier, HatchMode mode, List<String> tooltip) {

@@ -25,6 +25,7 @@ public final class NetworkCenterResourceView {
             if ((entry.fields() & NetworkCenterResourcePacket.OCCUPIED) != 0) row.occupied = entry.occupied();
             if ((entry.fields() & NetworkCenterResourcePacket.CAPACITY) != 0) row.capacity = entry.capacity();
             row.text = null;
+            row.supplyText = null;
         }
         if (packet.full() || !packet.removed().isEmpty() || !packet.added().isEmpty()) {
             rows.clear();
@@ -40,13 +41,17 @@ public final class NetworkCenterResourceView {
     }
 
     public void invalidateText() {
-        for (var row : rows) row.text = null;
+        for (var row : rows) {
+            row.text = null;
+            row.supplyText = null;
+        }
     }
 
     public static final class Row {
         private final NetworkResourceType resource;
         private double occupied, capacity;
         private String text;
+        private String supplyText;
 
         private Row(NetworkResourceType resource, double occupied, double capacity) {
             this.resource = resource;
@@ -67,6 +72,12 @@ public final class NetworkCenterResourceView {
             if (text == null)
                 text = resource.displayName() + "：" + resource.format(occupied) + " / " + resource.format(capacity);
             return text;
+        }
+
+        @SideOnly(Side.CLIENT)
+        public String supplyText() {
+            if (supplyText == null) supplyText = resource.displayName() + "：" + resource.format(capacity);
+            return supplyText;
         }
     }
 }

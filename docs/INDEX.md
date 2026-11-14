@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-14 计算机正式GUI、JEI与设备样式：获批三页预览已接入384×242无背包界面，AE2Button切换概览/组件/供给配方，真实费用与供给状态沿AE自定义包增量同步。运算仓tooltip复用仓室格式，中心使用原像素外框和1像素白色内框。实际Java计算机四组件需要2500冷却/96 FE，冷却供给0，停供原因已确认。入口[计算机](computers.md)、[获批预览](previews/computer.html)、[JEI](jei.md)，验证和提交见[实施进度](implementation-status.md)。下一步用户重启复验正式界面、缺料/缺FE提示、滚动及JEI材料检索。
+
 - 2026-11-14 中心状态与运算仓样式修正：缺电中心保留INSUFFICIENT_POWER诊断，GUI分别显示能源不足、未成型、队伍无效、暂无中心与状态未就绪，未再统一误写未生效；示例中心生效需4 FE/t。运算仓使用与其他仓一致的带色Computation-LvN方块名称/GUI标题，资源标题居左、槽位起点26/24；示例IO组件红石贴图改为redstone_dust。11Java经IDEA格式化/全级检查全零，完整1863测试/271 suites、MCP构建、27Java addon安装和15脚本检查通过，证据见[实施进度](implementation-status.md)。当前游戏已退出，用户当时的具体停用原因未取得运行态证据；下一步完整启动查看新的原因提示并复验标题/槽位。本地提交，不启动游戏/推送。
 
 - 2026-11-14 run网络演示补齐：独立net_demo中心/计算机/研究站/数据库及普通负载机，三种计算组件、三条供给配方、两条无需研究的负载配方，六种外部资源含分数数量。`/pe_examples kit network`领取整套材料，原build/charge和扩展net-stock可搭建、供能、投物品与水/岩浆；入口[演示操作](../run/scripts/README-network-demo.md)。27Java addon已编译安装，15真实ZS脚本及既有核心行为检查通过；6份run Java经IDEA格式化/全级检查请求，均被IDE排除，MCP主项目构建通过，证据见[实施进度](implementation-status.md)。下一步用户完整启动，复验中心六行/滑块、占用变化、组件全停/配方独立供给与恢复；本地提交，不启动游戏/推送。

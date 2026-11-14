@@ -99,8 +99,10 @@ public final class ComputerExamples {
             false, new StructurePattern(cells), List.of(), List.of()));
         var cooling = new ComputerRecipe(id("java_cooling"), List.of(new GenericStack(
             AEFluidKey.of(new FluidStack(FluidRegistry.WATER, 1_000)), 1_000)), Reference2DoubleMaps.singleton(COOLING, 1_000));
+        var recipes = List.of(cooling);
         event.assembly(MachineAssembly.builder(Objects.requireNonNull(event.registry().get(ID)), "computer-v1")
-                                      .instanceFactory(type -> new ComputerController(type, 8, Reference2DoubleMaps.singleton(ExampleResources.COMPUTE, 1_000), List.of(cooling)))
+                                      .instanceFactory(type -> new ComputerController(type, 8, Reference2DoubleMaps.singleton(ExampleResources.COMPUTE, 1_000), recipes))
+                                      .computerRecipes(recipes)
                                       .recreated(ComputerController.COMPONENTS, ComputerController.DEVICE).build());
     }
 

@@ -6,6 +6,8 @@ import com.circulation.prototype_eng.client.gui.GuiMachine;
 import com.circulation.prototype_eng.container.ContainerMachine;
 import com.circulation.prototype_eng.container.ContainerNetworkCenter;
 import com.circulation.prototype_eng.client.gui.GuiNetworkCenter;
+import com.circulation.prototype_eng.client.gui.GuiComputer;
+import com.circulation.prototype_eng.container.ContainerComputer;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.util.ResourceLocation;
@@ -44,6 +46,7 @@ public final class MachineScreenRegistry {
             return new GuiMachine(machine, player);
         }
         if (container instanceof ContainerNetworkCenter center) return new GuiNetworkCenter(center, player);
+        if (container instanceof ContainerComputer computer) return new GuiComputer(computer, player);
         throw new IllegalStateException("Custom machine container has no client screen binding: " + type);
     }
 }

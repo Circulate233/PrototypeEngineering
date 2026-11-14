@@ -2,6 +2,8 @@ package com.circulation.prototype_eng.api.gui;
 
 import ae2.container.AEBaseContainer;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.api.machine.ComputerController;
+import com.circulation.prototype_eng.container.ContainerComputer;
 import com.circulation.prototype_eng.container.ContainerMachine;
 import com.circulation.prototype_eng.container.ContainerNetworkCenter;
 import com.circulation.prototype_eng.api.network.NetworkCenter;
@@ -32,7 +34,8 @@ public final class MachineGuiRegistry {
     public static AEBaseContainer create(InventoryPlayer player, MachineControllerHost tile) {
         var factory = FACTORIES.get(tile.type().id());
         var container = factory == null ? (tile.type().componentTypes().contains(NetworkCenter.DEVICE)
-            ? new ContainerNetworkCenter(player, tile) : new ContainerMachine(player, tile))
+            ? new ContainerNetworkCenter(player, tile) : tile.type().componentTypes().contains(ComputerController.DEVICE)
+            ? new ContainerComputer(player, tile) : new ContainerMachine(player, tile))
             : Objects.requireNonNull(factory.apply(player, tile), "Machine container factory returned null");
         if (container.getTarget() != tile.blockEntity()) {
             throw new IllegalArgumentException("Machine container must target its controller tile");

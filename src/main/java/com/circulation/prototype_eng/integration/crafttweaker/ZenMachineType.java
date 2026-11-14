@@ -41,6 +41,7 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.Locale;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -65,6 +66,7 @@ public final class ZenMachineType {
     private boolean data;
     private boolean controllerContext;
     private boolean registered;
+    private List<ComputerRecipe> computerRecipes = List.of();
 
     private ZenMachineType(String id, String translationKey, String structureId) {
         this.id = new ResourceLocation(id);
@@ -125,6 +127,7 @@ public final class ZenMachineType {
         var limits = resourceLimits.value();
         var declaration = create(id, translationKey, structureId);
         declaration.factory(new ZenMachineFactory(type -> new ComputerController(type, concurrencyLimit, limits, definitions)));
+        declaration.computerRecipes = definitions;
         declaration.network(new ZenNetworkConfiguration(builder -> builder.component(MachineOwnership.TYPE)
                                                                           .component(ComputerController.COMPONENTS).component(ComputerController.DEVICE),
             builder -> builder.recreated(ComputerController.COMPONENTS, ComputerController.DEVICE)));
@@ -285,7 +288,7 @@ public final class ZenMachineType {
 
     MachineAssembly buildAssembly(String revision) {
         var type = builder.build();
-        var assembly = MachineAssembly.builder(type, revision);
+        var assembly = MachineAssembly.builder(type, revision).computerRecipes(computerRecipes);
         if (factory != null) assembly.instanceFactory(factory.value());
         for (var component : components) component.bind(assembly);
         if (network != null) network.configure(assembly);

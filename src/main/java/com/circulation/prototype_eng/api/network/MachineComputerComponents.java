@@ -40,7 +40,8 @@ public final class MachineComputerComponents implements MachineLifecycleListener
     private NetworkComputerComponentInventory cached;
     private long compositionVersion;
 
-    private static boolean sameComposition(NetworkComputerComponentInventory before, NetworkComputerComponentInventory after) {
+    /** 比较组件身份、数量及供给定义，物料余额和预留变动不构成组件组成变化。 */
+    public static boolean sameComposition(NetworkComputerComponentInventory before, NetworkComputerComponentInventory after) {
         var old = before.components();
         var next = after.components();
         if (old.size() != next.size()) return false;

@@ -1,5 +1,17 @@
 # 实施进度
 
+## 2026-11-14 计算机正式GUI、供给配方JEI与设备样式
+
+- 用户批准三页预览，并要求AE原生按钮和现有仓室边框。GuiComputer直接继承AEBaseGui，ContainerComputer不添加玩家或控制器库存槽，默认ComputerController.DEVICE自动选择新界面。384×242，AE2Button切换概览、组件、供给配方，AE Scrollbar处理超出可见范围的行，滚轮只控制所在面板。移除“自身需要1并发”和配方行为说明句。
+- 概览显示实际网络状态、组件停供原因、资源可用/需求、FE实耗/需求、可用FE、本机并发供给/上限与外部资源。组件页选择查看每件需求和供给，配方页显示每tick输入、资源及运行状态，区分条件未满足和缺输入。显示只读已提交事务，禁止重新执行资格条件、预留材料或消耗FE。组件总需求与FE按组成变化缓存，配方状态复用两份数组；费用与状态沿原事务提交和回滚。
+- ComputerDetailsPacket只在组成变化时发送组件固定定义，配方定义首次发送；后续仅发送变动配方的索引与状态。资源复用原PacketWritable展示定义及double增量，归零移除，新监听者取得完整基线，稳定状态不生成更新包。完整组件和配方文字只在定义变化或界面初始化时生成，内部计算机资源不加入网络输出。
+- 计算机JEI从装配computerRecipes只读声明生成，Java必须传入控制器使用的同一列表，ZS自动绑定。复用原材料布局及显示代更新/撤销流程，展示每tick AE材料输入、内部资源与网络资源。资源名称和数值调用自己的displayName/format，不创建机器实例探查配方。API、Java示例及专题文档同步。
+- 运算仓tooltip复用槽位数量、槽位容量及分组数字格式，额外资源容量独立一行，说明为“接受计算组件以及额外资源”。网络中心外框取自gui_controller_a原像素边框，内面板复用GuiAtlas.inset一像素白框；计算机共用同一底图。中心动态高度与原资源同步规则保持。
+- 此前对用户已启动JVM执行Arthas只读检查：java_computer已成型，能源仓128000 FE；实际四件组件合计需要2500冷却、96 FE/t，冷却供给0。四槽装满后没有水输入位置，原水冷配方最多也只提供1000冷却，因此全部组件停供。未修改示例结构和数值。Arthas已stop，无增强类、热更新或业务写入。computers.json、components-verified.json、hatches-verified.json、stop.json保存实际数据。
+- JEI原专项76 tests/16 suites通过；计算机结算、组件与AE同步专项12 tests/4 suites通过。仅新增一个必要的AE自定义包同步测试，验证组件/材料/资源定义和状态增量；原计算机行为测试扩展实际停供、费用与回滚状态。未新增布局、文案、删除、常量或源码字符串测试。Gradle build含Spotless和JAR/reobf通过（不重复全仓测试），MCP构建通过。
+- 最终21份src Java（19主、2测试）与双语文件逐份本机IDEA MCP检查，errorsOnly:false，错误、警告、弱警告全零；本轮Java均已使用IDEA格式化。run Java示例已请求格式化，IDE检查因目录被排除而不可得。原27份addon编译和15份真实ZS脚本编译通过，原先SkipInstall产物现已实际安装至run/mods，源/目标SHA256相同，见addon-installed.json。最终MCP构建与Gradle build含Spotless/JAR/reobf通过；最后复查计算机结算与自定义包5 tests/2 suites通过。组件固定信息复用原组成比较，流体余额变化不会重发定义。
+- 证据目录为C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261114/computer-live-supply/、computer-jei/和computation-tooltip/，主要为idea-final.json、final-code-build.log、final-behavior-check.log、test-results/、addon-installed.json及preview-result.json。HTML切页、状态恢复与320像素窄窗口已查看，脚本错误0。正式Minecraft绘制、AE交互与真实JEI检索待用户重启复验。本阶段本地提交，不推送、不启动Minecraft。
+
 ## 2026-11-14 网络中心停用原因与运算仓标题/布局
 
 - 用户反馈中心一直显示“网络未生效”。确认原GUI把未成型、队伍无效等全部合并为Inactive；中心不能支付每tick费用时，NetworkRuntime在选择备用中心前把其capture移除，原发布状态表也失去该中心，GUI只能取得null并再次显示同一文案。现复用原状态表保留 `INSUFFICIENT_POWER` 诊断，缺电中心仍不获得工作许可，中心选择/费用与回滚规则不变。GUI分别显示未成型、队伍无效、能源不足、无可用中心、等级/并发不足；未取得发布状态时明确显示状态未就绪。状态文字限宽，悬停可查看全文，能源不足附供电说明。

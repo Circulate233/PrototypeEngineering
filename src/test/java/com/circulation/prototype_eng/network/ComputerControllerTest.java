@@ -82,6 +82,10 @@ class ComputerControllerTest {
             assertFalse(supply.containsKey(COOLING));
             assertEquals(3_000, fixture.hatch.buffer.amount(WATER));
             assertEquals(0, fixture.power.storedEnergy());
+            assertEquals(ComputerController.SupplyState.ACTIVE, fixture.computer.supplyState());
+            assertEquals(10, fixture.computer.energyPaid());
+            assertEquals(1_000, fixture.computer.availableForComponents(COOLING));
+            assertEquals(ComputerController.RECIPE_ACTIVE, fixture.computer.recipeStates()[0]);
             assertEquals(1, fixture.computer.installedComponents().size());
             assertEquals(1, fixture.captures);
             assertEquals(NetworkWorkState.ACTIVE_DATA_CENTER, fixture.database.state());
@@ -100,6 +104,8 @@ class ComputerControllerTest {
             assertEquals(0, fixture.computer.providedResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(7, fixture.computer.providedResources().getDouble(ComputingResourceFixtures.QUBIT));
             assertEquals(2_000, fixture.hatch.buffer.amount(WATER));
+            assertEquals(ComputerController.SupplyState.ENERGY_SHORTAGE, fixture.computer.supplyState());
+            assertEquals(0, fixture.computer.energyPaid());
             assertEquals(0, fixture.power.storedEnergy());
             assertEquals(NetworkTeamBudget.LeaseStatus.INSUFFICIENT_CAPACITY, fixture.client(0).requestLease());
 
@@ -111,6 +117,9 @@ class ComputerControllerTest {
             assertEquals(7, fixture.computer.providedResources().getDouble(ComputingResourceFixtures.QUBIT));
             assertEquals(100, fixture.power.storedEnergy(), "All component costs fail together when cooling cannot cover both cards");
             assertEquals(1_000, fixture.hatch.buffer.amount(WATER));
+            assertEquals(ComputerController.SupplyState.RESOURCE_SHORTAGE, fixture.computer.supplyState());
+            assertEquals(2_000, fixture.computer.installedInventory().requiredResources().getDouble(COOLING));
+            assertEquals(1_000, fixture.computer.availableForComponents(COOLING));
         }
     }
 
@@ -125,6 +134,8 @@ class ComputerControllerTest {
             assertEquals(1_000, fixture.hatch.buffer.amount(WATER));
             assertEquals(100, fixture.power.storedEnergy());
             assertEquals(0, fixture.computer.providedResources().getDouble(ComputingResourceFixtures.QUBIT));
+            assertEquals(ComputerController.SupplyState.WAITING, fixture.computer.supplyState());
+            assertEquals(ComputerController.RECIPE_WAITING, fixture.computer.recipeStates()[0]);
         }
     }
 

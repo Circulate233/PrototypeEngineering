@@ -10,29 +10,27 @@
   .preview-tools h1 { font-size: 16px; font-weight: 400; margin: 0 auto 0 0; }
   select { color: #dce0e8; background: #363940; border: 1px solid #555b66; padding: 6px 8px; font: inherit; }
   .stage { display: grid; place-items: center; min-height: 600px; padding: 42px 20px; }
-  .machine { width: 768px; height: 484px; padding: 14px; background: #b8bbc5; border: 4px solid; border-color: #f1f1f4 #727786 #727786 #f1f1f4; position: relative; box-shadow: 8px 8px 0 #111319; }
-  .machine::after, .machine::before { content: ""; position: absolute; right: 10px; width: 6px; height: 6px; background: #737887; }
-  .machine::after { top: 10px; } .machine::before { bottom: 10px; }
-  .title { height: 35px; color: #40454e; padding: 0 10px; font-size: 18px; line-height: 27px; }
-  .screen { height: calc(100% - 43px); padding: 22px 25px; border: 4px solid; border-color: #707583 #e7e8ed #e7e8ed #707583; background: #171c21; color: #d5e1e6; }
-  .top { height: 90px; display: flex; align-items: flex-start; border-bottom: 2px solid #424b54; gap: 24px; }
+  .machine { width: 768px; height: 484px; padding: 14px; background: #cbccd4; border: 8px solid transparent; border-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAADyCAYAAABEWhLBAAADuklEQVR4nO3YsW0CQRBA0TuLOgjtMhAFIBIqoCeHpgeLaiCkhGsAhC0kN2DO8n8v2GCTneyvZlyvdtcBgJzF/fg8HobT+fJ18fa6nHsmAH7ZdrP/DsBPjxAA8D89Pvovcw8CwDwEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKLGaZqucw8BwHNtN/th8f5xfPKzAPwFVkAAUeN6tbMCAhh6brlyFUbPokkcAAAAAElFTkSuQmCC) 4 / 8px stretch; position: relative; }
+  .title { height: 35px; color: #404040; padding: 0 10px; font-size: 18px; line-height: 27px; }
+  .screen { height: calc(100% - 43px); padding: 22px 25px; border: 2px solid #f2f2f2; background: #9a9fb4; color: #404040; }
+  .top { height: 90px; display: flex; align-items: flex-start; border-bottom: 2px solid #696d88; gap: 24px; }
   .level-group { display: flex; gap: 17px; align-items: center; width: 210px; }
-  .level { color: #e1edf1; font: 56px/1.05 Consolas, monospace; }
-  .muted { color: #87969f; font-size: 16px; }
-  .status { color: #9dccb4; font-size: 15px; margin-top: 8px; white-space: nowrap; }
-  .status.off { color: #c3ac87; }
+  .level { color: #404040; font: 56px/1.05 Consolas, monospace; }
+  .muted { color: #404040; font-size: 16px; }
+  .status { color: #404040; font-size: 15px; margin-top: 8px; white-space: nowrap; }
+  .status.off { color: #404040; }
   .concurrency { flex: 1; min-width: 0; }
   .concurrency-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 16px; }
-  .concurrency strong { font: 26px Consolas, monospace; font-weight: 400; color: #e1edf1; }
-  .bar { height: 12px; border: 2px solid #606b74; background: #222a30; margin: 10px 0 8px; }
-  .fill { width: 43.75%; height: 100%; background: #86adae; }
-  .remaining { color: #87969f; font-size: 14px; text-align: right; }
-  .resources-title { font-size: 16px; color: #87969f; margin: 16px 0 8px; }
-  .resources { height: 210px; overflow: auto; scrollbar-width: thin; scrollbar-color: #85929c #2c343c; padding-right: 10px; }
-  .row { display: flex; justify-content: space-between; align-items: baseline; min-height: 39px; gap: 14px; padding: 8px 0; border-bottom: 1px solid #303b43; font-size: 17px; }
+  .concurrency strong { font: 26px Consolas, monospace; font-weight: 400; color: #404040; }
+  .bar { height: 12px; border: 2px solid #413f54; background: #adb0c4; margin: 10px 0 8px; }
+  .fill { width: 43.75%; height: 100%; background: #878fa5; }
+  .remaining { color: #404040; font-size: 14px; text-align: right; }
+  .resources-title { font-size: 16px; color: #404040; margin: 16px 0 8px; }
+  .resources { height: 210px; overflow: auto; scrollbar-width: thin; scrollbar-color: #adb0c4 #696d88; padding-right: 10px; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; min-height: 39px; gap: 14px; padding: 8px 0; border-bottom: 1px solid #696d88; font-size: 17px; }
   .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .amount { white-space: nowrap; color: #b6d0d8; font: 18px Consolas,"Microsoft YaHei",sans-serif; }
-  .empty { height: 100%; display: grid; place-items: center; color: #71828c; }
+  .amount { white-space: nowrap; color: #404040; font: 18px Consolas,"Microsoft YaHei",sans-serif; }
+  .empty { height: 100%; display: grid; place-items: center; color: #404040; }
   .preview-note { max-width: 900px; margin: 0 auto 25px; padding: 0 24px; color: #9aa0ab; line-height: 1.8; }
   .preview-note p { margin: 4px 0; }
   @media(max-width: 800px) { .stage { overflow-x: auto; place-items: start; } }
@@ -67,7 +65,7 @@
 </div>
 <div class="preview-note">
   <p>宽 384 游戏像素，高度随资源数量在 162～242 之间变化，超过最高高度才启用滑块滚动；此处放大 2 倍。上方选择框仅用于预览，不出现在游戏界面中。</p>
-  <p>以下为使用方资源 Map 的演示数据，无需注册。资源按对象身份处理；零值和计算机本地资源不显示。每行模拟服务端拼好的“本地化名：占用 / 产出”文本。</p>
+  <p>以下为使用方资源 Map 的演示数据，无需注册。资源按对象身份处理；零值和计算机本地资源不显示。资源行显示本地化名称、当前占用和产出。</p>
 </div>
 <script>
   const labels = {

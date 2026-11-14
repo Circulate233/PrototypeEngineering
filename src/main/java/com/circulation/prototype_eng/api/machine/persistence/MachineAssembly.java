@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.component.TopologicalComponentMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
+import com.circulation.prototype_eng.api.network.resource.ComputerRecipe;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
@@ -72,6 +73,7 @@ public final class MachineAssembly {
     private final MachineAttributesNbt attributes;
     private final Map<ResourceLocation, Binding<?>> bindings;
     private final List<Consumer<MachineInstance>> validators;
+    private final List<ComputerRecipe> computerRecipes;
 
     private MachineAssembly(Builder builder) {
         instanceFactory = builder.instanceFactory;
@@ -79,6 +81,7 @@ public final class MachineAssembly {
         revision = builder.revision;
         attributes = new MachineAttributesNbt(builder.attributes);
         validators = builder.validators;
+        computerRecipes = builder.computerRecipes;
         var copy = builder.bindings;
         add(copy, new Binding<>(MachineScheduling.TYPE, SCHEDULING));
         add(copy, new Binding<>(MachineOwnership.TYPE, MachineOwnership.CODEC));
@@ -178,6 +181,13 @@ public final class MachineAssembly {
      */
     public MachineType type() {
         return type;
+    }
+
+    /**
+     * 已完成的只读计算机配方声明。JEI 直接读取本列表，禁止创建机器实例探查配方。
+     */
+    public List<ComputerRecipe> computerRecipes() {
+        return computerRecipes;
     }
 
     /**
@@ -573,6 +583,7 @@ public final class MachineAssembly {
         private final List<Consumer<MachineInstance>> validators = new ObjectArrayList<>();
         private Function<MachineType, ? extends MachineInstance> instanceFactory = MachineInstance::new;
         private AttributeModifierNbt attributes = new AttributeModifierNbt();
+        private List<ComputerRecipe> computerRecipes = List.of();
 
         private Builder(MachineType type, String revision) {
             this.type = Objects.requireNonNull(type);
@@ -616,6 +627,15 @@ public final class MachineAssembly {
          */
         public Builder instanceFactory(Function<MachineType, ? extends MachineInstance> factory) {
             instanceFactory = Objects.requireNonNull(factory);
+            return this;
+        }
+
+        /**
+         * 必须传入控制器使用的同一份完整配方声明，并在装配的整个生命周期内保持列表不变；
+         * JEI 使用本列表显示每 tick 输入与本机、网络资源供给。
+         */
+        public Builder computerRecipes(List<ComputerRecipe> recipes) {
+            computerRecipes = recipes;
             return this;
         }
 

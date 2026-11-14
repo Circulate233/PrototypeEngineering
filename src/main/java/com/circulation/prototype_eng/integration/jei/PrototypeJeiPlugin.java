@@ -73,6 +73,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
     private static RecipeRegistry.Snapshot registrationSnapshot;
     private static RecipeJeiDisplays registrationDisplays;
     private static RecipeJeiDisplays.Snapshot registrationDescriptions;
+    private static ComputerRecipeJeiRegistration computerRecipes;
     private static boolean pageDataCurrent;
     @Nullable
     private static Definitions localStaticBaseline;
@@ -189,6 +190,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
             var allDisplays = new ObjectArrayList<JeiRecipeDisplay>();
             for (var recipe : RecipePoolJeiRegistry.INSTANCE.ownedRecipes(snapshot.orderedPools()))
                 allDisplays.add(descriptions.describe(recipe));
+            allDisplays.addAll(computerRecipes.displays());
             var converters = IngredientConverters.getConverters();
             var identities = JeiQueryIdentityIndex.capture(converters, capturedIngredients, allDisplays);
             for (var update : updates) {
@@ -206,6 +208,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
                     wrappers.add(wrapper);
                 }
             }
+            wrappers.addAll(computerRecipes.createWrappers(converters, capturedIngredients, identities, token));
             boolean preparedDesired = staticInitial || matchesDesired(snapshot, displays);
             if (!preparedDesired || desiredResolved != capturedDesiredSource || invalidationEpoch != capturedInvalidation || runtime != capturedRuntime || ingredients != capturedIngredients)
                 return rejectGeneration("HEI runtime or desired declaration changed during preparation", capturedInvalidation, token, previous, wrappers, registry, gui);
@@ -363,6 +366,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
                 allDisplays.add(descriptions.describe(recipe));
             }
         }
+        allDisplays.addAll(computerRecipes.displays());
         // Finish the global identity audit before registering any pool's wrappers.
         var identities = JeiQueryIdentityIndex.capture(converters, registration.getIngredientRegistry(), allDisplays);
 
@@ -396,6 +400,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
                 }
             }
         }
+        allWrappers.addAll(computerRecipes.registerRecipes(registration, converters, identities, token));
         generation = new Generation(registrationSnapshot, displays.frozenCopy(), descriptions,
             identities, ObjectLists.unmodifiable(allWrappers), token);
         pageDataCurrent = true;
@@ -468,6 +473,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
         ExternalRecipePoolPages.reset();
         if (!deferPoolRegistration)
             bindPoolCategories(registration, pools, categoryDisplays, Set.of(), postInitialDeclaration);
+        computerRecipes = new ComputerRecipeJeiRegistration(registration);
         registration.addRecipeCategories(new StructurePreviewJeiCategory(helper));
     }
 
