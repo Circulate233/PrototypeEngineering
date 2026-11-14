@@ -7,6 +7,7 @@ import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeIngredients;
 import com.circulation.prototype_eng.api.client.jei.JeiRenderOptions;
 import com.circulation.prototype_eng.api.client.jei.RecipePoolJeiRecipe;
+import com.circulation.prototype_eng.api.client.jei.RecipeJeiDisplays;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.network.resource.ComputerRecipe;
@@ -38,16 +39,20 @@ final class ComputerRecipeJeiRegistration {
     private final List<Page> pages = new ObjectArrayList<>();
     private final Reference2ObjectOpenHashMap<MachineRecipe, JeiRecipeDisplay> descriptions = new Reference2ObjectOpenHashMap<>();
 
-    ComputerRecipeJeiRegistration(IRecipeCategoryRegistration registration) {
+    ComputerRecipeJeiRegistration(IRecipeCategoryRegistration registration, RecipeJeiDisplays displayProviders) {
         var helper = registration.getJeiHelpers().getGuiHelper();
         var registry = MachineTypeRegistry.INSTANCE;
         for (var machine : registry.types()) {
             var recipes = registry.assembly(machine).computerRecipes();
-            if (recipes.isEmpty()) continue;
-            var materials = new ObjectArrayList<MachineRecipe>(recipes.size());
+            if (recipes.isEmpty() && machine.computerInputRecipes().isEmpty()) continue;
+            var materials = new ObjectArrayList<MachineRecipe>(recipes.size() + machine.computerInputRecipes().size());
             for (var recipe : recipes) {
                 materials.add(recipe.materialRecipe());
                 descriptions.computeIfAbsent(recipe.materialRecipe(), _ -> describe(recipe));
+            }
+            for (var recipe : machine.computerInputRecipes()) {
+                materials.add(recipe.inputDefinition());
+                descriptions.put(recipe.inputDefinition(), displayProviders.describe(recipe.inputDefinition()));
             }
             var id = new ResourceLocation(Tags.MOD_ID, "computer/" + machine.id().getNamespace() + "/" + machine.id().getPath());
             var pool = new DefaultRecipePool(id, machine.displayName().getTranslationKey(), materials);
@@ -60,12 +65,12 @@ final class ComputerRecipeJeiRegistration {
 
     private static JeiRecipeDisplay describe(ComputerRecipe recipe) {
         var display = new JeiRecipeDisplay.Builder();
-        for (var stack : recipe.inputsPerTick()) display.resource(stack, INPUT, of(JeiText.Tick));
+        for (var stack : recipe.unitInputs()) display.resource(stack, INPUT, of(JeiText.ComputerUnit));
         display.information(of(JeiText.ComputerSupplyRecipe));
-        for (var entry : recipe.provided().reference2DoubleEntrySet()) {
+        for (var entry : recipe.unitResources().reference2DoubleEntrySet()) {
             if (entry.getDoubleValue() == 0) continue;
             var resource = entry.getKey();
-            display.information(of(resource.internal() ? JeiText.ComputerInternalSupply : JeiText.ComputerNetworkSupply,
+            display.information(of(JeiText.ComputerInternalSupply,
                 resource.displayName(), resource.format(entry.getDoubleValue())));
         }
         return display.build();

@@ -15,7 +15,11 @@ import com.circulation.prototype_eng.api.network.resource.NetworkComputerCompone
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
+import com.circulation.prototype_eng.api.network.ComputerInputWork;
+import com.circulation.prototype_eng.api.network.NetworkDeviceEvent;
+import com.circulation.prototype_eng.api.network.NetworkDeviceEvents;
+import com.circulation.prototype_eng.api.network.NetworkResourceState;
+import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
@@ -44,18 +48,18 @@ public class ComputerController extends MachineInstance implements NetworkComput
     private long suppliedTick = Long.MIN_VALUE;
     private long suppliedComposition;
     private Reference2DoubleMap<NetworkResourceType> supplied = Reference2DoubleMaps.emptyMap();
-    private Reference2DoubleMap<NetworkResourceType> recipeSupply = Reference2DoubleMaps.emptyMap();
     private long suppliedConcurrency;
     private Reference2DoubleMap<NetworkResourceType> componentOffers = Reference2DoubleMaps.emptyMap();
     private Reference2DoubleMap<NetworkResourceType> componentDemand = Reference2DoubleMaps.emptyMap();
     private SupplyState supplyState = SupplyState.WAITING;
     private long energyPaid;
+    private long energyRequired;
     private byte[] recipeStates;
     private byte[] preparingRecipeStates;
 
     public enum SupplyState {WAITING, ACTIVE, RESOURCE_SHORTAGE, ENERGY_SHORTAGE}
 
-    public static final byte RECIPE_WAITING = 0, RECIPE_ACTIVE = 1, RECIPE_CONDITION = 2, RECIPE_INPUT = 3;
+    public static final byte RECIPE_WAITING = 0, RECIPE_ACTIVE = 1, RECIPE_CONDITION = 2, RECIPE_INPUT = 3, RECIPE_PARTIAL = 4, RECIPE_FAILED = 5;
 
     public ComputerController(MachineType type) {
         this(type, Long.MAX_VALUE, Reference2DoubleMaps.emptyMap(), List.of());
@@ -70,14 +74,6 @@ public class ComputerController extends MachineInstance implements NetworkComput
         this.recipes = recipes;
         recipeStates = new byte[recipes.size()];
         preparingRecipeStates = new byte[recipes.size()];
-    }
-
-    private static void add(Reference2DoubleOpenHashMap<NetworkResourceType> totals, Reference2DoubleMap<NetworkResourceType> values) {
-        for (var entry : values.reference2DoubleEntrySet()) {
-            double amount = entry.getDoubleValue();
-            NetworkResourceModifier.sum(amount, totals.getDouble(entry.getKey()));
-            totals.addTo(entry.getKey(), amount);
-        }
     }
 
     private static Reference2DoubleMap<NetworkResourceType> external(Reference2DoubleMap<NetworkResourceType> values) {
@@ -134,7 +130,7 @@ public class ComputerController extends MachineInstance implements NetworkComput
     }
 
     public double availableForComponents(NetworkResourceType resource) {
-        return componentOffers.getDouble(resource) + (supplyState == SupplyState.ACTIVE ? componentDemand.getDouble(resource) : 0);
+        return componentOffers.getDouble(resource);
     }
 
     @Override
@@ -149,7 +145,20 @@ public class ComputerController extends MachineInstance implements NetworkComput
 
     @Override
     public boolean requiresTick() {
-        return false;
+        return !Objects.requireNonNull(type()).computerInputRecipes().isEmpty();
+    }
+
+    @Override
+    public ExecutionMode executionMode() {
+        return requiresTick() ? ExecutionMode.MAIN_THREAD : super.executionMode();
+    }
+
+    public long energyRequired() {
+        return energyRequired;
+    }
+
+    public Reference2DoubleMap<NetworkResourceType> componentDemand() {
+        return componentDemand;
     }
 
     @Override
@@ -162,7 +171,9 @@ public class ComputerController extends MachineInstance implements NetworkComput
         reader.installed();
         long composition = reader.compositionVersion();
         if (suppliedComposition != reader.compositionVersion()) {
-            supplied = external(recipeSupply);
+            var inputWork = components().get(ComputerInputWork.TYPE);
+            if (inputWork != null) inputWork.invalidateEffects();
+            supplied = Reference2DoubleMaps.emptyMap();
             suppliedConcurrency = 0;
             supplyState = SupplyState.WAITING;
             componentOffers = Reference2DoubleMaps.emptyMap();
@@ -180,45 +191,53 @@ public class ComputerController extends MachineInstance implements NetworkComput
         var reader = computerComponents();
         var installed = reader.installed();
         if (suppliedTick == tick)
-            return new Prepared(tick, reader.compositionVersion(), recipeSupply, supplied, suppliedConcurrency, List.of(), List.of(),
-                componentOffers, componentDemand, supplyState, energyPaid, recipeStates);
+            return new Prepared(tick, reader.compositionVersion(), supplied, suppliedConcurrency, List.of(), List.of(),
+                componentOffers, componentDemand, supplyState, energyPaid, energyRequired, recipeStates);
         var transactions = new ObjectArrayList<ReversibleTransaction>();
         var tokens = new ObjectArrayList<ResourceReservation>();
         try {
-            var generated = new Reference2DoubleOpenHashMap<NetworkResourceType>();
-            for (int recipeIndex = 0; recipeIndex < recipes.size(); recipeIndex++) {
-                var recipe = recipes.get(recipeIndex);
-                var transaction = recipe.prepare(this, tick);
-                if (transaction == null) {
-                    preparingRecipeStates[recipeIndex] = RECIPE_CONDITION;
-                    continue;
-                }
-                if (transaction.result() != ProcessResult.SUCCESS) {
-                    preparingRecipeStates[recipeIndex] = RECIPE_INPUT;
-                    ResourceTransactions.rollback(transaction.reservations(), transaction::rollback);
-                    continue;
-                }
-                preparingRecipeStates[recipeIndex] = RECIPE_ACTIVE;
-                transactions.add(transaction);
-                tokens.addAll(transaction.reservations());
-                add(generated, recipe.provided());
+            var inputWork = components().get(ComputerInputWork.TYPE);
+            var values = inputWork != null && inputWork.hasEffects(tick) ? inputWork.effects().copy()
+                : new NetworkResourceState(installed.resourcesPerTick(), installed.requiredResources(), installed.concurrencyPerTick());
+            var device = networkDevice();
+            if (device != null && device.networkData() != null) {
+                NetworkDeviceEvents.fire(new NetworkDeviceEvent(this, device.networkData(), values));
+                device.networkValues(values);
             }
-            var total = new Reference2DoubleOpenHashMap<>(generated);
-            add(total, installed.resourcesPerTick());
-            limit(total);
-            var offers = total;
-            var needed = installed.requiredResources();
-            long energy = installed.energyPerTick();
+            limit(values.resources);
+            var available = new Reference2DoubleOpenHashMap<>(values.resources);
+            var needed = values.required;
+            for (int index = 0; index < recipes.size(); index++) {
+                var recipe = recipes.get(index);
+                long requested = recipe.unitsFor(needed, available);
+                preparingRecipeStates[index] = RECIPE_WAITING;
+                if (requested == 0) continue;
+                var conversion = recipe.prepare(this, requested);
+                if (conversion == null) {
+                    preparingRecipeStates[index] = RECIPE_CONDITION;
+                    continue;
+                }
+                tokens.addAll(conversion.reservations());
+                long units = conversion.units();
+                preparingRecipeStates[index] = units == 0 ? RECIPE_INPUT : units < requested ? RECIPE_PARTIAL : RECIPE_ACTIVE;
+                for (var entry : recipe.unitResources().reference2DoubleEntrySet()) {
+                    double amount = NetworkResourceModifier.product(entry.getDoubleValue(), units);
+                    NetworkResourceModifier.sum(available.getDouble(entry.getKey()), amount);
+                    available.addTo(entry.getKey(), amount);
+                }
+            }
             boolean powered = true;
             SupplyState state = SupplyState.ACTIVE;
-            for (var demand : needed.reference2DoubleEntrySet())
-                if (total.getDouble(demand.getKey()) < demand.getDoubleValue()) {
+            for (var demand : needed.reference2DoubleEntrySet()) {
+                if (available.getDouble(demand.getKey()) < demand.getDoubleValue()) {
                     powered = false;
                     state = SupplyState.RESOURCE_SHORTAGE;
                     break;
                 }
+            }
+            long energy = networkEnergy(installed.energyPerTick());
             if (powered) {
-                var payment = componentEnergy.reserve(this, tick, energy);
+                var payment = componentEnergy.reserve(this, tick, installed.energyPerTick());
                 powered = payment != null;
                 if (!powered) state = SupplyState.ENERGY_SHORTAGE;
                 if (powered && payment != ControllerEnergy.Payment.FREE) {
@@ -228,15 +247,11 @@ public class ComputerController extends MachineInstance implements NetworkComput
             }
             if (powered) {
                 for (var demand : needed.reference2DoubleEntrySet())
-                    total.addTo(demand.getKey(), -demand.getDoubleValue());
-            } else {
-                total = new Reference2DoubleOpenHashMap<>(generated);
-                limit(total);
+                    values.resources.addTo(demand.getKey(), -Math.min(demand.getDoubleValue(), values.resources.getDouble(demand.getKey())));
             }
-            limit(generated);
-            return new Prepared(tick, reader.compositionVersion(), generated, external(total),
-                powered ? Math.min(concurrencyLimit, installed.concurrencyPerTick()) : 0, transactions, tokens,
-                offers, needed, state, powered ? energy : 0, preparingRecipeStates);
+            return new Prepared(tick, reader.compositionVersion(), powered ? external(values.resources) : Reference2DoubleMaps.emptyMap(),
+                powered ? Math.min(concurrencyLimit, values.concurrency) : 0, transactions, tokens,
+                available, needed, state, powered ? energy : 0, energy, preparingRecipeStates);
         } catch (RuntimeException | Error failure) {
             try {
                 rollback(tokens, transactions);
@@ -257,33 +272,29 @@ public class ComputerController extends MachineInstance implements NetworkComput
     private final class Prepared implements NetworkSupplyTransaction {
         private final long tick;
         private final long composition;
-        private final Reference2DoubleMap<NetworkResourceType> recipes;
         private final Reference2DoubleMap<NetworkResourceType> result;
         private final long concurrency;
         private final Reference2DoubleMap<NetworkResourceType> offers, demand;
         private final SupplyState state;
-        private final long paid;
+        private final long paid, requiredEnergy;
         private final byte[] states;
         private final List<? extends ReversibleTransaction> transactions;
         private final List<ResourceReservation> reservations;
         private final long oldTick = suppliedTick;
         private final long oldComposition = suppliedComposition;
-        private final Reference2DoubleMap<NetworkResourceType> oldRecipes = recipeSupply;
         private final Reference2DoubleMap<NetworkResourceType> oldSupply = supplied;
         private final long oldConcurrency = suppliedConcurrency;
         private final Reference2DoubleMap<NetworkResourceType> oldOffers = componentOffers, oldDemand = componentDemand;
         private final SupplyState oldState = supplyState;
-        private final long oldPaid = energyPaid;
+        private final long oldPaid = energyPaid, oldRequiredEnergy = energyRequired;
         private final byte[] oldStates = recipeStates;
         private Resolution resolution = Resolution.REVERSIBLE;
 
-        private Prepared(long tick, long composition, Reference2DoubleMap<NetworkResourceType> recipes,
-                         Reference2DoubleMap<NetworkResourceType> result, long concurrency, List<? extends ReversibleTransaction> transactions,
+        private Prepared(long tick, long composition, Reference2DoubleMap<NetworkResourceType> result, long concurrency, List<? extends ReversibleTransaction> transactions,
                          List<ResourceReservation> reservations, Reference2DoubleMap<NetworkResourceType> offers,
-                         Reference2DoubleMap<NetworkResourceType> demand, SupplyState state, long paid, byte[] states) {
+                         Reference2DoubleMap<NetworkResourceType> demand, SupplyState state, long paid, long requiredEnergy, byte[] states) {
             this.tick = tick;
             this.composition = composition;
-            this.recipes = recipes;
             this.result = result;
             this.concurrency = concurrency;
             this.transactions = transactions;
@@ -292,6 +303,7 @@ public class ComputerController extends MachineInstance implements NetworkComput
             this.demand = demand;
             this.state = state;
             this.paid = paid;
+            this.requiredEnergy = requiredEnergy;
             this.states = states;
         }
 
@@ -327,13 +339,13 @@ public class ComputerController extends MachineInstance implements NetworkComput
             for (var transaction : transactions) transaction.commit();
             suppliedTick = tick;
             suppliedComposition = composition;
-            recipeSupply = recipes;
             supplied = result;
             suppliedConcurrency = concurrency;
             componentOffers = offers;
             componentDemand = demand;
             supplyState = state;
             energyPaid = paid;
+            energyRequired = requiredEnergy;
             recipeStates = states;
             if (states != oldStates) preparingRecipeStates = oldStates;
         }
@@ -349,13 +361,13 @@ public class ComputerController extends MachineInstance implements NetworkComput
             for (int i = transactions.size() - 1; i >= 0; i--) transactions.get(i).rollback();
             suppliedTick = oldTick;
             suppliedComposition = oldComposition;
-            recipeSupply = oldRecipes;
             supplied = oldSupply;
             suppliedConcurrency = oldConcurrency;
             componentOffers = oldOffers;
             componentDemand = oldDemand;
             supplyState = oldState;
             energyPaid = oldPaid;
+            energyRequired = oldRequiredEnergy;
             recipeStates = oldStates;
             if (states != oldStates) preparingRecipeStates = states;
             resolution = Resolution.ROLLED_BACK;

@@ -29,8 +29,8 @@ class ComputerDetailsSyncTest {
         var outgoing = new DataSynchronization(server);
         var incoming = new DataSynchronization(client);
         server.packet = new ComputerDetailsPacket(List.of(new ComputerDetailsPacket.Component(item, 2, 4, 8, supply, Reference2DoubleMaps.emptyMap())),
-            List.of(new ComputerDetailsPacket.Recipe(new ResourceLocation("test", "water_recipe"), List.of(input), supply)),
-            List.of(new ComputerDetailsPacket.RecipeState(0, ComputerController.RECIPE_INPUT)));
+            List.of(new ComputerDetailsPacket.Recipe(new ResourceLocation("test", "water_recipe"), List.of(input), supply, 30, List.of(input), List.of(input))),
+            List.of(new ComputerDetailsPacket.RecipeState(0, ComputerController.RECIPE_INPUT, 12.5)));
         int fullBytes = transfer(outgoing, incoming, true);
         var components = client.packet.components();
         var recipes = client.packet.recipes();
@@ -38,14 +38,18 @@ class ComputerDetailsSyncTest {
         assertNotNull(recipes);
         assertEquals(item, components.getFirst().item());
         assertEquals(input, recipes.getFirst().inputs().getFirst());
+        assertEquals(input, recipes.getFirst().tickInputs().getFirst());
+        assertEquals(input, recipes.getFirst().endInputs().getFirst());
+        assertEquals(12.5, client.packet.changed().getFirst().progress());
         assertEquals(20.5, recipes.getFirst().provided().values().iterator().nextDouble());
         assertEquals(ComputerController.RECIPE_INPUT, client.packet.changed().getFirst().state());
         assertFalse(outgoing.hasChanges());
-        server.packet = new ComputerDetailsPacket(null, null, List.of(new ComputerDetailsPacket.RecipeState(0, ComputerController.RECIPE_ACTIVE)));
+        server.packet = new ComputerDetailsPacket(null, null, List.of(new ComputerDetailsPacket.RecipeState(0, ComputerController.RECIPE_ACTIVE, 13.5)));
         int updateBytes = transfer(outgoing, incoming, false);
         assertNull(client.packet.components());
         assertNull(client.packet.recipes());
         assertEquals(ComputerController.RECIPE_ACTIVE, client.packet.changed().getFirst().state());
+        assertEquals(13.5, client.packet.changed().getFirst().progress());
         assertTrue(updateBytes < fullBytes);
         server.packet = new ComputerDetailsPacket(List.of(), null, List.of());
         transfer(outgoing, incoming, false);

@@ -14,9 +14,9 @@ import stanhebben.zenscript.annotations.ZenMethod;
 @SuppressWarnings("unused")
 public record ZenComputerRecipe(ComputerRecipe value) {
     @ZenMethod
-    public static ZenComputerRecipe create(String id, ZenResource[] inputsPerTick, ZenComputingResources provided) {
-        var inputs = new ObjectArrayList<GenericStack>(inputsPerTick.length);
-        for (var resource : inputsPerTick) inputs.add(resource.stack());
-        return new ZenComputerRecipe(new ComputerRecipe(new ResourceLocation(id), inputs, provided.value()));
+    public static ZenComputerRecipe create(String id, ZenResource[] unitInputs, ZenComputingResources unitResources) {
+        var inputs = new ObjectArrayList<GenericStack>(unitInputs.length);
+        for (var resource : unitInputs) inputs.add(resource.stack());
+        return new ZenComputerRecipe(new ComputerRecipe(new ResourceLocation(id), inputs, unitResources.value()));
     }
 }

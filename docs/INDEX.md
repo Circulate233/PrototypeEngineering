@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-14 计算机单位换算、纯输入配方与网络设备事件完成：按缺口向上取整、尽量支付完整份数，不足一份不参与；转换仅供本机。纯输入复用普通START/TICK/END、时长与保存，事件修改候选资源，下一tick结算。各设备可查询同队快照并修改资源、并发、速率和FE倍率。GUI等宽面板、左右对齐、紧随资源的FE行及进度增量同步已修正。入口[计算机](computers.md)、[网络设备事件](network-events.md)、[API](../api.md)。45Java已IDEA格式化，43项目文件全级零、2run被排除；1869测试/272 suites和完整build、MCP构建通过，15真实ZS脚本通过。27Java addon生成待安装，客户端仍运行；下一步退出后执行run/prepare-tests.ps1安装，重启并重新放置已更新revision的演示计算机，复验GUI/JEI和费用。详细证据见[实施进度](implementation-status.md)。
+
 - 2026-11-14 计算机正式GUI、JEI与设备样式：获批三页预览已接入384×242无背包界面，AE2Button切换概览/组件/供给配方，真实费用与供给状态沿AE自定义包增量同步。运算仓tooltip复用仓室格式，中心使用原像素外框和1像素白色内框。实际Java计算机四组件需要2500冷却/96 FE，冷却供给0，停供原因已确认。入口[计算机](computers.md)、[获批预览](previews/computer.html)、[JEI](jei.md)，验证和提交见[实施进度](implementation-status.md)。下一步用户重启复验正式界面、缺料/缺FE提示、滚动及JEI材料检索。
 
 - 2026-11-14 中心状态与运算仓样式修正：缺电中心保留INSUFFICIENT_POWER诊断，GUI分别显示能源不足、未成型、队伍无效、暂无中心与状态未就绪，未再统一误写未生效；示例中心生效需4 FE/t。运算仓使用与其他仓一致的带色Computation-LvN方块名称/GUI标题，资源标题居左、槽位起点26/24；示例IO组件红石贴图改为redstone_dust。11Java经IDEA格式化/全级检查全零，完整1863测试/271 suites、MCP构建、27Java addon安装和15脚本检查通过，证据见[实施进度](implementation-status.md)。当前游戏已退出，用户当时的具体停用原因未取得运行态证据；下一步完整启动查看新的原因提示并复验标题/槽位。本地提交，不启动游戏/推送。

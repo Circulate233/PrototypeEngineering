@@ -8,7 +8,7 @@
 
 同队伍结果的类型、成员和可选队长必须一致；已查询成员自己的结果也必须指向同一个队伍，不能一边声称它是成员、一边拒绝或归到另一队伍。异常或矛盾使整次 capture 失败，不产生部分输入。成员很多的队伍也只对本批实际 owner 查询一次。
 
-`NetworkPlanner.plan(inputs)` 只读取已冻结输入，可以放在 worker 执行。它不再查询 FTB，不读取世界，不改机器。结果包含 epoch、每设备 `NetworkWorkState`、可解析设备的 teamId 和每个有活动中心的队伍选择。公开结果表使用 fastutil backing 与保护 `Map.Entry.setValue` 的只读包装；数量表的 primitive entries 同样不可变。
+`NetworkPlanner.plan(inputs)` 只读取已冻结输入，可以放在 worker 执行。它不再查询 FTB，不读取世界，不改机器。结果包含 epoch、每设备 `NetworkWorkState`、可解析设备的 teamId 和每个有活动中心的队伍选择。公开结果使用fastutil集合，调用方必须按只读规则使用；资源表按对象身份索引，禁止修改返回数据。
 
 NetworkRuntime 现已把整批结果发布到显式 MachineNetworkDevice，并作为扫描、已有工位及进程阶段共同的网络条件；准确登记/修订号和宿主证明重验见[运行时接线](network-runtime.md)。`ACTIVE_DEVICE` 等仍是拓扑决策，不能替代研究条件、预算预留或正式 planned worker 的提交许可。
 
@@ -29,7 +29,7 @@ Universe 未加载或不属于本服务器、未知 owner、无队伍、无效�
 | 非中心设备等级高于活动中心 | CENTER_LEVEL_INSUFFICIENT。 |
 | 没有活动中心 | 已成型设备 NO_ACTIVE_CENTER，未成型设备 UNFORMED；参与者不能单独创建网络。 |
 | owner 当前队伍拒绝 | OWNER_TEAM_REJECTED，优先于结构状态；不加入有效队伍表。 |
-| 符合条件的 COMPUTER / RESEARCH_STATION / DEVICE | ACTIVE_DEVICE；只有 COMPUTER 被动贡献其计算资源。 |
+| 符合条件的 COMPUTER / RESEARCH_STATION / DEVICE | ACTIVE_DEVICE；本设备声明或事件调整后的资源和并发计入总量。 |
 
 NETWORK_CENTER 和 RESEARCH_STATION 保留正等级约束。COMPUTER、DATA_CENTER、通用 DEVICE 允许声明等级 0；它们仍需当前活动中心才能进入本规划的有效网络。旧 DATA_CENTER 类型允许 0，但旧 runtime candidate 拒绝 0，存在自相矛盾；新 snapshot/selector 统一接受声明范围，不声称旧实现已经支持无中心活动数据中心。
 
@@ -37,9 +37,9 @@ NETWORK_CENTER 和 RESEARCH_STATION 保留正等级约束。COMPUTER、DATA_CENT
 
 ## 计算资源与参与者
 
-NetworkResourceType 是计算预算的 metadata：ResourceLocation、logicalConcurrency，承接 thread/compute/qubit 等维度。供给量由开发者定义，类型不设上限。物料身份仍使用 AEKey/AEKeyType，FE 仍独立；这些计算预算不作为仓室资源类型注册。
+`NetworkResourceType` 由开发者实现，包含资源ID、内部/外部标志和AE PacketWritable展示定义。所有数量使用double，资源Map使用R2D并按对象身份处理，开发者必须共享单例；不需要注册，也不提供默认类型。并发为独立整数限制。物料身份使用AEKey，FE独立。
 
-元数据 record 默认按所有字段比较；每个向量、modifier 的多张表按 ID 拒绝不同元数据，完整 capture 另行对照冻结的 canonical 注册表，避免未注册或跨批次元数据漂移。Java 注册事件和标准 thread/compute/qubit 已接入，详见[计算资源](network-resources.md)。旧maxPerTickValue字段及单物品/研究阶段约束已于2026-11-13取消；中心、计算机与物品供给按既有网络规则汇总，保留实际数量溢出检查。
+活动中心、已准入计算机、活动数据库和合格设备的外部资源共同累加，使用 `addTo` 并检查数值溢出。中心调整器统一作用于汇总值。事件可调整本设备候选资源、并发、研究站速率及FE输入倍率，调用顺序与数据范围见[网络设备事件](network-events.md)。内部资源不会加入队伍预算。
 
 每队基础贡献为：活动中心 + 成型且等级合格的 COMPUTER + 当前队伍的 ACTIVE 参与者贡献。其他中心、研究站、数据中心与通用 DEVICE 的资源不参与合计。所有贡献完成后，只应用一次活动中心 modifier。参与者不按种类或等级过滤；`NetworkContribution` 只是经过宿主验证的参与者资源投影，保留 epoch/version，尚未迁入其工位、材料来源、注册状态机或提交校验。
 

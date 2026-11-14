@@ -1,5 +1,16 @@
 # 实施进度
 
+## 2026-11-14 计算机单位换算、纯输入配方和网络设备事件
+
+- ComputerRecipe使用unitInputs/unitResources，按组件资源缺口向上取整请求份数，按声明顺序由多条转换补足缺口。已有完整份数即使不足也结算；用户最终确认“不满一份视为不存在”，余料不扣、不按比例产生资源。多输入的一份必须凑齐。无需求或资格条件不满足时不执行，未取得计算机并发时释放全部预留，组件FE不足仍结算已能转换的材料。转换多余产出仅留在本次本机计算，不能直接输出到网络。
+- 新增ComputerInputRecipe和ComputerInputWork，复用RecipeProcess及其保存codec，支持普通时长、START/TICK输入和endInput声明的END输入。每个定义运行一个进程，共用计算机并发，只有声明纯输入配方才执行所属线程tick。ComputerRecipeEvent直接提供进程、阶段、网络快照和可写资源值，不提供默认输出方法。阶段修改参与原事务，失败时撤回本阶段；进度、等待END及START支付记录可保存恢复。事件结果用于下一服务器tick，后续未继续工作时不重复沿用旧结果。
+- NetworkDeviceEvents全局监听与MachineType.networkEvent类型监听向默认中心、计算机、研究站、数据库及接网普通机器开放。NetworkData包含同队已加载有效身份设备的位置/类型/角色/等级/成型状态及事件前快照；hasDevice仅判断成型类型存在，不声称设备已最终准入。各角色的候选外部资源/并发接入网络总量；研究站使用修改后的速率。FE倍率接入中心、组件、研究站和普通配方输入，同步及计划执行均覆盖，输出FE保持原数量。回调只改本次候选值，不修改其他设备或直接扣费；R2D单例身份和addTo规则写入API/Javadoc。
+- GUI概览改为获批预览的等宽面板，名称左对齐、数值右对齐、逐行分隔，FE实际/需求及余额紧跟需求资源并共同滚动。配方页支持单位转换及纯输入的时长/阶段输入，状态和进度按索引增量发布。沿原AE PacketWritable同步定义与double数据，没有增加客户端解析注册或整数组高频更新。JEI从转换和纯输入声明自动生成，保留普通材料匹配、FE和阶段信息。
+- Java与ZS运行示例改为单位转换，添加维护纯输入配方及设备存在时的FE调整事件；Java计算机和net_demo_computer装配revision更新为v2，旧演示控制器需要重新放置。API、计算机、网络规划、JEI及run操作文档同步。
+- 行为验证覆盖：2500需求的3:3向上取整、完整份数不足仍消耗及2 mB余料保留、多条转换补缺口、无需求不扣料、缺FE停供及失去并发回滚；纯输入START失败撤回事件修改、TICK推进、读档不重付START、END等待与完成；设备快照查询及实际10%组件FE扣款；普通配方同步/计划FE输入倍率及原输出数量；AE定义/进度增量同步。完整Gradle build含Spotless、JAR/reobf及1869测试/272 suites通过，无失败、错误或跳过。仅增加5项必要行为测试，其余沿用和迁移原测试。
+- 45份Java经本机IDEA MCP格式化。逐文件get_file_problems(errorsOnly:false)：43份项目源码错误/警告/弱警告均为0，2份run文件被IDE排除、无法分析；MCP build_project成功。初次构建发现新文件换行格式不一致，统一为项目Windows换行后Spotless通过。27Java addon通过真实javac，15份真实ZS脚本全部编译通过，独立核心API检查通过。
+- 证据根：C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261114/。最终主源码证据为computer-events-build-final.log、computer-events-tests/summary.json及XML、computer-events-idea-confirmed.json；示例为computer-events-addon-confirmed.log及computer-events-zs/script-verifier-result.json。客户端进程36552仍运行，本轮使用SkipInstall，生成Jar待安装，没有启动或停止游戏。退出客户端后执行run/prepare-tests.ps1安装；实际GUI、AE交互、JEI查询和世界行为等待用户重启复验。本阶段本地提交，不推送。
+
 ## 2026-11-14 计算机正式GUI、供给配方JEI与设备样式
 
 - 用户批准三页预览，并要求AE原生按钮和现有仓室边框。GuiComputer直接继承AEBaseGui，ContainerComputer不添加玩家或控制器库存槽，默认ComputerController.DEVICE自动选择新界面。384×242，AE2Button切换概览、组件、供给配方，AE Scrollbar处理超出可见范围的行，滚轮只控制所在面板。移除“自身需要1并发”和配方行为说明句。

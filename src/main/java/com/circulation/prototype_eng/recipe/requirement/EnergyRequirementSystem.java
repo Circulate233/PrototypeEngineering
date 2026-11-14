@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.recipe.requirement;
 
+import com.circulation.prototype_eng.api.network.NetworkResourceState;
 import com.circulation.prototype_eng.api.energy.EnergyInput;
 import com.circulation.prototype_eng.api.energy.EnergySnapshot;
 import com.circulation.prototype_eng.api.machine.CrossRecipeBatch;
@@ -51,6 +52,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
         }
         int parallelism = batched ? 1 : RecipeParallelism.effective(process);
         input = RecipeParallelism.scaleCount(input, parallelism);
+        input = process.owner().networkEnergy(input);
         output = RecipeParallelism.scaleCount(output, parallelism);
         var reservations = new ObjectArrayList<ResourceReservation>(6);
         try {
@@ -176,6 +178,8 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
         }
         var hatches = process.hatches();
         var parallelCapture = process.attributes().beginValueCapture(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
+        var device = process.owner().networkDevice();
+        double networkEnergy = device == null ? 1 : device.energyMultiplier();
         var offsets = batched ? Objects.requireNonNull(timing.energyOffsets().get(process.requirementPath())) : null;
         var tick = batched ? process.tickContext() : null;
         int originalDuration = process.recipe().durationTicks();
@@ -216,7 +220,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                     return new ReservedRequirement(RecipeText.StorageChanged.blocked(), reservations);
                 if (quantities == null) {
                     if (!parallelCapture.advance(budget)) return paused(reservations);
-                    quantities = new EnergyQuantities(input, output, Math.max(1, (int) Math.floor(parallelCapture.result())));
+                    quantities = new EnergyQuantities(input, output, Math.max(1, (int) Math.floor(parallelCapture.result())), networkEnergy);
                     if (batched)
                         quantities.batch = new BatchEnergy(Objects.requireNonNull(timing), Objects.requireNonNull(offsets),
                             payload, originalDuration, Objects.requireNonNull(tick));
@@ -435,6 +439,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
     }
 
     private static class EnergyQuantities implements RecipePureComputation {
+        private final double networkEnergy;
         private final int parallelism;
         private long input;
         private long output;
@@ -442,7 +447,8 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
         @Nullable
         private BatchEnergy batch;
 
-        private EnergyQuantities(long input, long output, int parallelism) {
+        private EnergyQuantities(long input, long output, int parallelism, double networkEnergy) {
+            this.networkEnergy = networkEnergy;
             this.input = input;
             this.output = output;
             this.parallelism = parallelism;
@@ -465,6 +471,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                 output = batch.timing.portion(CrossRecipeBatch.energyTotal(batch.payload.output(), batch.payload.outputPerTick(),
                     batch.originalDuration, batch.timing.parallelism()), batch.offsets.output(), batch.tick);
             }
+            input = NetworkResourceState.energy(input, networkEnergy);
             complete = true;
             return true;
         }

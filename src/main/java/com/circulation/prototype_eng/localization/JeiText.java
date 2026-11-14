@@ -4,7 +4,7 @@ import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.Tags;
 
 public enum JeiText implements LocalizationEnum {
-    Duration, Start, Tick, End, Chance, ChanceAttribute, ComputerSupplyRecipe, ComputerInternalSupply, ComputerNetworkSupply,
+    Duration, Start, Tick, End, Chance, ChanceAttribute, ComputerSupplyRecipe, ComputerInternalSupply, ComputerUnit,
     Consume, Produce, ConsumeAt, ProduceAt, ConsumeChance, ProduceChance,
     Weighted, Alternative, Fuzzy, Dynamic, NoCandidates, CheckpointScaled, CheckpointUnscaled,
     Modifiers, AttributeAdded, AttributeRemoved, EnergyInput, EnergyOutput, EnergyInputPerTick, EnergyOutputPerTick, VoidExcess, CustomRequirement, UnsupportedIngredient, QueryIdentityConflict, MissingRenderer, Page, Previous, Next, PatternNoResources, PatternAmountOverflow, PatternCapacity, PatternStructureUnavailable, PatternStructureName;

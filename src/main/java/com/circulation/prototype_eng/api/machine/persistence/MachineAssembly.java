@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.api.machine.persistence;
 
+import com.circulation.prototype_eng.api.network.ComputerInputWork;
 import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.component.TopologicalComponentMap;
@@ -86,6 +87,8 @@ public final class MachineAssembly {
         add(copy, new Binding<>(MachineScheduling.TYPE, SCHEDULING));
         add(copy, new Binding<>(MachineOwnership.TYPE, MachineOwnership.CODEC));
         add(copy, new Binding<>(MachineNetworkDevice.DEFAULT, null));
+        if (type.componentTypes().contains(ComputerInputWork.TYPE))
+            add(copy, new Binding<>(ComputerInputWork.TYPE, ComputerInputWork.CODEC));
         bindings = copy;
         for (var declared : type.componentTypes()) {
             if (isStructureDerived(declared)) {

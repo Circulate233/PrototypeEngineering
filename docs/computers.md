@@ -51,9 +51,17 @@ provided为每件的double资源供给，concurrencyPerItem为独立整数并发
 
 内部资源使用 `NetworkResourceType.computer(id, name, pattern)` 或自定义资源接口，不需要资源注册。只在本机产生和占用，未用额度不跨tick累积。固定展示包、客户端格式化与增量协议见[网络资源](network-resources.md)。
 
-`ComputerRecipe(id, inputsPerTick, provided)` 注册一个每 tick 的资源供给配方，inputsPerTick 是 `List<GenericStack>`。它调用现有资源需求的 TICK 事务，一次成功提交支付一份输入；不使用普通加工配方的 START/END 或持久进度。带 `Predicate<MachineInstance>` 的构造器增加只读资格条件。缺料或条件不满足只令该配方不提供资源，不关闭其他已能运行的配方。
+`ComputerRecipe(id, unitInputs, unitResources)` 定义一份材料的换算。组件每次结算时按资源缺口取 `ceil(缺口 / 单位产出)`，只执行所需份数。例如1 mB水换1冷却，2500冷却需要2500 mB；3 mB水换3冷却则需要2502 mB。多条转换按声明顺序补足剩余缺口，无缺口时不取料。多种产出取各缺口所需份数的最大值。
 
-每 tick 先准备各配方输入，再合并配方和组件供给并应用本机上限，检查全部组件所需的本机资源与 FE。组件成功则扣去其占用；失败则保留配方供给。最终只输出外部资源。材料、组件 FE 和提供结果共同提交；没有取得并发准入时释放预留，不先付费。同一加载代、同一服务器 tick 的重复发布不重复支付。组成变化会更新供给，已支付配方保留当 tick 结果，新增组件从下一 tick 开始支付与提供。
+材料不足时尽量消耗已有的完整份数，即使最终组件仍不能工作，也提交这些材料。多输入的一份必须全部凑齐；不足一份的余料视为不存在，不消耗、不按比例产出。转换产出仅供本机组件消耗，剩余量不进入网络、不跨tick保存；资源类型即使声明为外部资源，也不能通过转换直接对外供给。资格条件不满足时不执行该转换。
+
+每tick先取得组件及事件调整后的资源、并发和需求，再应用控制器上限并按需转换材料。全部组件需求和FE满足时输出组件的剩余外部资源；不足时全部组件供给归零，组件FE不扣。材料预留、组件FE和结果共同提交；没有取得并发准入时全部释放。同一服务器tick的重复网络发布不重复支付。组件组成变化通过既有监听器重建。
+
+`ComputerInputRecipe(id, revision, duration, inputs, callback)` 声明另一种纯输入配方，使用普通 `RecipeProcess` 的时长、START/TICK/END阶段、等待和保存机制。通过 `MachineType.Builder.computerInputRecipe(...)` 添加，ZS同名方法。START和TICK使用普通资源或FE需求，END一次输入用 `ComputerInputRecipe.endInput(requirement)`，传入只声明START支付的普通需求。普通模糊材料、来源分配及自定义输入系统沿原API使用；自定义需求必须只产生输入效果。
+
+每个定义在本机运行一个进程，共用计算机已取得的1份并发。有纯输入配方时控制器才执行所属线程tick。事件携带计算机、进程、阶段、同队网络快照和可写资源值，没有固定输出字段。阶段失败时撤回本阶段的资源修改；此前成功阶段和已支付START不会重付。工作tick先从安装组件恢复基础值，阶段回调的资源修改用于下一服务器tick的供给结算，未继续工作时不重复沿用旧效果。组件停供不会取消纯输入进程。
+
+事件、能耗调整与Java/ZS示例见[网络设备事件](network-events.md)。
 
 ## 并发优先级
 
@@ -73,7 +81,7 @@ import mods.prototype_eng.resource.ComputingResources;
 var compute = ComputingResource.network("example:compute", "example.resource.compute", "%.2f FLOP/t");
 var cooling = ComputingResource.computer("example:cooling", "example.resource.cooling", "%.1f CU/t");
 var coolingRecipe = ComputerRecipe.create("example:cooling_recipe",
-    [Resource.fluid(<liquid:water>, 1000)], ComputingResources.create().add(cooling, 1000));
+    [Resource.fluid(<liquid:water>, 1)], ComputingResources.create().add(cooling, 1));
 MachineType.computer("example:computer", "example.computer", "example:computer_shape", 8,
     ComputingResources.create().add(compute, 1000), [coolingRecipe])
     .register("computer-v1");
@@ -81,12 +89,12 @@ MachineType.computer("example:computer", "example.computer", "example:computer_s
 
 机器声明放在preinit；资源无需注册，同一资源在所有定义中复用同一对象。跨loader通过Bindings或Java包装器共享单例。组件Item实现来自Java。
 
-完整 Java 示例为 `run/visual-examples/src/main/java/pe/visual/examples/ComputerExamples.java`：`java_computer` 左侧一个四级运算仓、后方能源输入仓；`computer_card` 提供8 并发/1000 COMPUTE，需要1000内部冷却和32 FE。每 tick 1000 mB 水产生1000冷却；控制器上限8 并发/1000 COMPUTE。ZS 的 `net_computer` 使用相同结构及 `net_computer_card`，提供 run 的 net_compute 资源。放入组件后经外部管道或手动填水、向能源仓供能；中心必须先提供启动并发。
+完整 Java 示例为 `run/visual-examples/src/main/java/pe/visual/examples/ComputerExamples.java`：`java_computer` 左侧一个四级运算仓、后方能源输入仓；`computer_card` 提供8 并发/1000 COMPUTE，需要1000内部冷却和32 FE。每1 mB水换1冷却，按缺口消耗；控制器上限8 并发/1000 COMPUTE。ZS 的 `net_computer` 使用相同结构及 `net_computer_card`，提供 run 的 net_compute 资源。放入组件后经外部管道或手动填水、向能源仓供能；中心必须先提供启动并发。
 
 ## 计算机界面
 
-默认ComputerController.DEVICE自动使用384×242的无背包界面，预览见[computer.html](previews/computer.html)。AE2Button切换概览、组件与供给配方。概览展示已结算的并发、资源需求、FE实耗及外部供给；组件页选择查看每件需求和供给，配方页显示每tick输入、资源及运行状态。超出可见行使用AE滚动条，悬停查看完整内容。
+默认ComputerController.DEVICE自动使用384×242的无背包界面，预览见[computer.html](previews/computer.html)。AE2Button切换概览、组件与供给配方。概览展示已结算的并发、资源需求、FE实耗及外部供给；组件页选择查看每件需求和供给，配方页显示单位转换及纯输入配方；后者同步阶段输入、时长和进度。概览两栏等宽，资源名居左、数值居右，FE行紧跟需求资源。超出可见行使用AE滚动条，悬停查看完整内容。
 
-服务端在网络工作完成后的所属线程边界采集。组件固定定义随组成变化发送，配方固定定义首次发送，后续状态按索引增量更新，资源数量沿原double增量包。界面只读实际事务结果，禁止为显示重新执行配方条件、预留材料或消耗FE。
+服务端在网络工作完成后的所属线程边界采集。组件固定定义随组成变化发送，配方固定定义首次发送，后续状态和进度按索引增量更新，资源数量沿原double增量包。界面只读实际事务结果，禁止为显示重新执行配方条件、预留材料或消耗FE。
 
 Java自定义容器与screen继续使用MachineGuiRegistry和MachineScreenRegistry。NetworkComputer接口仍只暴露并发和外部资源。默认控制器显示读取方法必须在所属线程边界调用；返回的声明列表、状态数组与资源Map必须按只读方式使用。

@@ -552,7 +552,10 @@ public final class ResearchStations {
             this.hatches = hatches;
             var rates = new Reference2DoubleOpenHashMap<NetworkResourceType>();
             for (var station : stations) {
-                for (var entry : ((ResearchStation) station.machine()).researchRates().reference2DoubleEntrySet()) {
+                var network = station.machine().networkDevice();
+                var stationRates = network != null && network.networkValues() != null ? network.networkValues().researchRates
+                    : ((ResearchStation) station.machine()).researchRates();
+                for (var entry : stationRates.reference2DoubleEntrySet()) {
                     var resource = entry.getKey();
                     double rate = entry.getDoubleValue();
                     double before = rates.getDouble(resource);

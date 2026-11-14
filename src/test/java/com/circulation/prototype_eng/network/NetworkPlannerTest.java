@@ -88,11 +88,11 @@ class NetworkPlannerTest {
         assertEquals(NetworkWorkState.CENTER_LEVEL_INSUFFICIENT, plan.workStates().get(uuid(9)));
         assertEquals(NetworkWorkState.UNFORMED, plan.workStates().get(uuid(10)));
         assertEquals(NetworkWorkState.ACTIVE_DEVICE, plan.workStates().get(uuid(11)));
-        assertEquals(0, team.resourcesPerTick().getDouble(COMPUTE));
+        assertEquals(100, team.resourcesPerTick().getDouble(COMPUTE));
     }
 
     @Test
-    void sumsOnlySelectedCenterEligibleComputersAndCurrentTeamParticipantsBeforeOneModifierApplication() {
+    void sumsSelectedCenterEligibleDevicesAndCurrentTeamParticipantsBeforeOneModifierApplication() {
         var modifier = NetworkResourceModifier.builder().flat(COMPUTE, 3).multiplierPpm(COMPUTE, 500_000).build();
         var center = new NetworkDeviceSnapshot(identity(1), NetworkDeviceRole.NETWORK_CENTER, 2, true, 0,
             resources(2), modifier, 0, 0);
@@ -106,7 +106,7 @@ class NetworkPlannerTest {
         var contributions = List.of(new NetworkContribution(uuid(20), OWNER, 4, 1, resources(5)),
             new NetworkContribution(uuid(21), OTHER_OWNER, 4, 1, resources(1_000)));
         var plan = NetworkPlanner.plan(NetworkPlanner.capture(4, devices, contributions, teams()));
-        assertEquals(21, plan.teams().get("team").resourcesPerTick().getDouble(COMPUTE));
+        assertEquals(3_021, plan.teams().get("team").resourcesPerTick().getDouble(COMPUTE));
         assertEquals(uuid(6), plan.teams().get("team").dataCenterId());
         assertEquals(NetworkWorkState.ACTIVE_DATA_CENTER, plan.workStates().get(uuid(6)));
         assertFalse(plan.teams().containsKey("other"));

@@ -26,6 +26,8 @@ public final class NetworkCenterResourceView {
             if ((entry.fields() & NetworkCenterResourcePacket.CAPACITY) != 0) row.capacity = entry.capacity();
             row.text = null;
             row.supplyText = null;
+            row.amountsText = null;
+            row.capacityText = null;
         }
         if (packet.full() || !packet.removed().isEmpty() || !packet.added().isEmpty()) {
             rows.clear();
@@ -44,6 +46,9 @@ public final class NetworkCenterResourceView {
         for (var row : rows) {
             row.text = null;
             row.supplyText = null;
+            row.amountsText = null;
+            row.capacityText = null;
+            row.name = null;
         }
     }
 
@@ -52,6 +57,7 @@ public final class NetworkCenterResourceView {
         private double occupied, capacity;
         private String text;
         private String supplyText;
+        private String amountsText, capacityText, name;
 
         private Row(NetworkResourceType resource, double occupied, double capacity) {
             this.resource = resource;
@@ -68,10 +74,28 @@ public final class NetworkCenterResourceView {
         }
 
         @SideOnly(Side.CLIENT)
+        public String name() {
+            if (name == null) name = resource.displayName();
+            return name;
+        }
+
+        @SideOnly(Side.CLIENT)
+        public String amountsText() {
+            if (amountsText == null) amountsText = resource.format(occupied) + " / " + resource.format(capacity);
+            return amountsText;
+        }
+
+        @SideOnly(Side.CLIENT)
         public String text() {
             if (text == null)
                 text = resource.displayName() + "：" + resource.format(occupied) + " / " + resource.format(capacity);
             return text;
+        }
+
+        @SideOnly(Side.CLIENT)
+        public String capacityText() {
+            if (capacityText == null) capacityText = resource.format(capacity);
+            return capacityText;
         }
 
         @SideOnly(Side.CLIENT)

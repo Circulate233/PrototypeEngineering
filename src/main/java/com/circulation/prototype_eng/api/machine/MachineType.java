@@ -18,6 +18,11 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.ToIntFunction;
+import java.util.function.Consumer;
+
+import com.circulation.prototype_eng.api.network.NetworkDeviceEvent;
+import com.circulation.prototype_eng.api.network.resource.ComputerInputRecipe;
+import com.circulation.prototype_eng.api.network.ComputerInputWork;
 
 /**
  * Published collections are read-only by contract; consumers must not modify them.
@@ -26,6 +31,8 @@ import java.util.function.ToIntFunction;
  * its resolved structure grants world, owner, scheduler or planned-execution authority.
  */
 public final class MachineType {
+    private final List<Consumer<NetworkDeviceEvent>> networkEvents;
+    private final List<ComputerInputRecipe> computerInputRecipes;
     private final ResourceLocation id;
     private final LocalizationEnum displayName;
     private final ResourceLocation structureId;
@@ -47,6 +54,8 @@ public final class MachineType {
     private final ToIntFunction<MachineInstance> controllerInventorySize;
 
     private MachineType(Builder builder) {
+        networkEvents = builder.networkEvents;
+        computerInputRecipes = builder.computerInputRecipes;
         id = builder.id;
         displayName = builder.displayName;
         structureId = builder.structureId;
@@ -67,6 +76,14 @@ public final class MachineType {
 
     public static Builder builder(ResourceLocation id, LocalizationEnum displayName, ResourceLocation structureId) {
         return new Builder(id, displayName, structureId);
+    }
+
+    public List<Consumer<NetworkDeviceEvent>> networkEvents() {
+        return networkEvents;
+    }
+
+    public List<ComputerInputRecipe> computerInputRecipes() {
+        return computerInputRecipes;
     }
 
     /**
@@ -156,6 +173,21 @@ public final class MachineType {
      * No component factory runs here, and no work-slot or recipe-scanning component is implicit.
      */
     public static final class Builder {
+        private final List<Consumer<NetworkDeviceEvent>> networkEvents = new ObjectArrayList<>();
+        private final List<ComputerInputRecipe> computerInputRecipes = new ObjectArrayList<>();
+
+        public Builder networkEvent(Consumer<NetworkDeviceEvent> listener) {
+            networkEvents.add(listener);
+            return this;
+        }
+
+        @SuppressWarnings("UnusedReturnValue")
+        public Builder computerInputRecipe(ComputerInputRecipe recipe) {
+            computerInputRecipes.add(recipe);
+            if (!components.containsKey(ComputerInputWork.TYPE.id())) component(ComputerInputWork.TYPE);
+            return this;
+        }
+
         private final ResourceLocation id;
         private final LocalizationEnum displayName;
         private final ResourceLocation structureId;

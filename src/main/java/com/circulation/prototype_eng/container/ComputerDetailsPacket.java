@@ -48,7 +48,11 @@ public record ComputerDetailsPacket(@Nullable List<Component> components, @Nulla
             var inputs = new ObjectArrayList<GenericStack>(inputCount);
             for (int input = 0; input < inputCount; input++)
                 inputs.add(Objects.requireNonNull(GenericStack.readBuffer(data)));
-            rows.add(new Recipe(id, inputs, readResources(data)));
+            var provided = readResources(data);
+            int duration = data.readVarInt();
+            var tickInputs = readStacks(data);
+            var endInputs = readStacks(data);
+            rows.add(new Recipe(id, inputs, provided, duration, tickInputs, endInputs));
         }
         return rows;
     }
@@ -63,7 +67,8 @@ public record ComputerDetailsPacket(@Nullable List<Component> components, @Nulla
     private static List<RecipeState> readStates(PacketBuffer data) {
         int count = data.readVarInt();
         var states = new ObjectArrayList<RecipeState>(count);
-        for (int index = 0; index < count; index++) states.add(new RecipeState(data.readVarInt(), data.readByte()));
+        for (int index = 0; index < count; index++)
+            states.add(new RecipeState(data.readVarInt(), data.readByte(), data.readDouble()));
         return states;
     }
 
@@ -90,13 +95,29 @@ public record ComputerDetailsPacket(@Nullable List<Component> components, @Nulla
                 data.writeVarInt(row.inputs.size());
                 for (var input : row.inputs) GenericStack.writeBuffer(input, data);
                 writeResources(data, row.provided);
+                data.writeVarInt(row.duration);
+                writeStacks(data, row.tickInputs);
+                writeStacks(data, row.endInputs);
             }
         }
         data.writeVarInt(changed.size());
         for (var state : changed) {
             data.writeVarInt(state.index);
             data.writeByte(state.state);
+            data.writeDouble(state.progress);
         }
+    }
+
+    private static List<GenericStack> readStacks(PacketBuffer data) {
+        int count = data.readVarInt();
+        var stacks = new ObjectArrayList<GenericStack>(count);
+        for (int index = 0; index < count; index++) stacks.add(Objects.requireNonNull(GenericStack.readBuffer(data)));
+        return stacks;
+    }
+
+    private static void writeStacks(PacketBuffer data, List<GenericStack> stacks) {
+        data.writeVarInt(stacks.size());
+        for (var stack : stacks) GenericStack.writeBuffer(stack, data);
     }
 
     private static void writeResources(PacketBuffer data, Reference2DoubleMap<NetworkResourceType> resources) {
@@ -113,9 +134,10 @@ public record ComputerDetailsPacket(@Nullable List<Component> components, @Nulla
     }
 
     public record Recipe(ResourceLocation id, List<GenericStack> inputs,
-                         Reference2DoubleMap<NetworkResourceType> provided) {
+                         Reference2DoubleMap<NetworkResourceType> provided, int duration, List<GenericStack> tickInputs,
+                         List<GenericStack> endInputs) {
     }
 
-    public record RecipeState(int index, byte state) {
+    public record RecipeState(int index, byte state, double progress) {
     }
 }

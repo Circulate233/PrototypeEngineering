@@ -12,6 +12,10 @@ import com.circulation.prototype_eng.api.machine.MachineTypeRegistrationEvent;
 import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
 import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
 import com.circulation.prototype_eng.api.network.resource.ComputerRecipe;
+import com.circulation.prototype_eng.api.network.resource.ComputerInputRecipe;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
+import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponent;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.structure.StructureDefinitions;
@@ -48,6 +52,7 @@ import java.util.Objects;
 public final class ComputerExamples {
     private static final ResourceLocation ID = id("java_computer");
     private static final ResourceLocation SHAPE = id("java_computer_shape");
+    private static final ResourceLocation EFFICIENCY_DEVICE = id("net_demo_database");
     public static final NetworkResourceType COOLING = ExampleResources.COOLING;
 
     private ComputerExamples() {
@@ -84,8 +89,21 @@ public final class ComputerExamples {
 
     @SubscribeEvent
     public static void machines(MachineTypeRegistrationEvent event) {
+        var water = AEFluidKey.of(new FluidStack(FluidRegistry.WATER, 1));
+        var maintenance = new ComputerInputRecipe(id("java_maintenance"), "v1", 20,
+            List.of(RecipeRequirements.RESOURCES.requirement(id("maintenance_input"), new ResourceRequirement(
+                    List.of(new GenericStack(water, 10)), List.of(new GenericStack(water, 1)), List.of(), List.of(), false)),
+                ComputerInputRecipe.endInput(RecipeRequirements.RESOURCES.requirement(id("maintenance_end"),
+                    new ResourceRequirement(List.of(new GenericStack(water, 5)), List.of())))), eventData -> {
+            if (eventData.stage() == RecipeStage.TICK)
+                eventData.values().required.put(COOLING, eventData.values().required.getDouble(COOLING) * 0.9);
+        });
         event.registry().register(MachineType.builder(ID, Text.NAME, SHAPE).component(MachineOwnership.TYPE)
-                                             .component(ComputerController.COMPONENTS).component(ComputerController.DEVICE).build());
+                                             .component(ComputerController.COMPONENTS).component(ComputerController.DEVICE).computerInputRecipe(maintenance)
+                                             .networkEvent(eventData -> {
+                                                 if (eventData.network().hasDevice(EFFICIENCY_DEVICE))
+                                                     eventData.values().energyMultiplier = 0.9;
+                                             }).build());
     }
 
     @SubscribeEvent
@@ -98,9 +116,9 @@ public final class ComputerExamples {
         event.structure(StructureDefinitions.template(SHAPE, BlockOrientation.NORTH_UP, BlockPos.ORIGIN,
             false, new StructurePattern(cells), List.of(), List.of()));
         var cooling = new ComputerRecipe(id("java_cooling"), List.of(new GenericStack(
-            AEFluidKey.of(new FluidStack(FluidRegistry.WATER, 1_000)), 1_000)), Reference2DoubleMaps.singleton(COOLING, 1_000));
+            AEFluidKey.of(new FluidStack(FluidRegistry.WATER, 1)), 1)), Reference2DoubleMaps.singleton(COOLING, 1));
         var recipes = List.of(cooling);
-        event.assembly(MachineAssembly.builder(Objects.requireNonNull(event.registry().get(ID)), "computer-v1")
+        event.assembly(MachineAssembly.builder(Objects.requireNonNull(event.registry().get(ID)), "computer-v2")
                                       .instanceFactory(type -> new ComputerController(type, 8, Reference2DoubleMaps.singleton(ExampleResources.COMPUTE, 1_000), recipes))
                                       .computerRecipes(recipes)
                                       .recreated(ComputerController.COMPONENTS, ComputerController.DEVICE).build());

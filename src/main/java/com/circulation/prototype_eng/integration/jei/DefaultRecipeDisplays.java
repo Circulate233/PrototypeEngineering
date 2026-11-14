@@ -4,6 +4,7 @@ import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay;
 import com.circulation.prototype_eng.api.client.jei.RecipeJeiDisplays;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.network.resource.ComputerInputRecipe;
 import com.circulation.prototype_eng.api.recipe.requirement.AttributeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.CheckpointRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
@@ -42,14 +43,20 @@ public class DefaultRecipeDisplays {
 
     private static void describe(MachineRecipe recipe, RecipeRequirement<?> requirement,
                                  JeiRecipeDisplay.Builder display, RecipeJeiDisplays extensions) {
+        describe(recipe, requirement, display, extensions, JeiText.Start);
+    }
+
+    private static void describe(MachineRecipe recipe, RecipeRequirement<?> requirement,
+                                 JeiRecipeDisplay.Builder display, RecipeJeiDisplays extensions, JeiText inputStage) {
         if (extensions.describeCustom(recipe, requirement, display)) {
             return;
         }
-        // Exact built-in type identity is essential: an addon can use the same payload differently.
         if (requirement.type() == RecipeRequirements.RESOURCES) {
-            resources(requirement, (ResourceRequirement) requirement.payload(), display);
+            resources(requirement, (ResourceRequirement) requirement.payload(), display, inputStage);
         } else if (requirement.type() == RecipeRequirements.ENERGY) {
-            energy((EnergyRequirement) requirement.payload(), display);
+            energy((EnergyRequirement) requirement.payload(), display, inputStage);
+        } else if (requirement.type() == ComputerInputRecipe.END_INPUT) {
+            describe(recipe, (RecipeRequirement<?>) requirement.payload(), display, extensions, JeiText.End);
         } else if (requirement.type() == RecipeRequirements.CHECKPOINT) {
             var checkpoint = (CheckpointRequirement) requirement.payload();
             var nested = display.scoped(of(checkpoint.scaleWithProcess() ? JeiText.CheckpointScaled : JeiText.CheckpointUnscaled,
@@ -67,7 +74,7 @@ public class DefaultRecipeDisplays {
                 if (!selective.modifiers().isEmpty()) {
                     nested = nested.scoped(of(JeiText.Modifiers));
                 }
-                describe(recipe, selective.candidates().get(i), nested, extensions);
+                describe(recipe, selective.candidates().get(i), nested, extensions, inputStage);
                 var candidate = nested.build();
                 appendAlternative(display, candidate, INPUT, inputs, requirement.id().toString());
                 appendAlternative(display, candidate, OUTPUT, outputs, requirement.id().toString());
@@ -114,14 +121,14 @@ public class DefaultRecipeDisplays {
         }
     }
 
-    private static void resources(RecipeRequirement<?> requirement, ResourceRequirement resource, JeiRecipeDisplay.Builder display) {
+    private static void resources(RecipeRequirement<?> requirement, ResourceRequirement resource, JeiRecipeDisplay.Builder display, JeiText inputStage) {
         var declared = display.chance(resource.chance().percent(), resource.chance().attribute() != null)
                               .scoped(of(JeiText.Chance, resource.chance().percent()));
         if (resource.chance().attribute() != null) {
             declared = declared.scoped(of(JeiText.ChanceAttribute, resource.chance().attribute()));
         }
         for (var stack : resource.inputs()) {
-            declared.resource(stack, INPUT, of(JeiText.Start));
+            declared.resource(stack, INPUT, of(inputStage));
         }
         for (var stack : resource.inputsPerTick()) {
             declared.resource(stack, INPUT, of(JeiText.Tick));
@@ -141,7 +148,7 @@ public class DefaultRecipeDisplays {
             }
             var alternatives = declared.candidates(new JeiRecipeDisplay.CandidateGroup(groupId));
             for (var key : group.candidates()) {
-                alternatives.resource(new GenericStack(key, group.amount()), INPUT, of(JeiText.Start), of(JeiText.Fuzzy, groupId));
+                alternatives.resource(new GenericStack(key, group.amount()), INPUT, of(inputStage), of(JeiText.Fuzzy, groupId));
             }
         }
         groupIndex = 0;
@@ -152,7 +159,7 @@ public class DefaultRecipeDisplays {
             dynamic.information(of(JeiText.Consume, group.amount()));
             // Only explicitly supplied examples are indexed; pattern and callbacks are not inferred outputs.
             for (var key : group.displayedCandidates()) {
-                dynamic.resource(new GenericStack(key, group.amount()), INPUT, of(JeiText.Start));
+                dynamic.resource(new GenericStack(key, group.amount()), INPUT, of(inputStage));
             }
         }
         var random = resource.randomOutputs();
@@ -165,8 +172,8 @@ public class DefaultRecipeDisplays {
         }
     }
 
-    private static void energy(EnergyRequirement energy, JeiRecipeDisplay.Builder display) {
-        energy(display, energy.input(), true, JeiText.Start);
+    private static void energy(EnergyRequirement energy, JeiRecipeDisplay.Builder display, JeiText inputStage) {
+        energy(inputStage == JeiText.End ? display.scoped(of(JeiText.End)) : display, energy.input(), true, inputStage);
         energy(display, energy.inputPerTick(), true, JeiText.Tick);
         var outputs = energy.voidExcessOutputs() ? display.scoped(of(JeiText.VoidExcess)) : display;
         energy(outputs, energy.outputPerTick(), false, JeiText.Tick);

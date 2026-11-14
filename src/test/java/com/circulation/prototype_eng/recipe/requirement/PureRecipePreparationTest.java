@@ -6,6 +6,9 @@ import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.energy.EnergyInput;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
+import com.circulation.prototype_eng.api.network.NetworkResourceState;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import com.circulation.prototype_eng.api.machine.attribute.AttributeModifier;
 import com.circulation.prototype_eng.api.machine.attribute.NumericAttributeModifier;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
@@ -113,6 +116,32 @@ class PureRecipePreparationTest {
 
     private static RecipeRequirement<ResourceRequirement> resource(String name, List<GenericStack> inputs, List<GenericStack> outputs) {
         return RecipeRequirements.RESOURCES.requirement(id(name), new ResourceRequirement(inputs, outputs));
+    }
+
+    @Test
+    void networkEnergyMultiplierChargesInputsInSynchronousAndPlannedExecution() {
+        for (boolean planned : new boolean[]{false, true}) {
+            var input = new EnergyBuffer(100, () -> {
+            });
+            var output = new EnergyBuffer(100, () -> {
+            });
+            input.receiveEnergy(18, Actionable.MODULATE);
+            var slots = host();
+            slots.owner().components().put(MachineHatches.TYPE, new MachineHatches(List.of(), List.of(input), List.of(output)));
+            var values = new NetworkResourceState(Reference2DoubleMaps.emptyMap(), Reference2DoubleMaps.emptyMap(), 0);
+            values.energyMultiplier = 0.9;
+            MachineNetworkDevice.DEFAULT.create(slots.owner()).networkValues(values);
+            var process = process(slots, 1, RecipeRequirements.ENERGY.requirement(id("discounted_energy"),
+                new EnergyRequirement(10, 10, 0, 8, false)));
+            if (planned) {
+                try (var backend = new Backend()) {
+                    finish(new PlannedRecipeCoordinator(backend.tasks, List.of(slots), deadline(), new PlannedCancellationToken(), () -> true));
+                }
+            } else process.tick();
+            assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
+            assertEquals(0, input.storedEnergy());
+            assertEquals(8, output.storedEnergy());
+        }
     }
 
     @Test

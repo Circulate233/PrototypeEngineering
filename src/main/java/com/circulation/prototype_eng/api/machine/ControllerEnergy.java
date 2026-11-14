@@ -20,7 +20,7 @@ public final class ControllerEnergy {
     private long paidTick = Long.MIN_VALUE;
 
     public boolean canPay(MachineInstance machine, long tick) {
-        long remaining = machine.energyPerTick();
+        long remaining = machine.networkEnergy(machine.energyPerTick());
         if (remaining == 0 || paidTick == tick) return true;
         var visited = new ReferenceOpenHashSet<StorageContext>();
         for (var source : MachineHatches.get(machine).energyInputs()) {
@@ -49,6 +49,7 @@ public final class ControllerEnergy {
      * Explicit nonnegative subsystem cost; the machine itself need not have an upkeep fee.
      */
     public @Nullable Payment reserve(MachineInstance machine, long tick, long remaining) {
+        remaining = machine.networkEnergy(remaining);
         if (remaining == 0 || paidTick == tick) return Payment.FREE;
         var tokens = new ObjectArrayList<ResourceReservation>();
         var visited = new ReferenceOpenHashSet<StorageContext>();

@@ -36,6 +36,32 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
     private final ComponentType<MachineInstance, MachineNetworkDevice> boundType;
     @Nullable
     private NetworkRuntime.Registration registration;
+    private NetworkData networkData;
+    private NetworkResourceState networkValues;
+
+    public NetworkData networkData() {
+        return networkData;
+    }
+
+    public void networkData(NetworkData data) {
+        networkData = data;
+    }
+
+    public void networkValues(NetworkResourceState values) {
+        networkValues = values;
+    }
+
+    public NetworkResourceState networkValues() {
+        return networkValues;
+    }
+
+    public long energyCost(long amount) {
+        return networkValues == null ? amount : NetworkResourceState.energy(amount, networkValues.energyMultiplier);
+    }
+
+    public double energyMultiplier() {
+        return networkValues == null ? 1 : networkValues.energyMultiplier;
+    }
 
     private MachineNetworkDevice(MachineInstance owner, ComponentType<MachineInstance, MachineNetworkDevice> boundType,
                                  ComponentType<MachineInstance, MachineOwnership> ownership,

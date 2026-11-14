@@ -17,6 +17,17 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleHost;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
 import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
 import com.circulation.prototype_eng.api.network.MachineComputerComponents;
+import com.circulation.prototype_eng.api.network.ComputerInputWork;
+import com.circulation.prototype_eng.api.network.NetworkDeviceEvent;
+import com.circulation.prototype_eng.api.network.resource.ComputerInputRecipe;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
+import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
+import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
+
+import java.util.function.Consumer;
+
 import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
 import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
@@ -56,6 +67,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ComputerControllerTest {
@@ -78,7 +90,7 @@ class ComputerControllerTest {
             var supply = fixture.computer.providedResources();
             assertEquals(4, fixture.computer.providedConcurrency());
             assertEquals(600, supply.getDouble(ComputingResourceFixtures.COMPUTE));
-            assertEquals(7, supply.getDouble(ComputingResourceFixtures.QUBIT));
+            assertEquals(0, supply.getDouble(ComputingResourceFixtures.QUBIT));
             assertFalse(supply.containsKey(COOLING));
             assertEquals(3_000, fixture.hatch.buffer.amount(WATER));
             assertEquals(0, fixture.power.storedEnergy());
@@ -102,24 +114,25 @@ class ComputerControllerTest {
             assertTrue(fixture.network.refresh());
             assertEquals(0, fixture.computer.providedConcurrency());
             assertEquals(0, fixture.computer.providedResources().getDouble(ComputingResourceFixtures.COMPUTE));
-            assertEquals(7, fixture.computer.providedResources().getDouble(ComputingResourceFixtures.QUBIT));
+            assertEquals(0, fixture.computer.providedResources().getDouble(ComputingResourceFixtures.QUBIT));
             assertEquals(2_000, fixture.hatch.buffer.amount(WATER));
             assertEquals(ComputerController.SupplyState.ENERGY_SHORTAGE, fixture.computer.supplyState());
             assertEquals(0, fixture.computer.energyPaid());
             assertEquals(0, fixture.power.storedEnergy());
             assertEquals(NetworkTeamBudget.LeaseStatus.INSUFFICIENT_CAPACITY, fixture.client(0).requestLease());
 
+            fixture.hatch.buffer.extract(WATER, 500, Actionable.MODULATE);
             fixture.hatch.install(2);
             fixture.power.receiveEnergy(100, Actionable.MODULATE);
             fixture.nextTick();
             assertTrue(fixture.network.refresh());
             assertEquals(0, fixture.computer.providedResources().getDouble(ComputingResourceFixtures.COMPUTE));
-            assertEquals(7, fixture.computer.providedResources().getDouble(ComputingResourceFixtures.QUBIT));
+            assertEquals(0, fixture.computer.providedResources().getDouble(ComputingResourceFixtures.QUBIT));
             assertEquals(100, fixture.power.storedEnergy(), "All component costs fail together when cooling cannot cover both cards");
-            assertEquals(1_000, fixture.hatch.buffer.amount(WATER));
+            assertEquals(0, fixture.hatch.buffer.amount(WATER));
             assertEquals(ComputerController.SupplyState.RESOURCE_SHORTAGE, fixture.computer.supplyState());
             assertEquals(2_000, fixture.computer.installedInventory().requiredResources().getDouble(COOLING));
-            assertEquals(1_000, fixture.computer.availableForComponents(COOLING));
+            assertEquals(1_500, fixture.computer.availableForComponents(COOLING));
         }
     }
 
@@ -178,6 +191,109 @@ class ComputerControllerTest {
         }
     }
 
+    private static ComputerRecipe conversion(long unit) {
+        return new ComputerRecipe(id("cooling_" + unit), List.of(new GenericStack(WATER, unit)), Reference2DoubleMaps.singleton(COOLING, unit));
+    }
+
+    @Test
+    void roundedConversionsConsumeDemandAndNeverRunWithoutDemand() {
+        try (var fixture = new Fixture(1, List.of(conversion(3)), List.of(), event -> {
+            if (event.values().required.containsKey(COOLING)) event.values().required.put(COOLING, 2_500);
+        })) {
+            fixture.hatch.install(1);
+            fixture.hatch.buffer.insert(WATER, 3_000, Actionable.MODULATE);
+            fixture.power.receiveEnergy(100, Actionable.MODULATE);
+            assertTrue(fixture.network.refresh());
+            assertEquals(498, fixture.hatch.buffer.amount(WATER));
+            assertEquals(2_502, fixture.computer.availableForComponents(COOLING));
+            fixture.hatch.buffer.extract(WATER, 496, Actionable.MODULATE);
+            fixture.nextTick();
+            assertTrue(fixture.network.refresh());
+            assertEquals(2, fixture.hatch.buffer.amount(WATER));
+            assertEquals(0, fixture.computer.availableForComponents(COOLING));
+            fixture.hatch.install(0);
+            fixture.nextTick();
+            assertTrue(fixture.network.refresh());
+            assertEquals(2, fixture.hatch.buffer.amount(WATER));
+        }
+    }
+
+    @Test
+    void alternativeConversionsCombineAvailableWholeUnits() {
+        var lava = ComputerSupplyFixtures.key("lava");
+        var alternative = new ComputerRecipe(id("lava"), List.of(new GenericStack(lava, 1)), Reference2DoubleMaps.singleton(COOLING, 2));
+        try (var fixture = new Fixture(1, List.of(conversion(1), alternative), List.of(), _ -> {
+        })) {
+            fixture.hatch.install(1);
+            fixture.hatch.buffer.insert(WATER, 600, Actionable.MODULATE);
+            fixture.hatch.buffer.insert(lava, 200, Actionable.MODULATE);
+            fixture.power.receiveEnergy(100, Actionable.MODULATE);
+            assertTrue(fixture.network.refresh());
+            assertEquals(0, fixture.hatch.buffer.amount(WATER));
+            assertEquals(0, fixture.hatch.buffer.amount(lava));
+            assertEquals(1_000, fixture.computer.availableForComponents(COOLING));
+            assertEquals(ComputerController.RECIPE_PARTIAL, fixture.computer.recipeStates()[0]);
+            assertEquals(ComputerController.RECIPE_ACTIVE, fixture.computer.recipeStates()[1]);
+            assertEquals(ComputerController.SupplyState.ACTIVE, fixture.computer.supplyState());
+        }
+    }
+
+    @Test
+    void networkEventReadsDevicesAndChangesTheActualComponentPayment() {
+        try (var fixture = new Fixture(1, List.of(conversion(1)), List.of(), event -> {
+            if (event.network().hasDevice(id("device"))) event.values().energyMultiplier *= 0.9;
+        })) {
+            fixture.hatch.install(1);
+            fixture.hatch.buffer.insert(WATER, 1_000, Actionable.MODULATE);
+            fixture.power.receiveEnergy(9, Actionable.MODULATE);
+            assertTrue(fixture.network.refresh());
+            assertEquals(9, fixture.computer.energyPaid());
+            assertEquals(0, fixture.power.storedEnergy());
+            assertEquals(ComputerController.SupplyState.ACTIVE, fixture.computer.supplyState());
+        }
+    }
+
+    @Test
+    void inputRecipeRetainsStartAcrossReloadAndWaitsForEndInput() {
+        var input = RecipeRequirements.RESOURCES.requirement(id("input"), new ResourceRequirement(
+            List.of(new GenericStack(WATER, 10)), List.of(new GenericStack(WATER, 2)), List.of(), List.of(), false));
+        var end = ComputerInputRecipe.endInput(RecipeRequirements.RESOURCES.requirement(id("end"),
+            new ResourceRequirement(List.of(new GenericStack(WATER, 5)), List.of())));
+        var recipe = new ComputerInputRecipe(id("input_recipe"), "v1", 2, List.of(input, end), event ->
+            event.values().resources.addTo(ComputingResourceFixtures.COMPUTE, event.stage() == RecipeStage.END ? 100 : 10));
+        try (var fixture = new Fixture(2, List.of(), List.of(recipe), _ -> {
+        })) {
+            assertTrue(fixture.network.refresh());
+            fixture.runInputRecipes();
+            assertEquals(0, Objects.requireNonNull(fixture.computer.components().get(ComputerInputWork.TYPE))
+                                   .effects().resources.getDouble(ComputingResourceFixtures.COMPUTE));
+            fixture.hatch.buffer.insert(WATER, 14, Actionable.MODULATE);
+            fixture.nextTick();
+            assertTrue(fixture.network.refresh());
+            fixture.runInputRecipes();
+            assertEquals(2, fixture.hatch.buffer.amount(WATER));
+            var work = Objects.requireNonNull(fixture.computer.components().get(ComputerInputWork.TYPE));
+            assertEquals(1, work.process(0).state().progress());
+            assertEquals(20, work.effects().resources.getDouble(ComputingResourceFixtures.COMPUTE));
+            fixture.reload();
+            fixture.nextTick();
+            assertTrue(fixture.network.refresh());
+            fixture.runInputRecipes();
+            work = Objects.requireNonNull(fixture.computer.components().get(ComputerInputWork.TYPE));
+            assertEquals(0, fixture.hatch.buffer.amount(WATER));
+            assertInstanceOf(ProcessResult.Blocked.class, work.process(0).state().result());
+            assertEquals(2, work.process(0).state().progress());
+            assertEquals(10, work.effects().resources.getDouble(ComputingResourceFixtures.COMPUTE));
+            fixture.hatch.buffer.insert(WATER, 5, Actionable.MODULATE);
+            fixture.nextTick();
+            assertTrue(fixture.network.refresh());
+            fixture.runInputRecipes();
+            assertEquals(0, fixture.hatch.buffer.amount(WATER));
+            assertEquals(RecipeProcess.Lifecycle.COMPLETED, work.process(0).state().lifecycle());
+            assertEquals(100, work.effects().resources.getDouble(ComputingResourceFixtures.COMPUTE));
+        }
+    }
+
     private static final class Hatch implements ComputationHatch {
         private final ObjectArrayList<Runnable> listeners = new ObjectArrayList<>();
         private final SlottedResourceBuffer buffer = new SlottedResourceBuffer(4,
@@ -185,7 +301,7 @@ class ComputerControllerTest {
         });
 
         private void install(int count) {
-            assertTrue(buffer.tryReplaceSlot(0, buffer.getStack(0), new GenericStack(CARD, count)));
+            assertTrue(buffer.tryReplaceSlot(0, buffer.getStack(0), count == 0 ? null : new GenericStack(CARD, count)));
             listeners.forEach(Runnable::run);
         }
 
@@ -217,7 +333,8 @@ class ComputerControllerTest {
         private final Hatch hatch = new Hatch();
         private final EnergyBuffer power = new EnergyBuffer(1_000, () -> {
         });
-        private final ComputerController computer;
+        private ComputerController computer;
+        private final MachineAssembly assembly;
         private final NetworkRuntime.Registration database;
         private final NetworkRuntime.Registration station;
         private final NetworkRuntime.Registration[] clients = new NetworkRuntime.Registration[4];
@@ -227,6 +344,12 @@ class ComputerControllerTest {
         private int captures;
 
         private Fixture(long centerThreads) {
+            this(centerThreads, List.of(conversion(1)), List.of(), _ -> {
+            });
+        }
+
+        private Fixture(long centerThreads, List<ComputerRecipe> conversions, List<ComputerInputRecipe> inputRecipes,
+                        Consumer<NetworkDeviceEvent> callback) {
             this.centerThreads = centerThreads;
             network = new NetworkRuntime(identities, owner -> OwnerTeamResolution.resolved(owner, "team",
                 OwnerTeamType.SERVER, ObjectSet.of(owner), Optional.empty()), () -> {
@@ -246,18 +369,15 @@ class ComputerControllerTest {
             var role = MachineNetworkDevice.capturedComponent(id("computer_role"), ownership,
                 (owner, identity) -> ((ComputerController) owner).networkCapture(identity), _ -> network);
             var type = MachineType.builder(id("computer"), GuiText.ResourceStorage, id("shape"))
-                                  .component(ownership).component(reader).component(role).build();
-            var recipeSupply = new Reference2DoubleOpenHashMap<NetworkResourceType>();
-            recipeSupply.put(COOLING, 1_000);
-            recipeSupply.put(ComputingResourceFixtures.QUBIT, 7);
-            var recipe = new ComputerRecipe(id("cooling_recipe"), List.of(new GenericStack(WATER, 1_000)), recipeSupply);
-            var assembly = MachineAssembly.builder(type, "v1").component(ownership, MachineOwnership.CODEC).recreated(reader, role)
-                                          .instanceFactory(value -> new ComputerController(value, 4, Reference2DoubleMaps.singleton(ComputingResourceFixtures.COMPUTE, 600), List.of(recipe)) {
-                                              @Override
-                                              protected MachineComputerComponents computerComponents() {
-                                                  return Objects.requireNonNull(components().get(reader));
-                                              }
-                                          }).build();
+                                  .component(ownership).component(reader).component(role).networkEvent(callback);
+            for (var recipe : inputRecipes) type.computerInputRecipe(recipe);
+            assembly = MachineAssembly.builder(type.build(), "v1").component(ownership, MachineOwnership.CODEC).recreated(reader, role)
+                                      .instanceFactory(value -> new ComputerController(value, 4, Reference2DoubleMaps.singleton(ComputingResourceFixtures.COMPUTE, 600), conversions) {
+                                          @Override
+                                          protected MachineComputerComponents computerComponents() {
+                                              return Objects.requireNonNull(components().get(reader));
+                                          }
+                                      }).build();
             computer = (ComputerController) assembly.create(new Host(), new MachineLifecycleRegistry());
             Objects.requireNonNull(computer.lifecycle()).form(new MachineHatches(List.of(hatch), List.of(power), List.of()));
             var center = identity(100);
@@ -275,6 +395,17 @@ class ComputerControllerTest {
                 clients[i] = network.register(device, () -> new NetworkRuntime.Capture(new NetworkDeviceSnapshot(device.identity(), NetworkDeviceRole.DEVICE,
                     0, true, device.loadOrder(), Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), () -> true));
             }
+        }
+
+        private void runInputRecipes() {
+            computer.components().tick(computer);
+        }
+
+        private void reload() {
+            var saved = assembly.encode(computer);
+            Objects.requireNonNull(computer.lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+            computer = (ComputerController) assembly.restore(new Host(), saved, new MachineLifecycleRegistry());
+            Objects.requireNonNull(computer.lifecycle()).form(new MachineHatches(List.of(hatch), List.of(power), List.of()));
         }
 
         private MachineIdentityRegistry.Registration identity(int value) {

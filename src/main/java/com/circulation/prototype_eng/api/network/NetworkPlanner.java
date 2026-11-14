@@ -145,7 +145,7 @@ public final class NetworkPlanner {
                     state = NetworkWorkState.ACTIVE_DEVICE;
                 }
                 states.put(device.identity().machineId(), state);
-                if (state == NetworkWorkState.ACTIVE_DEVICE && device.role() == NetworkDeviceRole.COMPUTER) {
+                if (state == NetworkWorkState.ACTIVE_DEVICE || state == NetworkWorkState.ACTIVE_DATA_CENTER) {
                     accumulate(totals, device.resourcesPerTick());
                     concurrency = Math.addExact(concurrency, device.concurrencyPerTick());
                 }

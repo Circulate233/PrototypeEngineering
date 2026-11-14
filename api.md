@@ -260,19 +260,23 @@ MachineAssembly.builder(type, "research-station-v1")
 
 默认 `ComputerController.DEVICE` 自动使用计算机专用的概览、组件和供给配方GUI，无需Java或ZS另行注册。自定义显示继续使用 `MachineGuiRegistry` 和 `MachineScreenRegistry`。`NetworkComputer` 接口只暴露并发和外部资源；默认控制器的 `installedInventory()`、`supplyRecipes()`、`supplyState()`、`recipeStates()`、`availableForComponents(resource)` 供所属线程边界读取，返回的列表、状态数组与资源Map必须保持只读，禁止跨提交周期保留状态数组。
 
-`NetworkComputer` 只暴露独立整数 `providedConcurrency()` 和R2D资源表 `providedResources()`。默认可继承 `ComputerController` 组合现有组件、材料事务和网络发布，无普通配方工位或独立业务tick，本体不耗FE。
+`NetworkComputer` 只暴露独立整数 `providedConcurrency()` 和R2D资源表 `providedResources()`。默认可继承 `ComputerController` 组合现有组件、材料事务和网络发布，无普通配方工位，本体不耗FE；声明纯输入配方时在所属线程执行普通配方进程。
 
 只从 `ComputationHatch` 读取安装组件，组成变化由事件通知，稳定时复用缓存。四级 `computation_hatch_1..4` 分别为1/2/3/4槽；每槽物品1件，非物品原生容量1000/4000/16000/64000。物品的 Item 必须实现 `NetworkComputerComponent`，非物品类型不限。共享库存接受外部插入/抽取，没有自动IO。
 
-组件返回 `new NetworkComputerComponent.Capture(provided, requiredResources, energyPerTick, currentProof)`。本机汇总所有组件的消耗，任何资源或 FE 不足时全部组件供给停摆；可运行的 `ComputerRecipe` 独立继续。`ComputerRecipe(id, inputsPerTick, provided)` 是每tick的供给配方，复用原资源需求的 TICK 事务支付一份输入，也可传只读资格条件。控制器可用 `installedComponents()` 取得安装身份与定义。
+组件返回 `new NetworkComputerComponent.Capture(concurrencyPerItem, provided, requiredResources, energyPerTick, currentProof)`。资源或FE不足时全部组件供给停摆，不扣组件FE。`ComputerRecipe(id, unitInputs, unitResources)` 按组件缺口向上取整计算所需份数；已有完整份数即使不足也支付，不满一份的余料不参与。转换仅供本机组件使用，不直接输出网络资源。`unitInputs()`、`unitResources()` 提供只读单位定义，`installedComponents()` 返回安装组件身份与定义。
+
+`ComputerInputRecipe(id, revision, duration, inputs, callback)` 通过 `.computerInputRecipe(recipe)` 接入普通START/TICK/END输入、时长、暂停与保存；END一次输入用静态 `endInput(requirement)` 包装只声明START支付的需求。事件直接修改资源、并发、需求和能耗倍率，没有固定输出定义。阶段成功结果用于下一服务器tick的供给结算。Java完整示例、ZS签名及保存规则见[网络设备事件](docs/network-events.md)。
 
 `NetworkResourceType.computer(id, name, pattern)` 或自定义internal资源声明本机资源，只在计算机内产生和占用，不进入队伍网络。具体控制器的并发/资源上限不构成类型固有限制。
 
-Java 装配必须用 `MachineAssembly.Builder.computerRecipes(recipes)` 提供控制器使用的同一份完整只读配方列表，后续不得修改；ZS 的 `MachineType.computer(...)` 自动保存。JEI 为计算机注册独立分类和控制器入口，显示每 tick 的 AE 材料输入、本机资源及网络资源供给。资源名称和 double 数量分别调用 `NetworkResourceType.displayName()`、`format(double)`，不注册计算资源为物料。`ComputerRecipe.materialRecipe()` 和 `inputsPerTick()` 提供材料定义；展示不创建运行实例或执行配方条件。
+Java 装配必须用 `MachineAssembly.Builder.computerRecipes(recipes)` 提供控制器使用的同一份完整只读配方列表，后续不得修改；ZS 的 `MachineType.computer(...)` 自动保存。JEI 为计算机注册独立分类和控制器入口，显示每单位AE材料输入及本机换算资源；纯输入定义从类型声明自动生成时长和阶段输入页面。资源名称和 double 数量分别调用 `NetworkResourceType.displayName()`、`format(double)`，不注册计算资源为物料。`ComputerRecipe.materialRecipe()` 和 `unitInputs()` 提供材料定义；展示不创建运行实例或执行配方条件。
 
 计算机启动须先取得中心或其他已获准设备提供的1份并发，不能用自己的待生效供给启动；活动数据库占用1份，研究站推进时申请，中心不占用。三类网络设备优先于普通设备，高优先级申请可收回普通租约并使其未提交凭据失效；同条件使用持久UUID，避免加载顺序决定结果。尚未获准的计算机只预留、不支付材料或组件FE。
 
-ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, recipes)`；供给配方用 `ComputerRecipe.create(id, Resource[] inputs, ComputingResources provided)`；资源用 `ComputingResource.network(id, translationKey, pattern)` / `.computer(...)`。自定义Java资源可经 `ZenComputingResource` 包装器交给脚本。计算机GUI已按获批三页预览实现，见[计算机](docs/computers.md)。
+ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, recipes)`；单位转换用 `ComputerRecipe.create(id, Resource[] unitInputs, ComputingResources unitResources)`；资源用 `ComputingResource.network(id, translationKey, pattern)` / `.computer(...)`。自定义Java资源可经 `ZenComputingResource` 包装器交给脚本。计算机GUI已按获批三页预览实现，见[计算机](docs/computers.md)。
+
+所有接网控制器支持 `MachineType.Builder.networkEvent(callback)`，Java全局事件用 `NetworkDeviceEvents.register(callback)`，ZS全局事件用 `Events.onDevice(callback)`。事件公开同队全部已加载设备快照，允许修改本设备资源、并发、研究站速率和FE输入倍率。完整调用顺序、快照范围、只读要求及禁止外部副作用的说明见[网络设备事件](docs/network-events.md)。
 
 默认数据库使用 `DataCenterController(type, storageComponent)`，`storageComponent` 是已声明的 `DataCenterStorage` 组件类型。等级、容量与内容由存储组件定义，控制器直接使用现有持久化、下载及自动升级能力，无配方工位或独立业务tick，并可继承。类型声明 `MachineOwnership.TYPE`、存储组件和 `DataCenter.DEVICE`；装配为存储配置codec，只将网络角色标为recreated。自定义控制器也可直接实现 `DataCenter`，通过 `dataCenterStorage()` 提供实际存储组件。活动数据库沿既有规则占1份优先并发，GUI继续延缓。Java/ZS完整入口见[默认数据库控制器](docs/data-centers.md#默认控制器2026-11-13)。
 

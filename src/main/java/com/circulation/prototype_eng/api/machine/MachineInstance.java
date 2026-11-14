@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.api.machine;
 
+import com.circulation.prototype_eng.api.network.NetworkDeviceEvent;
 import ae2.api.inventories.InternalInventory;
 import com.circulation.prototype_eng.ControllerConfig;
 import com.circulation.prototype_eng.api.component.ComponentMap;
@@ -106,6 +107,14 @@ public class MachineInstance implements PlannedMachineTask {
 
     public @Nullable MachineNetworkDevice networkDevice() {
         return networkDevice;
+    }
+
+    public void onNetworkEvent(NetworkDeviceEvent event) {
+        if (type != null) for (var callback : type.networkEvents()) callback.accept(event);
+    }
+
+    public long networkEnergy(long amount) {
+        return networkDevice == null ? amount : networkDevice.energyCost(amount);
     }
 
     /**

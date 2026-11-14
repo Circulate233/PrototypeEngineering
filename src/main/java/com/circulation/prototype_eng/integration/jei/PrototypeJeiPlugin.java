@@ -473,7 +473,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
         ExternalRecipePoolPages.reset();
         if (!deferPoolRegistration)
             bindPoolCategories(registration, pools, categoryDisplays, Set.of(), postInitialDeclaration);
-        computerRecipes = new ComputerRecipeJeiRegistration(registration);
+        computerRecipes = new ComputerRecipeJeiRegistration(registration, categoryDisplays);
         registration.addRecipeCategories(new StructurePreviewJeiCategory(helper));
     }
 

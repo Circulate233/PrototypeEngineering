@@ -2,9 +2,9 @@
 
 ## 2026-11-14 计算机供给配方
 
-计算机配方从 `MachineAssembly.computerRecipes()` 的已完成只读声明生成。Java 装配必须传入控制器使用的同一份列表，ZS 的 `MachineType.computer(...)` 自动绑定；禁止在 JEI 注册时创建机器实例、读取世界或执行配方资格条件。每种有供给配方的计算机获得独立分类，其控制器作为原生入口。
+计算机配方从 `MachineAssembly.computerRecipes()` 的已完成只读声明生成。Java 装配必须传入控制器使用的同一份列表，ZS 的 `MachineType.computer(...)` 自动绑定；禁止在 JEI 注册时创建机器实例、读取世界或执行配方资格条件。纯输入配方从 `MachineType.computerInputRecipes()` 自动生成普通时长及START/TICK/END输入页面，包含材料匹配和FE声明。每种有转换或纯输入配方的计算机获得独立分类，其控制器作为原生入口。
 
-页面复用 `AutoLayoutRecipePage` 的材料槽、完整换行说明与数量分页。AE 输入保留真实种类及 long 数量，tooltip 标注每 tick 消耗；内部和外部 double 供给通过资源的 `displayName()`、`format(double)` 显示在文字区，不把计算资源注册为材料。计算机 wrapper 与普通配方共用材料查询身份检查和显示代 token，重新发布目录时重建，撤销时同步隐藏。分类按固定装配声明重建，不跟随计算机运行状态增删配方。
+页面复用 `AutoLayoutRecipePage` 的材料槽、完整换行说明与数量分页。AE 输入保留真实种类及 long 数量，tooltip 标注单位输入；本机换算的 double 产出通过资源的 `displayName()`、`format(double)` 显示在文字区，不把计算资源注册为材料。计算机 wrapper 与普通配方共用材料查询身份检查和显示代 token，重新发布目录时重建，撤销时同步隐藏。分类按固定装配声明重建，不跟随计算机运行状态增删配方。
 
 ## 2026-11-12 单输入多输出与动态材料布局
 

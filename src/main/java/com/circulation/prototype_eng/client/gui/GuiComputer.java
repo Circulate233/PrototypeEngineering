@@ -11,7 +11,6 @@ import com.circulation.prototype_eng.api.network.NetworkWorkState;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.container.ComputerDetailsPacket;
 import com.circulation.prototype_eng.container.ContainerComputer;
-import com.circulation.prototype_eng.container.NetworkCenterResourceView;
 import com.circulation.prototype_eng.localization.ComputerGuiText;
 import com.circulation.prototype_eng.localization.NetworkCenterGuiText;
 import com.circulation.prototype_eng.localization.MachineGuiText;
@@ -24,6 +23,7 @@ import net.minecraft.util.ResourceLocation;
 import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
+
 import org.lwjgl.input.Mouse;
 
 public class GuiComputer extends AEBaseGui<ContainerComputer> {
@@ -45,12 +45,12 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         for (int index = 0; index < tabs.length; index++) {
             int target = index;
             tabs[index] = new AE2Button(0, 0, 117, 18, labels[index].text(), () -> selectPage(target));
-            widgets.add("page" + index, tabs[index], new Point(12 + index * 121, 96));
+            widgets.add("page" + index, tabs[index], new Point(12 + index * 121, 99));
         }
         listScroll.setPosition(new Point(359, 137));
         listScroll.setHeight(64);
-        demandScroll.setPosition(new Point(177, 151));
-        demandScroll.setHeight(39);
+        demandScroll.setPosition(new Point(176, 155));
+        demandScroll.setHeight(68);
         outputScroll.setPosition(new Point(359, 142));
         outputScroll.setHeight(78);
         listScroll.setCaptureMouseWheel(false);
@@ -81,8 +81,8 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         for (int index = 0; index < tabs.length; index++) tabs[index].setForceHighlighted(page == index);
         listScroll.setRange(0, Math.max(0, (page == 1 ? container.components.size() : container.recipes.size()) - 4), 1);
         listScroll.setVisible(page != 0 && (page == 1 ? container.components.size() : container.recipes.size()) > 4);
-        demandScroll.setRange(0, Math.max(0, container.demandView.rows().size() - 3), 1);
-        demandScroll.setVisible(page == 0 && container.demandView.rows().size() > 3);
+        demandScroll.setRange(0, Math.max(0, container.demandView.rows().size() + 2 - 4), 1);
+        demandScroll.setVisible(page == 0 && container.demandView.rows().size() + 2 > 4);
         outputScroll.setRange(0, Math.max(0, container.outputView.rows().size() - 6), 1);
         outputScroll.setVisible(page == 0 && container.outputView.rows().size() > 6);
         if (knownComponents != container.components) {
@@ -104,7 +104,19 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
                 var inputs = new ObjectArrayList<String>(row.inputs().size());
                 for (var input : row.inputs())
                     inputs.add(input.what().getDisplayName().getFormattedText() + " " + input.what().formatAmount(input.amount(), AmountFormat.FULL));
-                recipeText.add(new RecipeText(row.id().getPath(), String.join(", ", inputs), resources(row.provided())));
+                if (!row.tickInputs().isEmpty()) {
+                    var ticks = new ObjectArrayList<String>();
+                    for (var input : row.tickInputs())
+                        ticks.add(input.what().getDisplayName().getFormattedText() + " " + input.what().formatAmount(input.amount(), AmountFormat.FULL));
+                    inputs.add(ComputerGuiText.TickInputs.getLocal(String.join(", ", ticks)));
+                }
+                if (!row.endInputs().isEmpty()) {
+                    var ends = new ObjectArrayList<String>();
+                    for (var input : row.endInputs())
+                        ends.add(input.what().getDisplayName().getFormattedText() + " " + input.what().formatAmount(input.amount(), AmountFormat.FULL));
+                    inputs.add(ComputerGuiText.EndInputs.getLocal(String.join(", ", ends)));
+                }
+                recipeText.add(new RecipeText(row.id().getPath(), String.join(", ", inputs), row.duration() < 0 ? resources(row.provided()) : ""));
             }
             selectedRecipe = Math.clamp(selectedRecipe, 0, Math.max(0, recipeText.size() - 1));
         }
@@ -129,8 +141,8 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         GuiAtlas.draw(BACKGROUND, x, y, 0, 0, xSize, ySize, 384, 242);
         panel(x + 12, y + 36, 360, 31);
         if (page == 0) {
-            panel(x + 12, y + 118, 180, 112);
-            panel(x + 198, y + 118, 174, 112);
+            panel(x + 12, y + 121, 177, 109);
+            panel(x + 195, y + 121, 177, 109);
         } else {
             panel(x + 12, y + 118, 360, 112);
             int selected = page == 1 ? selectedComponent : selectedRecipe;
@@ -141,7 +153,7 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
                 Gui.drawRect(x + 19, y + 135 + row * 16, x + 355, y + 136 + row * 16, 0xff696d88);
         }
         if (listScroll.isVisible()) GuiAtlas.inset(x + 359, y + 137, 12, 64);
-        if (demandScroll.isVisible()) GuiAtlas.inset(x + 177, y + 151, 12, 39);
+        if (demandScroll.isVisible()) GuiAtlas.inset(x + 176, y + 155, 12, 68);
         if (outputScroll.isVisible()) GuiAtlas.inset(x + 359, y + 142, 12, 78);
     }
 
@@ -154,7 +166,7 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         int mouseY = height - Mouse.getEventY() * height / mc.displayHeight - 1;
         Scrollbar target = null;
         if (page != 0 && isPointInRegion(19, 136, 337, 64, mouseX, mouseY)) target = listScroll;
-        if (page == 0 && isPointInRegion(20, 151, 151, 39, mouseX, mouseY)) target = demandScroll;
+        if (page == 0 && isPointInRegion(20, 155, 151, 68, mouseX, mouseY)) target = demandScroll;
         if (page == 0 && isPointInRegion(206, 142, 147, 78, mouseX, mouseY)) target = outputScroll;
         if (target != null) target.setCurrentScroll(target.getCurrentScroll() - Integer.signum(delta));
     }
@@ -200,22 +212,39 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         else drawRecipes();
     }
 
+    private void pair(String name, String amount, int x, int y, int width, int color) {
+        int amountWidth = Math.min(fontRenderer.getStringWidth(amount), width * 3 / 4);
+        text(name, x, y, width - amountWidth - 5, TEXT);
+        GuiLabel.draw(fontRenderer, amount, x + width - amountWidth, y, amountWidth, 9, color, false);
+    }
+
     private void drawOverview() {
-        text(ComputerGuiText.ComponentResources.getLocal(), 20, 125, 164, TEXT);
-        text(ComputerGuiText.AvailableDemand.getLocal(), 20, 139, 164, TEXT);
+        text(ComputerGuiText.ComponentResources.getLocal(), 20, 129, 161, TEXT);
+        text(ComputerGuiText.AvailableDemand.getLocal(), 20, 143, 161, TEXT);
         var demands = container.demandView.rows();
-        int width = demands.size() > 3 ? 151 : 164;
-        for (int row = 0, offset = demandScroll.getCurrentScroll(); row < 3 && offset + row < demands.size(); row++) {
-            var value = demands.get(offset + row);
-            text(value.text(), 20, 154 + row * 13, width, value.occupied() < value.capacity() ? BAD : TEXT);
+        int width = demands.size() + 2 > 4 ? 150 : 161;
+        for (int row = 0, offset = demandScroll.getCurrentScroll(); row < 4 && offset + row < demands.size() + 2; row++) {
+            int index = offset + row, y = 160 + row * 17;
+            if (row > 0) Gui.drawRect(20, y - 4, 20 + width, y - 3, 0xff696d88);
+            if (index < demands.size()) {
+                var value = demands.get(index);
+                pair(value.name(), value.amountsText(), 20, y, width, value.occupied() < value.capacity() ? BAD : TEXT);
+            } else if (index == demands.size()) {
+                pair(ComputerGuiText.EnergyUse.getLocal(), GuiNumbers.grouped(container.energyPaid) + " / " + GuiNumbers.grouped(container.energyRequired),
+                    20, y, width, TEXT);
+            } else
+                pair(ComputerGuiText.EnergyAvailable.getLocal(), GuiNumbers.grouped(container.energyAvailable), 20, y, width, TEXT);
         }
-        text(ComputerGuiText.EnergyUse.getLocal(GuiNumbers.grouped(container.energyPaid), GuiNumbers.grouped(container.energyRequired)), 20, 200, 164, TEXT);
-        text(ComputerGuiText.EnergyAvailable.getLocal(GuiNumbers.grouped(container.energyAvailable)), 20, 215, 164, TEXT);
-        text(ComputerGuiText.OutputResources.getLocal(), 206, 125, 158, TEXT);
+        text(ComputerGuiText.OutputResources.getLocal(), 203, 129, 161, TEXT);
         var output = container.outputView.rows();
-        if (output.isEmpty()) text(NetworkCenterGuiText.NoResources.getLocal(), 216, 170, 140, TEXT);
-        for (int row = 0, offset = outputScroll.getCurrentScroll(); row < 6 && offset + row < output.size(); row++)
-            text(output.get(offset + row).supplyText(), 206, 145 + row * 13, output.size() > 6 ? 147 : 158, TEXT);
+        if (output.isEmpty())
+            GuiLabel.drawCentered(fontRenderer, NetworkCenterGuiText.NoResources.getLocal(), 203, 169, 161, 10, TEXT, false);
+        for (int row = 0, offset = outputScroll.getCurrentScroll(); row < 6 && offset + row < output.size(); row++) {
+            var value = output.get(offset + row);
+            int y = 148 + row * 13, outputWidth = output.size() > 6 ? 150 : 161;
+            if (row > 0) Gui.drawRect(203, y - 3, 203 + outputWidth, y - 2, 0xff696d88);
+            pair(value.name(), value.capacityText(), 203, y, outputWidth, TEXT);
+        }
     }
 
     private void drawComponents() {
@@ -247,22 +276,25 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
             case ComputerController.RECIPE_ACTIVE -> ComputerGuiText.RecipeRunning;
             case ComputerController.RECIPE_CONDITION -> ComputerGuiText.RecipeCondition;
             case ComputerController.RECIPE_INPUT -> ComputerGuiText.RecipeInput;
+            case ComputerController.RECIPE_PARTIAL -> ComputerGuiText.Partial;
+            case ComputerController.RECIPE_FAILED -> ComputerGuiText.Failed;
             case ComputerController.RECIPE_WAITING -> ComputerGuiText.RecipeWaiting;
-            default -> throw new IllegalStateException("Unknown computer recipe state: " + container.recipeStates[index]);
+            default ->
+                throw new IllegalStateException("Unknown computer recipe state: " + container.recipeStates[index]);
         };
     }
 
     private void drawRecipes() {
         text(ComputerGuiText.Recipe.getLocal(), 20, 123, 82, TEXT);
         text(ComputerGuiText.Inputs.getLocal(), 109, 123, 97, TEXT);
-        text(ComputerGuiText.Outputs.getLocal(), 210, 123, 96, TEXT);
+        text(ComputerGuiText.OutputsProgress.getLocal(), 210, 123, 96, TEXT);
         text(ComputerGuiText.State.getLocal(), 313, 123, 42, TEXT);
         for (int row = 0, offset = listScroll.getCurrentScroll(); row < 4 && offset + row < recipeText.size(); row++) {
             int index = offset + row, y = 140 + row * 16;
             var value = recipeText.get(index);
             text(value.name, 20, y, 82, TEXT);
             text(value.inputs, 109, y, 97, TEXT);
-            text(value.provided, 210, y, 96, TEXT);
+            text(container.recipes.get(index).duration() < 0 ? value.provided : GuiNumbers.grouped((long) container.recipeProgress[index]) + " / " + container.recipes.get(index).duration(), 210, y, 96, TEXT);
             text(recipeState(index).getLocal(), 313, y, 42, container.recipeStates[index] == ComputerController.RECIPE_ACTIVE ? GOOD : BAD);
         }
         if (recipeText.isEmpty()) text(ComputerGuiText.EmptyRecipes.getLocal(), 20, 145, 325, TEXT);
@@ -288,9 +320,13 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         super.drawScreen(mouseX, mouseY, partialTicks);
         List<String> tooltip = null;
         if (page == 0) {
-            tooltip = resourceTooltip(container.demandView.rows(), demandScroll, 20, 154, 164, 3, false, mouseX, mouseY);
+            if (isPointInRegion(20, 160, 161, 68, mouseX, mouseY)) {
+                int index = demandScroll.getCurrentScroll() + (mouseY - guiTop - 160) / 17;
+                if (index < container.demandView.rows().size())
+                    tooltip = List.of(container.demandView.rows().get(index).text());
+            }
             if (tooltip == null)
-                tooltip = resourceTooltip(container.outputView.rows(), outputScroll, 206, 145, 158, 6, true, mouseX, mouseY);
+                tooltip = outputTooltip(mouseX, mouseY);
         } else if (isPointInRegion(19, 136, 337, 64, mouseX, mouseY)) {
             int index = listScroll.getCurrentScroll() + (mouseY - guiTop - 136) / 16;
             if (page == 1 && index < componentText.size()) {
@@ -312,13 +348,11 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         if (tooltip != null) drawHoveringText(tooltip, mouseX, mouseY, fontRenderer);
     }
 
-    private List<String> resourceTooltip(List<NetworkCenterResourceView.Row> rows, Scrollbar scrollbar,
-                                         int x, int y, int width, int visible, boolean supply, int mouseX, int mouseY) {
-        if (!isPointInRegion(x, y, width, visible * 13, mouseX, mouseY)) return null;
-        int index = scrollbar.getCurrentScroll() + (mouseY - guiTop - y) / 13;
-        if (index >= rows.size()) return null;
-        var value = rows.get(index);
-        return List.of(supply ? value.supplyText() : value.text());
+    private List<String> outputTooltip(int mouseX, int mouseY) {
+        if (!isPointInRegion(203, 148, 161, 78, mouseX, mouseY)) return null;
+        int index = outputScroll.getCurrentScroll() + (mouseY - guiTop - 148) / 13;
+        var rows = container.outputView.rows();
+        return index < rows.size() ? List.of(rows.get(index).supplyText()) : null;
     }
 
     private record ComponentText(String name, String count, String concurrency, String energy, String required,

@@ -17,8 +17,8 @@ var empty = ComputingResources.create();
 MachineType.networkCenter("pe_run_tests:net_center", Text.NetCenter.key, "pe_run_tests:net_center_shape", 1, 4, 4)
     .register("network-center-v1");
 var cooling = Resources.cooling();
-var coolingRecipe = ComputerRecipe.create("pe_run_tests:cooling_recipe", [Resource.fluid(<liquid:water>, 1000)],
-    ComputingResources.create().add(cooling, 1000));
+var coolingRecipe = ComputerRecipe.create("pe_run_tests:cooling_recipe", [Resource.fluid(<liquid:water>, 1)],
+    ComputingResources.create().add(cooling, 1));
 MachineType.computer("pe_run_tests:net_computer", Text.NetComputer.key, "pe_run_tests:net_computer_shape", 8,
     ComputingResources.create().add(compute, 1000), [coolingRecipe]).register("computer-v1");
 MachineType.researchStation("pe_run_tests:net_station", Text.NetStation.key, "pe_run_tests:net_shape", 1,

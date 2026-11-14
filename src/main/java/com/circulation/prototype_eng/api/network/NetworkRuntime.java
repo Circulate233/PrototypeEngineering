@@ -1,6 +1,10 @@
 package com.circulation.prototype_eng.api.network;
 
 import com.circulation.prototype_eng.api.machine.ControllerEnergy;
+import com.circulation.prototype_eng.api.machine.ComputerController;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.research.station.ResearchStation;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
@@ -190,6 +194,7 @@ public final class NetworkRuntime implements AutoCloseable {
             var external = this.participants.capture(tick, epoch);
             var contributions = new ObjectArrayList<>(external.contributions);
             contributions.addAll(Objects.requireNonNull(participants.apply(epoch)));
+            prepareDeviceEvents(epoch, captures, devices, contributions);
             var states = new Reference2ObjectOpenHashMap<Registration, NetworkWorkState>(captures.size());
             NetworkPlan plan;
             while (true) {
@@ -225,9 +230,9 @@ public final class NetworkRuntime implements AutoCloseable {
                 var work = Objects.requireNonNull(capture.computerWork()).apply(tick);
                 computerWork.put(registration, work);
                 var snapshot = withResources(capture.snapshot(), work.concurrency(), work.resources());
-                devices.set(devices.indexOf(capture.snapshot()), snapshot);
                 captures.put(registration, new Capture(snapshot, capture.current(), capture.centerPower(), capture.computerWork()));
             }
+            updateDevices(devices, captures);
             var admission = admitServices(epoch, devices, captures, contributions, computerWork);
             plan = admission.plan();
             for (var entry : captures.reference2ObjectEntrySet()) {
@@ -310,6 +315,51 @@ public final class NetworkRuntime implements AutoCloseable {
         }
     }
 
+    private void prepareDeviceEvents(long epoch, Reference2ObjectOpenHashMap<Registration, Capture> captures,
+                                     ObjectArrayList<NetworkDeviceSnapshot> devices, List<NetworkContribution> contributions) {
+        var inputs = NetworkPlanner.capture(epoch, devices, contributions, teams);
+        var grouped = new Object2ObjectOpenHashMap<String, ObjectArrayList<NetworkData.Device>>();
+        var external = new Object2ObjectOpenHashMap<String, List<NetworkContribution>>();
+        for (var entry : captures.reference2ObjectEntrySet()) {
+            var registration = entry.getKey();
+            var owner = inputs.owner(registration.identity.identity().ownerId());
+            if (owner.accepted()) grouped.computeIfAbsent(owner.teamId(), _ -> new ObjectArrayList<>())
+                                         .add(new NetworkData.Device(registration.identity.location(), entry.getValue().snapshot()));
+        }
+        for (var contribution : contributions) {
+            var owner = inputs.owner(contribution.ownerId());
+            if (owner.accepted())
+                external.computeIfAbsent(owner.teamId(), _ -> new ObjectArrayList<>()).add(contribution);
+        }
+        var networks = new Object2ObjectOpenHashMap<String, NetworkData>();
+        for (var entry : grouped.object2ObjectEntrySet())
+            networks.put(entry.getKey(), new NetworkData(entry.getKey(), tick, entry.getValue(), external.getOrDefault(entry.getKey(), List.of())));
+        for (var entry : captures.reference2ObjectEntrySet()) {
+            if (!(entry.getKey().identity.runtimeIdentity() instanceof MachineInstance machine)) continue;
+            var device = machine.networkDevice();
+            if (device == null) continue;
+            var owner = inputs.owner(entry.getKey().identity.identity().ownerId());
+            if (!owner.accepted()) continue;
+            var data = networks.get(owner.teamId());
+            device.networkData(data);
+            if (machine instanceof ComputerController) continue;
+            var capture = entry.getValue();
+            var raw = capture.snapshot();
+            var values = new NetworkResourceState(raw.resourcesPerTick(), Reference2DoubleMaps.emptyMap(), raw.concurrencyPerTick());
+            if (machine instanceof ResearchStation station) values.researchRates.putAll(station.researchRates());
+            NetworkDeviceEvents.fire(new NetworkDeviceEvent(machine, data, values));
+            device.networkValues(values);
+            var modified = withResources(raw, values.concurrency, values.resources);
+            entry.setValue(new Capture(modified, capture.current(), capture.centerPower(), capture.computerWork()));
+        }
+        updateDevices(devices, captures);
+    }
+
+    private static void updateDevices(ObjectArrayList<NetworkDeviceSnapshot> devices, Reference2ObjectOpenHashMap<Registration, Capture> captures) {
+        devices.clear();
+        for (var capture : captures.values()) devices.add(capture.snapshot());
+    }
+
     private Admission admitServices(long epoch, ObjectArrayList<NetworkDeviceSnapshot> devices,
                                     Reference2ObjectOpenHashMap<Registration, Capture> captures,
                                     List<NetworkContribution> contributions,
@@ -342,6 +392,11 @@ public final class NetworkRuntime implements AutoCloseable {
             var capacity = owner.accepted() ? capacities.get(owner.teamId()) : null;
             if (capacity != null) capacity.add(contribution.concurrencyPerTick());
         }
+        for (var snapshot : devices) {
+            if (snapshot.role() != NetworkDeviceRole.COMPUTER
+                && initial.workStates().get(snapshot.identity().machineId()) == NetworkWorkState.ACTIVE_DEVICE)
+                capacities.get(initial.teamIds().get(snapshot.identity().machineId())).add(snapshot.concurrencyPerTick());
+        }
         // Already-issued leases remain valid for this tick. A fresh computer must obtain a thread
         // from the center, external sources or an earlier admitted computer before adding its own supply.
         computers.removeIf(registration -> {
@@ -369,9 +424,12 @@ public final class NetworkRuntime implements AutoCloseable {
             var id = registration.identity.identity().machineId();
             var team = initial.teamIds().get(id);
             var capacity = capacities.get(team);
-            if (capacity.budget != null && capacity.budget.hasLease(id)) services.add(registration);
-            else if (capacity.available() > 0) {
+            if (capacity.budget != null && capacity.budget.hasLease(id)) {
+                capacity.add(captures.get(registration).snapshot().concurrencyPerTick());
+                services.add(registration);
+            } else if (capacity.available() > 0) {
                 capacity.claimed++;
+                capacity.add(captures.get(registration).snapshot().concurrencyPerTick());
                 services.add(registration);
             } else {
                 for (var snapshot : devices)

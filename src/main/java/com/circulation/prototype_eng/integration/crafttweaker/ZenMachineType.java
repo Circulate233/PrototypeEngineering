@@ -40,6 +40,10 @@ import org.jetbrains.annotations.Nullable;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
+import com.circulation.prototype_eng.integration.crafttweaker.network.ZenNetworkDeviceCallback;
+import com.circulation.prototype_eng.integration.crafttweaker.network.ZenNetworkDeviceEvent;
+import com.circulation.prototype_eng.integration.crafttweaker.resource.ZenComputerInputRecipe;
+
 import java.util.Locale;
 import java.util.List;
 import java.util.Objects;
@@ -284,6 +288,18 @@ public final class ZenMachineType {
         DefinitionRegistrations.machines(event -> event.registry().register(definition.type()));
         DefinitionRegistrations.runtime(event -> event.assembly(definition));
         registered = true;
+    }
+
+    @ZenMethod
+    public ZenMachineType networkEvent(ZenNetworkDeviceCallback callback) {
+        builder.networkEvent(event -> callback.apply(new ZenNetworkDeviceEvent(event)));
+        return this;
+    }
+
+    @ZenMethod
+    public ZenMachineType computerInputRecipe(ZenComputerInputRecipe recipe) {
+        builder.computerInputRecipe(recipe.value());
+        return this;
     }
 
     MachineAssembly buildAssembly(String revision) {
