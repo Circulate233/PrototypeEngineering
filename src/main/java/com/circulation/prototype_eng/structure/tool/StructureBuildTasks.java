@@ -5,6 +5,8 @@ import ae2.api.orientation.BlockOrientation;
 import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.AmountFormat;
 import ae2.api.stacks.GenericStack;
+import ae2.core.gui.locator.GuiHostLocators;
+import com.circulation.prototype_eng.item.BuilderInstrumentItem;
 import com.circulation.prototype_eng.BuilderConfig;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
@@ -132,12 +134,14 @@ public final class StructureBuildTasks {
                                                  .thenComparingInt(target -> target.position().getX()).thenComparingInt(target -> target.position().getZ());
             targets.sort(dismantle ? order.reversed() : Comparator.comparing((Target target) -> target.state() != null && (target.state().getMaterial().isLiquid()
                 || target.state().getBlock() instanceof BlockFalling)).thenComparing(order));
+            var me = BuilderState.meMode(tag) == 0 ? null
+                : ((BuilderInstrumentItem) tool.getItem()).getGuiHost(player, GuiHostLocators.forInventorySlot(slot), null);
             if (!dismantle) {
-                var ready = prepare(player, tool, targets);
+                var ready = prepare(player, tool, targets, me);
                 if (ready == null) return;
                 targets = ready;
             }
-            var task = new Task(player, slot, tool, host, dismantle, targets);
+            var task = new Task(player, slot, tool, host, dismantle, targets, me);
             TASKS.put(player.getUniqueID(), task);
             BuilderState.state(tag, dismantle ? BuilderState.State.DISASSEMBLING : BuilderState.State.BUILDING);
             BuilderState.progress(tag, 0, targets.size());
@@ -176,7 +180,7 @@ public final class StructureBuildTasks {
         }
     }
 
-    private static @Nullable ObjectArrayList<Target> prepare(EntityPlayer player, ItemStack tool, List<Target> targets) {
+    private static @Nullable ObjectArrayList<Target> prepare(EntityPlayer player, ItemStack tool, List<Target> targets, @Nullable ConstructionMEAccess me) {
         var tag = BuilderState.data(tool);
         var candidates = new ObjectArrayList<Target>(targets.size());
         var resources = new ObjectArrayList<GenericStack>(targets.size());
@@ -206,9 +210,7 @@ public final class StructureBuildTasks {
         if (player.isCreative())
             return blocked > 0 && BuilderState.Setting.REQUIRE_SPACE.enabled(tag) ? null : candidates;
         var inventory = new ConstructionInventory(player);
-        var me = BuilderState.meMode(tag) == 0 ? null : ConstructionMEAccess.find((EntityPlayerMP) player);
-        if (BuilderState.meMode(tag) != 0 && me == null)
-            player.sendMessage(StructureToolText.BuilderMeUnavailable.text());
+        if (me != null && me.connect() == null) player.sendMessage(me.unavailableReason());
         var result = ConstructionPreflight.allocate(resources, required -> {
             long local = inventory.take(required);
             return local + (me == null ? 0 : me.extract(required.what(), required.amount() - local, Actionable.SIMULATE));
@@ -222,7 +224,7 @@ public final class StructureBuildTasks {
             result.missing().forEachEntry((key, amount) -> {
                 if (me.craftable(key)) craft.add(new GenericStack(key, amount));
             });
-            if (!craft.isEmpty() && !me.openCrafting(craft, tool))
+            if (!craft.isEmpty() && !me.openCrafting(craft))
                 player.sendMessage(StructureToolText.BuilderMeUnavailable.text());
         }
         if (requireAll && !result.missing().isEmpty() || blocked > 0 && BuilderState.Setting.REQUIRE_SPACE.enabled(tag))
@@ -311,14 +313,14 @@ public final class StructureBuildTasks {
         }
         var resource = player.isCreative() ? null : StructureMaterials.resource(world, pos, desired, player, target.tileNbt());
         var payment = player.isCreative() ? ConstructionPayment.FREE
-            : resource == null ? null : ConstructionPayment.prepare((EntityPlayerMP) player, resource, BuilderState.meMode(tag) > 0);
+            : resource == null ? null : ConstructionPayment.prepare((EntityPlayerMP) player, resource, task.me);
         if (payment == null) {
             if (resource == null) return Step.RETRY;
             if (BuilderState.Setting.REQUIRE_MATERIALS.enabled(tag) || BuilderState.Setting.WAIT_MATERIALS.enabled(tag)) {
                 task.waitingMaterial = resource;
                 return Step.WAIT;
             }
-            long amount = ConstructionPayment.missingAmount((EntityPlayerMP) player, resource, BuilderState.meMode(tag) > 0);
+            long amount = ConstructionPayment.missingAmount((EntityPlayerMP) player, resource, task.me);
             if (amount <= 0) return Step.RETRY;
             var missing = new AEKey2LongMap.OpenHashMap(1);
             missing.addTo(resource.what(), amount);
@@ -391,11 +393,11 @@ public final class StructureBuildTasks {
             if (available == null || available.amount <= 0) return world.setBlockToAir(pos);
             var drained = source.drain(available, true);
             if (drained == null || drained.amount <= 0) return false;
-            BuilderFluidRecovery.deliver((EntityPlayerMP) player, drained, BuilderState.meMode(BuilderState.data(tool)) > 0);
+            BuilderFluidRecovery.deliver((EntityPlayerMP) player, drained, task.me);
             // 成功抽取后完成此位置，邻居补流不能再次产生回收量。
             return true;
         }
-        try (var _ = BuilderDropRecovery.capture((EntityPlayerMP) player, BuilderState.meMode(BuilderState.data(tool)) > 0)) {
+        try (var _ = BuilderDropRecovery.capture((EntityPlayerMP) player, task.me)) {
             var tile = world.getTileEntity(pos);
             if (!block.removedByPlayer(state, world, pos, player, !player.isCreative())) return false;
             block.onPlayerDestroy(world, pos, state);
@@ -423,9 +425,10 @@ public final class StructureBuildTasks {
         final boolean dismantle;
         final List<Target> targets;
         final ConstructionProgress progress;
+        final @Nullable ConstructionMEAccess me;
         @Nullable GenericStack waitingMaterial;
 
-        Task(EntityPlayer player, int slot, ItemStack tool, ConstructionTarget controller, boolean dismantle, List<Target> targets) {
+        Task(EntityPlayer player, int slot, ItemStack tool, ConstructionTarget controller, boolean dismantle, List<Target> targets, @Nullable ConstructionMEAccess me) {
             world = player.world;
             this.slot = slot;
             this.tool = tool;
@@ -433,6 +436,7 @@ public final class StructureBuildTasks {
             orientation = controller.orientation();
             this.dismantle = dismantle;
             this.targets = targets;
+            this.me = me;
             progress = dismantle || !BuilderState.Setting.REQUIRE_SPACE.enabled(BuilderState.data(tool))
                 ? new ConstructionProgress(targets.size(), index -> {
                 var pos = targets.get(index).position();

@@ -1,73 +1,294 @@
 package com.circulation.prototype_eng.structure.tool;
 
 import ae2.api.config.Actionable;
-import ae2.api.implementations.items.WirelessTerminalApi;
+import ae2.api.config.PowerMultiplier;
+import ae2.api.features.Locatables;
+import ae2.api.implementations.blockentities.IWirelessAccessPoint;
+import ae2.api.implementations.guiobjects.ItemGuiHost;
+import ae2.api.inventories.InternalInventory;
+import ae2.api.networking.IGrid;
+import ae2.api.networking.IGridNode;
+import ae2.api.networking.energy.IEnergySource;
+import ae2.api.networking.security.IActionHost;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.GenericStack;
+import ae2.api.storage.ISubGuiHost;
 import ae2.api.storage.StorageHelper;
+import ae2.container.ISubGui;
 import ae2.container.implementations.ContainerCraftConfirm;
+import ae2.core.AEConfig;
+import ae2.core.definitions.AEItems;
+import ae2.core.gui.locator.ItemGuiHostLocator;
+import ae2.core.localization.GuiText;
+import ae2.core.localization.PlayerMessages;
 import ae2.crafting.TemporaryPseudoCraftingProvider;
 import ae2.me.helpers.PlayerSource;
+import ae2.tile.networking.TileWirelessAccessPoint;
+import ae2.tile.qnb.TileQuantumBridge;
+import ae2.util.inv.AppEngInternalInventory;
+import ae2.util.inv.InternalInventoryHost;
+import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.container.ContainerStructureTool;
+import com.circulation.prototype_eng.item.BuilderInstrumentItem;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTBase;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.text.ITextComponent;
+import net.minecraftforge.common.DimensionManager;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
 /**
- * Uses AE's usable wireless-terminal lookup, player permissions, range and powered transfers.
+ * 一个会话绑定玩家背包槽位中的原构建器，locator 必须提供玩家背包槽位。
+ * 任务与延迟回收必须复用该会话，禁止另查玩家持有的终端。
  */
-final class ConstructionMEAccess {
-    private final EntityPlayerMP player;
-    private final WirelessTerminalApi.TerminalContext terminal;
+public final class ConstructionMEAccess extends ItemGuiHost<BuilderInstrumentItem>
+    implements IActionHost, IEnergySource, ISubGuiHost, InternalInventoryHost {
+    private static final String SINGULARITY = "BuilderSingularity";
+    private final ItemStack tool;
+    private final PlayerSource source;
+    private final AppEngInternalInventory singularity = new AppEngInternalInventory(this, 1, 1);
+    private @Nullable IGridNode node;
+    private @Nullable NBTBase upgradeData;
+    private @Nullable NBTBase singularityData;
+    private boolean quantumCard;
+    private ITextComponent status = PlayerMessages.DeviceNotLinked.text();
+    private long refreshedAt = Long.MIN_VALUE;
+    private long poweredAt = Long.MIN_VALUE;
+    private double drain;
+    private boolean quantum;
 
-    private ConstructionMEAccess(EntityPlayerMP player, WirelessTerminalApi.TerminalContext terminal) {
-        this.player = player;
-        this.terminal = terminal;
+    public ConstructionMEAccess(BuilderInstrumentItem item, EntityPlayer player, ItemGuiHostLocator locator) {
+        super(item, player, locator);
+        tool = getItemStack();
+        source = new PlayerSource(player, this);
+        if (!isClientSide()) connect();
     }
 
-    static @Nullable ConstructionMEAccess find(EntityPlayerMP player) {
-        var terminal = WirelessTerminalApi.findUsableWirelessTermOfPlayer(player, _ -> true);
-        return terminal == null ? null : new ConstructionMEAccess(player, terminal);
+    private boolean hasQuantumCard() {
+        var tag = tool.getTagCompound();
+        var data = tag == null ? null : tag.getTag("upgrades");
+        if (upgradeData != data) {
+            quantumCard = getUpgrades().isInstalled(AEItems.QUANTUM_BRIDGE_CARD.item());
+            upgradeData = data;
+        }
+        return quantumCard;
     }
 
-    private boolean current() {
-        var next = WirelessTerminalApi.findUsableWirelessTermOfPlayer(player,
-            context -> context.host() == terminal.host() && context.node().grid() == terminal.node().grid());
-        return next != null;
+    public InternalInventory singularity() {
+        var tag = getItemStack().getTagCompound();
+        var data = tag == null ? null : tag.getTag(SINGULARITY);
+        if (singularityData != data) {
+            singularity.setItemDirect(0, ItemStack.EMPTY);
+            if (tag != null) singularity.readFromNBT(tag, SINGULARITY);
+            singularityData = data;
+        }
+        return singularity;
+    }
+
+    @Override
+    public void saveChangedInventory(AppEngInternalInventory inventory) {
+        var tag = BuilderState.data(getItemStack());
+        inventory.writeToNBT(tag, SINGULARITY);
+        singularityData = tag.getTag(SINGULARITY);
+        refreshedAt = Long.MIN_VALUE;
+    }
+
+    private @Nullable IGrid linkedGrid() {
+        var tag = tool.getTagCompound();
+        if (tag == null || !tag.hasKey(BuilderInstrumentItem.NETWORK, 10)) {
+            status = PlayerMessages.DeviceNotLinked.text();
+            return null;
+        }
+        var link = tag.getCompoundTag(BuilderInstrumentItem.NETWORK);
+        var world = DimensionManager.getWorld(link.getInteger("Dimension"));
+        var pos = BlockPos.fromLong(link.getLong("Position"));
+        if (world == null || !world.isBlockLoaded(pos)
+            || !(world.getTileEntity(pos) instanceof IWirelessAccessPoint accessPoint)) {
+            status = PlayerMessages.LinkedNetworkNotFound.text();
+            return null;
+        }
+        var grid = accessPoint.getGrid();
+        status = (grid == null ? PlayerMessages.LinkedNetworkNotFound : PlayerMessages.OutOfRange).text();
+        return grid;
+    }
+
+    private void refresh() {
+        long now = getPlayer().world.getTotalWorldTime();
+        if (refreshedAt == now) return;
+        refreshedAt = now;
+        node = null;
+        quantum = false;
+        drain = 0;
+        var grid = linkedGrid();
+        if (grid != null) {
+            double nearest = Double.MAX_VALUE;
+            for (var accessPoint : grid.getMachines(TileWirelessAccessPoint.class)) {
+                var location = accessPoint.getLocation();
+                if (location.getLevel() != getPlayer().world || !accessPoint.isActive()) continue;
+                var pos = location.getPos();
+                double distance = getPlayer().getDistanceSq(pos.getX(), pos.getY(), pos.getZ());
+                double range = accessPoint.getRange();
+                if (distance < range * range && distance < nearest) {
+                    node = accessPoint.getActionableNode();
+                    nearest = distance;
+                }
+            }
+            if (node != null) drain = AEConfig.instance().wireless_getDrainRate(Math.sqrt(nearest));
+        }
+        if (!hasQuantumCard()) return;
+        var paired = singularity().getStackInSlot(0);
+        if (!TileQuantumBridge.isValidEntangledSingularity(paired)) {
+            if (node == null) status = GuiText.WirelessTerminalNoSingularity.text();
+            return;
+        }
+        @SuppressWarnings("DataFlowIssue") // AE 的有效纠缠奇点检查已要求存在 NBT。
+        long frequency = paired.getTagCompound().getLong("entangled_singularity_id");
+        if (frequency == 0) {
+            if (node == null) status = GuiText.WirelessTerminalNoSingularity.text();
+            return;
+        }
+        var bridge = Locatables.quantumNetworkBridges().get(getPlayer().world, frequency);
+        if (bridge == null) bridge = Locatables.quantumNetworkBridges().get(getPlayer().world, -frequency);
+        var bridgeNode = bridge == null ? null : bridge.getActionableNode();
+        if (bridgeNode == null || !bridgeNode.isActive()) {
+            if (node == null) status = GuiText.WirelessTerminalBridgeMissing.text();
+            return;
+        }
+        if (grid != null && bridgeNode.grid() != grid) {
+            if (node == null) status = GuiText.WirelessTerminalDifferentNetwork.text();
+            return;
+        }
+        if (!bridgeNode.grid().getEnergyService().isNetworkPowered()) {
+            if (node == null) status = GuiText.WirelessTerminalBridgeUnpowered.text();
+            return;
+        }
+        quantum = true;
+        if (node == null) {
+            node = bridgeNode;
+            drain = 22.5;
+        }
+    }
+
+    private @Nullable IGridNode connected() {
+        if (isClientSide() || getItemStack() != tool || tool.isEmpty()) {
+            node = null;
+            return null;
+        }
+        refresh();
+        return node != null && node.isActive() ? node : null;
+    }
+
+    private void recharge(IGridNode current) {
+        if (!quantum) return;
+        double missing = getItem().getAEMaxPower(tool) - getItem().getAECurrentPower(tool);
+        if (missing <= 0) return;
+        var energy = current.grid().getEnergyService();
+        double available = energy.getStoredPower() - energy.getMaxStoredPower() / 2;
+        if (available > 0) getItem().injectAEPower(tool,
+            energy.extractAEPower(Math.min(missing, available), Actionable.MODULATE, PowerMultiplier.ONE), Actionable.MODULATE);
+    }
+
+    public @Nullable IGridNode connect() {
+        var current = connected();
+        if (current == null) return null;
+        recharge(current);
+        if (consumeIdlePower(Actionable.SIMULATE)) return current;
+        status = GuiText.OutOfPower.text();
+        return null;
+    }
+
+    public ITextComponent unavailableReason() {
+        return status;
+    }
+
+    @Override
+    public void tick() {
+        if (connect() != null) consumeConnectionPower();
+    }
+
+    private void consumeConnectionPower() {
+        long now = getPlayer().world.getTotalWorldTime();
+        if (poweredAt == now) return;
+        consumeIdlePower(Actionable.MODULATE);
+        poweredAt = now;
+    }
+
+    @Override
+    protected double getPowerDrainPerTick() {
+        return drain;
+    }
+
+    @Override
+    public double extractAEPower(double amount, Actionable mode, PowerMultiplier multiplier) {
+        return getItem().extractAEPower(tool, amount, mode);
+    }
+
+    @Override
+    public @Nullable IGridNode getActionableNode() {
+        return node;
     }
 
     long extract(AEKey key, long amount, Actionable action) {
         if (amount <= 0) return 0;
-        if (!current()) return 0;
-        return StorageHelper.poweredExtraction(terminal.energySource(), terminal.host().getInventory(), key, amount,
-            new PlayerSource(player, terminal.actionHost()), action);
+        var current = connect();
+        if (current == null) return 0;
+        if (action == Actionable.MODULATE) consumeConnectionPower();
+        return StorageHelper.poweredExtraction(this, current.grid().getStorageService().getInventory(), key, amount, source, action);
     }
 
     long insert(AEKey key, long amount) {
-        if (!current()) return 0;
-        return StorageHelper.poweredInsert(terminal.energySource(), terminal.host().getInventory(), key, amount,
-            new PlayerSource(player, terminal.actionHost()));
+        return insert(getPlayer(), key, amount, Actionable.MODULATE);
+    }
+
+    @Override
+    public long insert(EntityPlayer player, AEKey key, long amount, Actionable action) {
+        if (amount <= 0) return 0;
+        var current = connect();
+        if (current == null) return 0;
+        if (action == Actionable.MODULATE) consumeConnectionPower();
+        return StorageHelper.poweredInsert(this, current.grid().getStorageService().getInventory(), key, amount, source, action);
     }
 
     long refund(AEKey key, long amount) {
-        if (!current()) return 0;
-        // Returned escrow must not require additional energy after a failed placement.
-        return terminal.host().getInventory().insert(key, amount, Actionable.MODULATE, new PlayerSource(player, terminal.actionHost()));
+        var current = connected();
+        if (current == null) return 0;
+        // 退回已扣材料不再收取无线传输电量。
+        return current.grid().getStorageService().getInventory().insert(key, amount, Actionable.MODULATE, source);
     }
 
     boolean craftable(AEKey key) {
-        return current() && terminal.node().grid().getCraftingService().isCraftable(key);
+        var current = connect();
+        return current != null && current.grid().getCraftingService().isCraftable(key);
     }
 
-    boolean openCrafting(List<GenericStack> missing, ItemStack tool) {
-        if (!current() || missing.isEmpty()) return false;
+    @SuppressWarnings("DataFlowIssue")
+        // connect 成功时原构建器非空，AEItemKey.of 返回有效物品键。
+    boolean openCrafting(List<GenericStack> missing) {
+        if (missing.isEmpty() || connect() == null) return false;
         var result = AEItemKey.of(tool);
-        if (result == null) return false;
         var provider = new TemporaryPseudoCraftingProvider(missing, List.of(new GenericStack(result, 1)));
-        // The pseudo result only groups missing materials; it never places a block or copies the tool.
-        return ContainerCraftConfirm.openWithBatchCrafting(terminal.actionHost(), player, terminal.locator(), missing,
-            provider, player.inventoryContainer);
+        return ContainerCraftConfirm.openWithBatchCrafting(this, (EntityPlayerMP) getPlayer(), getLocator(), missing,
+            provider, getPlayer().inventoryContainer);
+    }
+
+    @SuppressWarnings("DataFlowIssue") // 本宿主的 locator 按类说明提供玩家背包槽位。
+    public void openMain() {
+        var player = getPlayer();
+        player.openGui(PrototypeEngineering.instance, ContainerStructureTool.GUI_ID, player.world, getPlayerInventorySlot(), 0, 0);
+    }
+
+    @Override
+    public void returnToMainContainer(EntityPlayer player, ISubGui subGui) {
+        openMain();
+    }
+
+    @Override
+    public ItemStack getMainContainerIcon() {
+        return getItemStack();
     }
 }

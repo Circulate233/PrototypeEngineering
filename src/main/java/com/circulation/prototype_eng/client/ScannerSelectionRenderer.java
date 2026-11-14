@@ -69,7 +69,7 @@ public final class ScannerSelectionRenderer {
     }
 
     private static boolean scanner(ItemStack stack) {
-        return !stack.isEmpty() && stack.getItem() instanceof StructureToolItem tool && !tool.builder();
+        return !stack.isEmpty() && stack.getItem() instanceof StructureToolItem;
     }
 
     private static void outline(World world, BlockPos pos, double x, double y, double z, float red, float blue, float alpha) {

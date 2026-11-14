@@ -5,7 +5,7 @@ import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
-import com.circulation.prototype_eng.item.StructureToolItem;
+import com.circulation.prototype_eng.item.BuilderInstrumentItem;
 import com.circulation.prototype_eng.localization.StructurePreviewText;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.client.Minecraft;
@@ -76,7 +76,7 @@ public final class ProjectionInteractions {
         var mc = Minecraft.getMinecraft();
         var owner = BuilderBinding.read(binding);
         if (mc.player == null || mc.world == null || service != StructurePreviews.client()
-            || !(tool.getItem() instanceof StructureToolItem item) || !item.builder() || owner == null
+            || !(tool.getItem() instanceof BuilderInstrumentItem item) || owner == null
             || owner.dimension != mc.world.provider.getDimension() || !owner.position.equals(anchor)
             || !owner.structure.equals(id.toString())) return false;
         if (!service.projectFor(id, settings, anchor, options, 30_000)) return false;
@@ -254,14 +254,14 @@ public final class ProjectionInteractions {
         private final StructurePreviews service;
         private final Object player, world, connection;
         private final ItemStack initialTool;
-        private final StructureToolItem item;
+        private final BuilderInstrumentItem item;
         private final BuilderBinding binding;
         private final @Nullable BuilderBinding initialBinding;
         private StructurePreviews.Projection intent;
         private boolean confirmed;
 
         BuilderProjection(StructurePreviews service, StructurePreviews.Projection intent, Minecraft mc,
-                          ItemStack tool, StructureToolItem item, BuilderBinding binding) {
+                          ItemStack tool, BuilderInstrumentItem item, BuilderBinding binding) {
             this.service = service;
             this.intent = intent;
             player = mc.player;

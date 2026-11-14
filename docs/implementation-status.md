@@ -1,5 +1,19 @@
 # 实施进度
 
+## 2026-11-14 构建器独立网络绑定与量子桥升级
+
+构建器独立为 BuilderInstrumentItem，使用 AEBasePoweredItem 保存电量和提供充电能力；扫描器保留普通物品实现。构建器注册 GridLinkables/IGridLinkableHandler，在 AE 无线接入点绑定槽内保存网络位置，解绑只删除网络绑定。结构绑定、采掘工具融合、投影、任务设置和原注册名继续沿用。
+
+ConstructionMEAccess 以原构建器的玩家槽位建立 ItemGuiHost，按 AE 无线范围、量子桥奇点配对、同网限制和网络供电选择节点。两个升级槽注册能量卡与一张量子桥卡，独立配置页复用 AE 原生背景、UpgradesPanel、RestrictedInputSlot 和背包槽；原工具槽由 AE 锁定。卡片移除后，已有奇点槽继续允许取出。基础容量读取 AE 配置，能量卡调整容量及充电速度，量子桥补电保留网络半容量储能。
+
+建造预检、材料支付、退款、自动合成、即时物品/流体回收及延迟库存均接入任务持有的同一个连接会话。每 tick 复用连接选择，升级 NBT 列表发生变更时才重新读取量子桥卡；GUI 继续使用 AE 动态升级库存，支持客户端同步替换 ItemStack。原构建器离开任务槽位后不会改用别的终端。构建状态同步排除电量、卡片、奇点与网络绑定数据，避免电量变化触发完整状态字符串更新。
+
+19 份 Java 已经本机 IDEA MCP 格式化并逐文件执行 errorsOnly:false，最终错误、警告、弱警告均为零。节点读取调整为直接使用连接方法返回的有效节点；AE 已验证奇点 NBT、非空物品键及本宿主背包 locator 的检查误报采用局部抑制，未增加重复空值分支。AE 的 IUpgradeableItem 标记为 NonExtendable，但其原生物品升级识别需要实现此接口，已在物品类标明使用理由并局部抑制该项诊断。
+
+运行既有结构工具状态、预检、流体优先任务、投影、导出与 ZS 构建接口回归，共 18 项/6 suites 通过，无失败、错误或跳过。本轮没有新增测试。Gradle build -x test（复用上述测试）及 IDEA MCP build_project 均通过，Spotless 检查通过。构建日志保留现有 incubator 模块、旧 Gradle API 和既有测试的 deprecation 提示。无线绑定、升级装卸、跨维度量子连接、真实资源回收与 GUI 画面仍待用户实机复验。
+
+证据目录：C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261114/。文件为 builder-wireless-tests.log、builder-wireless-tests/summary.json 及其 XML、builder-wireless-build.log、builder-wireless-idea.json（包含首次与最终逐文件诊断）、builder-wireless-idea-build.json。完成后本地提交，用户对 AGENTS.md 的修改排除在提交之外。下一步按[结构工具](structure-tools.md)首节复验。
+
 ## 2026-11-14 构建器AE回收、流体优先与脚下掉落
 
 - “ME取料”文案改为“使用AE”，提示同步说明取料和回收。ConstructionMEAccess增加StorageHelper.poweredInsert入口，沿无线终端绑定/范围/权限/耗能，不查询磁铁卡或过滤配置。物品、实际抽取的流体和资源包内资源优先入网，网络未接收部分进入原本的背包/容器处理，最终余物在玩家脚下生成，初速度为零。

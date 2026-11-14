@@ -40,6 +40,7 @@ import com.circulation.prototype_eng.container.ContainerMEResourceHatch;
 import com.circulation.prototype_eng.container.ContainerParallelController;
 import com.circulation.prototype_eng.container.ContainerResourceHatch;
 import com.circulation.prototype_eng.container.ContainerStructureTool;
+import com.circulation.prototype_eng.container.ContainerBuilderUpgrades;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import com.circulation.prototype_eng.machine.ServerMachineIdentities;
@@ -234,6 +235,7 @@ public class CommonProxy implements IGuiHandler {
 
     @Override
     public Object getServerGuiElement(int id, EntityPlayer player, World world, int x, int y, int z) {
+        if (id == ContainerBuilderUpgrades.GUI_ID) return ContainerBuilderUpgrades.open(player.inventory, x);
         if (id == ContainerStructureTool.GUI_ID) {
             return ContainerStructureTool.open(player.inventory, x);
         }

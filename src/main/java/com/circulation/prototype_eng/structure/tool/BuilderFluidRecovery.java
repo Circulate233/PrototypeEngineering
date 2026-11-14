@@ -11,6 +11,8 @@ import net.minecraftforge.items.CapabilityItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
 import net.minecraftforge.items.wrapper.PlayerInvWrapper;
 
+import org.jetbrains.annotations.Nullable;
+
 import java.util.Objects;
 
 /**
@@ -20,10 +22,9 @@ final class BuilderFluidRecovery {
     private BuilderFluidRecovery() {
     }
 
-    static void deliver(EntityPlayerMP player, FluidStack fluid, boolean useAe) {
+    static void deliver(EntityPlayerMP player, FluidStack fluid, @Nullable ConstructionMEAccess ae) {
         var key = Objects.requireNonNull(AEFluidKey.of(fluid), "Drained fluid must have a positive AE key");
         int remaining = fluid.amount;
-        var ae = useAe ? ConstructionMEAccess.find(player) : null;
         if (ae != null) remaining -= (int) ae.insert(key, remaining);
         if (remaining == 0) return;
         var inventory = new PlayerInvWrapper(player.inventory);

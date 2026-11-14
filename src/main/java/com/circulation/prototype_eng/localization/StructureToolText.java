@@ -74,6 +74,8 @@ public enum StructureToolText implements LocalizationEnum {
     Complete,
     Unavailable,
     ScanHint,
+    BuilderNetworkBind,
+    BuilderUpgrades,
     BuilderUsageBind,
     BuilderUsageOpen,
     BuilderUsageSneakOpen,

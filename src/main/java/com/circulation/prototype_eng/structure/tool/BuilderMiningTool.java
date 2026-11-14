@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.structure.tool;
 
 import ae2.api.util.IAEWrench;
 import com.circulation.prototype_eng.item.StructureToolItem;
+import com.circulation.prototype_eng.item.BuilderInstrumentItem;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemArmor;
@@ -18,14 +19,14 @@ public final class BuilderMiningTool {
     }
 
     public static boolean accepts(ItemStack stack) {
-        return !stack.isEmpty() && !(stack.getItem() instanceof StructureToolItem)
+        return !stack.isEmpty() && !(stack.getItem() instanceof StructureToolItem) && !(stack.getItem() instanceof BuilderInstrumentItem)
             && (!stack.getItem().getToolClasses(stack).isEmpty()
             || stack.getItem() instanceof IAEWrench
             || stack.getItem().isDamageable() && !(stack.getItem() instanceof ItemArmor));
     }
 
     public static ItemStack fused(ItemStack builder, ItemStack tool) {
-        if (!(builder.getItem() instanceof StructureToolItem item) || !item.builder() || !accepts(tool))
+        if (!(builder.getItem() instanceof BuilderInstrumentItem) || !accepts(tool))
             return ItemStack.EMPTY;
         var result = builder.copy();
         result.setCount(1);
@@ -43,7 +44,7 @@ public final class BuilderMiningTool {
         if (tag == null || !tag.hasKey(TOOL, 10)) return ItemStack.EMPTY;
         var profile = new ItemStack(tag.getCompoundTag(TOOL));
         // Never recurse through another builder, including manually edited NBT.
-        return profile.getItem() instanceof StructureToolItem ? ItemStack.EMPTY : profile;
+        return profile.getItem() instanceof StructureToolItem || profile.getItem() instanceof BuilderInstrumentItem ? ItemStack.EMPTY : profile;
     }
 
     public static boolean canHarvest(ItemStack builder, IBlockState state, @Nullable EntityPlayer player) {

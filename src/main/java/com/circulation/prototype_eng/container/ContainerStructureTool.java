@@ -2,10 +2,12 @@ package com.circulation.prototype_eng.container;
 
 import ae2.container.AEBaseContainer;
 import ae2.container.guisync.GuiSync;
+import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.item.StructureToolItem;
+import com.circulation.prototype_eng.item.BuilderInstrumentItem;
 import com.circulation.prototype_eng.localization.StructureToolText;
 import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
 import com.circulation.prototype_eng.structure.tool.BuilderState;
@@ -51,7 +53,7 @@ public final class ContainerStructureTool extends AEBaseContainer {
         this.slot = slot;
         tool = inventory.getStackInSlot(slot);
         world = inventory.player.world;
-        builder = ((StructureToolItem) tool.getItem()).builder();
+        builder = tool.getItem() instanceof BuilderInstrumentItem;
         setGuiTitle((builder ? StructureToolText.BuilderTitle : StructureToolText.ScannerTitle).text());
         registerClientAction("structure_tool", Action.class, this::accept);
         if (!world.isRemote) {
@@ -62,7 +64,8 @@ public final class ContainerStructureTool extends AEBaseContainer {
     }
 
     public static @Nullable ContainerStructureTool open(InventoryPlayer inventory, int slot) {
-        if (slot < 0 || slot >= inventory.getSizeInventory() || !(inventory.getStackInSlot(slot).getItem() instanceof StructureToolItem))
+        if (slot < 0 || slot >= inventory.getSizeInventory() || !(inventory.getStackInSlot(slot).getItem() instanceof StructureToolItem)
+            && !(inventory.getStackInSlot(slot).getItem() instanceof BuilderInstrumentItem))
             return null;
         return new ContainerStructureTool(inventory, slot);
     }
@@ -84,7 +87,7 @@ public final class ContainerStructureTool extends AEBaseContainer {
             try {
                 snapshot = JsonToNBT.getTagFromJson(state);
             } catch (NBTException invalid) {
-                snapshot = new NBTTagCompound();
+                throw new IllegalStateException("Invalid structure tool GUI state", invalid);
             }
         }
         return snapshot;
@@ -117,6 +120,10 @@ public final class ContainerStructureTool extends AEBaseContainer {
             return;
         var tag = data();
         if (builder) {
+            if (action.kind.equals("upgrades") && BuilderState.state(tag) == BuilderState.State.IDLE) {
+                getPlayer().openGui(PrototypeEngineering.instance, ContainerBuilderUpgrades.GUI_ID, world, slot, 0, 0);
+                return;
+            }
             if (action.kind.equals("task")) StructureBuildTasks.toggle(getPlayer(), slot, tool);
             else if (action.kind.equals("builder_setting") && BuilderState.state(tag) == BuilderState.State.IDLE) {
                 for (var setting : BuilderState.Setting.VALUES)
@@ -314,7 +321,16 @@ public final class ContainerStructureTool extends AEBaseContainer {
     }
 
     private void synchronize() {
-        state = data().toString();
+        var tag = data();
+        if (builder) {
+            snapshot.getKeySet().clear();
+            for (var key : tag.getKeySet()) {
+                if (key.equals("upgrades") || key.equals("BuilderNetwork") || key.equals("BuilderSingularity")
+                    || key.equals("stored_energy") || key.equals("energy_capacity")) continue;
+                snapshot.setTag(key, tag.getTag(key));
+            }
+            state = snapshot.toString();
+        } else state = tag.toString();
         getPlayer().inventory.markDirty();
     }
 

@@ -16,7 +16,7 @@ import net.minecraftforge.items.IItemHandlerModifiable;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * One-position escrow: local stock first, then the currently authorized wireless network.
+ * 单格材料先从玩家库存支付，差额从本次构建器绑定的网络支付。
  */
 final class ConstructionPayment {
     static final ConstructionPayment FREE = new ConstructionPayment(null, null, 0, null, new ObjectArrayList<>(), null);
@@ -40,14 +40,13 @@ final class ConstructionPayment {
         this.owner = owner;
     }
 
-    static long missingAmount(EntityPlayerMP player, GenericStack resource, boolean useMe) {
+    static long missingAmount(EntityPlayerMP player, GenericStack resource, @Nullable ConstructionMEAccess me) {
         long missing = resource.amount() - new ConstructionInventory(player).take(resource);
-        if (missing <= 0 || !useMe) return missing;
-        var me = ConstructionMEAccess.find(player);
-        return me == null ? missing : missing - me.extract(resource.what(), missing, Actionable.SIMULATE);
+        if (missing <= 0 || me == null) return missing;
+        return missing - me.extract(resource.what(), missing, Actionable.SIMULATE);
     }
 
-    static @Nullable ConstructionPayment prepare(EntityPlayerMP player, GenericStack resource, boolean useMe) {
+    static @Nullable ConstructionPayment prepare(EntityPlayerMP player, GenericStack resource, @Nullable ConstructionMEAccess me) {
         var inventories = ConstructionInventory.inventories(player);
         ItemTake item = null;
         long local = 0;
@@ -92,7 +91,6 @@ final class ConstructionPayment {
             }
         }
         long remaining = resource.amount() - local;
-        var me = remaining > 0 && useMe ? ConstructionMEAccess.find(player) : null;
         if (remaining > 0 && (me == null || me.extract(resource.what(), remaining, Actionable.SIMULATE) != remaining))
             return null;
         return new ConstructionPayment(resource, me, remaining, item, fluids, player);

@@ -31,20 +31,20 @@ public final class BuilderDropRecovery implements AutoCloseable {
     private final EntityPlayerMP player;
     private final World world;
     private final BlockPos feet;
-    private final boolean useAe;
+    private final @Nullable ConstructionMEAccess ae;
     private final ObjectArrayList<EntityItem> drops = new ObjectArrayList<>();
 
-    private BuilderDropRecovery(EntityPlayerMP player, boolean useAe) {
+    private BuilderDropRecovery(EntityPlayerMP player, @Nullable ConstructionMEAccess ae) {
         this.player = player;
         world = player.world;
         feet = player.getPosition();
-        this.useAe = useAe;
+        this.ae = ae;
         previous = ACTIVE.get();
         ACTIVE.set(this);
     }
 
-    static BuilderDropRecovery capture(EntityPlayerMP player, boolean useAe) {
-        return new BuilderDropRecovery(player, useAe);
+    static BuilderDropRecovery capture(EntityPlayerMP player, @Nullable ConstructionMEAccess ae) {
+        return new BuilderDropRecovery(player, ae);
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -83,7 +83,6 @@ public final class BuilderDropRecovery implements AutoCloseable {
             Platform.spawnDrops(world, feet, stacks);
             return;
         }
-        var ae = useAe ? ConstructionMEAccess.find(player) : null;
         for (var stack : stacks) give(player, insert(ae, stack));
         player.inventory.markDirty();
     }
@@ -115,9 +114,9 @@ public final class BuilderDropRecovery implements AutoCloseable {
         ACTIVE.remove();
         try {
             boolean available = playerAvailable();
-            var ae = useAe && available ? ConstructionMEAccess.find(player) : null;
+            var destination = available ? ae : null;
             for (var entity : drops) {
-                var remaining = insert(ae, entity.getItem());
+                var remaining = insert(destination, entity.getItem());
                 if (available) {
                     player.inventory.addItemStackToInventory(remaining);
                     entity.setPosition(player.posX, player.posY, player.posZ);

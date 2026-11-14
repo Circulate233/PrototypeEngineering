@@ -2,6 +2,9 @@ package com.circulation.prototype_eng.client.gui;
 
 import ae2.api.orientation.BlockOrientation;
 import ae2.client.gui.AEBaseGui;
+import ae2.client.Point;
+import ae2.client.gui.Icon;
+import ae2.client.gui.widgets.TabButton;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
@@ -41,6 +44,7 @@ public final class GuiBuilderInstrument extends AEBaseGui<ContainerStructureTool
     private static final int SETTINGS_COLUMN = 92;
     private static final int SETTINGS_ROW = 18;
     private final BuilderStructureTree tree;
+    private final TabButton upgrades;
     private StructurePreviewPanel preview;
     private ResourceLocation id;
     private NBTTagCompound appliedSelections;
@@ -52,6 +56,9 @@ public final class GuiBuilderInstrument extends AEBaseGui<ContainerStructureTool
         super(container, player);
         xSize = 384;
         ySize = 228;
+        upgrades = new TabButton(Icon.WIRELESS_SETTINGS_PAGE, StructureToolText.BuilderUpgrades.text(),
+            () -> container.action("upgrades"));
+        widgets.add("upgrades", upgrades, new Point(360, -5));
         tree = new BuilderStructureTree(container, positions -> {
             if (preview != null) preview.scene().highlighted(positions);
         });
@@ -297,6 +304,10 @@ public final class GuiBuilderInstrument extends AEBaseGui<ContainerStructureTool
 
     @Override
     protected void mouseClicked(int x, int y, int button) throws IOException {
+        if (x >= upgrades.x && x < upgrades.x + upgrades.width && y >= upgrades.y && y < upgrades.y + upgrades.height) {
+            super.mouseClicked(x, y, button);
+            return;
+        }
         for (int index = 0; index < 6; index++) {
             if (settingHover(index, x - guiLeft, y - guiTop)) {
                 if (button == 0 && settingAvailable(index)) {
@@ -366,6 +377,7 @@ public final class GuiBuilderInstrument extends AEBaseGui<ContainerStructureTool
     @Override
     public void updateScreen() {
         super.updateScreen();
+        upgrades.enabled = BuilderState.state(container.snapshot()) == BuilderState.State.IDLE;
         if (preview != null) preview.tick();
     }
 

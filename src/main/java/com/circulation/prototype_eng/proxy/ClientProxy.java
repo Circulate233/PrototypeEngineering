@@ -16,6 +16,7 @@ import com.circulation.prototype_eng.client.MachineControllerModels;
 import com.circulation.prototype_eng.client.OrientationToolModels;
 import com.circulation.prototype_eng.client.gui.ClientHatchConfigurations;
 import com.circulation.prototype_eng.client.gui.GuiBuilderInstrument;
+import com.circulation.prototype_eng.client.gui.GuiBuilderUpgrades;
 import com.circulation.prototype_eng.client.gui.GuiEnergyHatch;
 import com.circulation.prototype_eng.client.gui.GuiMEPatternAssembly;
 import com.circulation.prototype_eng.client.gui.GuiMEResourceHatch;
@@ -48,6 +49,7 @@ import com.circulation.prototype_eng.container.ContainerMEResourceHatch;
 import com.circulation.prototype_eng.container.ContainerParallelController;
 import com.circulation.prototype_eng.container.ContainerResourceHatch;
 import com.circulation.prototype_eng.container.ContainerStructureTool;
+import com.circulation.prototype_eng.container.ContainerBuilderUpgrades;
 import com.circulation.prototype_eng.integration.jei.PrototypeJeiPlugin;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
@@ -489,6 +491,7 @@ public class ClientProxy extends CommonProxy {
     @Override
     public Object getClientGuiElement(int id, EntityPlayer player, World world, int x, int y, int z) {
         return switch (getServerGuiElement(id, player, world, x, y, z)) {
+            case ContainerBuilderUpgrades upgrades -> new GuiBuilderUpgrades(upgrades, player.inventory);
             case ContainerStructureTool tool -> tool.builder()
                 ? new GuiBuilderInstrument(tool, player.inventory)
                 : new GuiScannerInstrument(tool, player.inventory);

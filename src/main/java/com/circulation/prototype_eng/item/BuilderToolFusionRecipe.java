@@ -25,7 +25,7 @@ public final class BuilderToolFusionRecipe extends IForgeRegistryEntry.Impl<IRec
         for (int slot = 0; slot < inventory.getSizeInventory(); slot++) {
             var stack = inventory.getStackInSlot(slot);
             if (stack.isEmpty()) continue;
-            if (stack.getItem() instanceof StructureToolItem item && item.builder() && builder.isEmpty())
+            if (stack.getItem() instanceof BuilderInstrumentItem && builder.isEmpty())
                 builder = stack;
             else if (BuilderMiningTool.accepts(stack) && tool.isEmpty()) tool = stack;
             else return null;
