@@ -49,7 +49,7 @@ public final class TaskScheduler implements AutoCloseable {
     private final PlannedFactory plannedFactory;
     private final boolean defaultMachineFactory;
     @Nullable
-    private final PlannedFactory beforeOrdinary;
+    private final PlannedFactory afterOrdinary;
     private final Reference2ObjectLinkedOpenHashMap<ScheduledTask, Registration> registered = new Reference2ObjectLinkedOpenHashMap<>();
     private final Object submissionLock = new Object();
     private final ObjectArrayFIFOQueue<Runnable> boundaryActions = new ObjectArrayFIFOQueue<>();
@@ -102,16 +102,16 @@ public final class TaskScheduler implements AutoCloseable {
     }
 
     /**
-     * Optional prerequisite cycle completes and proves source exit before ordinary work is captured.
+     * Additional work executed after ordinary tasks settle.
      */
     TaskScheduler(Thread owner, int workerThreads, int laneCount, @Nullable PlannedFactory plannedFactory,
-                  @Nullable PlannedFactory beforeOrdinary, Duration plannedTimeout) {
+                  @Nullable PlannedFactory afterOrdinary, Duration plannedTimeout) {
         this(owner, new SchedulerConfig.Settings(workerThreads, laneCount, plannedTimeout, false, 200, 400),
-            plannedFactory, beforeOrdinary);
+            plannedFactory, afterOrdinary);
     }
 
     TaskScheduler(Thread owner, SchedulerConfig.Settings settings, @Nullable PlannedFactory plannedFactory,
-                  @Nullable PlannedFactory beforeOrdinary) {
+                  @Nullable PlannedFactory afterOrdinary) {
         this.owner = Objects.requireNonNull(owner);
         effectiveSettings = Objects.requireNonNull(settings);
         workerThreads = settings.workerThreads();
@@ -121,7 +121,7 @@ public final class TaskScheduler implements AutoCloseable {
         this.plannedFactory = defaultMachineFactory
             ? new MachineRecipeExecutionFactory(this::plannedCandidates, this::capturePreparation,
             () -> tickGeneration, () -> tickOpen, _ -> false) : Objects.requireNonNull(plannedFactory);
-        this.beforeOrdinary = beforeOrdinary;
+        this.afterOrdinary = afterOrdinary;
         plannedTimeoutNanos = settings.plannedTimeout().toNanos();
     }
 
@@ -138,8 +138,8 @@ public final class TaskScheduler implements AutoCloseable {
     }
 
     TaskScheduler(Thread owner, int workerThreads, int laneCount, ExecutorService workers, ExecutorService[] lanes,
-                  @Nullable PlannedFactory plannedFactory, @Nullable PlannedFactory beforeOrdinary, Duration plannedTimeout) {
-        this(owner, workerThreads, laneCount, plannedFactory, beforeOrdinary, plannedTimeout);
+                  @Nullable PlannedFactory plannedFactory, @Nullable PlannedFactory afterOrdinary, Duration plannedTimeout) {
+        this(owner, workerThreads, laneCount, plannedFactory, afterOrdinary, plannedTimeout);
         Objects.requireNonNull(workers);
         Objects.requireNonNull(lanes);
         if (lanes.length != laneCount) {
@@ -556,15 +556,6 @@ public final class TaskScheduler implements AutoCloseable {
             if (pendingExecution == null && !resumingClose) {
                 requireHealthy();
                 if (eligibleSettings != null) applySettings(eligibleSettings, failures);
-                if (beforeOrdinary != null) {
-                    plannedCandidates.clear();
-                    capturePlanned(beforeOrdinary);
-                    if (pendingExecution != null) {
-                        drivePending(failures, true);
-                    }
-                    drainBoundary(failures, false);
-                    failures.throwIfPresent();
-                }
                 if (pendingExecution == null) {
                     requireHealthy();
                     executeOrdinary(prepare, futures, failures);
@@ -613,6 +604,15 @@ public final class TaskScheduler implements AutoCloseable {
             failures.observeInterrupt();
             if (failures.present()) {
                 fault();
+            }
+            if (capturePlanned && !failures.present() && pendingExecution == null && afterOrdinary != null) {
+                try {
+                    capturePlanned(afterOrdinary);
+                    if (pendingExecution != null) drivePending(failures, true);
+                } catch (Throwable failure) {
+                    failures.add(failure);
+                    fault();
+                }
             }
             drainBoundary(failures, false);
             tickOpen = false;

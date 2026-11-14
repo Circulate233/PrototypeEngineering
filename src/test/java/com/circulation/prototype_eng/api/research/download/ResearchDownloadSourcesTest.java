@@ -603,7 +603,7 @@ class ResearchDownloadSourcesTest {
                 registry.register(ResearchDefinition.builder(id).maxLevel(4).itemDownloadLevelCost(cost)
                                                     .specialOnly(id.equals(SPECIAL))
                                                     .deliveryPolicy(id.equals(TEAM) || id.equals(OTHER_TEAM) ? ResearchDownloadDeliveryPolicy.ITEM_ONLY : ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                                    .stage(ResearchLevelStage.builder(1, 4).researchTier(researchTier)
+                                                    .stage(ResearchLevelStage.builder(1, 4).durationTicks(1).researchTier(researchTier)
                                                                              .resourceFormula(ResearchResourceFormula.builder().build()).rewardGroup(2, reward).build()).build());
             }
             registry.freeze();

@@ -1,5 +1,17 @@
 # 实施进度
 
+## 2026-11-14 研究站正式实现
+
+获批的 384×288 无背包 GUI 已接入：顶部时间百分比、同队当前可用/剩余材料、当前研究的网络占用/上限与累计/总量、参与站数、五项队列与四个管理按钮。资源列表使用 AE 滑块，行内容可悬停查看全文。固定定义和行数值通过 AE PacketWritable 增量同步，稳定时不发包，队列操作在服务器校验权限。
+
+研究时间为 long tick 单站基准工作量，多站加速。普通资源逐种付款，各资源已付比例等权累计开放进度；网络需求支持总量/tick 上限互换并独立累计。研究使用普通设备结算后的剩余预算，每台实际工作站占 1 并发并支付 FE。即使少量材料尚不足以开放一个完整 tick，付款也由一台工作站承担费用。切换和移出队列保留目标进度，材料、FE、网络预算、进度与完成资格共同提交。
+
+保存格式为世界 V6、队列 V3、手动会话 V2，旧版本明确拒绝且未提供迁移，不删除用户数据。移除旧研究站材料配方进程、原站点恢复记录和对应测试；保留手动材料凭据恢复，新增时间与剩余需求保存。Java/ZS API、run 脚本和五项 Java 演示研究已更新。用户要求代码注释和提交信息使用英文，本轮新增代码注释已修正。
+
+完整 Gradle build、Spotless 和 IDEA MCP 构建通过；1781 项测试、270 suites，零失败、错误和跳过。74 份修改 Java 已通过本机 IDEA 格式化和 errorsOnly:false 检查，其中 72 份项目源码零错误、警告和弱警告，2 份 run 文件被 IDE 排除。27 份 Java addon 编译通过，15 份真实 ZS 脚本通过 SDK 编译；run 目标 jar 被其他进程占用，安装未完成，生成产物仍保留。未启动游戏，正式界面和玩家真实库存交互待用户实机复验。
+
+证据目录：`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261114/`。本轮记录包括 `research-final-build.log`、`research-order-tests.log`、`research-idea-initial.json`、`research-idea-final.json`、`research-verification-summary.json`、`research-run-prepare.log`、`research-run-install.log` 和 `research-zs/`。阶段本地提交，保留用户 AGENTS.md 修改；下一项按用户要求复查 b72090aacf2896c25c82c1b15135dcf0f95df30e 之后全部新增及修改源码。
+
 ## 2026-11-14 研究站时间规则与预览更新
 
 用户已确认研究时间为 long tick 单站基准工作量，多站可加速；时间与资源总目标固定，参与站的每 tick 上限合计。普通资源按总量定义，按付款比例开放推进范围；网络资源按 tick 上限或总量定义并相互换算，各项独立累计。共享预算、研究最低优先级、每站工作一个并发、切换及出队保留进度继续使用。规则见[研究 GUI](research-gui.md)。

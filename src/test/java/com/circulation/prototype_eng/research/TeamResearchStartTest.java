@@ -42,7 +42,7 @@ class TeamResearchStartTest {
         var registry = new ResearchRegistry();
         registry.register(ResearchDefinition.builder(RESEARCH).maxLevel(1)
                                             .deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).startCondition(condition)
-                                            .stage(ResearchLevelStage.builder(1, 1).researchTier(tier).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                            .stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(tier).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
         registry.freeze();
         var view = new ResearchEligibility(registry).calculate("team", List.of(MEMBER), Map.of(MEMBER, new PlayerResearchState(MEMBER)),
             Object2IntMaps.emptyMap(), 0, Set.of(), Reference2DoubleMaps.emptyMap());

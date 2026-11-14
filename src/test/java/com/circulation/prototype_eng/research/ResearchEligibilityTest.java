@@ -38,7 +38,7 @@ class ResearchEligibilityTest {
     }
 
     private static ResearchLevelStage.Builder stage(int first, int last) {
-        return ResearchLevelStage.builder(first, last).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build());
+        return ResearchLevelStage.builder(first, last).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build());
     }
 
     private static ResearchRegistry registry(ResearchDefinition... definitions) {

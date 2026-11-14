@@ -129,6 +129,11 @@ public record ManualResearchSession(UUID id, String teamId, TeamResearchQueue.Ke
         return copy(Objects.requireNonNull(player), time, Status.ACTIVE, null, work, null, null);
     }
 
+    public ManualResearchSession withWork(Object2LongMap<ManualMaterialKey> completed) {
+        requireStatus(Status.ACTIVE);
+        return copy(contributor, lastActivity, status, null, completed, null, null);
+    }
+
     public ManualResearchSession pause(PauseReason reason, long time) {
         requireStatus(Status.ACTIVE);
         requireTime(time);
@@ -248,11 +253,11 @@ public record ManualResearchSession(UUID id, String teamId, TeamResearchQueue.Ke
 
     public record MaterialIntent(UUID operationId, UUID contributor, long sequence,
                                  Object2LongMap<ManualMaterialKey> pendingWork,
-                                 Object2LongMap<ManualMaterialKey> expectedWork) {
+                                 Object2LongMap<ManualMaterialKey> expectedWork, long elapsedTicks, long advancedAt) {
         public MaterialIntent {
             Objects.requireNonNull(operationId);
             Objects.requireNonNull(contributor);
-            if (sequence < 0) {
+            if (sequence < 0 || elapsedTicks < 0 || advancedAt < 0) {
                 throw new IllegalArgumentException("Negative manual material sequence");
             }
             validateWork(pendingWork);

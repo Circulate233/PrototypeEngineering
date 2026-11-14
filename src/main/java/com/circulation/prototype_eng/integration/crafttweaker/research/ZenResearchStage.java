@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.integration.crafttweaker.research;
 
-import com.circulation.prototype_eng.api.data.DataComponents;
 import com.circulation.prototype_eng.api.research.ResearchLevelStage;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRequirement;
 import crafttweaker.annotations.ZenRegister;
@@ -11,7 +10,7 @@ import stanhebben.zenscript.annotations.ZenMethod;
 import java.util.Objects;
 
 /**
- * Parameters delegate to the Java stage; addon stages retain their complete explicit codecs.
+ * ZenScript research stage definition; duration is measured in ticks.
  */
 @ZenRegister
 @ZenClass("mods.prototype_eng.research.ResearchStage")
@@ -24,8 +23,8 @@ public final class ZenResearchStage {
     }
 
     @ZenMethod
-    public static ZenResearchStage create(int firstLevel, int lastLevel, int tier, ZenResearchFormula formula) {
-        return new ZenResearchStage(ResearchLevelStage.builder(firstLevel, lastLevel).researchTier(tier).resourceFormula(formula.value()));
+    public static ZenResearchStage create(int firstLevel, int lastLevel, int tier, long durationTicks, ZenResearchFormula formula) {
+        return new ZenResearchStage(ResearchLevelStage.builder(firstLevel, lastLevel).researchTier(tier).durationTicks(durationTicks).resourceFormula(formula.value()));
     }
 
     @ZenMethod
@@ -43,14 +42,6 @@ public final class ZenResearchStage {
     @ZenMethod
     public ZenResearchStage material(ZenRequirement requirement) {
         builder.materialRequirement(requirement.value());
-        return this;
-    }
-
-    @ZenMethod
-    public ZenResearchStage materialPersistence(String revision, boolean componentData) {
-        builder.materialPersistence(revision, codec -> {
-            if (componentData) codec.component(DataComponents.PROCESS, DataComponents.PROCESS_CODEC);
-        });
         return this;
     }
 

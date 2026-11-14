@@ -12,7 +12,6 @@ import com.circulation.prototype_eng.api.data.DataComponents;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
-import com.circulation.prototype_eng.api.network.MachineDataCenterStorage;
 import com.circulation.prototype_eng.api.recipe.RecipeDefinitionPublicationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.research.ResearchDataCenters;
@@ -47,7 +46,6 @@ import com.feed_the_beast.ftblib.lib.data.Universe;
 import crafttweaker.annotations.ZenRegister;
 import crafttweaker.api.minecraft.CraftTweakerMC;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import net.minecraft.block.Block;
 import net.minecraft.command.CommandBase;
 import net.minecraft.command.CommandException;
@@ -82,7 +80,6 @@ import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -461,36 +458,37 @@ public final class RunNetworkRender {
             }
             case "research-station-progress", "research-station-checkpoint", "research-station-resume" -> {
                 requireCount(args, args[0].equals("research-station-progress") ? 2 : 1);
-                long expected = args[0].equals("research-station-progress") ? CommandBase.parseLong(args[1], 0, Long.MAX_VALUE) : 0;
+                double expected = args[0].equals("research-station-progress") ? CommandBase.parseDouble(args[1], 0) : 0;
                 ServerTaskSchedulers.forServer(server).submit(() -> {
                     var membership = new FtbOwnerTeamResolver(server).resolve(player.getUniqueID());
                     NativeChecks.check("research_station_actual_team", membership.accepted());
                     var team = ServerResearch.forServer(server).snapshot().teams().stream().filter(t -> t.teamId().equals(membership.teamId())).findFirst().orElseThrow();
-                    var segment = Objects.requireNonNull(team.stationWork().segment(), "No actual pending material segment");
-                    double progress = team.queue().resourceProgress().getDouble(pe.visual.examples.ExampleResources.NET_COMPUTE);
+                    var head = Objects.requireNonNull(team.queue().activeHead(), "No active research");
+                    var state = team.queue().progress().stream().filter(value -> value.target().equals(head.target())).findFirst().orElseThrow();
+                    double progress = state.resources().getDouble(pe.visual.examples.ExampleResources.NET_COMPUTE);
                     var image = new NBTTagCompound();
-                    image.setLong("queue_entry", segment.key().queueEntryId());
+                    image.setString("research", head.researchId().toString());
+                    image.setInteger("level", head.targetLevel());
+                    image.setLong("elapsed", state.elapsedTicks());
                     image.setDouble("numeric_progress", progress);
-                    image.setTag("process", segment.processTag());
-                    var sites = new NBTTagList();
-                    for (var site : segment.sites()) {
-                        var savedSite = site.identity().encode();
-                        savedSite.setInteger("dimension", site.location().dimension());
-                        savedSite.setString("machine_type", site.location().machineType().toString());
-                        savedSite.setLong("position", site.location().controllerPos().toLong());
-                        savedSite.setString("block", Objects.toString(site.controllerBlockId(), ""));
-                        sites.appendTag(savedSite);
+                    var materials = new NBTTagList();
+                    var keys = new com.circulation.prototype_eng.api.persistence.ResourceKeyNbt();
+                    for (var key : ResearchRegistry.INSTANCE.require(head.researchId()).stageForLevel(head.targetLevel()).materialTotals().keySet()) {
+                        var material = new NBTTagCompound();
+                        material.setTag("key", keys.encode(key));
+                        material.setLong("remaining", state.remainingMaterials().getLong(key));
+                        materials.appendTag(material);
                     }
-                    image.setTag("sites", sites);
+                    image.setTag("materials", materials);
                     if (args[0].equals("research-station-progress"))
                         NativeChecks.check("research_station_exact_numeric_progress", progress == expected);
                     else if (args[0].equals("research-station-checkpoint")) {
                         evidence(player).setTag("station_checkpoint", image);
                         persistEvidence(player);
                     } else
-                        NativeChecks.check("research_station_exact_source_resume", evidence(player).getCompoundTag("station_checkpoint").equals(image));
-                    pass(player, args[0].equals("research-station-resume") ? "research_station_exact_source_resume" : "research_station_exact_numeric_progress",
-                        "progress=" + progress + " actual complete process+codec/seed/state/components and source sites=" + segment.sites());
+                        NativeChecks.check("research_station_saved_progress_resume", evidence(player).getCompoundTag("station_checkpoint").equals(image));
+                    pass(player, args[0].equals("research-station-resume") ? "research_station_saved_progress_resume" : "research_station_exact_numeric_progress",
+                        "progress=" + progress + " elapsed=" + state.elapsedTicks() + " remaining=" + state.remainingMaterials());
                 }, ExecutionMode.MAIN_THREAD);
             }
             case "research-admin-player" -> {

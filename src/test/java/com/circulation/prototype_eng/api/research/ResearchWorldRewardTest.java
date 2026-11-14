@@ -90,13 +90,13 @@ class ResearchWorldRewardTest {
 
     private static Fixture fixture(RewardChild... children) {
         var registry = new ResearchRegistry();
-        var stage = ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build())
+        var stage = ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build())
                                       .rewardGroup(1, new RewardGroup(GROUP, ObjectList.of(children)))
                                       .rewardGroup(1, new RewardGroup(OTHER_GROUP, ObjectList.of(children))).build();
         registry.register(ResearchDefinition.builder(RESEARCH).maxLevel(1)
                                             .deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage).build());
         registry.register(ResearchDefinition.builder(WORK).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                            .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                            .stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
         registry.freeze();
         return new Fixture(registry, new ResearchWorldNbt(registry,
             new ResourceKeyNbt(type -> type.equals(TYPE.getId()) ? TYPE : null)));

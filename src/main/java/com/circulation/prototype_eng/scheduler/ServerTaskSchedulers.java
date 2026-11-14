@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.scheduler;
 
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
+
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeWork;
@@ -9,8 +12,6 @@ import com.circulation.prototype_eng.research.ServerResearch;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -169,7 +170,7 @@ public final class ServerTaskSchedulers {
             var factory = new MachineRecipeExecutionFactory(this::candidates,
                 () -> () -> ServerNetworkRuntime.forServer(server).refresh(), () -> currentTick, () -> tickOpen, Session::networkMachine);
             scheduler = new TaskScheduler(Thread.currentThread(), settings, factory,
-                (tasks, deadline) -> ServerResearch.prepareTick(server, tasks, deadline));
+                (_, deadline) -> ServerResearch.prepareTick(server, deadline));
         }
 
         private static boolean networkMachine(MachineInstance machine) {

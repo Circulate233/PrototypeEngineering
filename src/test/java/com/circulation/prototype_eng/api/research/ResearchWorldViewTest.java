@@ -4,6 +4,8 @@ import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtu
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
+import com.circulation.prototype_eng.api.research.queue.ResearchProgress;
+import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
 import com.circulation.prototype_eng.api.research.reward.RewardChild;
 import com.circulation.prototype_eng.api.research.reward.RewardClaim;
 import com.circulation.prototype_eng.api.research.reward.RewardEventAction;
@@ -16,7 +18,6 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
-import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
@@ -35,8 +36,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -73,14 +72,14 @@ class ResearchWorldViewTest {
         var ordinary = ResearchResourceFormula.builder().constant(COMPUTE, 10).build();
         registry.register(ResearchDefinition.builder(BASE).maxLevel(3).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                             .startCondition(_ -> fail("GUI refreshed an external start condition"))
-                                            .stage(ResearchLevelStage.builder(1, 3).researchTier(1).resourceFormula(ordinary).build()).build());
+                                            .stage(ResearchLevelStage.builder(1, 3).durationTicks(1).researchTier(1).resourceFormula(ordinary).build()).build());
         registry.register(ResearchDefinition.builder(DEPENDENT).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                            .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ordinary).prerequisite(BASE, 2).build()).build());
+                                            .stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(1).resourceFormula(ordinary).prerequisite(BASE, 2).build()).build());
         registry.register(ResearchDefinition.builder(OWNED).maxLevel(3).deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY)
-                                            .stage(ResearchLevelStage.builder(1, 3).researchTier(1).resourceFormula(ordinary).build()).build());
+                                            .stage(ResearchLevelStage.builder(1, 3).durationTicks(1).researchTier(1).resourceFormula(ordinary).build()).build());
         var event = new RewardChild.Event(id("event"), (_, _) -> RewardEventAction.Result.ALREADY_APPLIED);
         registry.register(ResearchDefinition.builder(REWARD).maxLevel(3).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                            .stage(ResearchLevelStage.builder(1, 3).researchTier(1).resourceFormula(ordinary)
+                                            .stage(ResearchLevelStage.builder(1, 3).durationTicks(1).researchTier(1).resourceFormula(ordinary)
                                                                      .rewardGroup(1, new RewardGroup(GROUP, ObjectList.of(event)))
                                                                      .rewardGroup(1, new RewardGroup(OTHER_GROUP, ObjectList.of(event))).build()).build());
         registry.freeze();
@@ -90,15 +89,20 @@ class ResearchWorldViewTest {
         var bobClaim = RewardClaim.unclaimed(new RewardClaim.Key(BOB, REWARD, 3), 1);
         var players = ObjectList.of(new PlayerResearchState.Snapshot(ALICE, levels(BASE, 1), ObjectList.of(aliceClaim)),
             new PlayerResearchState.Snapshot(BOB, levels(BASE, 2), ObjectList.of(bobClaim)));
-        var first = new TeamResearchQueue.Key(BASE, 3, 1);
-        var queue = new TeamResearchQueue.Snapshot("old", ObjectList.of(new TeamResearchQueue.Entry(first, BOB, 2),
-            new TeamResearchQueue.Entry(new TeamResearchQueue.Key(DEPENDENT, 1, 2), ALICE, 3)), first,
-            Reference2DoubleMaps.singleton(COMPUTE, 6), 3, 7, 10, 1, 9);
+        var queue = queue(registry);
         var team = new ResearchWorldSnapshot.Team("old", members(ALICE, BOB), new ObjectOpenHashSet<>(),
             new TeamOwnedResearch.Snapshot("old", levels(OWNED, 2)), queue, ObjectList.of());
         var world = new ResearchWorld(registry, permissions, writer);
         world.restore(new ResearchWorldSnapshot(10, players, ObjectList.of(team)));
         return world;
+    }
+
+    private static TeamResearchQueue.Snapshot queue(ResearchRegistry registry) {
+        var first = new TeamResearchQueue.Key(BASE, 3, 1);
+        return new TeamResearchQueue.Snapshot("old", ObjectList.of(new TeamResearchQueue.Entry(first, BOB, 2),
+            new TeamResearchQueue.Entry(new TeamResearchQueue.Key(DEPENDENT, 1, 2), ALICE, 3)),
+            ObjectList.of(new ResearchProgress.Snapshot(first.target(), 0, ImmutableResourceAmounts.empty(), Reference2DoubleMaps.singleton(COMPUTE, 6)),
+                new ResearchProgress(registry, new ResearchProgress.Target(DEPENDENT, 1)).snapshot()), 3, 7, 10, 1, 9);
     }
 
     private static ResearchPermissionContext permission(String team) {
@@ -317,10 +321,7 @@ class ResearchWorldViewTest {
         var capture = membership(ALICE, "old", ALICE, BOB);
         var failure = new IllegalStateException("Retained owner operation");
         try (var identities = new MachineIdentityRegistry(() -> {
-        });
-             var workers = Executors.newSingleThreadExecutor();
-             var lane = Executors.newSingleThreadExecutor()) {
-            var tasks = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
+        })) {
             var deadline = PlannedDeadline.after(Duration.ofSeconds(5));
             var execution = world.prepareTick(11, Map.of(ALICE, capture, BOB, membership(BOB, "old", ALICE, BOB)),
                 Set.of(ALICE, BOB), _ -> null, () -> {
@@ -328,7 +329,7 @@ class ResearchWorldViewTest {
                 }, new ResearchStations(identities, () -> {
                 }),
                 () -> {
-                }, tasks, deadline);
+                }, deadline);
             assertSame(failure, assertThrows(IllegalStateException.class, () -> execution.advance(deadline)));
             assertTrue(world.busy());
             assertNull(world.project(ALICE, capture, permission("old"), () -> true));

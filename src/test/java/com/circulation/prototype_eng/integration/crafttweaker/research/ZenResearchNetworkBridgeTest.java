@@ -62,7 +62,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ZenResearchNetworkBridgeTest {
     private static ZenResearch definitionWrapper() {
         return ZenResearch.create("ct_research:late", 1, false, "ITEM_ONLY", 0,
-            new ZenResearchStage[]{ZenResearchStage.create(1, 1, 0, ZenResearchFormula.create())}, ZenResearch.alwaysAllowed());
+            new ZenResearchStage[]{ZenResearchStage.create(1, 1, 0, 100, ZenResearchFormula.create())}, ZenResearch.alwaysAllowed());
     }
 
     @Test
@@ -95,7 +95,7 @@ class ZenResearchNetworkBridgeTest {
                 if event.groupId == "ct_research:choice" && event.level == 1 { return "RETRY_LATER"; }
                 return "APPLIED";
             });
-            var stage = ResearchStage.create(1, 2, 1, ResearchFormula.create().affine(compute, 3000000000L, 7))
+            var stage = ResearchStage.create(1, 2, 1, 100, ResearchFormula.create().affine(compute, 3000000000L, 7))
                 .reward(1, reward);
             Research.create("ct_research:research", 2, false, "ITEM_ONLY", 1, [stage], function(context) {
                 return context.playerId != "" && context.teamId == "team" && context.available(compute) >= 100;

@@ -8,16 +8,21 @@ import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import java.util.Objects;
 
 /**
- * Stage-relative exact affine total demand. Advancement rates belong to research stations.
+ * Network demands expressed as totals or per-station tick limits, converted using the stage duration.
+ * Resource keys use object identity. Reuse singletons and do not modify returned definitions.
  */
 @SuppressWarnings("unused")
 public final class ResearchResourceFormula {
     private final Reference2DoubleMap<NetworkResourceType> baseDemands;
     private final Reference2DoubleMap<NetworkResourceType> demandSlopes;
+    private final Reference2DoubleMap<NetworkResourceType> tickDemands;
+    private final Reference2DoubleMap<NetworkResourceType> tickSlopes;
 
     private ResearchResourceFormula(Builder builder) {
         baseDemands = immutable(builder.baseDemands);
         demandSlopes = immutable(builder.demandSlopes);
+        tickDemands = immutable(builder.tickDemands);
+        tickSlopes = immutable(builder.tickSlopes);
     }
 
     public static Builder builder() {
@@ -44,7 +49,11 @@ public final class ResearchResourceFormula {
         return demandSlopes;
     }
 
-    public Reference2DoubleMap<NetworkResourceType> demandsAt(int stageFirstLevel, int level) {
+    public boolean isEmpty() {
+        return baseDemands.isEmpty() && tickDemands.isEmpty();
+    }
+
+    public Reference2DoubleMap<NetworkResourceType> demandsAt(int stageFirstLevel, int level, long durationTicks) {
         if (stageFirstLevel < 1 || level < stageFirstLevel) {
             throw new IllegalArgumentException("Research formula level precedes its positive stage start");
         }
@@ -53,24 +62,29 @@ public final class ResearchResourceFormula {
         for (var entry : baseDemands.reference2DoubleEntrySet()) {
             result.put(entry.getKey(), exact(entry.getKey(), entry.getDoubleValue(), demandSlopes.getDouble(entry.getKey()), offset));
         }
+        for (var entry : tickDemands.reference2DoubleEntrySet()) {
+            double amount = NetworkResourceModifier.product(exact(entry.getKey(), entry.getDoubleValue(), tickSlopes.getDouble(entry.getKey()), offset), durationTicks);
+            NetworkResourceModifier.sum(result.getDouble(entry.getKey()), amount);
+            result.addTo(entry.getKey(), amount);
+        }
         return result;
     }
 
     /**
      * Nonnegative slopes make the endpoints the extrema, including an Integer.MAX_VALUE tail.
      */
-    public void validateRange(int firstLevel, int lastLevel) {
+    public void validateRange(int firstLevel, int lastLevel, long durationTicks) {
         if (firstLevel < 1 || lastLevel < firstLevel) {
             throw new IllegalArgumentException("Invalid research formula range " + firstLevel + ".." + lastLevel);
         }
-        for (var entry : baseDemands.reference2DoubleEntrySet()) {
-            exact(entry.getKey(), entry.getDoubleValue(), demandSlopes.getDouble(entry.getKey()), (long) lastLevel - firstLevel);
-        }
+        demandsAt(firstLevel, lastLevel, durationTicks);
     }
 
     public static final class Builder {
         private final Reference2DoubleOpenHashMap<NetworkResourceType> baseDemands = new Reference2DoubleOpenHashMap<>();
         private final Reference2DoubleOpenHashMap<NetworkResourceType> demandSlopes = new Reference2DoubleOpenHashMap<>();
+        private final Reference2DoubleOpenHashMap<NetworkResourceType> tickDemands = new Reference2DoubleOpenHashMap<>();
+        private final Reference2DoubleOpenHashMap<NetworkResourceType> tickSlopes = new Reference2DoubleOpenHashMap<>();
 
         private Builder() {
         }
@@ -80,14 +94,28 @@ public final class ResearchResourceFormula {
         }
 
         public Builder affine(NetworkResourceType type, double base, double slope) {
+            return add(type, base, slope, baseDemands, demandSlopes);
+        }
+
+        public Builder perTick(NetworkResourceType type, double limit) {
+            return affinePerTick(type, limit, 0);
+        }
+
+        public Builder affinePerTick(NetworkResourceType type, double base, double slope) {
+            return add(type, base, slope, tickDemands, tickSlopes);
+        }
+
+        private Builder add(NetworkResourceType type, double base, double slope,
+                            Reference2DoubleOpenHashMap<NetworkResourceType> values,
+                            Reference2DoubleOpenHashMap<NetworkResourceType> slopes) {
             Objects.requireNonNull(type);
             if (!Double.isFinite(base) || !Double.isFinite(slope) || base < 0 || slope < 0 || type.internal()) {
                 throw new IllegalArgumentException("Invalid numeric research demand for " + type.id());
             }
-            NetworkResourceModifier.sum(baseDemands.getDouble(type), base);
-            NetworkResourceModifier.sum(demandSlopes.getDouble(type), slope);
-            baseDemands.addTo(type, base);
-            demandSlopes.addTo(type, slope);
+            NetworkResourceModifier.sum(values.getDouble(type), base);
+            NetworkResourceModifier.sum(slopes.getDouble(type), slope);
+            values.addTo(type, base);
+            slopes.addTo(type, slope);
             return this;
         }
 

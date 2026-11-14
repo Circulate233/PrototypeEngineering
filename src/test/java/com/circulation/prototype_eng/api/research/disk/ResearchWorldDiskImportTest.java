@@ -428,9 +428,9 @@ class ResearchWorldDiskImportTest {
         Fixture(Path directory) {
             registry.register(ResearchDefinition.builder(RESEARCH).maxLevel(100).specialOnly(true)
                                                 .deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                                .stage(ResearchLevelStage.builder(1, 100).researchTier(2).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                                .stage(ResearchLevelStage.builder(1, 100).durationTicks(1).researchTier(2).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
             registry.register(ResearchDefinition.builder(LOOP).maxLevel(100).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                                .stage(ResearchLevelStage.builder(1, 100).researchTier(2).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                                .stage(ResearchLevelStage.builder(1, 100).durationTicks(1).researchTier(2).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
             registry.freeze();
             codec = new ResearchWorldNbt(registry, new ResourceKeyNbt(_ -> null));
             data = new ResearchDiskData(registry, 3, Object2IntMaps.singleton(RESEARCH, 90));

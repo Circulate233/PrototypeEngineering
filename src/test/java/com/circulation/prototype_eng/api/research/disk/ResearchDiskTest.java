@@ -29,7 +29,7 @@ class ResearchDiskTest {
     }
 
     private static ResearchLevelStage stage(int first, int last, int tier) {
-        return ResearchLevelStage.builder(first, last).researchTier(tier)
+        return ResearchLevelStage.builder(first, last).durationTicks(1).researchTier(tier)
                                  .resourceFormula(ResearchResourceFormula.builder().build()).build();
     }
 
@@ -126,10 +126,10 @@ class ResearchDiskTest {
     @Test
     void batchMutualExclusionIsPrecheckedAgainstOtherDiskEntriesAndExistingStorage() {
         var a = ResearchDefinition.builder(id("a")).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                  .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build())
+                                  .stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build())
                                                            .mutex(id("b"), 1).build()).build();
         var b = ResearchDefinition.builder(id("b")).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                  .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build())
+                                  .stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build())
                                                            .mutex(id("a"), 1).build()).build();
         var registry = registry(a, b, definition("other", 1, 1));
         var storage = storage(registry, 1, 3);

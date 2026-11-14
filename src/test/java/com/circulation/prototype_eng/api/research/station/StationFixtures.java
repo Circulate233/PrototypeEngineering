@@ -90,15 +90,15 @@ final class StationFixtures implements AutoCloseable {
 
     static ResearchDefinition defaultDefinition() {
         return ResearchDefinition.builder(id("research")).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                 .stage(ResearchLevelStage.builder(1, 1).researchTier(2).resourceFormula(ResearchResourceFormula.builder().constant(ComputingResourceFixtures.COMPUTE, 10).build()).build()).build();
+                                 .stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(2).resourceFormula(ResearchResourceFormula.builder().constant(ComputingResourceFixtures.COMPUTE, 10).build()).build()).build();
     }
 
     Entry station(int level, int dimension) {
         return role(NetworkDeviceRole.RESEARCH_STATION, level, dimension, OWNER, world);
     }
 
-    Entry station(int level, long rate, long energyPerTick) {
-        return role(NetworkDeviceRole.RESEARCH_STATION, level, 0, OWNER, world, rate, energyPerTick);
+    Entry poweredStation(long energyPerTick) {
+        return role(NetworkDeviceRole.RESEARCH_STATION, 2, 0, OWNER, world, 10, energyPerTick);
     }
 
     Entry role(NetworkDeviceRole role, int level, int dimension, UUID player, Object worldIdentity) {
@@ -145,10 +145,6 @@ final class StationFixtures implements AutoCloseable {
         return entry;
     }
 
-    MachineIdentityRegistry.Registration identity(Entry entry) {
-        return Objects.requireNonNull(Objects.requireNonNull(entry.machine.components().get(ownership)).registration());
-    }
-
     MachineNetworkDevice roleOf(MachineInstance machine) {
         return entries.stream().filter(entry -> entry.machine == machine).findFirst().map(entry -> Objects.requireNonNull(machine.components().get(entry.role))).orElseThrow();
     }
@@ -169,10 +165,6 @@ final class StationFixtures implements AutoCloseable {
     void nextTick() {
         advanceTick();
         refresh();
-    }
-
-    void replaceHatches(Entry entry, MachineHatches hatches) {
-        entry.machine.components().replaceValue(MachineHatches.TYPE, hatches);
     }
 
     void requireOwner() {

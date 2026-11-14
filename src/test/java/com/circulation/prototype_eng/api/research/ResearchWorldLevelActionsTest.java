@@ -211,7 +211,7 @@ class ResearchWorldLevelActionsTest {
                 fail("Level repair delivered a reward event");
                 return RewardEventAction.Result.ALREADY_APPLIED;
             });
-            var stage = ResearchLevelStage.builder(1, 5).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build());
+            var stage = ResearchLevelStage.builder(1, 5).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build());
             for (int level = 1; level <= 3; level++)
                 stage.rewardGroup(level, new RewardGroup(GROUP, ObjectList.of(event)));
             registry.register(ResearchDefinition.builder(PERSONAL).maxLevel(5).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
@@ -220,11 +220,11 @@ class ResearchWorldLevelActionsTest {
                                                     return false;
                                                 }).stage(stage.build()).build());
             registry.register(ResearchDefinition.builder(DIRECT).maxLevel(5).deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY)
-                                                .stage(ResearchLevelStage.builder(1, 5).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                                .stage(ResearchLevelStage.builder(1, 5).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
             registry.register(ResearchDefinition.builder(SPECIAL).maxLevel(5).specialOnly().deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                                .stage(ResearchLevelStage.builder(1, 5).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                                .stage(ResearchLevelStage.builder(1, 5).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
             registry.register(ResearchDefinition.builder(MANUAL).maxLevel(5).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                                .stage(ResearchLevelStage.builder(1, 5).researchTier(0).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                                .stage(ResearchLevelStage.builder(1, 5).durationTicks(1).researchTier(0).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
             registry.freeze();
             var claims = new ObjectArrayList<RewardClaim>();
             claims.add(RewardClaim.unclaimed(new RewardClaim.Key(ALICE, PERSONAL, 1), 1));

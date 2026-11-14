@@ -1,16 +1,11 @@
 package com.circulation.prototype_eng.research.manual;
 
-import ae2.api.stacks.AEKey;
-import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
-import com.circulation.prototype_eng.api.research.manual.ManualMaterialKey;
-import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
@@ -21,8 +16,14 @@ import org.jetbrains.annotations.ApiStatus;
 import java.util.List;
 import java.util.Objects;
 
+import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKey2LongMap;
+import com.circulation.prototype_eng.api.research.manual.ManualMaterialKey;
+import it.unimi.dsi.fastutil.objects.Object2LongMap;
+
+
 /**
- * Tier-zero unit advancement retains each static input's identity even when several use one key.
+ * Player receipts retain each static input identity; payments for shared resources are distributed across those inputs.
  */
 @ApiStatus.Internal
 public final class ManualMaterials {
@@ -30,7 +31,7 @@ public final class ManualMaterials {
     private final Object2ObjectOpenHashMap<ManualMaterialKey, Material> byId = new Object2ObjectOpenHashMap<>();
 
     private ManualMaterials(ObjectList<Material> materials) {
-        // from() transfers its completed private list; no caller can mutate it.
+
         this.materials = materials;
         for (var material : materials) {
             byId.put(material.id(), material);
@@ -38,7 +39,7 @@ public final class ManualMaterials {
     }
 
     /**
-     * ResearchLevelStage additionally restricts real tier-zero definitions to AEItemKey inputs.
+     * ResearchLevelStage restricts manual research to fixed item inputs.
      */
     public static ManualMaterials from(List<RecipeRequirement<?>> requirements) {
         Objects.requireNonNull(requirements);
@@ -65,41 +66,52 @@ public final class ManualMaterials {
                 materials.add(new Material(new ManualMaterialKey(requirement.id(), inputIndex), input.what(), input.amount()));
             }
         }
-        if (materials.isEmpty()) {
-            throw new IllegalArgumentException("Manual research requires at least one material input");
-        }
         return new ManualMaterials(materials);
     }
 
-    public Plan plan(Object2LongMap<ManualMaterialKey> currentWork) {
-        long sequence = validateWorkAndSequence(currentWork);
+    public Plan plan(Object2LongMap<ManualMaterialKey> currentWork, AEKey2LongMap payments, boolean complete, long sequence) {
         var increments = new Object2LongLinkedOpenHashMap<ManualMaterialKey>();
-        var expectedWork = new Object2LongLinkedOpenHashMap<>(currentWork);
-        expectedWork.defaultReturnValue(0);
-        var quantities = new AEKeyLinkedOpenHashMap(6);
-        boolean completesResearch = true;
+        var expected = new Object2LongLinkedOpenHashMap<>(currentWork);
+        var remaining = new AEKey2LongMap.OpenHashMap();
+        remaining.putAll(payments);
         for (var material : materials) {
-            long completed = expectedWork.getLong(material.id());
-            if (completed == material.amount()) {
-                continue;
-            }
-            increments.addTo(material.id(), 1);
-            expectedWork.addTo(material.id(), 1);
-            // At most one per row of an int-sized list; this sum cannot overflow long.
-            quantities.addTo(material.key(), 1);
-            if (completed + 1 != material.amount()) {
-                completesResearch = false;
-            }
+            long amount = Math.min(material.amount() - currentWork.getLong(material.id()), remaining.getLong(material.key()));
+            if (amount == 0) continue;
+            increments.addTo(material.id(), amount);
+            expected.addTo(material.id(), amount);
+            remaining.addTo(material.key(), -amount);
         }
-        // The resulting progress must still have a representable operation sequence after recovery.
-        if (sequence > Long.MAX_VALUE - increments.size()) {
-            throw new ArithmeticException("Manual material sequence overflow after advancement");
+        return new Plan(increments, expected, payments, sequence, complete);
+    }
+
+    public AEKey2LongMap quantities(Object2LongMap<ManualMaterialKey> delta) {
+        var quantities = new AEKey2LongMap.OpenHashMap();
+        for (var entry : delta.object2LongEntrySet())
+            quantities.addTo(byId.get(entry.getKey()).key(), entry.getLongValue());
+        return quantities;
+    }
+
+    public AEKey2LongMap remaining(Object2LongMap<ManualMaterialKey> work) {
+        var result = new AEKey2LongMap.OpenHashMap();
+        for (var material : materials) result.addTo(material.key(), material.amount() - work.getLong(material.id()));
+        return result;
+    }
+
+    public Object2LongMap<ManualMaterialKey> workForRemaining(AEKey2LongMap remaining) {
+        var paid = new AEKey2LongMap.OpenHashMap();
+        for (var material : materials) paid.addTo(material.key(), material.amount());
+        for (var entry : remaining.object2LongEntrySet()) paid.addTo(entry.getKey(), -entry.getLongValue());
+        var work = new Object2LongLinkedOpenHashMap<ManualMaterialKey>();
+        for (var material : materials) {
+            long amount = Math.min(material.amount(), paid.getLong(material.key()));
+            if (amount > 0) work.addTo(material.id(), amount);
+            paid.addTo(material.key(), -amount);
         }
-        return new Plan(increments, expectedWork, quantities, sequence, completesResearch);
+        return work;
     }
 
     public void validateWork(Object2LongMap<ManualMaterialKey> work) {
-        validateWorkAndSequence(work);
+        validateWorkValues(work);
     }
 
     public boolean complete(Object2LongMap<ManualMaterialKey> work) {
@@ -112,9 +124,8 @@ public final class ManualMaterials {
         return true;
     }
 
-    private long validateWorkAndSequence(Object2LongMap<ManualMaterialKey> work) {
+    private void validateWorkValues(Object2LongMap<ManualMaterialKey> work) {
         Objects.requireNonNull(work);
-        long sequence = 0;
         for (var entry : work.object2LongEntrySet()) {
             var material = byId.get(entry.getKey());
             if (material == null) {
@@ -124,13 +135,11 @@ public final class ManualMaterials {
             if (completed < 0 || completed > material.amount()) {
                 throw new IllegalArgumentException("Manual material work outside 0.." + material.amount() + ": " + entry.getKey());
             }
-            sequence = Math.addExact(sequence, completed);
         }
-        return sequence;
     }
 
     /**
-     * Completed zero-default maps are transferred read-only for the plan's lifetime.
+     * Plan maps use zero defaults and are transferred read-only to material execution.
      */
     public record Plan(Object2LongMap<ManualMaterialKey> increments, Object2LongMap<ManualMaterialKey> expectedWork,
                        AEKey2LongMap quantities, long sequence, boolean completesResearch) {

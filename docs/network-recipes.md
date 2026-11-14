@@ -10,7 +10,7 @@
 - 正时长配方在实际 TICK 阶段占用一次，START 只检查资格和当前容量，END 只重验许可和研究。零时长配方没有 TICK，因此在 START 占用一次，END 不重复占用。
 - 扫描 START 和独立 TICK/END 预检只检查，不占 lease、数值余额或操作序号。数值不足及并行需求超出 long 可表示范围均返回正常 Blocked，不把机器置为故障。
 
-这保留 PN 的两份 numeric 预算：普通配方扣可用余额，研究供给读取本 tick 初始向量；两者共享整机并发。研究站已单独接入完整材料消费者和服务器自动推进，见[研究站执行](research-stations.md)。
+普通配方和研究共用数值余额与整机并发。研究在普通设备结束后使用剩余预算，各项网络资源可部分累计；研究站实际工作各占 1 并发，见[研究站执行](research-stations.md)。
 
 ## 注册与外部 API
 
@@ -52,6 +52,6 @@ pending 保留准确 lifecycle 句柄和原始期限，失效 tick 只确认/补
 
 owner 先增量捕获资源数量及 revision，纯 worker 根据冻结数据计算倍率、随机输出和动态候选；owner 再捕获当前数量，验证原事实和来源版本，完成选择、预检与资源/FE 预留。动态 kernel 保留全部已排序匹配，owner 先过滤当前非零可用项，再应用 maxCandidates 并选择满足数量的项。来源变化不能让旧候选误消费；成功 START/历史 tick 的材料与效果不因计算暂停重复执行。
 
-MachineRecipeExecution 和 ResearchStationWork.drive 在原 deadline、原 current attempt 下继续普通 work yield，UNKNOWN 仍保留原确认义务。跨 tick 缓存只有纯事实，当前许可、来源池、lease、receipt 和预留必须重取/重验；终态清除缓存，存档不携带它。研究站永久破坏、原 owner 取消和 Schema 5 原物理凭据恢复保持原行为，R30 接口盘与数据库共同导入状态不变。外部 snapshot、matcher/comparator 与 opaque callback 仍是合作回调边界，见[执行预算](planned-execution.md)。
+`MachineRecipeExecution` 沿原 deadline 和 current attempt 继续普通 work yield，UNKNOWN 保留原确认义务。跨 tick 缓存只保存事实，许可、来源池、租约和预留在当前执行边界获取；终态清理缓存，存档不保存缓存。研究站现为同步总量材料结算，目标进度使用世界 V6 保存，见[研究站](research-stations.md)。普通配方的外部 snapshot、matcher/comparator 和回调规范见[执行预算](planned-execution.md)。
 
 验证使用真实 MachineAssembly、MachineController、调度器、FE/资源事务、网络账本及研究存储，未启动游戏。最终测试计数与 IDEA MCP 证据见[实施进度](implementation-status.md)。

@@ -14,8 +14,8 @@
 
 - 数值资源用double并随配方并行量缩放；固定并发是独立long额度，每台机器占1，不随工位或Java线程重复占用。START/扫描只检查，TICK占用，零时长START占用一次。
 - `requestLease(machineId)` 申请固定并发；同一机器同tick幂等，其他工位ALREADY_GRANTED，工位结束不单独释放。
-- 活动中心免并发。计算机与活动数据库发布时各占1，研究站实际推进时占1，三者优先普通机器，可收回普通租约。计算机须由中心或其他已获准设备先提供启动额度，不能自启动，见[计算机](computers.md)。
-- `numericResources()` 为当前发布的只读研究供给；普通预留扣另一份 availableResources。两份 numeric 预算独立，研究与普通配方共享机器 lease。
+- 活动中心免并发。计算机与活动数据库发布时各占 1，优先普通机器，可收回普通租约；研究站在普通工作之后申请剩余并发，实际工作各占 1。计算机须由中心或其他已获准设备先提供启动额度，不能自启动，见[计算机](computers.md)。
+- `numericResources()` 提供当前发布的供给总量，`availableResources()` 提供扣除当前消费和预留后的余额。研究与普通配方使用同一份余额和整机并发，研究最后结算。
 - `reserve(Operation, required, authorized)` 先校验完整 numeric 向量和全部余额，再整组 addTo 扣减。不足返回 null，不部分扣减、不占操作键。空需求允许无数值成本的授权凭据。
 
 Operation 包含 machine UUID、稳定 source ResourceLocation 和 sequence；source 表示工位/来源，sequence 区分同 tick 新一轮工作，不能拿 capture epoch 作工作序号。成功预留后本 tick 同键不可再次使用，包括已补偿的键；未接受的申请可以原键重试。账本只保存去重键，不反向保存 receipt，避免已结束操作滞留旧 Publication 与宿主。

@@ -324,7 +324,7 @@ class ResearchWorldDownloadTest {
         var initial = fixture.initial();
         var team = initial.teams().getFirst();
         var blocked = new ResearchWorldSnapshot.Team(team.teamId(), team.knownMembers(), new ObjectOpenHashSet<>(ObjectList.of(RESEARCH)),
-            team.research(), team.queue(), team.manualSessions(), team.stationWork());
+            team.research(), team.queue(), team.manualSessions());
         var world = fixture.restore(new ResearchWorldSnapshot(1, initial.players(), ObjectList.of(blocked)));
         var calls = new AtomicInteger();
         assertEquals(ResearchDownloadResult.Status.SOURCE_REJECTED, fixture.request(world, initial.downloads().getFirst().intent(), calls).status());
@@ -390,7 +390,7 @@ class ResearchWorldDownloadTest {
         Fixture(int cost) {
             registry.register(ResearchDefinition.builder(RESEARCH).maxLevel(4).itemDownloadLevelCost(cost)
                                                 .deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                                .stage(ResearchLevelStage.builder(1, 4).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                                .stage(ResearchLevelStage.builder(1, 4).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
             registry.freeze();
             codec = new ResearchWorldNbt(registry, new ResourceKeyNbt(id -> TYPE.getId().equals(id) ? TYPE : null));
         }

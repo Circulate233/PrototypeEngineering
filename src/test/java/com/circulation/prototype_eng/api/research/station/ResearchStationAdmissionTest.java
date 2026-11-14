@@ -46,7 +46,7 @@ class ResearchStationAdmissionTest {
 
     private static ResearchDefinition definition(int tier, ResearchStartCondition condition) {
         return ResearchDefinition.builder(id("research")).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                 .startCondition(condition).stage(ResearchLevelStage.builder(1, 1).researchTier(tier)
+                                 .startCondition(condition).stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(tier)
                                                                                     .resourceFormula(ResearchResourceFormula.builder().constant(ComputingResourceFixtures.COMPUTE, 10).build())
                                                                                     .materialRequirement(RecipeRequirements.RESOURCES.requirement(id("admission_io"), new ResourceRequirement(
                                                                                         List.of(new GenericStack(MATERIAL, 5)), List.of(), List.of(), List.of(), false))).build()).build();
@@ -155,7 +155,7 @@ class ResearchStationAdmissionTest {
             assertEquals(3, captured.environment().dataCenterLevel());
             assertEquals(3, captured.environment().highestResearchStationLevel());
             assertEquals(TeamResearchStart.Status.STARTED, start(fixture, queue(fixture), captured).status());
-            assertEquals(0, Objects.requireNonNull(fixture.selector.capture("team", 2)).dimension(), "Admission never advances the work dimension rotation");
+            assertFalse(Objects.requireNonNull(fixture.selector.capture("team", 2)).rates().isEmpty());
         }
     }
 
@@ -189,7 +189,7 @@ class ResearchStationAdmissionTest {
             var secondPermit = Objects.requireNonNull(fixture.roleOf(second.machine()).workPermit());
             assertEquals(NetworkTeamBudget.LeaseStatus.GRANTED, firstPermit.requestLease());
             assertEquals(NetworkTeamBudget.LeaseStatus.INSUFFICIENT_CAPACITY, secondPermit.requestLease());
-            assertEquals(-1, Objects.requireNonNull(fixture.selector.capture("team", 2)).dimension());
+            assertEquals(1, Objects.requireNonNull(fixture.selector.capture("team", 2)).rates().size());
         }
     }
 

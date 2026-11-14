@@ -1,35 +1,29 @@
 package com.circulation.prototype_eng.api.research.queue;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
+import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.TeamResearchView;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import com.circulation.prototype_eng.research.ResearchEligibility;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectSet;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collection;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
 /**
- * One team's owner-thread queue. Numeric work accumulates on its head; logical resources are leased
- * by the station consumer and never become progress. This class does not grant network authority.
- * All worldTime arguments use one persistent server timeline, such as overworld totalWorldTime;
- * per-dimension station times and a restart-resetting server tick counter are invalid inputs.
+ * Owner-thread research queue. Progress is stored by research ID and target level and survives queue removal.
+ * worldTime must use persistent server time, not a scheduler counter that resets on restart.
  */
 @SuppressWarnings("unused")
 public final class TeamResearchQueue {
@@ -38,50 +32,49 @@ public final class TeamResearchQueue {
     private final String teamId;
     private final Thread ownerThread = Thread.currentThread();
     private final ObjectArrayList<Entry> entries = new ObjectArrayList<>(CAPACITY);
-    private final Reference2DoubleOpenHashMap<NetworkResourceType> progress = new Reference2DoubleOpenHashMap<>();
+    private @Nullable ObjectList<Entry> displayEntries;
+    private final Object2ObjectOpenHashMap<ResearchProgress.Target, ResearchProgress> progress = new Object2ObjectOpenHashMap<>();
     private long nextEntryId = 1;
     private long epoch;
     private long updatedAtWorldTime;
     private long lastGrantedEntryId = -1;
     private long lastGrantedWorldTime = -1;
-    @Nullable
-    private Object pendingMutation;
+    private @Nullable ReversibleTransaction pendingMutation;
 
     public TeamResearchQueue(ResearchRegistry registry, String teamId) {
-        this.registry = Objects.requireNonNull(registry);
-        this.teamId = Objects.requireNonNull(teamId);
-        if (!registry.isFrozen()) {
-            throw new IllegalStateException("Research queue requires frozen registries");
-        }
-        if (teamId.isBlank() || !teamId.equals(teamId.trim())) {
-            throw new IllegalArgumentException("Invalid research queue team id");
-        }
+        if (!registry.isFrozen()) throw new IllegalStateException("Research queue requires frozen definitions");
+        if (teamId.isBlank()) throw new IllegalArgumentException("Research queue requires a team");
+        this.registry = registry;
+        this.teamId = teamId;
     }
 
-    /**
-     * Call on the actual runtime owner thread. Saved data contains no owner-thread or plan authority.
-     */
     public static TeamResearchQueue restore(ResearchRegistry registry, Snapshot saved) {
-        Objects.requireNonNull(saved);
         var queue = new TeamResearchQueue(registry, saved.teamId());
-        queue.validateSnapshot(saved);
-        queue.replace(saved);
+        var ids = new LongOpenHashSet();
+        var targets = new ObjectOpenHashSet<ResearchProgress.Target>();
+        for (var entry : saved.entries()) {
+            var definition = registry.require(entry.key().researchId());
+            definition.stageForLevel(entry.key().targetLevel());
+            if (definition.specialOnly() || !ids.add(entry.key().queueEntryId()) || !targets.add(entry.key().target())
+                || entry.key().queueEntryId() >= saved.nextEntryId() || entry.createdAtWorldTime() > saved.updatedAtWorldTime())
+                throw new IllegalArgumentException("Invalid saved research queue entry");
+        }
+        for (var state : saved.progress()) {
+            var work = new ResearchProgress(registry, state.target());
+            work.restore(state);
+            if (queue.progress.putIfAbsent(state.target(), work) != null)
+                throw new IllegalArgumentException("Duplicate saved research progress");
+        }
+        for (var entry : saved.entries())
+            if (!queue.progress.containsKey(entry.key().target()))
+                throw new IllegalArgumentException("Queued research lost its progress");
+        queue.entries.addAll(saved.entries());
+        queue.nextEntryId = saved.nextEntryId();
+        queue.epoch = saved.epoch();
+        queue.updatedAtWorldTime = saved.updatedAtWorldTime();
+        queue.lastGrantedEntryId = saved.lastGrantedEntryId();
+        queue.lastGrantedWorldTime = saved.lastGrantedWorldTime();
         return queue;
-    }
-
-    private static ObjectSet<UUID> stations(Collection<UUID> stationIds) {
-        var copy = new ObjectOpenHashSet<UUID>(stationIds.size());
-        for (var id : Objects.requireNonNull(stationIds)) {
-            if (!copy.add(Objects.requireNonNull(id))) {
-                throw new IllegalArgumentException("Duplicate research station");
-            }
-        }
-        if (copy.isEmpty()) {
-            throw new IllegalArgumentException("Research segment needs contributing stations");
-        }
-        var ordered = new ObjectArrayList<>(copy);
-        ordered.sort(UUID::compareTo);
-        return ObjectSets.unmodifiable(new ObjectLinkedOpenHashSet<>(ordered));
     }
 
     public String teamId() {
@@ -90,10 +83,8 @@ public final class TeamResearchQueue {
     }
 
     public ResearchRegistry registry() {
-        requireThread();
         return registry;
     }
-
 
     public long epoch() {
         requireThread();
@@ -112,17 +103,18 @@ public final class TeamResearchQueue {
 
     public boolean containsTarget(ResourceLocation id, int level) {
         requireThread();
-        for (var entry : entries) {
-            if (entry.key().researchId().equals(Objects.requireNonNull(id)) && entry.key().targetLevel() == level) {
-                return true;
-            }
-        }
+        for (var entry : entries)
+            if (entry.key().researchId().equals(id) && entry.key().targetLevel() == level) return true;
         return false;
     }
 
+    /**
+     * Borrowed read-only list, reused while queue order stays unchanged.
+     */
     public ObjectList<Entry> queueSnapshot() {
         requireThread();
-        return ObjectLists.unmodifiable(new ObjectArrayList<>(entries));
+        if (displayEntries == null) displayEntries = new ObjectArrayList<>(entries);
+        return displayEntries;
     }
 
     public Optional<Entry> activeHead() {
@@ -130,278 +122,179 @@ public final class TeamResearchQueue {
         return entries.isEmpty() ? Optional.empty() : Optional.of(entries.getFirst());
     }
 
-    public Reference2DoubleMap<NetworkResourceType> resourceProgressSnapshot() {
+    public @Nullable ResearchProgress progress(ResourceLocation id, int level) {
         requireThread();
-        return NetworkResourceModifier.copyResources(progress);
+        return progress.get(new ResearchProgress.Target(id, level));
+    }
+
+    public @Nullable ResearchProgress activeProgress() {
+        requireThread();
+        return entries.isEmpty() ? null : progress.get(entries.getFirst().key().target());
     }
 
     /**
-     * Server owner entry after checking actual membership and the requester-specific start condition.
-     * A preview view or client startable flag cannot authorize this call.
+     * Returns current resource requirements read-only.
      */
+    public Reference2DoubleMap<NetworkResourceType> resourceProgressSnapshot() {
+        var active = activeProgress();
+        return active == null ? Reference2DoubleMaps.emptyMap() : active.snapshot().resources();
+    }
+
     public Entry enqueue(ResourceLocation researchId, int targetLevel, UUID requestedBy, long worldTime) {
         requireBoundary();
         var definition = registry.require(researchId);
         definition.stageForLevel(targetLevel);
-        if (definition.specialOnly()) {
-            throw new IllegalArgumentException("Special-only research cannot enter an ordinary queue");
-        }
-        if (entries.size() >= CAPACITY) {
-            throw new IllegalStateException("Research queue capacity exceeded");
-        }
-        for (var entry : entries) {
-            if (entry.key().researchId().equals(researchId) && entry.key().targetLevel() == targetLevel) {
-                throw new IllegalStateException("Duplicate queued research target");
-            }
-        }
-        long followingId = Math.incrementExact(nextEntryId);
-        long followingEpoch = Math.incrementExact(epoch);
-        var entry = new Entry(new Key(researchId, targetLevel, nextEntryId), requestedBy, worldTime);
+        if (definition.specialOnly() || entries.size() >= CAPACITY || containsTarget(researchId, targetLevel))
+            throw new IllegalStateException("Research target cannot enter the queue");
+        var key = new Key(researchId, targetLevel, nextEntryId);
+        nextEntryId = Math.incrementExact(nextEntryId);
+        var entry = new Entry(key, requestedBy, worldTime);
+        var target = key.target();
+        if (!progress.containsKey(target)) progress.put(target, new ResearchProgress(registry, target));
         entries.add(entry);
-        nextEntryId = followingId;
-        epoch = followingEpoch;
-        updatedAtWorldTime = Math.max(updatedAtWorldTime, worldTime);
+        displayEntries = null;
+        changed(worldTime);
         return entry;
     }
 
-    /**
-     * Station capacity is the sum of the participating stations' rates: min(available, capacity, remaining).
-     * Callers must acquire the stations' logical leases independently. No tokens are acquired here.
-     * Available quantities are borrowed read-only for this synchronous planning call.
-     */
-    public Optional<SegmentPlan> planSegment(Key expectedHead, Collection<UUID> stationIds,
-                                             Reference2DoubleMap<NetworkResourceType> availableResources,
-                                             Reference2DoubleMap<NetworkResourceType> stationCapacity, long worldTime) {
+    public boolean move(Key key, int index, long worldTime) {
         requireBoundary();
-        var head = requireHead(expectedHead);
-        if (worldTime < 0) {
-            throw new IllegalArgumentException("Negative research segment time");
+        int previous = indexOf(key);
+        if (previous < 0 || index < 0 || index >= entries.size()) return false;
+        if (previous != index) {
+            entries.add(index, entries.remove(previous));
+            displayEntries = null;
+            changed(worldTime);
         }
-        if (head.key().queueEntryId() == lastGrantedEntryId) {
-            if (worldTime < lastGrantedWorldTime) {
-                throw new IllegalStateException("Research grant time moved backwards");
-            }
-            if (worldTime == lastGrantedWorldTime) {
-                return Optional.empty();
-            }
-        }
-        var stations = stations(stationIds);
-        NetworkResourceModifier.validateResources(availableResources);
-        NetworkResourceModifier.validateResources(stationCapacity);
-        var stage = registry.require(head.key().researchId()).stageForLevel(head.key().targetLevel());
-        if (stage.researchTier() == 0) {
-            throw new IllegalStateException("Tier-zero research requires manual execution");
-        }
-        var demand = stage.resourceDemandForLevel(head.key().targetLevel());
-        var ceiling = new Reference2DoubleOpenHashMap<>(progress);
-        var grants = new Reference2DoubleOpenHashMap<NetworkResourceType>(demand.size());
-        boolean complete = true;
-        for (var entry : demand.reference2DoubleEntrySet()) {
-            var type = entry.getKey();
-            double before = progress.getDouble(type);
-            double remaining = entry.getDoubleValue() - before;
-            if (remaining <= 0) {
-                continue;
-            }
-            double cap = stationCapacity.getOrDefault(type, 0D);
-            double grant = Math.min(remaining, Math.min(availableResources.getOrDefault(type, 0D), cap));
-            if (grant > 0) {
-                grants.put(type, grant);
-                ceiling.addTo(type, grant);
-            }
-            if (ceiling.getDouble(type) < entry.getDoubleValue()) {
-                complete = false;
-            }
-        }
-        if (grants.isEmpty() && !complete) {
-            return Optional.empty();
-        }
-        return Optional.of(new SegmentPlan(this, head, stations, epoch, worldTime, resourceProgressSnapshot(),
-            ceiling, grants,
-            stage.materialRequirements(), complete));
+        return true;
+    }
+
+    public @Nullable Entry remove(Key key, long worldTime) {
+        requireBoundary();
+        int index = indexOf(key);
+        if (index < 0) return null;
+        var removed = entries.remove(index);
+        displayEntries = null;
+        changed(worldTime);
+        return removed;
+    }
+
+    public void removeHead(Key key) {
+        requireHead(key);
+        remove(key, updatedAtWorldTime);
+    }
+
+    public void removeUnstarted(Key key) {
+        Objects.requireNonNull(remove(key, updatedAtWorldTime));
+    }
+
+    public void completeHead(Key key) {
+        removeHead(key);
+        progress.remove(key.target());
+    }
+
+    public boolean advancedAt(long worldTime) {
+        requireThread();
+        return lastGrantedWorldTime == worldTime;
     }
 
     /**
-     * Prepare before material/resource commit, then commit this exact plan, settle the enclosing
-     * transaction, and complete. Until complete/rollback, other queue writes and saves are rejected.
+     * Records work ticks and remaining materials with the world checkpoint after settling player receipts.
      */
+    public void recordManualProgress(Key key, long elapsed, AEKey2LongMap remaining, long worldTime) {
+        requireBoundary();
+        requireHead(key);
+        var work = Objects.requireNonNull(activeProgress());
+        if (work.stage().researchTier() != 0)
+            throw new IllegalArgumentException("Manual progress requires tier-zero research");
+        work.restore(new ResearchProgress.Snapshot(key.target(), elapsed, remaining, Reference2DoubleMaps.emptyMap()));
+        lastGrantedEntryId = key.queueEntryId();
+        lastGrantedWorldTime = worldTime;
+        changed(worldTime);
+    }
+
+    public Optional<SegmentPlan> planSegment(Key key, List<ResearchProgress.StationRate> stations,
+                                             Reference2DoubleMap<NetworkResourceType> available,
+                                             AEKey2LongMap materials, long worldTime) {
+        requireBoundary();
+        var head = requireHead(key);
+        if (worldTime < lastGrantedWorldTime) throw new IllegalArgumentException("Research time moved backwards");
+        if (worldTime == lastGrantedWorldTime) return Optional.empty();
+        var work = Objects.requireNonNull(activeProgress());
+        if (work.stage().researchTier() == 0)
+            throw new IllegalStateException("Tier-zero research requires manual execution");
+        var step = work.plan(stations, available, materials);
+        return step == null ? Optional.empty() : Optional.of(new SegmentPlan(this, head, epoch, worldTime, step));
+    }
+
     public GrantMutation prepareGrantSegment(SegmentPlan plan) {
         requireBoundary();
         validatePlan(plan);
-        requireMutationEpochCapacity();
-        var mutation = new GrantMutation(this, plan, snapshot());
+        var mutation = new GrantMutation(this, plan);
         pendingMutation = mutation;
         return mutation;
     }
 
-    /**
-     * Rechecks structural next-level eligibility; a changed start condition does not cancel existing work.
-     */
     public PruneMutation preparePrune(TeamResearchView view) {
         requireBoundary();
-        requireView(view);
-        requireMutationEpochCapacity();
-        var canceled = new ObjectArrayList<Entry>();
+        if (view.registry() != registry || !view.teamId().equals(teamId))
+            throw new IllegalArgumentException("Research view belongs to another team");
         var eligibility = new ResearchEligibility(registry);
-        for (var entry : entries) {
-            if (!eligibility.structurallyEligible(view, entry.key().researchId(), entry.key().targetLevel())) {
-                canceled.add(entry);
-            }
-        }
-        var mutation = new PruneMutation(this, ObjectLists.unmodifiable(canceled), snapshot());
+        var removed = new ObjectArrayList<Entry>();
+        for (var entry : entries)
+            if (!eligibility.structurallyEligible(view, entry.key().researchId(), entry.key().targetLevel()))
+                removed.add(entry);
+        var mutation = new PruneMutation(this, removed, queueSnapshot());
         pendingMutation = mutation;
         return mutation;
-    }
-
-    public Entry removeHead(Key key) {
-        requireBoundary();
-        var head = requireHead(key);
-        long followingEpoch = Math.incrementExact(epoch);
-        entries.removeFirst();
-        progress.clear();
-        epoch = followingEpoch;
-        return head;
-    }
-
-    /**
-     * Compensates insertion only; a started head cannot lose committed numeric work.
-     */
-    public Entry removeUnstarted(Key key) {
-        requireBoundary();
-        for (int index = 0; index < entries.size(); index++) {
-            if (!entries.get(index).key().equals(Objects.requireNonNull(key))) {
-                continue;
-            }
-            if (index == 0 && !progress.isEmpty()) {
-                throw new IllegalStateException("Research head has committed work");
-            }
-            long followingEpoch = Math.incrementExact(epoch);
-            var removed = entries.remove(index);
-            epoch = followingEpoch;
-            return removed;
-        }
-        throw new IllegalStateException("Missing exact queued entry");
     }
 
     public Snapshot snapshot() {
         requireBoundary();
-        return capture();
+        var saved = new ObjectArrayList<ResearchProgress.Snapshot>(progress.size());
+        for (var work : progress.values()) saved.add(work.snapshot());
+        return new Snapshot(teamId, queueSnapshot(), saved, nextEntryId, epoch, updatedAtWorldTime, lastGrantedEntryId, lastGrantedWorldTime);
     }
 
-    private Snapshot capture() {
-        return new Snapshot(teamId, queueSnapshot(), entries.isEmpty() ? null : entries.getFirst().key(),
-            resourceProgressSnapshot(), nextEntryId, epoch, updatedAtWorldTime, lastGrantedEntryId, lastGrantedWorldTime);
-    }
-
-    private void validateSnapshot(Snapshot saved) {
-        if (!teamId.equals(saved.teamId())) {
-            throw new IllegalArgumentException("Research queue team differs from snapshot");
-        }
-        var ids = new LongOpenHashSet(saved.entries().size());
-        var targets = new ObjectOpenHashSet<Target>(saved.entries().size());
-        for (var entry : saved.entries()) {
-            var key = entry.key();
-            var definition = registry.require(key.researchId());
-            definition.stageForLevel(key.targetLevel());
-            if (definition.specialOnly() || !ids.add(key.queueEntryId()) || !targets.add(new Target(key.researchId(), key.targetLevel()))
-                || key.queueEntryId() >= saved.nextEntryId() || entry.createdAtWorldTime() > saved.updatedAtWorldTime()) {
-                throw new IllegalArgumentException("Invalid or duplicate saved research queue entry");
-            }
-        }
-        var expected = saved.entries().isEmpty() ? null : saved.entries().getFirst().key();
-        if (!Objects.equals(expected, saved.activeHead())) {
-            throw new IllegalArgumentException("Saved research head differs from first entry");
-        }
-        if (!saved.resourceProgress().isEmpty() && expected == null) {
-            throw new IllegalArgumentException("Empty research queue has progress");
-        }
-        var demand = expected == null ? null : registry.require(expected.researchId()).totalResourceDemandForLevel(expected.targetLevel());
-        for (var entry : saved.resourceProgress().reference2DoubleEntrySet()) {
-            var type = entry.getKey();
-            if (type.internal() || demand == null || !demand.containsKey(type) || entry.getDoubleValue() > demand.getDouble(type)) {
-                throw new IllegalArgumentException("Saved research progress is outside numeric head demand");
-            }
-        }
-        if (saved.lastGrantedEntryId() >= saved.nextEntryId() || saved.lastGrantedWorldTime() > saved.updatedAtWorldTime()) {
-            throw new IllegalArgumentException("Saved research grant marker is outside queue history");
-        }
-    }
-
-    private void validatePlan(SegmentPlan plan) {
-        Objects.requireNonNull(plan);
-        requireHead(plan.head.key());
-        if (plan.owner != this || plan.queueEpoch != epoch || !progress.equals(plan.progressBefore)) {
-            throw new IllegalStateException("Research segment plan belongs to a stale or different queue");
-        }
+    private int indexOf(Key key) {
+        for (int index = 0; index < entries.size(); index++) if (entries.get(index).key().equals(key)) return index;
+        return -1;
     }
 
     private Entry requireHead(Key key) {
-        if (entries.isEmpty() || !entries.getFirst().key().equals(Objects.requireNonNull(key))) {
-            throw new IllegalStateException("Research operation requires the exact current head");
-        }
+        if (entries.isEmpty() || !entries.getFirst().key().equals(key))
+            throw new IllegalStateException("Research target is no longer the queue head");
         return entries.getFirst();
     }
 
-    private void requireView(TeamResearchView view) {
-        if (Objects.requireNonNull(view).registry() != registry || !teamId.equals(view.teamId())) {
-            throw new IllegalArgumentException("Research view belongs to a different queue registry or team");
-        }
+    private void changed(long worldTime) {
+        epoch = Math.incrementExact(epoch);
+        updatedAtWorldTime = Math.max(updatedAtWorldTime, worldTime);
+    }
+
+    private void validatePlan(SegmentPlan plan) {
+        requireHead(plan.key());
+        if (plan.owner != this || plan.queueEpoch != epoch) throw new IllegalStateException("Research plan is stale");
+    }
+
+    private void requireThread() {
+        if (Thread.currentThread() != ownerThread)
+            throw new IllegalStateException("Research queue requires its owner thread");
     }
 
     private void requireBoundary() {
         requireThread();
-        if (pendingMutation != null) {
-            throw new IllegalStateException("Research queue has a pending mutation");
-        }
+        if (pendingMutation != null) throw new IllegalStateException("Research queue has an unsettled transaction");
     }
-
-    private void requireMutationEpochCapacity() {
-        if (epoch > Long.MAX_VALUE - 2) {
-            throw new IllegalStateException("Research queue lacks epoch capacity for commit and rollback");
-        }
-    }
-
-    private void requireOwner(Object mutation) {
-        requireThread();
-        if (pendingMutation != mutation) {
-            throw new IllegalStateException("Research queue mutation lost ownership");
-        }
-    }
-
-    private void requireThread() {
-        if (Thread.currentThread() != ownerThread) {
-            throw new IllegalStateException("Research queue access requires its owner thread");
-        }
-    }
-
-    private void replace(Snapshot snapshot) {
-        entries.clear();
-        entries.addAll(snapshot.entries());
-        progress.clear();
-        progress.putAll(snapshot.resourceProgress());
-        nextEntryId = snapshot.nextEntryId();
-        epoch = snapshot.epoch();
-        updatedAtWorldTime = snapshot.updatedAtWorldTime();
-        lastGrantedEntryId = snapshot.lastGrantedEntryId();
-        lastGrantedWorldTime = snapshot.lastGrantedWorldTime();
-    }
-
-    private void undo(Snapshot snapshot) {
-        long followingEpoch = Math.incrementExact(epoch);
-        long retainedNextId = Math.max(nextEntryId, snapshot.nextEntryId());
-        replace(snapshot);
-        epoch = followingEpoch;
-        nextEntryId = retainedNextId;
-    }
-
-    private enum MutationState {PREPARED, COMMITTED, COMPLETED, ROLLED_BACK}
 
     public record Key(ResourceLocation researchId, int targetLevel, long queueEntryId) {
         public Key {
             Objects.requireNonNull(researchId);
-            if (targetLevel < 1 || queueEntryId < 1) {
-                throw new IllegalArgumentException("Invalid queued research key");
-            }
+            if (targetLevel < 1 || queueEntryId < 1) throw new IllegalArgumentException("Invalid queued research key");
+        }
+
+        public ResearchProgress.Target target() {
+            return new ResearchProgress.Target(researchId, targetLevel);
         }
     }
 
@@ -409,70 +302,51 @@ public final class TeamResearchQueue {
         public Entry {
             Objects.requireNonNull(key);
             Objects.requireNonNull(requestedBy);
-            if (createdAtWorldTime < 0) {
-                throw new IllegalArgumentException("Negative research request time");
-            }
-        }
-    }
-
-    private record Target(ResourceLocation researchId, int level) {
-    }
-
-    public record Snapshot(String teamId, ObjectList<Entry> entries, @Nullable Key activeHead,
-                           Reference2DoubleMap<NetworkResourceType> resourceProgress, long nextEntryId, long epoch,
-                           long updatedAtWorldTime, long lastGrantedEntryId, long lastGrantedWorldTime) {
-        public Snapshot {
-            Objects.requireNonNull(teamId);
-            entries = ObjectLists.unmodifiable(new ObjectArrayList<>(Objects.requireNonNull(entries)));
-            for (var entry : entries) {
-                Objects.requireNonNull(entry);
-            }
-            resourceProgress = NetworkResourceModifier.copyResources(resourceProgress);
-            if (entries.size() > CAPACITY || nextEntryId < 1 || epoch < 0 || updatedAtWorldTime < 0
-                || (lastGrantedEntryId != -1 && lastGrantedEntryId < 1) || lastGrantedWorldTime < -1
-                || (lastGrantedEntryId == -1) != (lastGrantedWorldTime == -1)) {
-                throw new IllegalArgumentException("Invalid research queue snapshot counters");
-            }
+            if (createdAtWorldTime < 0) throw new IllegalArgumentException("Negative research request time");
         }
     }
 
     /**
-     * Constructor is private; restoring queue state never restores plan authority.
+     * The queue and target progress are completed snapshots and must not be modified.
      */
+    public record Snapshot(String teamId, ObjectList<Entry> entries, ObjectList<ResearchProgress.Snapshot> progress,
+                           long nextEntryId, long epoch, long updatedAtWorldTime, long lastGrantedEntryId,
+                           long lastGrantedWorldTime) {
+        public Snapshot {
+            if (entries.size() > CAPACITY || nextEntryId < 1 || epoch < 0 || updatedAtWorldTime < 0
+                || lastGrantedEntryId >= nextEntryId || lastGrantedWorldTime > updatedAtWorldTime || lastGrantedWorldTime < -1)
+                throw new IllegalArgumentException("Invalid saved research queue counters");
+        }
+
+        public @Nullable Key activeHead() {
+            return entries.isEmpty() ? null : entries.getFirst().key();
+        }
+
+        public Reference2DoubleMap<NetworkResourceType> resourceProgress() {
+            var head = activeHead();
+            if (head != null)
+                for (var state : progress) if (state.target().equals(head.target())) return state.resources();
+            return Reference2DoubleMaps.emptyMap();
+        }
+    }
+
     public static final class SegmentPlan {
         private final TeamResearchQueue owner;
         private final Entry head;
-        private final ObjectSet<UUID> stationIds;
         private final long queueEpoch;
         private final long worldTime;
-        private final Reference2DoubleMap<NetworkResourceType> progressBefore;
-        private final Reference2DoubleMap<NetworkResourceType> progressCeiling;
-        private final Reference2DoubleMap<NetworkResourceType> grantedResources;
-        private final ObjectList<RecipeRequirement<?>> materialRequirements;
-        private final boolean completesResearch;
+        private final ResearchProgress.Step step;
 
-        private SegmentPlan(TeamResearchQueue owner, Entry head, ObjectSet<UUID> stationIds, long queueEpoch, long worldTime,
-                            Reference2DoubleMap<NetworkResourceType> progressBefore, Reference2DoubleMap<NetworkResourceType> progressCeiling,
-                            Reference2DoubleMap<NetworkResourceType> grantedResources, ObjectList<RecipeRequirement<?>> materialRequirements,
-                            boolean completesResearch) {
+        private SegmentPlan(TeamResearchQueue owner, Entry head, long queueEpoch, long worldTime, ResearchProgress.Step step) {
             this.owner = owner;
             this.head = head;
-            this.stationIds = stationIds;
             this.queueEpoch = queueEpoch;
             this.worldTime = worldTime;
-            this.progressBefore = progressBefore;
-            this.progressCeiling = progressCeiling;
-            this.grantedResources = grantedResources;
-            this.materialRequirements = materialRequirements;
-            this.completesResearch = completesResearch;
+            this.step = step;
         }
 
         public Key key() {
             return head.key();
-        }
-
-        public ObjectSet<UUID> stationIds() {
-            return stationIds;
         }
 
         public long queueEpoch() {
@@ -483,197 +357,152 @@ public final class TeamResearchQueue {
             return worldTime;
         }
 
+        public List<UUID> stationIds() {
+            return step.stations();
+        }
+
         public Reference2DoubleMap<NetworkResourceType> progressBefore() {
-            return progressBefore;
+            return step.before().resources();
         }
 
         public Reference2DoubleMap<NetworkResourceType> progressCeiling() {
-            return progressCeiling;
+            return step.after().resources();
         }
 
         public Reference2DoubleMap<NetworkResourceType> grantedResources() {
-            return grantedResources;
+            return step.grants();
         }
 
-        public ObjectList<RecipeRequirement<?>> materialRequirements() {
-            return materialRequirements;
+        public Reference2DoubleMap<NetworkResourceType> capacity() {
+            return step.capacity();
+        }
+
+        public AEKey2LongMap payments() {
+            return step.payments();
         }
 
         public boolean completesResearch() {
-            return completesResearch;
+            return step.complete();
         }
     }
 
-    /**
-     * Grant amounts are borrowed immutable data from the completed segment plan.
-     */
-    public record GrantResult(Entry entry, ObjectSet<UUID> stationIds,
-                              Reference2DoubleMap<NetworkResourceType> grantedResources,
-                              boolean completedResearch) {
-        public GrantResult {
-            Objects.requireNonNull(entry);
-            stationIds = stations(stationIds);
-            NetworkResourceModifier.validateResources(grantedResources);
-        }
+    public record GrantResult(Entry entry, List<UUID> stationIds,
+                              Reference2DoubleMap<NetworkResourceType> grantedResources, boolean completedResearch) {
     }
 
     public static final class GrantMutation implements ReversibleTransaction {
         private final TeamResearchQueue owner;
         private final SegmentPlan plan;
-        private final Snapshot before;
-        private MutationState state = MutationState.PREPARED;
-        @Nullable
-        private GrantResult result;
+        private final ResearchProgress work;
+        private final long previousTime, previousGrant, previousGrantTime;
+        private boolean committed;
+        private Resolution resolution = Resolution.REVERSIBLE;
 
-        private GrantMutation(TeamResearchQueue owner, SegmentPlan plan, Snapshot before) {
+        private GrantMutation(TeamResearchQueue owner, SegmentPlan plan) {
             this.owner = owner;
             this.plan = plan;
-            this.before = before;
+            work = Objects.requireNonNull(owner.activeProgress());
+            previousTime = owner.updatedAtWorldTime;
+            previousGrant = owner.lastGrantedEntryId;
+            previousGrantTime = owner.lastGrantedWorldTime;
+        }
+
+        public GrantResult result() {
+            return new GrantResult(plan.head, plan.stationIds(), plan.grantedResources(), plan.completesResearch());
         }
 
         @Override
         public Resolution resolution() {
-            owner.requireThread();
-            return switch (state) {
-                case PREPARED, COMMITTED -> Resolution.REVERSIBLE;
-                case COMPLETED -> Resolution.COMPLETED;
-                case ROLLED_BACK -> Resolution.ROLLED_BACK;
-            };
-        }
-
-        public GrantResult result() {
-            owner.requireThread();
-            if (result == null) {
-                throw new IllegalStateException("Research grant has no committed result");
-            }
-            return result;
+            return resolution;
         }
 
         @Override
         public void commit() {
-            owner.requireThread();
-            if (state != MutationState.PREPARED) {
-                throw new IllegalStateException("Research grant commit cannot be replayed");
-            }
-            owner.requireOwner(this);
             owner.validatePlan(plan);
-            long followingEpoch = Math.incrementExact(owner.epoch);
-            var committedResult = new GrantResult(plan.head, plan.stationIds, plan.grantedResources, plan.completesResearch);
-            owner.progress.clear();
-            owner.progress.putAll(plan.progressCeiling);
-            owner.updatedAtWorldTime = Math.max(owner.updatedAtWorldTime, plan.worldTime);
-            owner.lastGrantedEntryId = plan.head.key().queueEntryId();
-            owner.lastGrantedWorldTime = plan.worldTime;
-            if (plan.completesResearch) {
+            work.apply(plan.step.after());
+            if (plan.completesResearch()) {
                 owner.entries.removeFirst();
-                owner.progress.clear();
+                owner.displayEntries = null;
+                owner.progress.remove(plan.key().target());
             }
-            owner.epoch = followingEpoch;
-            state = MutationState.COMMITTED;
-            result = committedResult;
+            owner.lastGrantedEntryId = plan.key().queueEntryId();
+            owner.lastGrantedWorldTime = plan.worldTime;
+            owner.changed(plan.worldTime);
+            committed = true;
         }
 
         @Override
         public void complete() {
-            owner.requireThread();
-            if (state == MutationState.COMPLETED) {
-                return;
-            }
-            if (state != MutationState.COMMITTED) {
-                throw new IllegalStateException("Research grant is not committed");
-            }
-            owner.requireOwner(this);
             owner.pendingMutation = null;
-            state = MutationState.COMPLETED;
+            resolution = Resolution.COMPLETED;
         }
 
         @Override
         public void rollback() {
-            owner.requireThread();
-            if (state == MutationState.ROLLED_BACK) {
-                return;
+            if (committed) {
+                work.apply(plan.step.before());
+                if (plan.completesResearch()) {
+                    owner.entries.addFirst(plan.head);
+                    owner.displayEntries = null;
+                    owner.progress.put(work.target(), work);
+                }
+                owner.updatedAtWorldTime = previousTime;
+                owner.lastGrantedEntryId = previousGrant;
+                owner.lastGrantedWorldTime = previousGrantTime;
+                owner.epoch = Math.incrementExact(owner.epoch);
+                committed = false;
             }
-            if (state == MutationState.COMPLETED) {
-                throw new IllegalStateException("Completed research grant cannot roll back");
-            }
-            owner.requireOwner(this);
-            owner.undo(before);
             owner.pendingMutation = null;
-            result = null;
-            state = MutationState.ROLLED_BACK;
+            resolution = Resolution.ROLLED_BACK;
         }
     }
 
     public static final class PruneMutation implements ReversibleTransaction {
         private final TeamResearchQueue owner;
-        private final ObjectList<Entry> canceled;
-        private final Snapshot before;
-        private MutationState state = MutationState.PREPARED;
+        private final ObjectList<Entry> removed, before;
+        private boolean committed;
+        private Resolution resolution = Resolution.REVERSIBLE;
 
-        private PruneMutation(TeamResearchQueue owner, ObjectList<Entry> canceled, Snapshot before) {
+        private PruneMutation(TeamResearchQueue owner, ObjectList<Entry> removed, ObjectList<Entry> before) {
             this.owner = owner;
-            this.canceled = canceled;
+            this.removed = removed;
             this.before = before;
+        }
+
+        public ObjectList<Entry> removed() {
+            return removed;
         }
 
         @Override
         public Resolution resolution() {
-            owner.requireThread();
-            return switch (state) {
-                case PREPARED, COMMITTED -> Resolution.REVERSIBLE;
-                case COMPLETED -> Resolution.COMPLETED;
-                case ROLLED_BACK -> Resolution.ROLLED_BACK;
-            };
-        }
-
-        public ObjectList<Entry> removed() {
-            owner.requireThread();
-            return canceled;
+            return resolution;
         }
 
         @Override
         public void commit() {
-            owner.requireThread();
-            if (state != MutationState.PREPARED) {
-                throw new IllegalStateException("Research prune commit cannot be replayed");
-            }
-            owner.requireOwner(this);
-            long followingEpoch = Math.incrementExact(owner.epoch);
-            if (!owner.entries.isEmpty() && canceled.contains(owner.entries.getFirst())) {
-                owner.progress.clear();
-            }
-            owner.entries.removeAll(canceled);
-            owner.epoch = followingEpoch;
-            state = MutationState.COMMITTED;
+            owner.entries.removeAll(removed);
+            owner.displayEntries = null;
+            owner.changed(owner.updatedAtWorldTime);
+            committed = true;
         }
 
         @Override
         public void complete() {
-            owner.requireThread();
-            if (state == MutationState.COMPLETED) {
-                return;
-            }
-            if (state != MutationState.COMMITTED) {
-                throw new IllegalStateException("Research prune is not committed");
-            }
-            owner.requireOwner(this);
             owner.pendingMutation = null;
-            state = MutationState.COMPLETED;
+            resolution = Resolution.COMPLETED;
         }
 
         @Override
         public void rollback() {
-            owner.requireThread();
-            if (state == MutationState.ROLLED_BACK) {
-                return;
+            if (committed) {
+                owner.entries.clear();
+                owner.entries.addAll(before);
+                owner.displayEntries = null;
+                owner.changed(owner.updatedAtWorldTime);
+                committed = false;
             }
-            if (state == MutationState.COMPLETED) {
-                throw new IllegalStateException("Completed research prune cannot roll back");
-            }
-            owner.requireOwner(this);
-            owner.undo(before);
             owner.pendingMutation = null;
-            state = MutationState.ROLLED_BACK;
+            resolution = Resolution.ROLLED_BACK;
         }
     }
 }

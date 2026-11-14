@@ -48,7 +48,7 @@ class ResearchDiskStorageStateTest {
     private static ResearchRegistry registry() {
         var registry = new ResearchRegistry();
         for (var id : Set.of(LOOP, OTHER, BLOCKER)) {
-            var stage = ResearchLevelStage.builder(1, 10).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build());
+            var stage = ResearchLevelStage.builder(1, 10).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build());
             if (id.equals(BLOCKER)) stage.mutex(LOOP, 1);
             if (id.equals(LOOP)) stage.mutex(BLOCKER, 1);
             registry.register(ResearchDefinition.builder(id).maxLevel(10).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)

@@ -65,7 +65,7 @@ class ResearchDataCentersTest {
     private static ResearchDefinition definition(ResourceLocation id, int maxLevel) {
         return ResearchDefinition.builder(id).maxLevel(maxLevel).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                  .startCondition(_ -> fail("Database access ran a start condition"))
-                                 .stage(ResearchLevelStage.builder(1, maxLevel).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build();
+                                 .stage(ResearchLevelStage.builder(1, maxLevel).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build();
     }
 
     private static ResourceLocation id(String path) {

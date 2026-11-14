@@ -223,9 +223,9 @@ Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 
 
 ### 研究与计算网络
 
-`ResearchDefinition.builder(id)` 创建研究。`ResearchLevelStage.builder(first, last)` 为一段等级设置研究阶数、资源公式、前置、互斥、材料和奖励，多个阶段必须完整覆盖 `1..maxLevel`。阶数为 0 时使用玩家手动投料，正阶使用研究站。
+`ResearchDefinition.builder(id)` 创建研究，`.displayName(LocalizationEnum)` 与 `.icon(AEKey)` 指定显示内容。`ResearchLevelStage.builder(first, last)` 必须设置 `.durationTicks(long)`、研究阶数和网络资源公式，多个阶段完整覆盖 `1..maxLevel`。时间为单站基准 tick，多站可加速。阶数 0 使用玩家手动研究且禁止网络资源；正阶由研究站推进。`.material(AEKey, long)` 添加普通资源总量，`.materialRequirement(...)` 只接受固定静态输入。
 
-`ResearchResourceFormula.builder().constant(type, demand)` 定义固定总需求；同一 builder 的 `.affine(type, base, slope)` 按阶段内的等级偏移计算总需求：`base + slope × (当前等级 - 阶段首级)`，最后调用 `.build()`。研究公式不设置单站速率，旧 `segmentGrantLimit` 参数已移除。`DATABASE_AND_ITEM` 允许个人研究写入数据库或下载成物品；`ITEM_ONLY` 的普通完成量归队伍并通过物品下载交付。奖励组可以含物品或自定义事件。
+`ResearchResourceFormula.builder().constant(type, total)` / `.affine(type, base, slope)` 定义网络资源总量，`.perTick(type, limit)` / `.affinePerTick(type, base, slope)` 定义单站 tick 上限。等级增长使用 `当前等级 - 阶段首级`，总量与上限按研究时间 T 换算，数量为 double。站点自身速率与研究 tick 上限共同限制本次增量。`DATABASE_AND_ITEM` 允许个人研究写入数据库或下载成物品；`ITEM_ONLY` 普通完成量归队伍并通过物品下载交付。
 
 计算网络资源由使用方实现并复用 `NetworkResourceType` 单例，不需要资源注册，库没有默认资源。提供资源的物品实现 `NetworkComputerComponent`；已有显式物品适配仍可用组件注册事件。机器用 `MachineOwnership` 保存所有者，`MachineNetworkDevice` 声明角色，`NetworkRecipeWork` 处理研究和数值需求。
 
@@ -244,11 +244,11 @@ MachineAssembly.builder(type, "research-station-v1")
     .recreated(ResearchStation.DEVICE).build();
 ```
 
-`rates` 是 `Reference2DoubleMap<NetworkResourceType>`，未列资源速率为0；定义后按只读契约借用，不复制。速率由开发者定义，等级与非负FE在加载代固定。自定义运行时可直接实现 `NetworkCenter` 或 `ResearchStation`，无业务tick的实现返回 `requiresTick() = false`。
+`rates` 是 `Reference2DoubleMap<NetworkResourceType>`，未列资源速率为0；定义后按只读要求借用，不复制。速率由开发者定义，等级与非负FE在加载代固定。自定义运行时可直接实现 `NetworkCenter` 或 `ResearchStation`，无业务tick的实现返回 `requiresTick() = false`。
 
-每段每种资源增加 `min(网络研究供给, 各参与站该资源速率之和, 剩余需求)`。站点等级决定是否合格，速率由站点定义；多个站仍合摊一份 START → TICK → END 材料，不按站数复制。研究站只在成功推进的 END 与进度一起结算自己的 FE，待机或材料周期未完成时不扣这笔电费；材料定义自身的阶段 FE 按原规则另行结算。缺能站不进入新段候选。网络中心只对本次生效者收费，缺能时重选可供电中心。同一设备同一服务器 tick 只成功付费一次，重新发布或调用不会重复扣费。
+普通资源各自已支付比例等权累计开放进度，例如 A×2、B×10、C×100，支付 A×1 开放 1/6；缺少一种材料可先支付其他种类。时间和各项网络资源在开放比例内独立累计，网络增量同时受普通设备结算后余额、各站有效速率和剩余总量限制。每台实际工作站占 1 并发并支付 FE，材料、FE、网络量、进度共同提交；付款不足以形成 1 tick 时也按工作收费。中心只对生效者收费，同设备同 tick 不重复扣费。详细计算见[研究站](docs/research-stations.md)。
 
-完整Java示例见[NetworkCenterExamples.java](run/visual-examples/src/main/java/pe/visual/examples/NetworkCenterExamples.java)和[ResearchStationExamples.java](run/visual-examples/src/main/java/pe/visual/examples/ResearchStationExamples.java)。网络中心纯数据显示GUI已接入，研究站GUI仍延缓。
+完整 Java 示例见[NetworkCenterExamples.java](run/visual-examples/src/main/java/pe/visual/examples/NetworkCenterExamples.java)和[ResearchStationExamples.java](run/visual-examples/src/main/java/pe/visual/examples/ResearchStationExamples.java)。网络中心与研究站正式 GUI 均已接入。研究站队列操作和增量同步见[研究 GUI](docs/research-gui.md)。
 
 ### 资源展示包与增量同步
 
@@ -272,7 +272,7 @@ MachineAssembly.builder(type, "research-station-v1")
 
 Java 装配必须用 `MachineAssembly.Builder.computerRecipes(recipes)` 提供控制器使用的同一份完整只读配方列表，后续不得修改；ZS 的 `MachineType.computer(...)` 自动保存。JEI 为计算机注册独立分类和控制器入口，显示每单位AE材料输入及本机换算资源；纯输入定义从类型声明自动生成时长和阶段输入页面。资源名称和 double 数量分别调用 `NetworkResourceType.displayName()`、`format(double)`，不注册计算资源为物料。`ComputerRecipe.materialRecipe()` 和 `unitInputs()` 提供材料定义；展示不创建运行实例或执行配方条件。
 
-计算机启动须先取得中心或其他已获准设备提供的1份并发，不能用自己的待生效供给启动；活动数据库占用1份，研究站推进时申请，中心不占用。三类网络设备优先于普通设备，高优先级申请可收回普通租约并使其未提交凭据失效；同条件使用持久UUID，避免加载顺序决定结果。尚未获准的计算机只预留、不支付材料或组件FE。
+计算机启动须先取得中心或其他已获准设备提供的 1 份并发，活动数据库占 1 份，中心不占用。计算机与数据库优先于普通设备，可收回普通租约并使其未提交凭据失效；同条件使用持久 UUID。研究站在普通设备后使用剩余并发，实际参与时各占 1 份。尚未获准的计算机只预留、不支付材料或组件 FE。
 
 ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, recipes)`；单位转换用 `ComputerRecipe.create(id, Resource[] unitInputs, ComputingResources unitResources)`；资源用 `ComputingResource.network(id, translationKey, pattern)` / `.computer(...)`。自定义Java资源可经 `ZenComputingResource` 包装器交给脚本。计算机GUI保留概览与组件两页，配方展示统一使用JEI，见[计算机](docs/computers.md)。
 
@@ -464,7 +464,7 @@ ParallelController.create("example:parallel_module", "tile.example.parallel_modu
 
 仓室容量由 `ResourceSide.itemEquivalent(slots, capacity)` 和 `EnergySide.create(capacity, transfer)` 定义，再交给 `Configuration.resources/energy(tier, input, output)`。两侧可以只提供一侧，不能都为空。`configureDefaults` 设置启动默认值，运行中调用 `request` 返回更新任务。
 
-研究用 `Research.create(...)` 声明，`ResearchStage.create(...)` 设置每段等级，`ResearchFormula.constant(type, demand)` / `.affine(type, base, slope)` 给出资源总量，不接受单站限额。stage 上的 `.prerequisite(...)` 和 `.mutex(...)` 分别添加前置和互斥研究，`.material(...)` 添加研究材料，`.reward(...)` 添加可领取奖励。研究站的有状态材料配方要同时提供 `.materialPersistence(...)`。
+研究用 `Research.create(...)` 声明，`.display(translationKey, icon)` 设置名称和图标。`ResearchStage.create(first, last, tier, durationTicks, formula)` 设置等级段和 long 时间；`ResearchFormula.constant/affine` 定义网络资源总量，`perTick/affinePerTick` 定义单站 tick 上限。stage 的 `.material(...)` 只接受静态总量输入，`.prerequisite(...)`、`.mutex(...)` 和 `.reward(...)` 定义前置、互斥及奖励。原 `.materialPersistence(...)` 已删除。
 
 在 preinit 脚本中，专用控制器使用下面的快捷入口（`compute` 是已经声明的数值计算资源）；它们不调用 `processing` 或添加配方工位：
 

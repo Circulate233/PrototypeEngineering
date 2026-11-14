@@ -65,7 +65,7 @@ class ResearchRewardClaimTest {
     }
 
     private static ResearchDefinition definition(RewardGroup... groups) {
-        var stage = ResearchLevelStage.builder(1, 3).researchTier(0).resourceFormula(ResearchResourceFormula.builder().build());
+        var stage = ResearchLevelStage.builder(1, 3).durationTicks(1).researchTier(0).resourceFormula(ResearchResourceFormula.builder().build());
         for (var group : groups) stage.rewardGroup(1, group);
         return ResearchDefinition.builder(RESEARCH).maxLevel(3).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage.build()).build();
     }

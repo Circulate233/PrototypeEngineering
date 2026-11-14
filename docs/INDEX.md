@@ -4,7 +4,9 @@
 
 ## 当前检查点
 
-- 2026-11-14 研究站规则与预览更新：时间已确认为 long tick 单站基准工作量，多站可加速；普通资源总量按比例扣除，网络资源按 tick 上限/总量换算并独立累计，共享预算最低优先级，每站工作占 1 并发，出队保留进度。预览已移除本站并发，顶部改为百分比进度条；普通资源显示当前可用/剩余需求，汇总同队所有研究站且显示不超过剩余需求。入口[研究 GUI 与规则](research-gui.md)、[更新预览](previews/research-station.html)。下一步核对百分比、普通资源可用/剩余、网络占用/累计及队列布局；Java/ZS、调度、持久化与正式 GUI 尚未实施，验证见[实施进度](implementation-status.md)。
+- 2026-11-14 研究站正式界面与时间/材料/网络进度已实现。逐种材料等权付款、多站加速、共享预算最低优先级、出队保留进度与 AE 行增量同步已接入。1781 tests/270 suites、Gradle build 和 IDEA MCP 构建通过；74 Java 已格式化，72 项目文件全级零诊断、2 run 被排除。Java addon 和 15 ZS 脚本编译通过，安装因目标 jar 被占用未完成。保存版本为世界 V6、队列 V3、手动 V2，旧版本未迁移。入口：[研究站](research-stations.md)、[GUI](research-gui.md)、[实施进度](implementation-status.md)。
+
+- 用户追加要求：完成上述阶段提交后，逐项复查 b72090aacf2896c25c82c1b15135dcf0f95df30e 之后所有新类和改动，移除无实际必要的防御检查、复制和对应测试。明确包含 StrictNbt.requireKeys 的字段白名单检查。最近两个中文提交信息必须重新提交为英文，新增代码注释必须使用英文；消息和项目文档继续使用简体中文。当前审查尚未完成。
 
 - 2026-11-14 构建器供电纠正：撤销误加的工具电量、充电、能量卡与传输耗电；独立绑定继续使用，配置页保留一个原生量子桥卡槽和奇点槽，主界面尺寸不变。工具提示用 AE 原生绿/红色显示已链接/未链接。入口[结构工具](structure-tools.md)，5Java已IDEA格式化且全级零诊断，构建证据见[实施进度](implementation-status.md)。下一步用户复验绑定、卡片/奇点装卸及链接提示；本地提交，AGENTS.md用户修改保留。
 
@@ -210,9 +212,9 @@
 | 配方阶段/预设事件的真实迁移状态与功能优先顺序 | [recipe-feature-parity.md](recipe-feature-parity.md)、[pm-recipe-events-audit.md](pm-recipe-events-audit.md) |
 | 普通数据库下载/自动升级/真实物理授权/数据库 GUI | [data-centers.md](data-centers.md) |
 | 普通物品转换/材料和来源费用/nonce与原生输出恢复/分级盘边界 | [research-downloads.md](research-downloads.md) |
-| 研究 GUI（已移除，延缓实现） | [research-gui.md](research-gui.md) |
+| 研究站 GUI 与其余延缓界面 | [research-gui.md](research-gui.md) |
 | 研究定义/资格/入队/队列/完成传播/奖励与服务器缺口 | [research-features.md](research-features.md)、[pn-research-execution-audit.md](pn-research-execution-audit.md) |
-| 研究站显式消费者/真实来源/材料周期/END共同提交 | [research-stations.md](research-stations.md) |
+| 研究站时间/逐项材料支付/网络累计/共同提交 | [research-stations.md](research-stations.md) |
 | 服务器研究 owner/单一存档/FTB/玩家事件/手动入口 | [server-research.md](server-research.md) |
 | 服务器奖励领取/准确会话/物品确认与证据清理 | [research-rewards.md](research-rewards.md) |
 | 手动研究逐项投料/玩家回执/九状态恢复/暂停接管 | [manual-research.md](manual-research.md) |

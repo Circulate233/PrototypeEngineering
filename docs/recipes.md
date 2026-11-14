@@ -340,7 +340,7 @@ R32 已实现并完成本阶段验证。新增 14 项行为；focused 37 tests /
 
 一个逻辑扫描 pass 捕获一次稳定只读池快照，池枚举与跨池 canonical 配方去重沿原 RecipeWorkBudget 续办；fresh 等价 List 不导致反复从零取样。选择枚举顺序不改 priority，仍用 catalog 既有冻结池/配方顺序。同一 pass 内动态变化在下一 pass 生效：ADMITTED、EXHAUSTED 或 `RecipeScanner.reset()` 后重新采样，FULL/PAUSED 保留纯游标但不续资源/执行权限。主动刷新先 cancel/结算旧 attempt 的 probe/source 义务，释放 active attempt 后才 reset；reset 拒绝仍活动、正在执行或 faulted 的 scanner。
 
-scanner 的同步 startIn 与 bounded beginAdmission 均把准确 `RecipeCatalog.Selection` 交付原工位准入，检查选池成员与 canonical recipe；选择只限制本次新的目录准入。原无 catalog 的显式 start/startIn/beginAdmission 仍是外部直接进程操作和独立研究材料执行入口。旧运行、恢复、detach 或直接启动进程不因自动扫描范围变化被停止、重新归类或历史退款。资源、FE、研究、计算、多线程和来源结算继续原执行器。
+scanner 的同步 startIn 与 bounded beginAdmission 均把准确 `RecipeCatalog.Selection` 交付原工位准入，检查选池成员与 canonical recipe；选择只限制本次新的目录准入。原无 catalog 的显式 start/startIn/beginAdmission 仍是外部直接进程操作入口。旧运行、恢复、detach 或直接启动进程不因自动扫描范围变化被停止、重新归类或历史退款。资源、FE、研究、计算、多线程和来源结算继续原执行器。
 
 ## 逻辑线程控制器与整机共享并行
 

@@ -10,7 +10,6 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
-import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -26,8 +25,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -85,15 +82,15 @@ class ResearchWorldTest {
         var registry = new ResearchRegistry();
         for (var id : ObjectList.of(FIRST, SECOND)) {
             registry.register(ResearchDefinition.builder(id).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).startCondition(condition)
-                                                .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                                .stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
         }
         var group = new RewardGroup(id("reward"), ObjectList.of(new RewardChild.Event(id("event"), (_, _) -> RewardEventAction.Result.ALREADY_APPLIED)));
         registry.register(ResearchDefinition.builder(BASE).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                            .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).rewardGroup(1, group).build()).build());
+                                            .stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).rewardGroup(1, group).build()).build());
         registry.register(ResearchDefinition.builder(NEED_BASE).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                            .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).prerequisite(BASE, 1).build()).build());
+                                            .stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).prerequisite(BASE, 1).build()).build());
         registry.register(ResearchDefinition.builder(EMPTY_MANUAL).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                            .stage(ResearchLevelStage.builder(1, 1).researchTier(0).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                            .stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(0).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
         registry.freeze();
         return new Fixture(registry);
     }
@@ -253,18 +250,15 @@ class ResearchWorldTest {
         var proofCalls = new AtomicInteger();
         var refreshes = new AtomicInteger();
         try (var identities = new MachineIdentityRegistry(() -> {
-        });
-             var workers = Executors.newSingleThreadExecutor();
-             var lane = Executors.newSingleThreadExecutor()) {
+        })) {
             var stations = new ResearchStations(identities, () -> {
             });
-            var tasks = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
             var execution = world.prepareTick(2, Map.of(ALICE, membership), Set.of(ALICE), _ -> null, () -> {
                 if (proofCalls.incrementAndGet() == 2) {
                     throw failure;
                 }
                 return true;
-            }, stations, refreshes::incrementAndGet, tasks, PlannedDeadline.after(Duration.ofSeconds(5)));
+            }, stations, refreshes::incrementAndGet, PlannedDeadline.after(Duration.ofSeconds(5)));
             assertSame(failure, assertThrows(IllegalStateException.class,
                 () -> execution.advance(PlannedDeadline.after(Duration.ofSeconds(5)))));
             assertEquals(2, world.serverTime());
@@ -276,7 +270,7 @@ class ResearchWorldTest {
             assertEquals(0, refreshes.get());
             assertThrows(IllegalStateException.class, world::snapshot);
             assertThrows(IllegalStateException.class, () -> world.prepareTick(3, Map.of(ALICE, membership), Set.of(ALICE),
-                _ -> null, () -> true, stations, refreshes::incrementAndGet, tasks, PlannedDeadline.after(Duration.ofSeconds(5))));
+                _ -> null, () -> true, stations, refreshes::incrementAndGet, PlannedDeadline.after(Duration.ofSeconds(5))));
             world.checkpoint(2);
             execution.awaitExit();
             assertTrue(execution.advance(PlannedDeadline.after(Duration.ofSeconds(5))));
@@ -288,7 +282,7 @@ class ResearchWorldTest {
             assertEquals(world.snapshot(), writes.getLast());
             assertEquals(ObjectList.of(queued), team(world, "a").queue().entries());
             var next = world.prepareTick(3, Map.of(ALICE, membership), Set.of(ALICE), _ -> null, () -> true,
-                stations, refreshes::incrementAndGet, tasks, PlannedDeadline.after(Duration.ofSeconds(5)));
+                stations, refreshes::incrementAndGet, PlannedDeadline.after(Duration.ofSeconds(5)));
             assertTrue(next.advance(PlannedDeadline.after(Duration.ofSeconds(5))));
             assertTrue(next.finished());
             assertFalse(world.busy());
@@ -375,19 +369,6 @@ class ResearchWorldTest {
         assertEquals(3, world.snapshot().players().size());
         assertEquals(2, team(world, "a").queue().entries().size());
         assertEquals(2, team(world, "b").queue().entries().size());
-    }
-
-    @Test
-    void invalidTierZeroMaterialsCompensateOnlyTheNewAdmissionEntry() {
-        var world = fixture(ResearchStartCondition.ALWAYS_ALLOWED).world(_ -> {
-        });
-        var membership = membership(ALICE, "a", ALICE);
-        var original = start(world, membership, FIRST, 1).entry();
-        assertThrows(IllegalArgumentException.class, () -> start(world, membership, EMPTY_MANUAL, 2));
-        assertEquals(ObjectList.of(original), team(world, "a").queue().entries());
-        assertTrue(team(world, "a").manualSessions().isEmpty());
-        assertEquals(3, team(world, "a").queue().nextEntryId());
-        assertFalse(world.savePending());
     }
 
     @Test

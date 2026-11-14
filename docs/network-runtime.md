@@ -41,7 +41,7 @@ MachineAssembly 为该网络组件使用 `recreated`，身份仍用 MachineOwner
 
 每个NetworkRuntime绑定MachineIdentityRegistry、OwnerTeamResolver和owner线程检查，不再要求资源注册表。`register(identity, source)` 使用准确生命周期身份，每实例一个网络角色；source返回冻结snapshot和owner-only证明。资源表使用R2D与单例身份契约，捕获不检查资源注册、重复id或canonical。
 
-`beginTick(tick)` 开始实际服务器 tick 后才能 refresh。refresh 首先撤销旧发布，再捕获唯一设备、解析队伍并规划，最后重验全部证明和 identity revision，单次 volatile 发布。异常直接传播，旧结果失效；证明过期或显式 revoke 返回 false，不发布部分许可。同队伍账本在本 tick 内保留已消费、预留和操作键，成功重捕获只按供给变化调整容量；新增供给立即可用，供给下降再恢复不抹去已消费量。计算机与活动数据库先取得标准并发，研究站推进时享有同样优先级，详见[预算边界](network-budgets.md)。
+`beginTick(tick)` 开始实际服务器 tick 后才能 refresh。refresh 首先撤销旧发布，再捕获唯一设备、解析队伍并规划，最后重验全部证明和 identity revision，单次 volatile 发布。异常直接传播，旧结果失效；证明过期或显式 revoke 返回 false，不发布部分许可。同队伍账本在本 tick 内保留已消费、预留和操作键，成功重捕获只按供给变化调整容量；新增供给立即可用，供给下降再恢复不抹去已消费量。计算机与活动数据库先取得标准并发，研究站在普通设备完成工作后取得剩余并发，详见[预算边界](network-budgets.md)。
 
 `refresh(participantSource)` 提供当前捕获 epoch 给参与者来源，供后续完整参与者集成。来源必须返回 ACTIVE、版本经过验证且在此 owner 边界内保持稳定的资源投影；本阶段内置服务器尚未安装参与者来源，未冒充已实现其注册、工作单元、材料来源或版本提交协议。
 

@@ -36,7 +36,7 @@ source 结果屏障的 Stopped、Future 完成/取消、线程 interrupt 都不�
 
 ## 尚未宣称接通的部分
 
-协调器已通过 NetworkRecipeExecution 安装到真实 TaskScheduler/服务器生命周期，带 NetworkRecipeWork 的 CONCURRENT 控制器自动使用；机器前后组件游标、卸载和阶段原代恢复由外层执行持有，见[配方消费者](network-recipes.md)。块一已用既有 runPrepare 派发独立纯 kernel，保留准确 Batch 并 join 实际退出，随后 owner 在实际预算内捕获、选择、预检、预留；普通透明暂停保持原获取段。研究材料消费者同样使用此路径，详见[纯 prepare 与预算](planned-execution.md)。`PLANNED_PARALLEL` 继续拒绝，正式模式、独立宿主自动接线及 discover/扫描预算属于块二。
+协调器已通过 NetworkRecipeExecution 安装到真实 TaskScheduler/服务器生命周期，带 NetworkRecipeWork 的 CONCURRENT 控制器自动使用；机器前后组件游标、卸载和阶段原代恢复由外层执行持有，见[配方消费者](network-recipes.md)。块一已用既有 runPrepare 派发独立纯 kernel，保留准确 Batch 并 join 实际退出，随后 owner 在实际预算内捕获、选择、预检、预留；普通透明暂停保持原获取段。研究站通过同步总量材料事务执行，普通配方协调详见[纯 prepare 与预算](planned-execution.md)。`PLANNED_PARALLEL` 继续拒绝，正式模式、独立宿主自动接线及 discover/扫描预算属于块二。
 
 传入的 authorization 在 owner 检查，本身不扣减 PN numeric/lease；真实 NetworkRecipeWork 需求已将 WorkPermit、具体研究、队伍/tick/epoch、工作序号和 receipt 加入阶段，并在 prepareCommit/validateCommit 前后校验。尤其不能继承旧 PN 在提交后仍要求 receipt 为 RESERVED 的错误生命周期探针。实际机器取消/卸载/关闭必须先撤新工作、join 实际退出、完成 pending 与 post，再释放宿主。
 

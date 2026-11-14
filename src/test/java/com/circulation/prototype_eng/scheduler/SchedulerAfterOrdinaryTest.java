@@ -45,7 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
-class SchedulerBeforeOrdinaryTest {
+class SchedulerAfterOrdinaryTest {
     private static void enqueueBoundary(TaskScheduler scheduler, Runnable action) throws Exception {
         var queued = new FutureTask<Void>(() -> {
             scheduler.runAtBoundary(action);
@@ -56,7 +56,7 @@ class SchedulerBeforeOrdinaryTest {
     }
 
     private static ResourceLocation id(String name) {
-        return new ResourceLocation("scheduler_before_ordinary_test", name);
+        return new ResourceLocation("scheduler_after_ordinary_test", name);
     }
 
     private static void await(CountDownLatch latch) {
@@ -81,7 +81,7 @@ class SchedulerBeforeOrdinaryTest {
     }
 
     @Test
-    void pendingPrerequisiteRetainsOrdinarySubmissionsAndBoundariesThenReleasesThemInTheSameTick() throws Exception {
+    void pendingResearchRetainsFollowingSubmissionsAndBoundariesUntilSettlement() throws Exception {
         var work = new Work();
         var ready = new AtomicBoolean();
         var captures = new AtomicInteger();
@@ -90,19 +90,19 @@ class SchedulerBeforeOrdinaryTest {
         var prepare = new AtomicInteger();
         var boundaries = new AtomicInteger();
         var saved = new AtomicInteger();
-        var retained = new AtomicReference<Prerequisite>();
+        var retained = new AtomicReference<FollowingWork>();
         try (var backend = new Backend()) {
             var scheduler = backend.scheduler((_, _) -> {
-                afterCaptures.incrementAndGet();
-                assertEquals(3, ordinary.get());
-                assertEquals(1, boundaries.get());
+                int capture = afterCaptures.incrementAndGet();
+                assertEquals(capture == 1 ? 2 : 3, ordinary.get());
+                assertEquals(capture - 1, boundaries.get());
                 return null;
             }, (tasks, deadline) -> {
                 if (captures.incrementAndGet() != 1) {
                     assertTrue(retained.get().finished());
                     return null;
                 }
-                var cycle = new Prerequisite(tasks, deadline, work, ready, saved::incrementAndGet);
+                var cycle = new FollowingWork(tasks, deadline, work, ready, saved::incrementAndGet);
                 retained.set(cycle);
                 return cycle;
             });
@@ -112,27 +112,27 @@ class SchedulerBeforeOrdinaryTest {
             assertFalse(retained.get().finished());
             assertEquals(1, captures.get());
             assertEquals(1, saved.get());
-            assertEquals(0, ordinary.get());
-            assertEquals(0, prepare.get());
-            assertEquals(0, afterCaptures.get());
+            assertEquals(2, ordinary.get());
+            assertTrue(prepare.get() > 0);
+            assertEquals(1, afterCaptures.get());
             scheduler.submit(ordinary::incrementAndGet, ExecutionMode.MAIN_THREAD);
             enqueueBoundary(scheduler, () -> {
                 assertTrue(retained.get().finished());
-                assertEquals(0, ordinary.get());
+                assertEquals(2, ordinary.get());
                 boundaries.incrementAndGet();
             });
             scheduler.tick(prepare::incrementAndGet);
-            assertEquals(1, captures.get(), "Pending cleanup cannot recapture the prerequisite factory");
+            assertEquals(1, captures.get(), "Pending cleanup cannot recapture the following work factory");
             assertEquals(1, saved.get(), "An uncertain completion is queried rather than written again");
-            assertEquals(0, ordinary.get());
+            assertEquals(2, ordinary.get());
             assertEquals(0, boundaries.get());
             ready.set(true);
             scheduler.tick(prepare::incrementAndGet);
             assertTrue(retained.get().finished());
-            assertEquals(2, captures.get(), "Once old cleanup finishes, this tick may capture one fresh prerequisite");
+            assertEquals(2, captures.get(), "Once old cleanup finishes, this tick may capture one fresh following work");
             assertEquals(3, ordinary.get());
             assertEquals(1, boundaries.get());
-            assertEquals(1, afterCaptures.get());
+            assertEquals(2, afterCaptures.get());
             assertEquals(1, work.applies.get());
             assertEquals(1, work.post.get());
             scheduler.close();
@@ -142,19 +142,19 @@ class SchedulerBeforeOrdinaryTest {
     }
 
     @Test
-    void oldAfterOrdinaryPendingIsRecoveredBeforeAnyFreshPrerequisiteOrOrdinaryPreparation() {
+    void pendingMachineWorkIsRecoveredBeforeResearchOrFreshOrdinaryPreparation() {
         var work = new Work();
         var ready = new AtomicBoolean();
         var beforeCaptures = new AtomicInteger();
         var afterCaptures = new AtomicInteger();
         var ordinary = new AtomicInteger();
-        var retained = new AtomicReference<Prerequisite>();
+        var retained = new AtomicReference<FollowingWork>();
         try (var backend = new Backend()) {
             var scheduler = backend.scheduler((tasks, deadline) -> {
                 if (afterCaptures.incrementAndGet() != 1) {
                     return null;
                 }
-                var cycle = new Prerequisite(tasks, deadline, work, ready, () -> {
+                var cycle = new FollowingWork(tasks, deadline, work, ready, () -> {
                 });
                 retained.set(cycle);
                 return cycle;
@@ -167,17 +167,17 @@ class SchedulerBeforeOrdinaryTest {
             scheduler.submit(ordinary::incrementAndGet, ExecutionMode.MAIN_THREAD);
             scheduler.tick();
             assertEquals(1, ordinary.get());
-            assertEquals(1, beforeCaptures.get());
+            assertEquals(0, beforeCaptures.get());
             assertFalse(retained.get().finished());
             scheduler.submit(ordinary::incrementAndGet, ExecutionMode.MAIN_THREAD);
             var blockedPrepare = new AtomicInteger();
             scheduler.tick(blockedPrepare::incrementAndGet);
             assertEquals(0, blockedPrepare.get());
-            assertEquals(1, beforeCaptures.get());
+            assertEquals(0, beforeCaptures.get());
             assertEquals(1, ordinary.get());
             ready.set(true);
             scheduler.tick();
-            assertEquals(2, beforeCaptures.get());
+            assertEquals(1, beforeCaptures.get());
             assertEquals(2, afterCaptures.get());
             assertEquals(2, ordinary.get());
             assertEquals(1, work.applies.get());
@@ -188,28 +188,28 @@ class SchedulerBeforeOrdinaryTest {
     }
 
     @Test
-    void aNullPrerequisiteRunsNoBusinessAndAllowsOrdinaryAndLaterPlannedWork() {
+    void researchCaptureRunsAfterOrdinaryAndPlannedMachineWork() {
         var order = new ObjectArrayList<String>();
         try (var backend = new Backend()) {
             TaskScheduler[] scheduler = {null};
             scheduler[0] = backend.scheduler((_, _) -> {
-                order.add("after");
+                order.add("machine");
                 return null;
             }, (_, _) -> {
                 assertThrows(IllegalStateException.class, () -> scheduler[0].runAtBoundary(() -> fail("Capture cannot acquire boundary work")));
                 assertThrows(IllegalStateException.class, scheduler[0]::tick);
-                order.add("before");
+                order.add("research");
                 return null;
             });
             scheduler[0].submit(() -> order.add("ordinary"), ExecutionMode.MAIN_THREAD);
             scheduler[0].tick();
-            assertEquals(List.of("before", "ordinary", "after"), order);
+            assertEquals(List.of("ordinary", "machine", "research"), order);
             scheduler[0].close();
         }
     }
 
     @Test
-    void aThrowingPrerequisiteCompletionRetainsItsExactObligationForRecoveryAndClose() throws Exception {
+    void aThrowingFollowingWorkCompletionRetainsItsExactObligationForRecoveryAndClose() throws Exception {
         var work = new Work();
         var ready = new AtomicBoolean();
         var saves = new AtomicInteger();
@@ -218,14 +218,14 @@ class SchedulerBeforeOrdinaryTest {
         var boundaries = new AtomicInteger();
         var ordinary = new AtomicInteger();
         var failure = new IllegalStateException("completion proof unknown");
-        var retained = new AtomicReference<Prerequisite>();
+        var retained = new AtomicReference<FollowingWork>();
         try (var backend = new Backend()) {
             var scheduler = backend.scheduler((_, _) -> {
                 afterCaptures.incrementAndGet();
                 return null;
             }, (tasks, deadline) -> {
                 beforeCaptures.incrementAndGet();
-                var cycle = new Prerequisite(tasks, deadline, work, ready, () -> {
+                var cycle = new FollowingWork(tasks, deadline, work, ready, () -> {
                     saves.incrementAndGet();
                     throw failure;
                 });
@@ -237,7 +237,7 @@ class SchedulerBeforeOrdinaryTest {
             assertFalse(retained.get().finished());
             assertEquals(1, work.applies.get());
             assertEquals(1, saves.get());
-            assertEquals(0, ordinary.get());
+            assertEquals(1, ordinary.get());
             enqueueBoundary(scheduler, boundaries::incrementAndGet);
             scheduler.tick();
             assertEquals(1, saves.get());
@@ -249,10 +249,10 @@ class SchedulerBeforeOrdinaryTest {
             assertTrue(scheduler.tryClose());
             assertTrue(retained.get().finished());
             assertEquals(1, saves.get());
-            assertEquals(1, beforeCaptures.get(), "Close never starts fresh prerequisite business");
-            assertEquals(0, afterCaptures.get());
+            assertEquals(1, beforeCaptures.get(), "Close never starts fresh following work business");
+            assertEquals(1, afterCaptures.get());
             assertEquals(1, boundaries.get());
-            assertEquals(0, ordinary.get());
+            assertEquals(1, ordinary.get());
         } finally {
             ready.set(true);
         }
@@ -282,18 +282,18 @@ class SchedulerBeforeOrdinaryTest {
         try (var backend = new Backend()) {
             var scheduler = backend.scheduler(null, (tasks, deadline) -> {
                 captures.incrementAndGet();
-                return new Prerequisite(tasks, deadline, work, new AtomicBoolean(true), () -> {
+                return new FollowingWork(tasks, deadline, work, new AtomicBoolean(true), () -> {
                 });
             });
             assertEquals("source proof withheld", assertThrows(IllegalStateException.class, () -> scheduler.tick(prepare::incrementAndGet)).getMessage());
-            assertEquals(0, prepare.get());
+            assertEquals(1, prepare.get());
             assertEquals(0, work.post.get());
             assertEquals(1, completes.get());
             enqueueBoundary(scheduler, boundaries::incrementAndGet);
             scheduler.tick(prepare::incrementAndGet);
             assertEquals(1, captures.get());
             assertEquals(1, completes.get());
-            assertEquals(0, prepare.get());
+            assertEquals(1, prepare.get());
             assertFalse(scheduler.tryClose());
             assertFalse(backend.lane.isShutdown());
             assertEquals(0, boundaries.get());
@@ -311,7 +311,7 @@ class SchedulerBeforeOrdinaryTest {
     }
 
     @Test
-    void firstPrerequisiteCaptureOwnsActualSourceExitBeforeOrdinaryPreparationOrQueuedBoundary() throws Exception {
+    void researchCaptureOwnsSourceExitBeforeQueuedBoundaryOrNextTick() throws Exception {
         var work = new Work();
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
@@ -335,13 +335,13 @@ class SchedulerBeforeOrdinaryTest {
         try (var backend = new Backend()) {
             var scheduler = backend.scheduler(null, (tasks, deadline) -> {
                 captures.incrementAndGet();
-                var cycle = new Prerequisite(tasks, deadline, work, new AtomicBoolean(true), () -> {
+                var cycle = new FollowingWork(tasks, deadline, work, new AtomicBoolean(true), () -> {
                 });
                 cycle.awaitNotice = awaitingExit;
                 return cycle;
             });
             scheduler.submit(() -> {
-                assertTrue(sourceExited.get());
+                assertFalse(sourceExited.get());
                 ordinary.incrementAndGet();
             }, ExecutionMode.MAIN_THREAD);
             var cancel = new FutureTask<Void>(() -> {
@@ -354,7 +354,7 @@ class SchedulerBeforeOrdinaryTest {
                 await(interrupted);
                 await(awaitingExit);
                 assertFalse(tickReturned.get());
-                assertEquals(0, prepare.get());
+                assertTrue(prepare.get() > 0);
                 assertEquals(0, boundaries.get());
                 assertFalse(backend.lane.isShutdown());
                 release.countDown();
@@ -363,7 +363,7 @@ class SchedulerBeforeOrdinaryTest {
             Thread.ofPlatform().daemon().start(cancel);
             try {
                 scheduler.tick(() -> {
-                    assertTrue(sourceExited.get());
+                    assertFalse(sourceExited.get());
                     prepare.incrementAndGet();
                 });
                 tickReturned.set(true);
@@ -384,7 +384,7 @@ class SchedulerBeforeOrdinaryTest {
         }
     }
 
-    private static final class Prerequisite implements PlannedExecution {
+    private static final class FollowingWork implements PlannedExecution {
         private final PlannedTaskExecutor tasks;
         private final PlannedDeadline forwardDeadline;
         private final Work work;
@@ -395,7 +395,7 @@ class SchedulerBeforeOrdinaryTest {
         private boolean finished;
         private CountDownLatch awaitNotice = new CountDownLatch(0);
 
-        private Prerequisite(PlannedTaskExecutor tasks, PlannedDeadline forwardDeadline, Work work, AtomicBoolean ready, Runnable completion) {
+        private FollowingWork(PlannedTaskExecutor tasks, PlannedDeadline forwardDeadline, Work work, AtomicBoolean ready, Runnable completion) {
             this.tasks = tasks;
             this.forwardDeadline = forwardDeadline;
             this.work = work;
@@ -472,7 +472,7 @@ class SchedulerBeforeOrdinaryTest {
             process.components().create(new ComponentType<>(id("post"), _ -> new Object(), List.of(new ComponentSystem<RecipeProcess, Object>() {
                 @Override
                 public ResourceLocation id() {
-                    return SchedulerBeforeOrdinaryTest.id("post");
+                    return SchedulerAfterOrdinaryTest.id("post");
                 }
 
                 @Override

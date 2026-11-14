@@ -62,7 +62,7 @@
 /pe_run_tests research-queue 1
 ```
 
-手动入口自动按实际玩家库存逐项扣料。先只供 iron×1 时执行 `research-manual-paid 1`，再 `research-manual-checkpoint` 保存实际session UUID、queue entry和paid数量到已读回的原生player文件。退出世界再进执行 `research-manual-resume` 和 `research-manual-paid 1`，必须准确原session/entry且仍已支付1；补另一枚后应完成。完成后：
+手动入口自动按实际玩家库存逐项扣料。先只供 iron×1 时执行 `research-manual-paid 1`，再 `research-manual-checkpoint` 保存实际session UUID、queue entry和paid数量到已读回的原生player文件。退出世界再进执行 `research-manual-resume` 和 `research-manual-paid 1`，必须准确原session/entry且仍已支付1；补另一枚后继续推进至 40 tick 完成。完成后：
 
 ```text
 /pe_run_tests research-level research_manual 1 0
@@ -72,24 +72,33 @@
 /pe_run_tests research-start research_station 1 DUPLICATE_TARGET
 ```
 
-研究站需真实中心、一级数据库、一级站及供给，缺少任何一项记录相应 `NO_ACTIVE_CENTER`、`DATA_CENTER_LEVEL_INSUFFICIENT`、`STATION_LEVEL_INSUFFICIENT` 或资格拒绝；数值不足不伪造 environment。站输入先放 gold×1、redstone×60，输出仓清空，FE 充满：
+研究站需活动中心、一级数据库和一级站。数值供给不足时可部分累计，不能把不足上限当作入队失败。当前 `research_station` 一级时间 120 tick，总需 gold×2、redstone×10、iron×100，网络算力总量 1200、单站上限 10。先只向输入仓放一枚 gold：
 
 ```text
 /pe_run_tests net-stock 13 80 0 minecraft:gold_ingot 1
-/pe_run_tests net-stock 13 80 0 minecraft:redstone 60
 /pe_run_tests research-queue 1
 ```
 
-实际阶段 START 消耗 gold×1；每个成功计算周期消耗 redstone×1、输出 iron_nugget×1、FE×2，START FE×16。60 个周期后等待缺料，END diamond 不应出现。执行 `assert-resource` 比较真实输出仓 iron_nugget×60、diamond×0，`research-station-progress 600`准确检查数值，再 `research-station-checkpoint` 保存完整真实processTag（codec/seed/state/components）、queueentry和原站点身份/坐标。退出重进等待缺料状态稳定后 `research-station-resume` 要求准确checkpoint相等，再检查余额/progress；然后补 redstone×60。一级完成应 gold×0、redstone×0、iron_nugget×120、diamond×1，总 FE 消耗256；队列清空，个人/共享一级：
+这一枚 gold 开放 1/6，单站资源和能源足够时最终停在时间 20/120、网络 200/1200，剩余 gold×1、redstone×10、iron×100。右键研究站，核对顶部百分比、普通资源当前可用/剩余及网络占用/累计。
 
 ```text
-/pe_run_tests assert-resource 11 80 0 output minecraft:iron_nugget 120
-/pe_run_tests assert-resource 11 80 0 output minecraft:diamond 1
-/pe_run_tests research-level research_station 1 1
-/pe_run_tests research-queue 0
+/pe_run_tests research-station-progress 200
+/pe_run_tests research-station-checkpoint
 ```
 
-循环研究 `research_loop` 声明 maxLevel=2147483647，可逐级 `research-start research_loop 1 STARTED`、确认后一级2；其需求10、分段10，无材料。数据库的循环同步应随真实队伍云更新。`research_special` 不能普通入队，只由实际原生研究盘供给，后续盘用例覆盖这一职责。
+检查点保存目标等级、实际时间、网络累计与材料剩余。缺料停稳后退出重进，再执行 `research-station-resume`，应保持同一份目标进度。也可在 GUI 移出再入队，进度应继续保留。补足剩余材料：
+
+```text
+/pe_run_tests net-stock 13 80 0 minecraft:gold_ingot 1
+/pe_run_tests net-stock 13 80 0 minecraft:redstone 10
+/pe_run_tests net-stock 13 80 0 minecraft:iron_ingot 100
+```
+
+时间和资源完成后检查 `research-level research_station 1 1`、`research-queue 0`。多站汇总供料且时间可加速，材料总量不随站数增加；普通设备先占满并发或资源时研究等待剩余额度。研究站只扣输入和实际工作 FE，不再产生旧材料周期的铁粒或钻石输出。
+
+Java addon 另有五项 `java_research_parallel/compression/coordination/sampling/connection`，均在 `pe_run_tests` 命名空间，用于填满五项队列和核对滚动、上移、下移、设为当前、移出。Java 研究站装配版本已更新为 `research-station-v2`，旧示例站需重新放置。
+
+循环研究 `research_loop` 的基准时间 100 tick，算力上限 0.1/t，总量 10，无普通材料。`research_special` 只能从外部解锁或实际研究盘提供，不能普通入队。
 
 配方门先把 cobblestone×6 放入 device 输入仓并充电：在研究站一级未完成/未下载进数据库前不能产 glass；成功 `research-download research_station 1 COMPLETED` 后再观察真实进程 net_recipe。machine suggested parallelism=1，实际selection fixed3/max4；运行中 `net-work-proof 24 80 0 3`须是准确owner/host的唯一进程且真实effective3。它同时在真实当前permit/issuing book上取得同机lease，同一实际process再次请求必须ALREADY_GRANTED，再以当前最终向量实际reserve compute6、检查余额−6、commit并rollback核对完全返还；不通过打印vector猜付款。THREAD同一机器只占1，与并行数量及工位数无关。该probe补偿了自己的数值测试，配方实际付款仍以真实进度/输出和FE合计核验：cobblestone×6→glass×12，80 tick FE×24（总1920），PN数值compute6。先仅供2枚cobblestone不得偷偷按suggested1执行；少FE或少计算供给应阻塞/拒绝完整3份准入。移走物理计算资源观察网络阻塞/恢复。使用 `assert-active`、`assert-resource`、`assert-energy` 精确比较；不要用“有配方”代表已经支付网络费用。
 

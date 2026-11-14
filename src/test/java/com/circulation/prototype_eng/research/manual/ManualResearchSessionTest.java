@@ -53,7 +53,7 @@ class ManualResearchSessionTest {
     private static ManualResearchSessionNbt codec(int tier) {
         var registry = new ResearchRegistry();
         registry.register(ResearchDefinition.builder(RESEARCH).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY)
-                                            .stage(ResearchLevelStage.builder(1, 1).researchTier(tier).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                            .stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(tier).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
         registry.freeze();
         return new ManualResearchSessionNbt(registry);
     }
@@ -76,7 +76,7 @@ class ManualResearchSessionTest {
         unknown.setBoolean("Unexpected", true);
         assertThrows(IllegalArgumentException.class, () -> codec.decode(unknown));
         var version = codec.encode(active());
-        version.setInteger("Version", 2);
+        version.setInteger("Version", version.getInteger("Version") + 1);
         assertThrows(IllegalArgumentException.class, () -> codec.decode(version));
         var type = codec.encode(active());
         type.setInteger("LastActivity", 1);
@@ -109,7 +109,7 @@ class ManualResearchSessionTest {
         var wrongList = new NBTTagList();
         wrongList.appendTag(new NBTTagString("invalid"));
         assertThrows(IllegalArgumentException.class, () -> ManualResearchSessionNbt.decodeWork(wrongList));
-        var material = ManualResearchSessionNbt.encodeMaterialIntent(new ManualResearchSession.MaterialIntent(OPERATION, PLAYER, 1, amounts(3), amounts(5)));
+        var material = ManualResearchSessionNbt.encodeMaterialIntent(new ManualResearchSession.MaterialIntent(OPERATION, PLAYER, 1, amounts(3), amounts(5), 1, 0));
         material.setTag("Expected", new NBTTagCompound());
         assertThrows(IllegalArgumentException.class, () -> ManualResearchSessionNbt.decodeMaterialIntent(material));
         var work = ManualResearchSessionNbt.encodeWork(amounts(3));

@@ -31,6 +31,6 @@ static final NetworkResourceType COOLING = NetworkResourceType.computer(
 
 默认计算机只从运算仓读取实现 `NetworkComputerComponent` 的物品，结构绑定与组成事件更新捕获，稳定库存复用结果。已有外部物品适配表仍可使用，其 `freeze()` 不再依赖资源表。全部组件消耗不足时组件供给全部停摆，能运行的供给配方独立继续，见[计算机](computers.md)。
 
-普通配方余额与研究供给独立，但共享整机并发。账本按真实服务器tick管理，同tick容量变化保留已消费/预留量，补偿只回原代，见[预算](network-budgets.md)、[配方](network-recipes.md)与[研究站](research-stations.md)。研究队列保存资源id和double进度，恢复时从研究定义引用的单例解析，无全局资源注册表。
+普通配方与研究共用同一 tick 预算。计算机和活动数据库优先取得基础并发，普通设备工作结束后研究站才取得剩余并发和数值资源。账本在同 tick 容量变化时保留已消费/预留量，补偿只返回原代。研究队列按目标保存资源 ID 和 double 累计量，恢复从研究定义引用的单例解析，无全局资源注册表。见[预算](network-budgets.md)、[配方](network-recipes.md)与[研究站](research-stations.md)。
 
 ZS入口为 `ComputingResource.network(id, translationKey, pattern)` / `.computer(...)`；Java自定义资源可通过 `ZenComputingResource` 包装器提供给脚本。数量用 `ComputingResources.create().add(type, amount)`，并发在控制器/组件/参与者中单独定义。同步、构建和静态检查证据见[实施进度](implementation-status.md)，画面与真实World行为由用户复验。

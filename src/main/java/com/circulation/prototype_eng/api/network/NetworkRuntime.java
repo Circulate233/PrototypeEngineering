@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.api.network;
 
+import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
+
 import com.circulation.prototype_eng.api.machine.ControllerEnergy;
 import com.circulation.prototype_eng.api.machine.ComputerController;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -8,7 +10,6 @@ import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
-import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolver;
@@ -740,7 +741,7 @@ public final class NetworkRuntime implements AutoCloseable {
         }
 
         /**
-         * Immutable research supply; it is independent of ordinary work reservations, as in PN.
+         * Current total supply for display. Research must reserve the remaining availableResources budget.
          */
         public Reference2DoubleMap<NetworkResourceType> numericResources() {
             return budget.numericResources();
@@ -768,7 +769,7 @@ public final class NetworkRuntime implements AutoCloseable {
 
         private boolean priorityDevice() {
             var role = deviceSnapshot().role();
-            return role == NetworkDeviceRole.COMPUTER || role == NetworkDeviceRole.RESEARCH_STATION || role == NetworkDeviceRole.DATA_CENTER;
+            return role == NetworkDeviceRole.COMPUTER || role == NetworkDeviceRole.DATA_CENTER;
         }
 
         /**
@@ -791,6 +792,13 @@ public final class NetworkRuntime implements AutoCloseable {
                 return NetworkTeamBudget.LeaseStatus.NOT_REQUIRED;
             var id = registration.identity.identity().machineId();
             return priorityDevice() ? budget.requestNetworkLease(id) : budget.requestLease(id);
+        }
+
+        /**
+         * Releases the ordinary concurrency lease of a station that did not work this tick.
+         */
+        public void releaseLease() {
+            budget.releaseLease(registration.identity.identity().machineId());
         }
 
         /**

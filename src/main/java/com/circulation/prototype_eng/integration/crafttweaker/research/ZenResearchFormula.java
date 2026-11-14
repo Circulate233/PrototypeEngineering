@@ -30,6 +30,18 @@ public final class ZenResearchFormula {
         return this;
     }
 
+    @ZenMethod
+    public ZenResearchFormula perTick(ZenComputingResource type, double limit) {
+        builder.perTick(type.value(), limit);
+        return this;
+    }
+
+    @ZenMethod
+    public ZenResearchFormula affinePerTick(ZenComputingResource type, double base, double slope) {
+        builder.affinePerTick(type.value(), base, slope);
+        return this;
+    }
+
     public ResearchResourceFormula value() {
         return builder.build();
     }

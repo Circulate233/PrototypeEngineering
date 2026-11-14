@@ -49,7 +49,7 @@ class ResearchDataCenterTest {
     }
 
     private static ResearchLevelStage.Builder stage(int last, int tier) {
-        return ResearchLevelStage.builder(1, last).researchTier(tier).resourceFormula(ResearchResourceFormula.builder().build());
+        return ResearchLevelStage.builder(1, last).durationTicks(1).researchTier(tier).resourceFormula(ResearchResourceFormula.builder().build());
     }
 
     private static Object2IntOpenHashMap<ResourceLocation> levels(String name) {
@@ -239,9 +239,9 @@ class ResearchDataCenterTest {
     void loopingUpgradeRejectsNewMutexWithoutPublishingAnUnrestorableOrPartialDatabase() {
         var second = ResearchResourceFormula.builder().build();
         var a = definition("a", 2).stage(stage(1, 1).build())
-                                  .stage(ResearchLevelStage.builder(2, 2).researchTier(1).resourceFormula(second).mutex(id("b"), 2).build()).build();
+                                  .stage(ResearchLevelStage.builder(2, 2).durationTicks(1).researchTier(1).resourceFormula(second).mutex(id("b"), 2).build()).build();
         var b = definition("b", 2).stage(stage(1, 1).build())
-                                  .stage(ResearchLevelStage.builder(2, 2).researchTier(1).resourceFormula(second).mutex(id("a"), 2).build()).build();
+                                  .stage(ResearchLevelStage.builder(2, 2).durationTicks(1).researchTier(1).resourceFormula(second).mutex(id("a"), 2).build()).build();
         var registry = registry(a, b, ordinary("other", 2, 1));
         var player = new PlayerResearchState(new UUID(0, 1));
         var storage = new ResearchDataCenter(new UUID(0, 2), 1, 3, registry, () -> {

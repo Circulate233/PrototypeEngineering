@@ -25,6 +25,11 @@ public interface ManualResearchInventory {
     boolean hasMaterials(AEKey2LongMap quantities);
 
     /**
+     * Returns available item amounts for this attempt, capped by each remaining requirement.
+     */
+    AEKey2LongMap availableMaterials(AEKey2LongMap remaining);
+
+    /**
      * Retains PREPARED evidence even when synchronous saving throws.
      */
     void recordPrepared(ManualResearchMaterialReceipt receipt);

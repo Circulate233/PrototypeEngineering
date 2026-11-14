@@ -151,7 +151,7 @@ class ComputerControllerTest {
     }
 
     @Test
-    void workingResearchStationPreemptsOrdinaryLeasesAndRevokesTheirUncommittedReceipts() {
+    void researchStationWaitsForOrdinaryLeasesAndPreservesTheirReceipts() {
         try (var fixture = new Fixture(1)) {
             fixture.hatch.install(1);
             fixture.hatch.buffer.insert(WATER, 2_000, Actionable.MODULATE);
@@ -160,10 +160,10 @@ class ComputerControllerTest {
             for (int i = 0; i < 3; i++)
                 assertEquals(NetworkTeamBudget.LeaseStatus.GRANTED, fixture.client(i).requestLease());
             var receipt = Objects.requireNonNull(fixture.client(2).reserve(id("ordinary_work"), Reference2DoubleMaps.singleton(ComputingResourceFixtures.COMPUTE, 10)));
-            assertEquals(NetworkTeamBudget.LeaseStatus.GRANTED, Objects.requireNonNull(fixture.station.workPermit()).requestLease());
-            assertFalse(receipt.commit());
+            assertEquals(NetworkTeamBudget.LeaseStatus.INSUFFICIENT_CAPACITY, Objects.requireNonNull(fixture.station.workPermit()).requestLease());
+            assertTrue(receipt.commit());
             receipt.rollback();
-            assertEquals(NetworkTeamBudget.LeaseStatus.INSUFFICIENT_CAPACITY, fixture.client(2).requestLease());
+            assertEquals(NetworkTeamBudget.LeaseStatus.ALREADY_GRANTED, fixture.client(2).requestLease());
             assertEquals(NetworkTeamBudget.LeaseStatus.ALREADY_GRANTED, Objects.requireNonNull(fixture.database.workPermit()).requestLease());
         }
     }

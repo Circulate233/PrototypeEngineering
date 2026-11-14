@@ -15,7 +15,8 @@ public interface ResearchPermissionPolicy {
             case VIEW_OWN_RESEARCH -> context.actorId().equals(context.personalTarget()) || context.serverOperator()
                 ? Decision.ALLOWED : Decision.TARGET_PLAYER_MISMATCH;
             case VIEW_TEAM_RESEARCH, REQUEST_DATA_CENTER_STATE, REQUEST_QUEUE_STATE,
-                 START_RESEARCH, DOWNLOAD_RESEARCH_TO_DATA_CENTER -> teamOperation(context, true);
+                 START_RESEARCH, MANAGE_RESEARCH_QUEUE, DOWNLOAD_RESEARCH_TO_DATA_CENTER ->
+                teamOperation(context, true);
             case FORGET_PERSONAL_RESEARCH -> context.actorId().equals(context.personalTarget())
                 ? teamOperation(context, false) : Decision.TARGET_PLAYER_MISMATCH;
             case BLACKLIST_TEAM_RESEARCH -> {
@@ -45,7 +46,7 @@ public interface ResearchPermissionPolicy {
 
     enum Action {
         VIEW_OWN_RESEARCH, VIEW_TEAM_RESEARCH, REQUEST_DATA_CENTER_STATE, REQUEST_QUEUE_STATE,
-        START_RESEARCH, DOWNLOAD_RESEARCH_TO_DATA_CENTER, FORGET_PERSONAL_RESEARCH,
+        START_RESEARCH, MANAGE_RESEARCH_QUEUE, DOWNLOAD_RESEARCH_TO_DATA_CENTER, FORGET_PERSONAL_RESEARCH,
         BLACKLIST_TEAM_RESEARCH, FORGET_ANY_RESEARCH, MODIFY_ANY_RESEARCH_LEVEL
     }
 

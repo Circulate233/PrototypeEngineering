@@ -13,7 +13,7 @@ import java.util.function.Predicate;
 
 /**
  * Owner-managed double resource balances and the fixed integer machine-concurrency limit.
- * Research reads an independent supply vector. Receipts compensate only their issuing tick.
+ * Research shares resource balances with other devices; refunds affect only the issuing tick.
  */
 public final class NetworkTeamBudget implements AutoCloseable {
     private final long tick;
@@ -51,7 +51,7 @@ public final class NetworkTeamBudget implements AutoCloseable {
     }
 
     /**
-     * Current supply, borrowed read-only; ordinary reservations do not consume research supply.
+     * Current total supply, borrowed read-only for display; reservations use the remaining balance.
      */
     public Reference2DoubleMap<NetworkResourceType> numericResources() {
         return numericResources;
@@ -142,6 +142,11 @@ public final class NetworkTeamBudget implements AutoCloseable {
         if (leasedMachines.size() >= concurrencyCapacity) return LeaseStatus.INSUFFICIENT_CAPACITY;
         leasedMachines.add(machineId);
         return LeaseStatus.GRANTED;
+    }
+
+    public void releaseLease(UUID machineId) {
+        ownerCheck.run();
+        if (!networkLeases.contains(machineId)) leasedMachines.remove(machineId);
     }
 
     /**

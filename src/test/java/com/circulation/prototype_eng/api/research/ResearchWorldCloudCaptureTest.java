@@ -8,10 +8,8 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
-import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
@@ -27,8 +25,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -60,17 +56,17 @@ class ResearchWorldCloudCaptureTest {
         for (var research : ObjectList.of(BASE, BLOCKED))
             registry.register(ResearchDefinition.builder(research).maxLevel(3)
                                                 .deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).startCondition(_ -> fail("Cloud capture ran an admission condition"))
-                                                .stage(ResearchLevelStage.builder(1, 3).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                                .stage(ResearchLevelStage.builder(1, 3).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
         registry.register(ResearchDefinition.builder(DEPENDENT).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                            .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).prerequisite(BASE, 2).build()).build());
+                                            .stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).prerequisite(BASE, 2).build()).build());
         registry.register(ResearchDefinition.builder(OWNED).maxLevel(3).deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY)
-                                            .stage(ResearchLevelStage.builder(1, 3).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                            .stage(ResearchLevelStage.builder(1, 3).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
         registry.freeze();
         var aliceLevels = levels(BASE, 1);
         aliceLevels.put(BLOCKED, 1);
         var bobLevels = levels(BASE, 3);
         bobLevels.put(DEPENDENT, 1);
-        var queue = new TeamResearchQueue.Snapshot("a", ObjectList.of(), null, Reference2DoubleMaps.emptyMap(), 1, 0, 0, -1, -1);
+        var queue = new TeamResearchQueue.Snapshot("a", ObjectList.of(), ObjectList.of(), 1, 0, 0, -1, -1);
         var team = new ResearchWorldSnapshot.Team("a", members(ALICE, BOB), new ObjectOpenHashSet<>(ObjectList.of(BLOCKED)),
             new TeamOwnedResearch.Snapshot("a", levels(OWNED, 2)), queue, ObjectList.of());
         var world = new ResearchWorld(registry, permissions, writer);
@@ -279,16 +275,14 @@ class ResearchWorldCloudCaptureTest {
         var capture = Objects.requireNonNull(world.captureCloud(membership, () -> true));
         var failure = new IllegalStateException("Retained research tick");
         try (var identities = new MachineIdentityRegistry(() -> {
-        });
-             var workers = Executors.newSingleThreadExecutor(); var lane = Executors.newSingleThreadExecutor()) {
-            var tasks = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
+        })) {
             var deadline = PlannedDeadline.after(Duration.ofSeconds(5));
             var execution = world.prepareTick(11, Map.of(ALICE, membership, BOB, membership(BOB, "a", ALICE, BOB)),
                 Set.of(ALICE, BOB), _ -> null, () -> {
                     throw failure;
                 }, new ResearchStations(identities, () -> {
                 }), () -> {
-                }, tasks, deadline);
+                }, deadline);
             assertSame(failure, assertThrows(IllegalStateException.class, () -> execution.advance(deadline)));
             assertFalse(capture.current().getAsBoolean());
             assertNull(world.captureCloud(membership, () -> true));

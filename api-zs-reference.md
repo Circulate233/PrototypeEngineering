@@ -246,9 +246,9 @@ ParallelController.create("example:parallel_module", "tile.example.parallel_modu
 
 ## 研究与奖励
 
-`ResearchFormula.create()` 创建资源公式，随后调用 `.constant(type, demand)` 给各等级设置相同总需求，或 `.affine(type, base, slope)` 按 `base + slope × (当前等级 - 阶段首级)` 计算总需求。type 必须是数值计算资源，逻辑线程数不能作为累计研究进度。单站速率由研究站定义，研究公式不再接受 segmentLimit。
+`ResearchFormula.create()` 创建网络资源公式。`.constant(type, total)` / `.affine(type, base, slope)` 定义总量，`.perTick(type, limit)` / `.affinePerTick(type, base, slope)` 定义单站每 tick 上限。总量与上限按研究时间换算，等级增长使用阶段内偏移，double 数量不取整。只接受网络资源，不接受计算机内部资源或并发额度。各项独立累计，实际推进还受站点自身速率限制。
 
-`ResearchStage.create(first, last, tier, formula)` 创建连续等级段。随后用 `prerequisite(...)` 和 `mutex(...)` 添加研究前置及互斥项，用 `material(requirement)` 指定研究站材料配方，用 `reward(level, reward)` 在指定等级添加可领取奖励。各 stage 合并后必须无重叠且完整覆盖 `1..maxLevel`。
+`ResearchStage.create(first, last, tier, durationTicks, formula)` 创建连续等级段，durationTicks 为正 long，表示单站基准工作量。`.prerequisite(...)`、`.mutex(...)` 添加前置及互斥，`.material(requirement)` 仅接受静态总量资源输入，`.reward(level, reward)` 添加奖励。各 stage 必须完整且无重叠地覆盖 `1..maxLevel`。同种 AEKey 合并，普通资源逐种付款并按各项支付比例等权累计；手动研究只允许物品且禁止网络资源。
 
 first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表示研究站阶数。`prerequisite(id, minimumLevel)` 要求前置研究达到指定等级，`mutex(id, minimumLevel)` 则在对应研究达到该等级时阻止这一阶段。奖励方法的 level 是研究的实际等级，必须位于本段范围内。
 
@@ -256,7 +256,7 @@ first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表�
 
 `Research.alwaysAllowed()` 表示资格函数不增加额外条件，实际权限仍会由服务器规则检查。自定义资格函数读取 `targetLevel`、`networkCenterLevel`、`sharedLevel(researchId)` 和 `available(resource)` 等捕获事实，返回 bool；它不能修改资源或把当前数量当作后续工作已经预留的数量。`unlock(effectId, targetId, level)` 声明达到指定等级后的解锁效果，必须在研究定义被注册前完成。
 
-`materialPersistence(revision, componentData)` 给研究站的材料需求绑定保存版本。componentData 为 true 时同时保存普通进程数据。需要自定义 Java 组件的研究站材料应由 addon 提供完整 codec，不能靠这个布尔参数保存所有外部组件。
+`Research.display(translationKey, icon)` 必须在 `register()` 前设置，icon 为 IItemStack。研究站显示内容与目标进度自动同步；材料不再作为配方进程执行，原 `materialPersistence(...)` 已移除。
 
 `ResearchServer.permissions(callback)` 设置服务端权限回调。回调的 action 和返回值使用 Java 对应枚举的字符串名称；不添加特例时调用 `context.standardDecision(action)`。在启动阶段注册，否则研究服务可能已完成初始化。
 

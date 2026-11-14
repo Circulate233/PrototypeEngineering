@@ -48,7 +48,7 @@ class TeamResearchCompletionTest {
                 }))));
             registry.register(ResearchDefinition.builder(id).maxLevel(Integer.MAX_VALUE)
                                                 .deliveryPolicy(id.equals(TEAM) ? ResearchDownloadDeliveryPolicy.ITEM_ONLY : ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                                .stage(ResearchLevelStage.builder(1, Integer.MAX_VALUE).researchTier(0)
+                                                .stage(ResearchLevelStage.builder(1, Integer.MAX_VALUE).durationTicks(1).researchTier(0)
                                                                          .resourceFormula(ResearchResourceFormula.builder().build()).rewardGroup(2, rewards)
                                                                          .rewardGroup(Integer.MAX_VALUE, rewards).build()).build());
         }

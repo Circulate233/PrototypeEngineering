@@ -129,6 +129,20 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
     }
 
     @Override
+    public AEKey2LongMap availableMaterials(AEKey2LongMap remaining) {
+        requireOwner();
+        var result = new AEKey2LongMap.OpenHashMap();
+        for (int slot = 0; slot < inventory.getSizeInventory(); slot++) {
+            var stack = inventory.getStackInSlot(slot);
+            if (stack.isEmpty() || protectedSlot.test(slot)) continue;
+            var key = AEItemKey.of(stack);
+            long amount = Math.min(stack.getCount(), remaining.getLong(key) - result.getLong(key));
+            if (amount > 0) result.addTo(key, amount);
+        }
+        return result;
+    }
+
+    @Override
     public void recordPrepared(ManualResearchMaterialReceipt receipt) {
         requireOwner();
         requirePlayer(receipt);

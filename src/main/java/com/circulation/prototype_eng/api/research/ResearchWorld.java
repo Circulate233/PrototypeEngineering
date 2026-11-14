@@ -1,8 +1,10 @@
 package com.circulation.prototype_eng.api.research;
 
-import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
-import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
-import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleListener;
+import com.circulation.prototype_eng.api.research.reward.RewardClaim;
+import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
+import it.unimi.dsi.fastutil.ints.IntSets;
+import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
+
 import com.circulation.prototype_eng.api.research.delivery.DownloadOutputKey;
 import com.circulation.prototype_eng.api.research.delivery.ItemDelivery;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryAdapter;
@@ -24,25 +26,23 @@ import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory
 import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
-import com.circulation.prototype_eng.api.research.reward.RewardClaim;
 import com.circulation.prototype_eng.api.research.station.ResearchStationWork;
 import com.circulation.prototype_eng.api.research.station.ResearchStations;
 import com.circulation.prototype_eng.api.research.view.ResearchPlayerView;
+import com.circulation.prototype_eng.api.research.view.ResearchStationView;
+import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken.Reason;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedExecution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
-import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import com.circulation.prototype_eng.research.ResearchEligibility;
-import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
-import it.unimi.dsi.fastutil.ints.IntSets;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
@@ -85,7 +85,6 @@ public final class ResearchWorld {
     private final Object2ObjectLinkedOpenHashMap<UUID, ResearchDownloadOperation> downloads = new Object2ObjectLinkedOpenHashMap<>();
     private final Object2ObjectLinkedOpenHashMap<UUID, ResearchDownloadReceipt> downloadReceipts = new Object2ObjectLinkedOpenHashMap<>();
     private final Object2ObjectLinkedOpenHashMap<UUID, ResearchDiskOperation> diskImports = new Object2ObjectLinkedOpenHashMap<>();
-    private final ObjectSet<ResearchStations.Site> pendingDestructions = new ObjectOpenHashSet<>();
     @Nullable
     private List<TeamProgress> capturedTeams;
     private Object2ObjectLinkedOpenHashMap<UUID, PlayerResearchState> players = new Object2ObjectLinkedOpenHashMap<>();
@@ -199,61 +198,9 @@ public final class ResearchWorld {
         return new ResearchDiskImportResult(status, id, null);
     }
 
-    /**
-     * Register with the host's real lifecycle registry. Temporary unloading and structure changes
-     * do not cancel materials; only the exact permanently destroyed station ends its owned session.
-     */
-    public MachineLifecycleListener stationLifecycle(ResearchStations stations) {
-        return new StationLifecycle(this, Objects.requireNonNull(stations));
-    }
-
-    /**
-     * Trusted hosts report the exact destroyed identity and location after all accepted source
-     * actions exit. Retain the evidence before IO so a failed old checkpoint cannot lose it.
-     */
-    public void stationDestroyed(ResearchStations.Site site) {
-        requireOwner();
-        if (executing || activeTick != null || closed) {
-            throw new IllegalStateException("Station destruction requires the exclusive research owner");
-        }
-        pendingDestructions.add(Objects.requireNonNull(site));
-        operate(serverTime, true, () -> {
-            if (dirty) {
-                persist();
-            }
-            return null;
-        });
-    }
-
     private List<TeamProgress> teamSnapshot() {
         if (capturedTeams == null) capturedTeams = ObjectLists.unmodifiable(new ObjectArrayList<>(teams.values()));
         return capturedTeams;
-    }
-
-    private void applyDestructions() {
-        if (pendingDestructions.isEmpty()) {
-            return;
-        }
-        for (var site : pendingDestructions) {
-            for (var team : teams.values()) {
-                boolean present = false;
-                for (var source : team.station.sites())
-                    if (source.sameStation(site)) {
-                        present = true;
-                        break;
-                    }
-                if (present) {
-                    try {
-                        team.station.destroy(site, PlannedDeadline.after(Duration.ofSeconds(5)));
-                    } catch (RuntimeException | Error failure) {
-                        fatalFailure = failure;
-                        throw failure;
-                    }
-                    dirty = true;
-                }
-            }
-        }
-        pendingDestructions.clear();
     }
 
     public long serverTime() {
@@ -274,6 +221,76 @@ public final class ResearchWorld {
     public boolean faulted() {
         requireOwner();
         return fatalFailure != null;
+    }
+
+    public @Nullable ResearchStationView stationView(ResearchPermissionContext permission, ResearchStations stations, long time) {
+        requireOwner();
+        requireHealthy();
+        if (busy()) return null;
+        var id = permission.targetTeamId();
+        boolean visible = permissions.can(ResearchPermissionPolicy.Action.REQUEST_QUEUE_STATE, permission) == ResearchPermissionPolicy.Decision.ALLOWED;
+        boolean canManage = visible && !savePending()
+            && permissions.can(ResearchPermissionPolicy.Action.MANAGE_RESEARCH_QUEUE, permission) == ResearchPermissionPolicy.Decision.ALLOWED;
+        var team = id == null ? null : teams.get(id);
+        var work = !visible || team == null ? null : team.queue.activeProgress();
+        if (visible && team != null) for (var session : team.manual.sessions())
+            if (session.materialIntent() != null || session.completionIntent() != null) {
+                canManage = false;
+                break;
+            }
+        var current = work == null ? null : work.snapshot();
+        var result = team == null ? null : team.station.result();
+        boolean advanced = work != null && result != null && result.time() == time && result.key() != null
+            && result.key().target().equals(work.target());
+        return new ResearchStationView(id == null ? "" : id, visible, canManage,
+            visible && team != null ? team.queue.queueSnapshot() : List.of(), current,
+            work == null ? 0 : work.stage().durationTicks(), work == null ? ImmutableResourceAmounts.empty()
+            : stations.availableMaterials(id, work.stage().researchTier(), current.remainingMaterials()),
+            work == null ? Reference2DoubleMaps.emptyMap() : work.totals(),
+            advanced ? result.grants() : Reference2DoubleMaps.emptyMap(), advanced ? result.capacity() : Reference2DoubleMaps.emptyMap(),
+            advanced ? result.stations().size() : 0);
+    }
+
+    public boolean manageQueue(OwnerTeamResolution membership, ResearchPermissionContext permission, long entryId,
+                               ResearchStationView.Action action, long time, Set<UUID> online,
+                               Function<UUID, ManualResearchInventory> inventories, BooleanSupplier current) {
+        return operate(time, false, () -> {
+            if (!membership.accepted() || !membership.teamId().equals(permission.targetTeamId()) || !current.getAsBoolean()
+                || permissions.can(ResearchPermissionPolicy.Action.MANAGE_RESEARCH_QUEUE, permission) != ResearchPermissionPolicy.Decision.ALLOWED)
+                return false;
+            var team = teams.get(membership.teamId());
+            if (team == null || team.queue.busy()) return false;
+            var rows = team.queue.queueSnapshot();
+            int index = -1;
+            for (int cursor = 0; cursor < rows.size(); cursor++)
+                if (rows.get(cursor).key().queueEntryId() == entryId) {
+                    index = cursor;
+                    break;
+                }
+            if (index < 0) return false;
+            for (var session : team.manual.sessions())
+                if (session.materialIntent() != null || session.completionIntent() != null) return false;
+            var key = rows.get(index).key();
+            if (action == ResearchStationView.Action.REMOVE) {
+                var session = team.manual.session(entryId);
+                if (session != null) {
+                    var context = new ManualResearch.Context(time, membership.members(), online, current);
+                    return team.manual.cancelInvalidated(entryId, context, inventoryFor(session, inventories)) == ManualResearch.Status.CANCELLED;
+                }
+                team.queue.remove(key, time);
+            } else {
+                int destination = switch (action) {
+                    case UP -> index - 1;
+                    case DOWN -> index + 1;
+                    case CURRENT -> 0;
+                    case REMOVE -> throw new IllegalStateException();
+                };
+                if (!team.queue.move(key, destination, time)) return false;
+            }
+            dirty = true;
+            persist();
+            return true;
+        });
     }
 
     /**
@@ -541,7 +558,6 @@ public final class ResearchWorld {
                 team.blacklist.addAll(snapshot.blacklist());
                 team.capturedBlacklist = null;
                 team.manual.restore(snapshot.manualSessions());
-                team.station.restore(snapshot.stationWork());
                 restoredTeams.put(snapshot.teamId(), team);
             }
             for (var operation : saved.downloads()) {
@@ -1521,7 +1537,7 @@ public final class ResearchWorld {
             if (player.busy() && (activePlayerLevel == null || !activePlayerLevel.owns(player))) return true;
         for (var team : teams.values())
             if (team.research.busy() && (activeTeamLevel == null || !activeTeamLevel.owns(team.research))
-                || team.queue.busy() || team.manual.checkpointPending() || team.station.pending()) return true;
+                || team.queue.busy() || team.manual.checkpointPending()) return true;
         return false;
     }
 
@@ -1659,7 +1675,7 @@ public final class ResearchWorld {
     // The retained scheduler execution deliberately owns this world's pending work.
     public PlannedExecution prepareTick(long time, Map<UUID, OwnerTeamResolution> captures, Set<UUID> online,
                                         Function<UUID, ManualResearchInventory> inventories, BooleanSupplier current,
-                                        ResearchStations stations, Runnable refresh, PlannedTaskExecutor tasks,
+                                        ResearchStations stations, Runnable refresh,
                                         PlannedDeadline forwardDeadline) {
         requireOwner();
         requireHealthy();
@@ -1667,27 +1683,13 @@ public final class ResearchWorld {
             throw new IllegalStateException("Research owner already has a tick or is closing");
         }
         return new StationTick(time, Object2ObjectMaps.unmodifiable(new Object2ObjectOpenHashMap<>(captures)),
-            ObjectSets.unmodifiable(new ObjectOpenHashSet<>(online)), inventories, current, stations, refresh, tasks, forwardDeadline);
+            ObjectSets.unmodifiable(new ObjectOpenHashSet<>(online)), inventories, current, stations, refresh, forwardDeadline);
     }
 
     private boolean reconcile(TeamProgress team, ManualResearch.Context context, Function<UUID, ManualResearchInventory> inventories) {
         // Cancellation can complete an already-paid head and change subsequent eligibility. The queue is bounded.
         for (int round = 0; round <= TeamResearchQueue.CAPACITY; round++) {
             var view = structural(team, team.knownMembers.isEmpty());
-            var stationKey = team.station.key();
-            if (stationKey != null && !eligibility.structurallyEligible(view, stationKey.researchId(), stationKey.targetLevel())) {
-                try {
-                    if (!team.station.cancel(PlannedDeadline.after(Duration.ofSeconds(5)))) {
-                        return false;
-                    }
-                } catch (RuntimeException | Error failure) {
-                    if (activeTick != null) {
-                        activeTick.stationOperation = true;
-                    }
-                    throw failure;
-                }
-                dirty = true;
-            }
             boolean changed = false;
             boolean pending = false;
             for (var session : team.manual.sessions()) {
@@ -1891,7 +1893,7 @@ public final class ResearchWorld {
                 throw new IllegalStateException("Cannot snapshot a pending team research mutation");
             }
             teamSnapshots.add(new ResearchWorldSnapshot.Team(team.id, team.knownMembers, team.blacklist,
-                changedLevel ? activeTeamLevel.snapshot() : downloaded ? activeDownload.snapshot(team.research) : team.research.snapshot(), team.queue.snapshot(), team.manual.sessions(), team.station.snapshot()));
+                changedLevel ? activeTeamLevel.snapshot() : downloaded ? activeDownload.snapshot(team.research) : team.research.snapshot(), team.queue.snapshot(), team.manual.sessions()));
         }
         return new ResearchWorldSnapshot(serverTime, playerSnapshots, teamSnapshots, new ObjectArrayList<>(downloads.values()), new ObjectArrayList<>(downloadReceipts.values()), new ObjectArrayList<>(diskImports.values()));
     }
@@ -1941,7 +1943,6 @@ public final class ResearchWorld {
         executing = true;
         try {
             flushPending();
-            applyDestructions();
             releaseDurableDownloads();
             for (var team : teams.values()) {
                 team.manual.retryCheckpoint();
@@ -1983,22 +1984,6 @@ public final class ResearchWorld {
                                @Nullable PlayerResearchState.Snapshot snapshot) {
     }
 
-    private record StationLifecycle(ResearchWorld world,
-                                    ResearchStations stations) implements MachineLifecycleListener {
-        @Override
-        public void onControllerBroken(MachineLifecycleEvent.ControllerBroken event) {
-            var site = stations.destroyedSite(event.context());
-            if (site != null) {
-                world.stationDestroyed(site);
-            }
-        }
-
-        @Override
-        public void onUnassembledControllerBroken(MachineLifecycleEvent.UnassembledControllerBroken event) {
-            world.stationDestroyed(new ResearchStations.Site(event.ownership(), event.identity(), event.host().controllerBlockId()));
-        }
-    }
-
     private final class TeamProgress {
         private final String id;
         private final TeamResearchQueue queue;
@@ -2026,7 +2011,7 @@ public final class ResearchWorld {
     }
 
     /**
-     * One server tick retains its team cursor, source execution and lifecycle leases until settlement.
+     * Each team settles at most once per server tick; resource reservations finish within the current boundary.
      */
     private final class StationTick implements PlannedExecution {
         private final long time;
@@ -2036,210 +2021,80 @@ public final class ResearchWorld {
         private final BooleanSupplier current;
         private final ResearchStations stations;
         private final Runnable refresh;
-        private final PlannedTaskExecutor tasks;
-        private final PlannedDeadline forwardDeadline;
-        private final ObjectArrayList<MachineLifecycle.ScheduledExecution> handles = new ObjectArrayList<>();
-        @Nullable
-        private ObjectArrayList<TeamProgress> order;
-        @Nullable
-        private TeamProgress activeTeam;
-        @Nullable
-        private ResearchStationWork.Saved before;
-        @Nullable
-        private Throwable stationFailure;
-        private int cursor;
-        private boolean stationOperation;
-        private boolean stopped;
-        private boolean finished;
+        private final PlannedDeadline deadline;
+        private boolean stopped, finished, stationOperation;
 
         private StationTick(long time, Map<UUID, OwnerTeamResolution> captures, Set<UUID> online,
                             Function<UUID, ManualResearchInventory> inventories, BooleanSupplier current,
-                            ResearchStations stations, Runnable refresh, PlannedTaskExecutor tasks, PlannedDeadline deadline) {
-            if (time < serverTime) {
-                throw new IllegalArgumentException("Research tick time moved backwards");
-            }
+                            ResearchStations stations, Runnable refresh, PlannedDeadline deadline) {
+            if (time < serverTime) throw new IllegalArgumentException("Research time moved backwards");
             this.time = time;
             this.captures = captures;
             this.online = online;
-            this.inventories = Objects.requireNonNull(inventories);
-            this.current = Objects.requireNonNull(current);
-            this.stations = Objects.requireNonNull(stations);
-            this.refresh = Objects.requireNonNull(refresh);
-            this.tasks = Objects.requireNonNull(tasks);
-            forwardDeadline = Objects.requireNonNull(deadline);
+            this.inventories = inventories;
+            this.current = current;
+            this.stations = stations;
+            this.refresh = refresh;
+            this.deadline = deadline;
         }
 
         @Override
         public boolean advance(PlannedDeadline cleanupDeadline) {
             requireOwner();
-            Objects.requireNonNull(cleanupDeadline);
-            if (finished) {
-                return true;
-            }
+            if (finished) return true;
             requireHealthy();
-            if (closed || closing && activeTick != this) {
-                throw new IllegalStateException("Research tick belongs to a closed or closing world");
-            }
-            if (executing || activeTick != null && activeTick != this) {
-                throw new IllegalStateException("Research tick is executing or stale");
-            }
+            if (executing || activeTick != null && activeTick != this)
+                throw new IllegalStateException("Research owner is busy");
             activeTick = this;
-            stationOperation = false;
             executing = true;
             try {
                 flushPending();
-                applyDestructions();
-                for (var team : teams.values()) {
-                    team.manual.retryCheckpoint();
-                }
-                if (order == null) {
-                    initialize();
-                }
-                if (activeTeam != null) {
-                    var work = activeTeam.station;
-                    if (work.pending()) {
-                        if (!forward()) {
-                            work.requestStop(Reason.EPOCH_CHANGED);
-                        }
-                        cleanup(() -> work.resolve(cleanupDeadline));
-                        if (work.pending()) {
-                            return false;
-                        }
-                    }
-                    if (!finishTeam()) {
-                        return false;
-                    }
-                }
-                while (forward() && cursor < Objects.requireNonNull(order).size()) {
-                    var team = order.get(cursor++);
-                    if (team.queue.size() == 0 && team.manual.sessions().isEmpty() && team.station.key() == null) {
-                        continue;
-                    }
-                    if (team.queue.busy() || team.research.busy() || membersBusy(team.knownMembers)) {
-                        continue;
-                    }
-                    stationOperation = true;
-                    if (team.station.cold()) {
-                        for (var site : team.station.sites()) {
-                            if (stations.absent(site)) {
-                                team.station.destroy(site, cleanupDeadline);
-                                dirty = true;
-                                break;
-                            }
-                        }
-                    }
-                    var savedKey = team.station.key();
-                    var destroyed = team.station.destroyedSite();
-                    if (destroyed != null) {
-                        if (team.station.destroy(destroyed, cleanupDeadline)) {
+                for (var team : teams.values()) team.manual.retryCheckpoint();
+                var memberships = validateMemberships(captures);
+                if (memberships != null && forward()) {
+                    if (!captures.keySet().containsAll(trackedPlayers()))
+                        throw new IllegalArgumentException("Research capture omitted tracked players");
+                    serverTime = time;
+                    for (var entry : memberships.entrySet()) captureTeam(entry.getKey(), entry.getValue());
+                    for (var team : teamSnapshot()) {
+                        var members = memberships.getOrDefault(team.id, ObjectSets.emptySet());
+                        if (!members.equals(team.knownMembers)) {
+                            team.knownMembers = members;
                             dirty = true;
-                        } else {
-                            stationOperation = false;
-                            continue;
                         }
-                    }
-                    savedKey = team.station.key();
-                    if (savedKey != null && team.station.sources() == null) {
-                        if (!eligibility.structurallyEligible(structural(team, team.knownMembers.isEmpty()),
-                            savedKey.researchId(), savedKey.targetLevel())) {
-                            var cleanupSources = stations.restoreForCleanup(team.station.sites());
-                            if (cleanupSources != null && team.station.cancelRestored(cleanupSources)) {
-                                dirty = true;
-                            }
+                        if (!forward()) break;
+                        if (team.queue.size() == 0 || team.queue.busy() || team.research.busy() || membersBusy(members))
+                            continue;
+                        var context = new ManualResearch.Context(time, members, online, this::forward);
+                        if (!reconcile(team, context, inventories)) continue;
+                        var head = team.queue.activeHead().orElse(null);
+                        if (head == null) continue;
+                        int tier = registry.require(head.key().researchId()).researchTierForLevel(head.key().targetLevel());
+                        if (tier == 0) {
+                            var session = Objects.requireNonNull(team.manual.session(head.key().queueEntryId()), "Manual head has no session");
+                            team.manual.advance(head.key().queueEntryId(), context, inventoryFor(session, inventories));
                         } else {
                             refresh.run();
-                            if (!forward()) {
-                                break;
-                            }
-                            int savedTier = registry.require(savedKey.researchId()).researchTierForLevel(savedKey.targetLevel());
-                            var restoredSources = stations.restore(team.id, savedTier, team.station.sites());
-                            if (restoredSources != null) {
-                                team.station.resume(restoredSources);
-                            }
+                            if (!forward()) break;
+                            var source = stations.capture(team.id, tier);
+                            if (source == null) continue;
+                            stationOperation = true;
+                            var result = team.station.advance(source, new ResearchStationWork.Context(time, members, this::forward));
+                            stationOperation = false;
+                            if (result.status() != ResearchStationWork.Status.WAITING) dirty = true;
                         }
-                    }
-                    stationOperation = false;
-                    var context = new ManualResearch.Context(time, team.knownMembers, online, this::forward);
-                    if (!reconcile(team, context, inventories)) {
-                        continue;
-                    }
-                    var head = team.queue.activeHead().orElse(null);
-                    if (head == null) {
-                        continue;
-                    }
-                    int tier = registry.require(head.key().researchId()).researchTierForLevel(head.key().targetLevel());
-                    if (tier == 0) {
-                        var session = Objects.requireNonNull(team.manual.session(head.key().queueEntryId()), "Manual head has no session");
-                        team.manual.advance(head.key().queueEntryId(), context, inventoryFor(session, inventories));
-                        continue;
-                    }
-                    refresh.run();
-                    if (!forward()) {
-                        break;
-                    }
-                    stationOperation = true;
-                    var source = team.station.sources();
-                    var captured = source == null ? null : stations.renew(source);
-                    if (source != null && captured == null) {
-                        if (!team.station.suspend()) {
-                            throw new IllegalStateException("Inactive station cannot release its process");
-                        }
-                    }
-                    if (captured == null) {
-                        captured = team.station.key() == null ? stations.capture(team.id, tier) : stations.restore(team.id, tier, team.station.sites());
-                    }
-                    if (captured == null) {
-                        continue;
-                    }
-                    before = team.station.snapshot();
-                    activeTeam = team;
-                    for (var machine : captured.machines()) {
-                        var handle = Objects.requireNonNull(machine.lifecycle()).beginScheduled();
-                        if (handle == null) {
-                            break;
-                        }
-                        handles.add(handle);
-                    }
-                    if (handles.size() != captured.machines().size()) {
-                        if (!finishTeam()) {
-                            return false;
-                        }
-                        continue;
-                    }
-                    var workSources = captured;
-                    handles.getFirst().run(() -> team.station.advance(workSources,
-                        new ResearchStationWork.Context(time, team.knownMembers, this::forward), tasks, forwardDeadline));
-                    if (team.station.pending()) {
-                        return false;
-                    }
-                    if (!finishTeam()) {
-                        return false;
                     }
                 }
-                return finishTick();
+                if (dirty || checkpointRequested) persist();
+                finished = true;
+                activeTick = null;
+                return true;
             } catch (RuntimeException | Error failure) {
                 stopped = true;
-                if (activeTeam != null && activeTeam.station.pending()) {
-                    if (stationFailure == null) {
-                        stationFailure = failure;
-                    }
-                    activeTeam.station.requestStop(Reason.WORKER_FAILURE);
-                } else if (pendingSave == null && (activeTeam != null || stationOperation)) {
-                    // No unresolved source transaction remains. Keep the original world/process as a
-                    // fatal diagnostic state, but do not pretend it still owns running source work.
-                    try {
-                        if (releaseHandles()) {
-                            fatalFailure = failure;
-                            activeTeam = null;
-                            before = null;
-                            finished = true;
-                            activeTick = null;
-                        }
-                    } catch (RuntimeException | Error cleanupFailure) {
-                        if (failure != cleanupFailure) {
-                            failure.addSuppressed(cleanupFailure);
-                        }
-                    }
+                if (pendingSave == null && stationOperation) {
+                    fatalFailure = failure;
+                    finished = true;
+                    activeTick = null;
                 }
                 throw failure;
             } finally {
@@ -2247,88 +2102,8 @@ public final class ResearchWorld {
             }
         }
 
-        private void initialize() {
-            order = new ObjectArrayList<>();
-            var memberships = validateMemberships(captures);
-            if (memberships == null || !forward()) {
-                stopped = true;
-                return;
-            }
-            if (!captures.keySet().containsAll(trackedPlayers())) {
-                throw new IllegalArgumentException("Research capture omitted tracked players");
-            }
-            serverTime = time;
-            for (var entry : memberships.entrySet()) {
-                captureTeam(entry.getKey(), entry.getValue());
-            }
-            for (var team : teams.values()) {
-                var members = memberships.getOrDefault(team.id, ObjectSets.emptySet());
-                if (!members.equals(team.knownMembers)) {
-                    team.knownMembers = members;
-                    dirty = true;
-                }
-                order.add(team);
-            }
-        }
-
         private boolean forward() {
-            return !stopped && !closing && !closed && !forwardDeadline.expired(System.nanoTime()) && current.getAsBoolean();
-        }
-
-        private void cleanup(Runnable action) {
-            if (handles.isEmpty()) {
-                action.run();
-            } else {
-                handles.getFirst().cleanup(action);
-            }
-        }
-
-        private boolean finishTeam() {
-            var team = Objects.requireNonNull(activeTeam);
-            if (team.station.pending()) {
-                return false;
-            }
-            if (!releaseHandles()) {
-                return false;
-            }
-            if (team.station.result().status() == ResearchStationWork.Status.FAILED) {
-                if (stationFailure != null || !team.station.cancel(PlannedDeadline.after(Duration.ofSeconds(5)))) {
-                    throw new IllegalStateException("Research station material process faulted", stationFailure);
-                }
-                dirty = true; // A paid cycle can begin and fail within this tick, leaving no saved segment.
-            }
-            if (!Objects.requireNonNull(before).equals(team.station.snapshot())) {
-                dirty = true;
-            }
-            activeTeam = null;
-            before = null;
-            stationFailure = null;
-            stationOperation = false;
-            return true;
-        }
-
-        private boolean releaseHandles() {
-            for (int index = handles.size() - 1; index >= 0; index--) {
-                var handle = handles.get(index);
-                if (!handle.finished() && !handle.tryFinish()) {
-                    return false;
-                }
-            }
-            handles.clear();
-            return true;
-        }
-
-        private boolean finishTick() {
-            if (activeTeam != null) {
-                return false;
-            }
-            if (dirty || checkpointRequested) {
-                persist();
-                checkpointRequested = false;
-            }
-            finished = true;
-            activeTick = null;
-            return true;
+            return !stopped && !closing && !closed && !deadline.expired(System.nanoTime()) && current.getAsBoolean();
         }
 
         @Override
@@ -2340,19 +2115,12 @@ public final class ResearchWorld {
         @Override
         public void cancel(Reason reason) {
             requireOwner();
-            Objects.requireNonNull(reason);
             stopped = true;
-            if (activeTeam != null) {
-                activeTeam.station.requestStop(reason);
-            }
         }
 
         @Override
         public void awaitExit() {
             requireOwner();
-            if (activeTeam != null) {
-                activeTeam.station.awaitExit();
-            }
         }
     }
 }

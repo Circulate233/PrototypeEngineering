@@ -75,7 +75,7 @@ class MachineDataCenterStorageTest {
 
     private static ResearchDefinition definition(String name, int max) {
         return ResearchDefinition.builder(id(name)).maxLevel(max).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                 .stage(ResearchLevelStage.builder(1, max).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build();
+                                 .stage(ResearchLevelStage.builder(1, max).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build();
     }
 
     private static ResourceLocation id(String name) {

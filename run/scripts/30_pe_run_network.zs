@@ -39,32 +39,31 @@ var manualReward = ResearchReward.create("pe_run_tests:research_reward")
     .event("pe_run_tests:research_reward_event", function(event) {
         return NetworkRender.rewardEvent(event);
     });
-var manual = ResearchStage.create(1, 2, 0, ResearchFormula.create())
+var manual = ResearchStage.create(1, 2, 0, 40, ResearchFormula.create())
+    .mutex("pe_run_tests:research_mutex", 1)
     .material(Requirement.resources("pe_run_tests:research_manual_material", [Resource.item(<minecraft:iron_ingot>, 2)], []))
-    .materialPersistence("run-v1", true).reward(1, manualReward);
+    .reward(1, manualReward);
 Research.create("pe_run_tests:research_manual", 2, false, "ITEM_ONLY", 1, [manual], function(context) {
     return context.playerId != "" && context.teamId != "";
-}).unlock("pe_run_tests:research_unlock", "pe_run_tests:net_device", 1).register();
+}).display("pe_run_tests.research.manual", <minecraft:iron_ingot>).unlock("pe_run_tests:research_unlock", "pe_run_tests:net_device", 1).register();
 
-var station = ResearchStage.create(1, 2, 1, ResearchFormula.create().affine(compute, 1200, 100))
+var station = ResearchStage.create(1, 2, 1, 120, ResearchFormula.create().affine(compute, 1200, 100))
     .prerequisite("pe_run_tests:research_manual", 1)
-    .material(Requirement.resourceIO("pe_run_tests:research_station_material",
-        [Resource.item(<minecraft:gold_ingot>, 1)], [Resource.item(<minecraft:redstone>, 1)],
-        [Resource.item(<minecraft:iron_nugget>, 1)], [Resource.item(<minecraft:diamond>, 1)], false))
-    .material(Requirement.energy("pe_run_tests:research_station_energy", 16, 2, 0, 0, false))
-    .materialPersistence("run-v1", true).reward(1, manualReward);
+    .material(Requirement.resources("pe_run_tests:research_station_material",
+        [Resource.item(<minecraft:gold_ingot>, 2), Resource.item(<minecraft:redstone>, 10), Resource.item(<minecraft:iron_ingot>, 100)], []))
+    .reward(1, manualReward);
 Research.create("pe_run_tests:research_station", 2, false, "DATABASE_AND_ITEM", 1, [station], function(context) {
     return context.teamHasNetworkCenter && context.networkCenterLevel >= 1 && context.available(compute) >= 10;
-}).register();
-Research.create("pe_run_tests:research_mutex", 1, false, "ITEM_ONLY", 0,
-    [ResearchStage.create(1, 1, 0, ResearchFormula.create()).mutex("pe_run_tests:research_manual", 1)],
-    Research.alwaysAllowed()).register();
+}).display("pe_run_tests.research.station", <minecraft:gold_ingot>).register();
+Research.create("pe_run_tests:research_mutex", 2, false, "ITEM_ONLY", 0,
+    [ResearchStage.create(1, 2, 0, 40, ResearchFormula.create()).mutex("pe_run_tests:research_manual", 1)],
+    Research.alwaysAllowed()).display("pe_run_tests.research.mutex", <minecraft:book>).register();
 Research.create("pe_run_tests:research_loop", 2147483647, false, "DATABASE_AND_ITEM", 0,
-    [ResearchStage.create(1, 2147483647, 1, ResearchFormula.create().constant(compute, 10))],
-    Research.alwaysAllowed()).register();
+    [ResearchStage.create(1, 2147483647, 1, 100, ResearchFormula.create().perTick(compute, 0.1))],
+    Research.alwaysAllowed()).display("pe_run_tests.research.loop", <minecraft:redstone>).register();
 Research.create("pe_run_tests:research_special", 1, true, "DATABASE_AND_ITEM", 0,
-    [ResearchStage.create(1, 1, 1, ResearchFormula.create().constant(compute, 10))],
-    Research.alwaysAllowed()).register();
+    [ResearchStage.create(1, 1, 1, 100, ResearchFormula.create().constant(compute, 10))],
+    Research.alwaysAllowed()).display("pe_run_tests.research.special", <minecraft:nether_star>).register();
 ResearchServer.permissions(function(action, context) { return context.standardDecision(action); });
 ResearchDownloads.register(<minecraft:paper>, function(context) {
     NativeChecks.check("research_download_actual_context", context.teamId != "" && context.dataCenterId != "" && context.operationId != "");

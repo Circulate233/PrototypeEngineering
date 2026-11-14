@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.research;
 
-import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
-import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
 import com.circulation.prototype_eng.api.persistence.NbtCodec;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
@@ -18,16 +16,12 @@ import com.circulation.prototype_eng.api.research.download.ResearchDownloadRecei
 import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchSessionNbt;
 import com.circulation.prototype_eng.api.research.queue.ResearchQueueNbt;
-import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
-import com.circulation.prototype_eng.api.research.station.ResearchStationWork;
-import com.circulation.prototype_eng.api.research.station.ResearchStations;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
 import net.minecraft.util.ResourceLocation;
-import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.common.util.Constants;
 
 import java.util.Objects;
@@ -47,87 +41,16 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
     public ResearchWorldNbt(ResearchRegistry registry, ResourceKeyNbt keys) {
         this.registry = Objects.requireNonNull(registry);
         players = new PlayerResearchStateNbt(registry, keys);
-        queues = new ResearchQueueNbt(registry);
+        queues = new ResearchQueueNbt(registry, keys);
         manual = new ManualResearchSessionNbt(registry);
         downloads = new ResearchDownloadNbt(registry, keys);
-    }
-
-    private static NBTTagCompound encodeStationWork(ResearchStationWork.Saved value) {
-        var tag = new NBTTagCompound();
-        tag.setLong("LastGrantedTime", value.lastGrantedTime());
-        var segment = value.segment();
-        tag.setBoolean("HasSegment", segment != null);
-        if (segment != null) {
-            var saved = new NBTTagCompound();
-            var key = new NBTTagCompound();
-            key.setString("Research", segment.key().researchId().toString());
-            key.setInteger("Level", segment.key().targetLevel());
-            key.setLong("EntryId", segment.key().queueEntryId());
-            saved.setTag("Key", key);
-            var sites = new NBTTagList();
-            for (var site : segment.sites()) {
-                var entry = new NBTTagCompound();
-                entry.setTag("Identity", site.identity().encode());
-                var location = new NBTTagCompound();
-                location.setString("Type", site.location().machineType().toString());
-                location.setInteger("Dimension", site.location().dimension());
-                var position = site.location().controllerPos();
-                location.setInteger("X", position.getX());
-                location.setInteger("Y", position.getY());
-                location.setInteger("Z", position.getZ());
-                entry.setTag("Location", location);
-                if (site.controllerBlockId() != null) {
-                    entry.setString("ControllerBlock", site.controllerBlockId().toString());
-                }
-                sites.appendTag(entry);
-            }
-            saved.setTag("Sites", sites);
-            // SavedSegment returns a defensive copy; this envelope never owns a mutable snapshot tag.
-            saved.setTag("Process", segment.processTag());
-            tag.setTag("Segment", saved);
-        }
-        return tag;
-    }
-
-    private static ResearchStationWork.Saved decodeStationWork(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "LastGrantedTime", "HasSegment", "Segment");
-        long granted = StrictNbt.requireLong(tag, "LastGrantedTime");
-        if (!StrictNbt.requireBoolean(tag, "HasSegment")) {
-            if (tag.hasKey("Segment")) {
-                throw new IllegalArgumentException("Absent station materials have saved segment fields");
-            }
-            return new ResearchStationWork.Saved(granted, null);
-        }
-        var segment = StrictNbt.requireCompound(tag, "Segment");
-        StrictNbt.requireKeys(segment, "Key", "Sites", "Process");
-        var key = StrictNbt.requireCompound(segment, "Key");
-        StrictNbt.requireKeys(key, "Research", "Level", "EntryId");
-        var queueKey = new TeamResearchQueue.Key(StrictNbt.requireId(key, "Research"), StrictNbt.requireInt(key, "Level"),
-            StrictNbt.requireLong(key, "EntryId"));
-        var savedSites = StrictNbt.requireList(segment, "Sites", Constants.NBT.TAG_COMPOUND);
-        var sites = new ObjectArrayList<ResearchStations.Site>(savedSites.tagCount());
-        for (int index = 0; index < savedSites.tagCount(); index++) {
-            var site = savedSites.getCompoundTagAt(index);
-            StrictNbt.requireKeys(site, "Identity", "Location", "ControllerBlock");
-            var identity = PersistentMachineIdentity.decode(StrictNbt.requireCompound(site, "Identity"));
-            var location = StrictNbt.requireCompound(site, "Location");
-            StrictNbt.requireKeys(location, "Type", "Dimension", "X", "Y", "Z");
-            sites.add(new ResearchStations.Site(identity, new MachineIdentity(StrictNbt.requireId(location, "Type"),
-                StrictNbt.requireInt(location, "Dimension"), new BlockPos(StrictNbt.requireInt(location, "X"),
-                StrictNbt.requireInt(location, "Y"), StrictNbt.requireInt(location, "Z"))),
-                site.hasKey("ControllerBlock") ? StrictNbt.requireId(site, "ControllerBlock") : null));
-        }
-        // The envelope checks structure only. Recipe/revision/state validation needs the restored
-        // real owner and frozen material definition in ResearchStationWork.resume.
-        return new ResearchStationWork.Saved(granted, new ResearchStationWork.SavedSegment(queueKey, sites,
-            StrictNbt.requireCompound(segment, "Process")));
     }
 
     @Override
     public NBTTagCompound encode(ResearchWorldSnapshot value) {
         Objects.requireNonNull(value);
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 5);
+        tag.setInteger("Version", 6);
         tag.setLong("ServerTime", value.serverTime());
         var savedPlayers = new NBTTagList();
         for (var player : value.players()) {
@@ -154,7 +77,7 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
     @Override
     public ResearchWorldSnapshot decode(NBTTagCompound tag) {
         StrictNbt.requireKeys(tag, "Version", "ServerTime", "Players", "Teams", "Downloads", "DownloadReceipts", "DiskImports");
-        if (StrictNbt.requireInt(tag, "Version") != 5) {
+        if (StrictNbt.requireInt(tag, "Version") != 6) {
             throw new IllegalArgumentException("Unknown research world version");
         }
         var savedPlayers = StrictNbt.requireList(tag, "Players", Constants.NBT.TAG_COMPOUND);
@@ -203,12 +126,11 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
             sessions.appendTag(manual.encode(session));
         }
         tag.setTag("ManualSessions", sessions);
-        tag.setTag("StationWork", encodeStationWork(value.stationWork()));
         return tag;
     }
 
     private ResearchWorldSnapshot.Team decodeTeam(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Team", "KnownMembers", "Blacklist", "Research", "Queue", "ManualSessions", "StationWork");
+        StrictNbt.requireKeys(tag, "Team", "KnownMembers", "Blacklist", "Research", "Queue", "ManualSessions");
         var members = new ObjectLinkedOpenHashSet<UUID>();
         var savedMembers = StrictNbt.requireList(tag, "KnownMembers", Constants.NBT.TAG_STRING);
         for (int index = 0; index < savedMembers.tagCount(); index++) {
@@ -231,8 +153,7 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
             sessions.add(manual.decode(savedSessions.getCompoundTagAt(index)));
         }
         var team = new ResearchWorldSnapshot.Team(StrictNbt.requireString(tag, "Team"), members, blacklist,
-            TeamOwnedResearch.CODEC.decode(StrictNbt.requireCompound(tag, "Research")), queues.decode(StrictNbt.requireCompound(tag, "Queue")), sessions,
-            decodeStationWork(StrictNbt.requireCompound(tag, "StationWork")));
+            TeamOwnedResearch.CODEC.decode(StrictNbt.requireCompound(tag, "Research")), queues.decode(StrictNbt.requireCompound(tag, "Queue")), sessions);
         validateTeam(team);
         return team;
     }
@@ -243,10 +164,6 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
         source.restore(value.research());
         for (var id : value.blacklist()) {
             registry.require(id);
-        }
-        var segment = value.stationWork().segment();
-        if (segment != null && registry.require(segment.key().researchId()).stageForLevel(segment.key().targetLevel()).researchTier() < 1) {
-            throw new IllegalArgumentException("Station materials require positive-tier research");
         }
     }
 }

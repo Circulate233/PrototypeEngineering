@@ -35,17 +35,20 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
         tag.setString("Operation", value.operationId().toString());
         tag.setString("Contributor", value.contributor().toString());
         tag.setLong("Sequence", value.sequence());
+        tag.setLong("Elapsed", value.elapsedTicks());
+        tag.setLong("AdvancedAt", value.advancedAt());
         tag.setTag("Pending", encodeWork(value.pendingWork()));
         tag.setTag("Expected", encodeWork(value.expectedWork()));
         return tag;
     }
 
     public static ManualResearchSession.MaterialIntent decodeMaterialIntent(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Operation", "Contributor", "Sequence", "Pending", "Expected");
+        StrictNbt.requireKeys(tag, "Operation", "Contributor", "Sequence", "Pending", "Expected", "Elapsed", "AdvancedAt");
         return new ManualResearchSession.MaterialIntent(uuid(StrictNbt.requireString(tag, "Operation")),
             uuid(StrictNbt.requireString(tag, "Contributor")), StrictNbt.requireLong(tag, "Sequence"),
             decodeWork(StrictNbt.requireList(tag, "Pending", Constants.NBT.TAG_COMPOUND)),
-            decodeWork(StrictNbt.requireList(tag, "Expected", Constants.NBT.TAG_COMPOUND)));
+            decodeWork(StrictNbt.requireList(tag, "Expected", Constants.NBT.TAG_COMPOUND)),
+            StrictNbt.requireLong(tag, "Elapsed"), StrictNbt.requireLong(tag, "AdvancedAt"));
     }
 
     public static NBTTagList encodeWork(Object2LongMap<ManualMaterialKey> work) {
@@ -127,7 +130,7 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
     public NBTTagCompound encode(ManualResearchSession value) {
         validateDefinition(value);
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 1);
+        tag.setInteger("Version", 2);
         tag.setString("Id", value.id().toString());
         tag.setString("Team", value.teamId());
         var key = new NBTTagCompound();
@@ -156,7 +159,7 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
     @Override
     public ManualResearchSession decode(NBTTagCompound tag) {
         StrictNbt.requireKeys(tag, "Version", "Id", "Team", "QueueKey", "LastActivity", "Status", "Contributor", "PauseReason", "Work", "Material", "Completion");
-        if (StrictNbt.requireInt(tag, "Version") != 1) {
+        if (StrictNbt.requireInt(tag, "Version") != 2) {
             throw new IllegalArgumentException("Unknown manual research save version");
         }
         var key = StrictNbt.requireCompound(tag, "QueueKey");
@@ -188,6 +191,8 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
         validateWork(value.work(), required);
         var material = value.materialIntent();
         if (material != null) {
+            if (material.elapsedTicks() > stage.durationTicks() || material.advancedAt() > value.lastActivity())
+                throw new IllegalArgumentException("Manual material intent exceeds research time");
             validateWork(material.pendingWork(), required);
             validateWork(material.expectedWork(), required);
         }

@@ -127,7 +127,7 @@ class NetworkRecipeWorkTest {
         for (var name : List.of("gate", "filler_one", "filler_two")) {
             int max = name.equals("gate") ? 3 : 1;
             registry.register(ResearchDefinition.builder(id(name)).maxLevel(max).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                                .stage(ResearchLevelStage.builder(1, max).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                                .stage(ResearchLevelStage.builder(1, max).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
         }
         registry.freeze();
         return registry;

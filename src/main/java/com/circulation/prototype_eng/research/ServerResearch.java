@@ -3,9 +3,6 @@ package com.circulation.prototype_eng.research;
 import ae2.api.stacks.AEItemKey;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
-import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
-import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleListener;
-import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.DataCenterResearchAccess;
@@ -38,6 +35,7 @@ import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
 import com.circulation.prototype_eng.api.research.station.ResearchStations;
 import com.circulation.prototype_eng.api.research.view.DataCenterPlayerView;
 import com.circulation.prototype_eng.api.research.view.ResearchPlayerView;
+import com.circulation.prototype_eng.api.research.view.ResearchStationView;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedExecution;
@@ -52,7 +50,6 @@ import com.circulation.prototype_eng.research.reward.MinecraftItemDeliveryAdapte
 import com.circulation.prototype_eng.research.reward.RewardDeliveryRecovery;
 import com.circulation.prototype_eng.research.reward.RewardItemEntity;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
-import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import com.feed_the_beast.ftblib.lib.data.ForgeTeam;
 import com.feed_the_beast.ftblib.lib.data.TeamType;
 import com.feed_the_beast.ftblib.lib.data.Universe;
@@ -72,7 +69,6 @@ import net.minecraft.util.EnumHand;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.WorldServer;
-import net.minecraftforge.common.DimensionManager;
 import net.minecraftforge.common.util.FakePlayer;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
@@ -578,7 +574,7 @@ public final class ServerResearch {
      */
     @SuppressWarnings("resource") // The server lifecycle owns the borrowed network runtime.
     @Nullable
-    public static PlannedExecution prepareTick(MinecraftServer server, PlannedTaskExecutor tasks, PlannedDeadline deadline) {
+    public static PlannedExecution prepareTick(MinecraftServer server, PlannedDeadline deadline) {
         requireThread(Objects.requireNonNull(server));
         var current = session;
         if (current == null || current.closing) {
@@ -596,7 +592,7 @@ public final class ServerResearch {
         // therefore advances independently once per server tick and never moves backwards on reload.
         long time = Math.max(Math.incrementExact(current.world.serverTime()), current.overworld.getTotalWorldTime());
         return current.world.prepareTick(time, captures, online.keySet(), id -> inventory(current, id), proof,
-            current.stations, () -> ServerNetworkRuntime.forServer(server).refresh(), tasks, deadline);
+            current.stations, () -> ServerNetworkRuntime.forServer(server).refresh(), deadline);
     }
 
     /**
@@ -1040,6 +1036,56 @@ public final class ServerResearch {
     }
 
     /**
+     * Reads display data at network tick end without creating teams or advancing research.
+     */
+    public static @Nullable ResearchStationView stationView(EntityPlayerMP actor, MachineControllerHost host) {
+        var current = actorSession(actor);
+        String expectedTeam = stationTeam(actor, host);
+        if (expectedTeam == null) return ResearchStationView.unavailable();
+        var membership = current.resolver.resolve(actor.getUniqueID());
+        var ownPermission = viewPermission(current, actor, membership);
+        if (ownPermission == null) return null;
+        var target = new ResearchPermissionContext(actor.getUniqueID(), ownPermission.actorTeamId(), null, expectedTeam,
+            ownPermission.teamLeader(), ownPermission.teamModerator(), ownPermission.serverOperator());
+        return current.world.stationView(target, current.stations, operationTime(current));
+    }
+
+    public static @Nullable String stationTeam(EntityPlayerMP actor, MachineControllerHost host) {
+        var current = actorSession(actor);
+        var identity = host.savedIdentity();
+        if (identity == null) return null;
+        var team = current.resolver.resolve(identity.ownerId());
+        return team.accepted() ? team.teamId() : null;
+    }
+
+    public static void requestQueueAction(EntityPlayerMP actor, String expectedTeam, long entryId, ResearchStationView.Action action,
+                                          BooleanSupplier ownerCurrent, Consumer<Boolean> result, Runnable finalized) {
+        var current = actorSession(actor);
+        submitAction(current, () -> {
+            if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
+                result.accept(false);
+                return;
+            }
+            var online = onlinePlayers(current);
+            var captures = capture(current, Set.of(actor.getUniqueID()));
+            if (unavailable(captures)) {
+                result.accept(false);
+                return;
+            }
+            var membership = captures.get(actor.getUniqueID());
+            var permission = permission(current, actor, membership);
+            if (permission == null || !expectedTeam.equals(membership.teamId())) {
+                result.accept(false);
+                return;
+            }
+            var authority = proof(current, captures, online);
+            result.accept(current.world.manageQueue(membership, permission, entryId, action, operationTime(current), online.keySet(),
+                id -> inventory(current, id), () -> authority.getAsBoolean() && ownerCurrent.getAsBoolean()
+                    && permission.equals(permission(current, actor, membership))));
+        }, finalized);
+    }
+
+    /**
      * Mark closing before IO; a failed final checkpoint retains the exact session for retry.
      */
     public static synchronized void stop(MinecraftServer server) {
@@ -1054,7 +1100,6 @@ public final class ServerResearch {
         current.closing = true;
         // The file writer retains its absolute path, so serverStopped can retry after world unload.
         current.world.close(operationTime(current));
-        current.stationLifecycle.close();
         session = null;
     }
 
@@ -1414,7 +1459,6 @@ public final class ServerResearch {
         private final ResearchStations stations;
         private final ResearchDataCenters dataCenters;
         private final DataCenterResearchAccess database;
-        private final MachineLifecycleRegistry.Subscription stationLifecycle;
         private final ObjectOpenHashSet<UUID> rewardCleanup = new ObjectOpenHashSet<>();
         private boolean closing;
 
@@ -1424,44 +1468,9 @@ public final class ServerResearch {
             this.world = world;
             this.permissions = permissions;
             resolver = new FtbOwnerTeamResolver(server);
-            stations = new ResearchStations(ServerMachineIdentities.forServer(server), () -> requireThread(server), this::stationAbsent);
+            stations = new ResearchStations(ServerMachineIdentities.forServer(server), () -> requireThread(server));
             dataCenters = new ResearchDataCenters(ServerMachineIdentities.forServer(server), () -> requireThread(server));
             database = new DataCenterResearchAccess(world, ServerNetworkRuntime.forServer(server), dataCenters);
-            var listener = world.stationLifecycle(stations);
-            stationLifecycle = MachineLifecycleRegistry.GLOBAL.register(new MachineLifecycleListener() {
-                @Override
-                public void onControllerBroken(MachineLifecycleEvent.ControllerBroken event) {
-                    if (event.context().server() == server) {
-                        listener.onControllerBroken(event);
-                    }
-                }
-
-                @Override
-                public void onUnassembledControllerBroken(MachineLifecycleEvent.UnassembledControllerBroken event) {
-                    if (event.host().server() == server) {
-                        listener.onUnassembledControllerBroken(event);
-                    }
-                }
-            });
-        }
-
-        private boolean stationAbsent(ResearchStations.Site site) {
-            var expected = site.controllerBlockId();
-            if (expected == null) {
-                return false;
-            }
-            var dimension = DimensionManager.getWorld(site.location().dimension());
-            var position = site.location().controllerPos();
-            if (dimension == null || dimension.getMinecraftServer() != server || !dimension.isBlockLoaded(position, false)) {
-                return false;
-            }
-            var tile = dimension.getTileEntity(position);
-            if (tile instanceof MachineControllerHost physical) {
-                var identity = physical.savedIdentity();
-                return identity != null && !identity.equals(site.identity());
-            }
-            // A custom opaque tile may retain the identity outside the common host contract.
-            return tile == null && !expected.equals(dimension.getBlockState(position).getBlock().getRegistryName());
         }
     }
 }

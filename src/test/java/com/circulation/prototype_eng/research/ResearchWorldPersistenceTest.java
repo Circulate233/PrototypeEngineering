@@ -18,7 +18,6 @@ import com.circulation.prototype_eng.api.research.reward.RewardEventAction;
 import com.circulation.prototype_eng.api.research.reward.RewardGroup;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.ObjectList;
@@ -69,13 +68,13 @@ class ResearchWorldPersistenceTest {
     private static Fixture fixture() {
         var registry = new ResearchRegistry();
         registry.register(ResearchDefinition.builder(MANUAL).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                            .stage(ResearchLevelStage.builder(1, 1).researchTier(0).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                            .stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(0).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
         registry.register(ResearchDefinition.builder(OWNED).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY)
-                                            .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                            .stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
         var event = new RewardChild.Event(id("event"), (_, _) -> RewardEventAction.Result.ALREADY_APPLIED);
         var group = new RewardGroup(id("choice"), ObjectList.of(event));
         registry.register(ResearchDefinition.builder(PERSONAL).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                            .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).rewardGroup(1, group).build()).build());
+                                            .stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).rewardGroup(1, group).build()).build());
         registry.freeze();
         var team = new TeamOwnedResearch("team", registry);
         var completion = team.prepareCompletion(OWNED, 1);
@@ -110,7 +109,7 @@ class ResearchWorldPersistenceTest {
         assertThrows(IllegalArgumentException.class, () -> new ResearchWorldSnapshot(10, ObjectList.of(player()), ObjectList.of(team, team)));
         assertThrows(IllegalArgumentException.class, () -> world(fixture, ObjectList.of(active(fixture), active(fixture))));
         var entry = fixture.queue().activeHead().orElseThrow();
-        var queue = new TeamResearchQueue.Snapshot("team", ObjectList.of(entry, entry), entry.key(), Reference2DoubleMaps.emptyMap(), 2, 0, 1, -1, -1);
+        var queue = new TeamResearchQueue.Snapshot("team", ObjectList.of(entry, entry), team.queue().progress(), 2, 0, 1, -1, -1);
         assertThrows(IllegalArgumentException.class, () -> new ResearchWorldSnapshot.Team("team", team.knownMembers(), team.blacklist(), team.research(), queue, ObjectList.of()));
     }
 
@@ -129,8 +128,8 @@ class ResearchWorldPersistenceTest {
     void historicalMembershipMayOverlapButSessionAndOperationIdsAreWorldUnique() {
         var fixture = fixture();
         var original = world(fixture, ObjectList.of()).teams().getFirst();
-        var otherQueue = new TeamResearchQueue.Snapshot("other", original.queue().entries(), original.queue().activeHead(),
-            original.queue().resourceProgress(), original.queue().nextEntryId(), original.queue().epoch(),
+        var otherQueue = new TeamResearchQueue.Snapshot("other", original.queue().entries(), original.queue().progress(),
+            original.queue().nextEntryId(), original.queue().epoch(),
             original.queue().updatedAtWorldTime(), original.queue().lastGrantedEntryId(), original.queue().lastGrantedWorldTime());
         var otherResearch = new TeamOwnedResearch.Snapshot("other", original.research().levels());
         var other = new ResearchWorldSnapshot.Team("other", original.knownMembers(), original.blacklist(), otherResearch, otherQueue, ObjectList.of());
@@ -141,7 +140,7 @@ class ResearchWorldPersistenceTest {
             ObjectList.of(world(fixture, ObjectList.of(active(fixture))).teams().getFirst(), otherSession)));
         var amounts = new Object2LongOpenHashMap<ManualMaterialKey>();
         amounts.put(new ManualMaterialKey(id("input"), 0), 1);
-        var intent = new ManualResearchSession.MaterialIntent(new UUID(0, 4), PLAYER, 0, amounts, amounts);
+        var intent = new ManualResearchSession.MaterialIntent(new UUID(0, 4), PLAYER, 0, amounts, amounts, 1, 0);
         var first = active(fixture).beginMaterial(intent, 2, null);
         var second = ManualResearchSession.newActive(OTHER, "other", first.queueKey(), PLAYER, 1).beginMaterial(intent, 2, null);
         var pendingOther = new ResearchWorldSnapshot.Team("other", other.knownMembers(), other.blacklist(), otherResearch, otherQueue, ObjectList.of(second));
@@ -161,7 +160,7 @@ class ResearchWorldPersistenceTest {
         var key = new ManualMaterialKey(id("input"), 0);
         var pending = new Object2LongOpenHashMap<ManualMaterialKey>();
         pending.put(key, 1);
-        var material = new ManualResearchSession.MaterialIntent(new UUID(0, 4), OTHER, 0, pending, pending);
+        var material = new ManualResearchSession.MaterialIntent(new UUID(0, 4), OTHER, 0, pending, pending, 1, 0);
         var preparing = new ManualResearchSession(SESSION, "team", active(fixture).queueKey(), null, 1,
             ManualResearchSession.Status.MATERIAL_COMMIT_PENDING, null, Object2LongMaps.emptyMap(), material, null);
         assertThrows(IllegalArgumentException.class, () -> world(fixture, ObjectList.of(preparing)));

@@ -28,7 +28,7 @@ class ManualResearchMaterialReceiptNbtTest {
         pending.addTo(key, 1);
         var expected = new Object2LongOpenHashMap<ManualMaterialKey>();
         expected.addTo(key, 2);
-        var intent = new ManualResearchSession.MaterialIntent(UUID.randomUUID(), UUID.randomUUID(), 1, pending, expected);
+        var intent = new ManualResearchSession.MaterialIntent(UUID.randomUUID(), UUID.randomUUID(), 1, pending, expected, 1, 0);
         return new ManualResearchMaterialReceipt(UUID.randomUUID(), "team",
             new TeamResearchQueue.Key(new ResourceLocation("manual_receipt_test", "research"), 1, 1), intent, before,
             null, ManualResearchMaterialReceipt.Status.PREPARED, 10, -1, -1);
@@ -107,7 +107,7 @@ class ManualResearchMaterialReceiptNbtTest {
         var committed = receipt.committed(ManualResearchMaterialReceiptNbt.encodeInventory(inventory(4)), 11);
         assertThrows(IllegalArgumentException.class, () -> committed.confirmed(10));
         var conflictingIntent = new ManualResearchSession.MaterialIntent(receipt.operationId(), receipt.playerId(), 2,
-            receipt.intent().pendingWork(), receipt.intent().expectedWork());
+            receipt.intent().pendingWork(), receipt.intent().expectedWork(), 1, 0);
         var different = new ManualResearchMaterialReceipt(receipt.sessionId(), receipt.teamId(), receipt.queueKey(),
             conflictingIntent, receipt.inventoryBefore(), null, ManualResearchMaterialReceipt.Status.PREPARED, 10, -1, -1);
         assertFalse(committed.sameOperation(different), "A sequence mismatch cannot authorize a committed retry");

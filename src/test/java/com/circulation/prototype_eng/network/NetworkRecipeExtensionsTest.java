@@ -30,7 +30,7 @@ class NetworkRecipeExtensionsTest {
     private static ResearchRegistry research() {
         var research = new ResearchRegistry();
         research.register(ResearchDefinition.builder(id("research")).maxLevel(2)
-                                            .deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(ResearchLevelStage.builder(1, 2)
+                                            .deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(ResearchLevelStage.builder(1, 2).durationTicks(1)
                                                                                                                               .researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
         research.freeze();
         return research;
