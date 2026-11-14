@@ -37,8 +37,6 @@ public final class ContainerComputer extends AEBaseContainer {
     public ComputerController.SupplyState supplyState = ComputerController.SupplyState.WAITING;
     @GuiSync(2)
     public long concurrency;
-    @GuiSync(3)
-    public long concurrencyLimit;
     @GuiSync(4)
     public long energyPaid;
     @GuiSync(5)
@@ -89,7 +87,6 @@ public final class ContainerComputer extends AEBaseContainer {
             boolean active = networkState == NetworkWorkState.ACTIVE_DEVICE;
             supplyState = active ? computer.supplyState() : ComputerController.SupplyState.WAITING;
             concurrency = active ? computer.providedConcurrency() : 0;
-            concurrencyLimit = computer.concurrencyLimit();
             var inventory = computer.installedInventory();
             energyRequired = computer.energyRequired();
             energyPaid = active ? computer.energyPaid() : 0;

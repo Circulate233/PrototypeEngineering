@@ -121,9 +121,9 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
             panel(x + 12, y + 118, 360, 112);
             int selected = selectedComponent;
             int offset = listScroll.getCurrentScroll();
-            if (selected >= offset && selected < offset + 4)
+            if (!componentText.isEmpty() && selected >= offset && selected < offset + 4)
                 Gui.drawRect(x + 19, y + 136 + (selected - offset) * 16, x + 356, y + 152 + (selected - offset) * 16, 0xffadb0c4);
-            for (int row = 0; row < 5; row++)
+            for (int row = 0; row <= Math.min(4, componentText.size() - offset); row++)
                 Gui.drawRect(x + 19, y + 135 + row * 16, x + 355, y + 136 + row * 16, 0xff696d88);
         }
         if (listScroll.isVisible()) GuiAtlas.inset(x + 359, y + 137, 12, 64);
@@ -165,22 +165,28 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
     }
 
     private void text(String value, int x, int y, int width, int color) {
-        fontRenderer.drawString(fontRenderer.trimStringToWidth(value, width), x, y, color);
+        GuiLabel.draw(fontRenderer, value, x, y, width, 10, color, false);
+    }
+
+    private void right(String value, int right, int y, int width) {
+        int textWidth = Math.min(fontRenderer.getStringWidth(value), width);
+        text(value, right - textWidth, y, textWidth, TEXT);
     }
 
     @Override
     @SuppressWarnings("DataFlowIssue")
     public void drawFG(int x, int y, int mouseX, int mouseY) {
         text(container.getGuiTitle().getFormattedText(), 16, 13, 350, TEXT);
-        text(status().getLocal(), 20, 43, 210, container.supplyState == ComputerController.SupplyState.ACTIVE ? GOOD : BAD);
-        text(ComputerGuiText.StructureNetwork.getLocal((container.formed ? MachineGuiText.Formed : MachineGuiText.NotFormed).getLocal(),
-            (container.networkState == NetworkWorkState.ACTIVE_DEVICE ? NetworkCenterGuiText.Active : status()).getLocal()), 237, 51, 127, TEXT);
+        boolean shortage = container.supplyState == ComputerController.SupplyState.RESOURCE_SHORTAGE
+            || container.supplyState == ComputerController.SupplyState.ENERGY_SHORTAGE;
+        int statusY = shortage ? 43 : 47;
+        text(status().getLocal(), 20, statusY, 210, container.supplyState == ComputerController.SupplyState.ACTIVE ? GOOD : BAD);
+        if (container.formed) right(MachineGuiText.Formed.getLocal(), 364, statusY, 127);
         if (container.supplyState == ComputerController.SupplyState.RESOURCE_SHORTAGE)
             text(ComputerGuiText.ResourceShortage.getLocal(), 20, 55, 200, TEXT);
         else if (container.supplyState == ComputerController.SupplyState.ENERGY_SHORTAGE)
             text(ComputerGuiText.EnergyShortage.getLocal(), 20, 55, 200, TEXT);
-        text(ComputerGuiText.Concurrency.getLocal(GuiNumbers.grouped(container.concurrency),
-            container.concurrencyLimit == Long.MAX_VALUE ? "∞" : GuiNumbers.grouped(container.concurrencyLimit)), 20, 79, 180, TEXT);
+        text(ComputerGuiText.Concurrency.getLocal(GuiNumbers.grouped(container.concurrency)), 20, 79, 180, TEXT);
         text(ComputerGuiText.Installed.getLocal(GuiNumbers.grouped(container.installedCount)), 210, 79, 150, TEXT);
         if (page == 0) drawOverview();
         else drawComponents();
@@ -189,7 +195,7 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
     private void pair(String name, String amount, int x, int y, int width, int color) {
         int amountWidth = Math.min(fontRenderer.getStringWidth(amount), width * 3 / 4);
         text(name, x, y, width - amountWidth - 5, TEXT);
-        GuiLabel.draw(fontRenderer, amount, x + width - amountWidth, y, amountWidth, 9, color, false);
+        GuiLabel.draw(fontRenderer, amount, x + width - amountWidth, y, amountWidth, 10, color, false);
     }
 
     private void drawOverview() {
@@ -223,21 +229,22 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
 
     private void drawComponents() {
         text(ComputerGuiText.Component.getLocal(), 20, 123, 147, TEXT);
-        text(ComputerGuiText.Count.getLocal(), 174, 123, 30, TEXT);
-        text(ComputerGuiText.ComponentConcurrency.getLocal(), 215, 123, 66, TEXT);
-        text(ComputerGuiText.EnergyPerTick.getLocal(), 281, 123, 45, TEXT);
-        text(ComputerGuiText.State.getLocal(), 331, 123, 30, TEXT);
+        right(ComputerGuiText.Count.getLocal(), 208, 123, 34);
+        right(ComputerGuiText.ComponentConcurrency.getLocal(), 275, 123, 60);
+        right(ComputerGuiText.EnergyPerTick.getLocal(), 326, 123, 45);
+        text(ComputerGuiText.State.getLocal(), 331, 123, 24, TEXT);
         boolean running = container.supplyState == ComputerController.SupplyState.ACTIVE;
         for (int row = 0, offset = listScroll.getCurrentScroll(); row < 4 && offset + row < componentText.size(); row++) {
             var value = componentText.get(offset + row);
-            int y = 140 + row * 16;
+            int y = 139 + row * 16;
             text(value.name, 20, y, 147, TEXT);
-            text(value.count, 174, y, 34, TEXT);
-            text(value.concurrency, 215, y, 60, TEXT);
-            text(value.energy, 281, y, 45, TEXT);
+            right(value.count, 208, y, 34);
+            right(value.concurrency, 275, y, 60);
+            right(value.energy, 326, y, 45);
             text((running ? ComputerGuiText.RecipeRunning : ComputerGuiText.Paused).getLocal(), 331, y, 24, running ? GOOD : BAD);
         }
-        if (componentText.isEmpty()) text(ComputerGuiText.EmptyComponents.getLocal(), 20, 145, 325, TEXT);
+        if (componentText.isEmpty())
+            GuiLabel.drawCentered(fontRenderer, ComputerGuiText.EmptyComponents.getLocal(), 20, 136, 337, 64, TEXT, false);
         else {
             var selected = componentText.get(selectedComponent);
             text(selected.required, 20, 207, 337, TEXT);

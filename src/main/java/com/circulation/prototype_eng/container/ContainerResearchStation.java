@@ -13,7 +13,7 @@ import net.minecraft.inventory.IContainerListener;
 
 
 /**
- * Research station container without player inventory. Queue actions recheck team membership and permission on the server.
+ * Queue actions recheck team membership and permission on the server.
  */
 public final class ContainerResearchStation extends AEBaseContainer {
     private static final String MANAGE = "research_queue";
@@ -30,8 +30,7 @@ public final class ContainerResearchStation extends AEBaseContainer {
     public int workingStations;
     @GuiSync(3)
     public boolean canManage;
-    @GuiSync(4)
-    public String teamId = "";
+    private String teamId = "";
     @GuiSync(5)
     public boolean visible;
     @GuiSync(6)

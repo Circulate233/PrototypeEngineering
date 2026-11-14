@@ -1,5 +1,13 @@
 # 实施进度
 
+## 2026-11-15 计算机与研究站文字布局修正
+
+根据用户截图修正计算机状态栏左右文字的纵向位置，资源名称与数值使用同一行高；组件数字与对应列标题右对齐。空组件提示改为表格内居中，删除空表的选中背景及多余分隔行。未成型时只显示一次原因。并发显示改为当前实际供给的单个数值，移除 GUI 配置上限字段和同步，后台上限计算继续生效。截图中的 0 来自组件停供或机器未取得网络许可，8 是控制器配置上限，原格式混用了两类数据。
+
+研究站标题右侧的 0002 为队伍 ID，现已移除绘制与客户端同步，服务器继续使用该字段校验队列操作。空闲时顶部仅显示一次“暂无研究”，无权限时显示对应提示。当前研究的名称、等级与状态分别保留宽度，百分比及队首标记与其他文字统一行高。
+
+5 个改动 Java 已通过本机 IDEA MCP 格式化及逐文件 errorsOnly:false 检查，ERROR、WARNING、WEAK WARNING 均为 0；IDEA MCP 构建成功且无问题。Gradle compileJava、processResources、spotlessCheck 通过，编译仅有既有 jdk.incubator.vector 模块警告。未为文字删除或坐标调整新增测试。证据为 C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261115/gui-layout-idea.json 和 gui-layout-gradle.log。游戏内画面待用户完整重启复验；阶段本地英文提交，保留用户 AGENTS.md 修改。
+
 ## 2026-11-14 防御检查、复制与循环清理
 
 本轮复查 b72090aacf2896c25c82c1b15135dcf0f95df30e 之后新增及修改的 Java，并扩展检查当前生产源码的数组 clone 和 List 循环。删除 StrictNbt、DownloadValidation、字段白名单、重复 NBT 类型检查、构造器中的数据复验、保存回调前后装配图比较，以及对应的防写和违约输入测试。

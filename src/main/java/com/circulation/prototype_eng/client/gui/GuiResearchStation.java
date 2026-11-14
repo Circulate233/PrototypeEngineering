@@ -137,23 +137,25 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
     @Override
     @SuppressWarnings("DataFlowIssue")
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        text(container.getGuiTitle().getFormattedText(), 18, 12, 235);
-        right(container.teamId, 366, 12, 108);
+        text(container.getGuiTitle().getFormattedText(), 18, 12, 348);
         var definition = container.view.definition;
-        if (definition == null) text(ResearchStationGuiText.Empty.getLocal(), 18, 42, 250);
+        if (definition == null)
+            text((container.visible ? ResearchStationGuiText.Empty : ResearchStationGuiText.Denied).getLocal(), 18, 41, 348);
         else {
             if (definition.icon() != null) AEKeyRendering.drawInGui(mc, 18, 37, definition.icon());
+            var state = !container.visible ? ResearchStationGuiText.Denied : container.manual ? ResearchStationGuiText.Manual
+                : container.workingStations > 0 ? ResearchStationGuiText.Running : ResearchStationGuiText.Waiting;
+            String status = state.getLocal();
+            int statusWidth = Math.min(90, fontRenderer.getStringWidth(status));
+            GuiLabel.draw(fontRenderer, status, 366 - statusWidth, 41, statusWidth, 10,
+                container.workingStations > 0 ? GOOD : TEXT, false);
             int nameX = definition.icon() == null ? 18 : 41;
-            int nameWidth = Math.min(175, fontRenderer.getStringWidth(container.view.name()));
-            text(container.view.name(), nameX, 41, 175);
-            text(level, nameX + nameWidth + 8, 41, 82);
-            fontRenderer.drawStringWithShadow(percent, 192 - fontRenderer.getStringWidth(percent) / 2F, 61, 0xf2f2f2);
+            int levelWidth = Math.min(82, fontRenderer.getStringWidth(level));
+            int nameWidth = Math.min(175, 366 - statusWidth - levelWidth - nameX - 16);
+            text(container.view.name(), nameX, 41, nameWidth);
+            text(level, nameX + Math.min(nameWidth, fontRenderer.getStringWidth(container.view.name())) + 8, 41, levelWidth);
+            GuiLabel.drawCentered(fontRenderer, percent, 18, 60, 348, 11, 0xf2f2f2, true);
         }
-        var state = !container.visible ? ResearchStationGuiText.Denied : definition == null ? ResearchStationGuiText.Empty
-            : container.manual ? ResearchStationGuiText.Manual : container.workingStations > 0 ? ResearchStationGuiText.Running : ResearchStationGuiText.Waiting;
-        String status = state.getLocal();
-        GuiLabel.draw(fontRenderer, status, 366 - fontRenderer.getStringWidth(status), 41, 90, 10,
-            container.workingStations > 0 ? GOOD : TEXT, false);
         text(ResearchStationGuiText.WorkingStations.getLocal(container.workingStations), 18, 263, 174);
         text(ResearchStationGuiText.Queue.getLocal(), QUEUE_X, 90, 100);
         right(container.view.queue.size() + " / 5", 368, 90, 40);
@@ -163,7 +165,8 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
             text(Integer.toString(index + 1), QUEUE_X + 2, top + 3, 10);
             text(container.view.queueName(index), QUEUE_X + 16, top + 3, 88);
             right("Lv." + row.level(), 340, top + 3, 28);
-            if (index == 0) fontRenderer.drawString(ResearchStationGuiText.Current.getLocal(), 346, top + 4, GOOD);
+            if (index == 0)
+                GuiLabel.draw(fontRenderer, ResearchStationGuiText.Current.getLocal(), 346, top + 3, 22, 10, GOOD, false);
         }
         if (container.view.queue.isEmpty())
             text(ResearchStationGuiText.EmptyQueue.getLocal(), QUEUE_X + 42, QUEUE_Y + 38, 100);

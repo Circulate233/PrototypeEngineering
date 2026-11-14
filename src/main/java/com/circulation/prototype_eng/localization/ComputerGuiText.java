@@ -7,7 +7,7 @@ public enum ComputerGuiText implements LocalizationEnum {
     Overview, Components, Running, Stopped, ResourceShortage, EnergyShortage,
     Installed, Concurrency, ComponentResources, AvailableDemand, OutputResources, EnergyUse, EnergyAvailable,
     Component, Count, ComponentConcurrency, EnergyPerTick, State, Paused, RecipeRunning, RecipeWaiting,
-    EmptyComponents, RequiredPerItem, ProvidedPerItem, None, StructureNetwork;
+    EmptyComponents, RequiredPerItem, ProvidedPerItem, None;
 
     @Override
     public String getTranslationKey() {

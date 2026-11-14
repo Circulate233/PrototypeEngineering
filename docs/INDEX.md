@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-15 计算机与研究站文字布局修正：计算机状态栏统一纵向位置，组件列右对齐，空组件提示居中，未成型原因不再重复；并发仅显示实际供给。研究站删除标题队伍 ID 与重复空状态，名称、等级及状态保留各自宽度。5 Java 已 IDEA 格式化及全级零诊断，MCP 构建、Gradle compileJava/processResources/Spotless 通过。入口：[计算机](computers.md)、[研究 GUI](research-gui.md)、[验证记录](implementation-status.md)。下一步由用户完整重启复验空闲、缺料及运行界面；本地英文提交，保留 AGENTS.md 用户修改。
+
 - 防御检查、复制与循环清理完成：删除 StrictNbt、重复 codec/索引、Optional 和多余数组/集合/NBT 复制；969 个 List 增强 for 改为索引，API 要求常数时间随机访问。生产数组 clone 只保留两处共享模型顶点变换。1735 tests/269 suites、完整 Gradle build、Spotless、IDEA MCP 构建、27 Java addon 和 15 ZS 脚本通过。451 Java 已格式化/全级检查，449 份零诊断、1 份 CTM 保留 9 条依赖 ERROR、1 份 run 被排除；生成 addon 未安装。入口：[审查](defensive-programming-audit.md)、[实施进度](implementation-status.md)、[API](../api.md)。下一步由用户复验游戏行为，保留 AGENTS.md 用户修改，本地提交。
 
 - 2026-11-14 研究站正式界面与时间/材料/网络进度已实现。逐种材料等权付款、多站加速、共享预算最低优先级、出队保留进度与 AE 行增量同步已接入。1781 tests/270 suites、Gradle build 和 IDEA MCP 构建通过；74 Java 已格式化，72 项目文件全级零诊断、2 run 被排除。Java addon 和 15 ZS 脚本编译通过，安装因目标 jar 被占用未完成。保存版本为世界 V6、队列 V3、手动 V2，旧版本未迁移。入口：[研究站](research-stations.md)、[GUI](research-gui.md)、[实施进度](implementation-status.md)。
