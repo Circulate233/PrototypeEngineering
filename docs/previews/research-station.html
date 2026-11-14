@@ -81,7 +81,7 @@
       <div class="rs-columns">
         <section class="rs-pane rs-inset" aria-label="当前研究资源">
           <div class="rs-requirements rs-scroll" id="rs-requirements">
-            <div class="rs-heading"><span>资源</span><span class="rs-small">本站可用 / 剩余需求</span></div>
+            <div class="rs-heading"><span>资源</span><span class="rs-small">当前可用 / 剩余需求</span></div>
             <div id="rs-materials"></div>
             <div class="rs-heading rs-resource-heading"><span>网络资源</span><span class="rs-small">占用 / 上限（/t）</span></div>
             <div id="rs-resources"></div>
@@ -107,22 +107,22 @@
       const assets = {"calculation": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAALVBMVEVHcEwNDRQiJDMsMUIxSmMZGyaKu++qISs1Qk9HZ4d9qdJETVdYZmvYPDqc0/8s9BJGAAAAAXRSTlMAQObYZgAAAFVJREFUCNdjYMAGGAWgtHgglA4qBQsJKV0KAgtJKCmZKoGEJjYbKyspAhle0sbGFo1ABsvCzTYbJUGK3GQOSpaAGCyJklcSwCa5LUl4AGawODzAZjMA1fsQFfrYadUAAAAASUVORK5CYII=", "logic": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAMFBMVEVHcEwNDRQsMUJ1KAIiJDOqISuyZBE1Qk/61kr99V8ZGyZETVdYZmvYPDrpsRXclhPKMKYIAAAAAXRSTlMAQObYZgAAAFBJREFUCNdjYMAKGAWgtOhCKL0qRABMq1xxcQQyRJQuObkXAhniSkrahWJARuImnY1iwUCGvcxBseAGIIO5UexywwSQdrvHEJqB2WACA14AAFoVEF57IMHWAAAAAElFTkSuQmCC", "engineering": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAALVBMVEVHcEwNDRQiJDMsMUIUXlMZGyaqISsgxbU1Qk8RcnrYPDpETVcaqqdK7dlYZms/ezpLAAAAAXRSTlMAQObYZgAAAGFJREFUCNdjYEAGgjA6VQBKhwVCaC3VpUAhRiUtpaAgRSCjSUlZVUlJgIFTwtjIyKhDgIHl4GZj4x2CExgYfKSNXwtOc2BgYCl8JzjNHaTfXXCWOy+IwVIDoRkYXHgZsAEA2PQRhetk6lAAAAAASUVORK5CYII="};
       const definitions = {
         parallel: { name:"并行处理", level:2, icon:"calculation", time:600, elapsed:240, stations:2, materials:[
-          {name:"运算处理器",icon:"calculation",total:10,paid:5,available:64},
-          {name:"逻辑处理器",icon:"logic",total:20,paid:10,available:4}
+          {name:"运算处理器",icon:"calculation",total:10,paid:5,availableByStation:[64,8]},
+          {name:"逻辑处理器",icon:"logic",total:20,paid:10,availableByStation:[4,2]}
         ], resources:[
           {name:"算力",limit:160,occupied:192,completed:31200},
           {name:"信号",limit:2.5,occupied:2.5,completed:720},
           {name:"存储带宽",limit:64,occupied:32,completed:11520}
         ]},
         compression: {name:"数据压缩",level:1,icon:"logic",time:400,elapsed:100,stations:2,materials:[
-          {name:"逻辑处理器",icon:"logic",total:8,paid:4,available:4}
+          {name:"逻辑处理器",icon:"logic",total:8,paid:4,availableByStation:[4,2]}
         ],resources:[
           {name:"算力",limit:64,occupied:128,completed:6400},
           {name:"存储带宽",limit:32,occupied:16,completed:640}
         ]},
         automation: {name:"自动化协调",level:3,icon:"engineering",time:1200,elapsed:660,stations:2,materials:[
-          {name:"工程处理器",icon:"engineering",total:20,paid:12,available:8},
-          {name:"逻辑处理器",icon:"logic",total:10,paid:6,available:4}
+          {name:"工程处理器",icon:"engineering",total:20,paid:12,availableByStation:[8,1]},
+          {name:"逻辑处理器",icon:"logic",total:10,paid:6,availableByStation:[4,2]}
         ],resources:[
           {name:"算力",limit:120,occupied:144,completed:72000},
           {name:"信号",limit:3.5,occupied:3.5,completed:2184},
@@ -130,12 +130,12 @@
           {name:"存储带宽",limit:16,occupied:16,completed:11136}
         ]},
         sampling: {name:"精密采样",level:1,icon:"calculation",time:200,elapsed:60,stations:1,materials:[
-          {name:"运算处理器",icon:"calculation",total:10,paid:3,available:64}
+          {name:"运算处理器",icon:"calculation",total:10,paid:3,availableByStation:[64,8]}
         ],resources:[]},
         connection: {name:"高速连接",level:2,icon:"engineering",time:1000,elapsed:360,stations:2,materials:[
-          {name:"工程处理器",icon:"engineering",total:10,paid:4,available:8},
-          {name:"运算处理器",icon:"calculation",total:20,paid:8,available:64},
-          {name:"逻辑处理器",icon:"logic",total:10,paid:4,available:4}
+          {name:"工程处理器",icon:"engineering",total:10,paid:4,availableByStation:[8,1]},
+          {name:"运算处理器",icon:"calculation",total:20,paid:8,availableByStation:[64,8]},
+          {name:"逻辑处理器",icon:"logic",total:10,paid:4,availableByStation:[4,2]}
         ],resources:[
           {name:"算力",limit:200,occupied:192,completed:60000},
           {name:"信号",limit:5,occupied:2.5,completed:1250},
@@ -181,10 +181,13 @@
         materials.replaceChildren();
         if (!current || !current.materials.length) emptyRow(materials, "无资源需求");
         else for (const material of current.materials) {
+          const remaining = material.total - material.paid;
+          let available = 0;
+          for (const amount of material.availableByStation) available += amount;
           const row = document.createElement("div");
           row.className = "rs-material";
           row.innerHTML = '<img alt="" src="' + assets[material.icon] + '"><span class="rs-material-name">' + material.name +
-            '</span><span class="rs-number">' + number(material.available) + " / " + number(material.total - material.paid) + "</span>";
+            '</span><span class="rs-number">' + number(Math.min(available,remaining)) + " / " + number(remaining) + "</span>";
           materials.append(row);
         }
         const resourceList = byId("rs-resources");
