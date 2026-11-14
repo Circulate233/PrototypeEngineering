@@ -1,23 +1,19 @@
 package com.circulation.prototype_eng.structure.tool;
 
 import ae2.api.config.Actionable;
-import ae2.api.config.PowerMultiplier;
 import ae2.api.features.Locatables;
 import ae2.api.implementations.blockentities.IWirelessAccessPoint;
 import ae2.api.implementations.guiobjects.ItemGuiHost;
 import ae2.api.inventories.InternalInventory;
 import ae2.api.networking.IGrid;
 import ae2.api.networking.IGridNode;
-import ae2.api.networking.energy.IEnergySource;
 import ae2.api.networking.security.IActionHost;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.GenericStack;
 import ae2.api.storage.ISubGuiHost;
-import ae2.api.storage.StorageHelper;
 import ae2.container.ISubGui;
 import ae2.container.implementations.ContainerCraftConfirm;
-import ae2.core.AEConfig;
 import ae2.core.definitions.AEItems;
 import ae2.core.gui.locator.ItemGuiHostLocator;
 import ae2.core.localization.GuiText;
@@ -47,7 +43,7 @@ import java.util.List;
  * 任务与延迟回收必须复用该会话，禁止另查玩家持有的终端。
  */
 public final class ConstructionMEAccess extends ItemGuiHost<BuilderInstrumentItem>
-    implements IActionHost, IEnergySource, ISubGuiHost, InternalInventoryHost {
+    implements IActionHost, ISubGuiHost, InternalInventoryHost {
     private static final String SINGULARITY = "BuilderSingularity";
     private final ItemStack tool;
     private final PlayerSource source;
@@ -58,9 +54,6 @@ public final class ConstructionMEAccess extends ItemGuiHost<BuilderInstrumentIte
     private boolean quantumCard;
     private ITextComponent status = PlayerMessages.DeviceNotLinked.text();
     private long refreshedAt = Long.MIN_VALUE;
-    private long poweredAt = Long.MIN_VALUE;
-    private double drain;
-    private boolean quantum;
 
     public ConstructionMEAccess(BuilderInstrumentItem item, EntityPlayer player, ItemGuiHostLocator locator) {
         super(item, player, locator);
@@ -122,59 +115,52 @@ public final class ConstructionMEAccess extends ItemGuiHost<BuilderInstrumentIte
         if (refreshedAt == now) return;
         refreshedAt = now;
         node = null;
-        quantum = false;
-        drain = 0;
         var grid = linkedGrid();
         if (grid != null) {
-            double nearest = Double.MAX_VALUE;
             for (var accessPoint : grid.getMachines(TileWirelessAccessPoint.class)) {
                 var location = accessPoint.getLocation();
                 if (location.getLevel() != getPlayer().world || !accessPoint.isActive()) continue;
                 var pos = location.getPos();
                 double distance = getPlayer().getDistanceSq(pos.getX(), pos.getY(), pos.getZ());
                 double range = accessPoint.getRange();
-                if (distance < range * range && distance < nearest) {
+                if (distance < range * range) {
                     node = accessPoint.getActionableNode();
-                    nearest = distance;
+                    break;
                 }
             }
-            if (node != null) drain = AEConfig.instance().wireless_getDrainRate(Math.sqrt(nearest));
+            if (node != null) return;
         }
         if (!hasQuantumCard()) return;
         var paired = singularity().getStackInSlot(0);
         if (!TileQuantumBridge.isValidEntangledSingularity(paired)) {
-            if (node == null) status = GuiText.WirelessTerminalNoSingularity.text();
+            status = GuiText.WirelessTerminalNoSingularity.text();
             return;
         }
         @SuppressWarnings("DataFlowIssue") // AE 的有效纠缠奇点检查已要求存在 NBT。
         long frequency = paired.getTagCompound().getLong("entangled_singularity_id");
         if (frequency == 0) {
-            if (node == null) status = GuiText.WirelessTerminalNoSingularity.text();
+            status = GuiText.WirelessTerminalNoSingularity.text();
             return;
         }
         var bridge = Locatables.quantumNetworkBridges().get(getPlayer().world, frequency);
         if (bridge == null) bridge = Locatables.quantumNetworkBridges().get(getPlayer().world, -frequency);
         var bridgeNode = bridge == null ? null : bridge.getActionableNode();
         if (bridgeNode == null || !bridgeNode.isActive()) {
-            if (node == null) status = GuiText.WirelessTerminalBridgeMissing.text();
+            status = GuiText.WirelessTerminalBridgeMissing.text();
             return;
         }
         if (grid != null && bridgeNode.grid() != grid) {
-            if (node == null) status = GuiText.WirelessTerminalDifferentNetwork.text();
+            status = GuiText.WirelessTerminalDifferentNetwork.text();
             return;
         }
         if (!bridgeNode.grid().getEnergyService().isNetworkPowered()) {
-            if (node == null) status = GuiText.WirelessTerminalBridgeUnpowered.text();
+            status = GuiText.WirelessTerminalBridgeUnpowered.text();
             return;
         }
-        quantum = true;
-        if (node == null) {
-            node = bridgeNode;
-            drain = 22.5;
-        }
+        node = bridgeNode;
     }
 
-    private @Nullable IGridNode connected() {
+    public @Nullable IGridNode connect() {
         if (isClientSide() || getItemStack() != tool || tool.isEmpty()) {
             node = null;
             return null;
@@ -183,49 +169,13 @@ public final class ConstructionMEAccess extends ItemGuiHost<BuilderInstrumentIte
         return node != null && node.isActive() ? node : null;
     }
 
-    private void recharge(IGridNode current) {
-        if (!quantum) return;
-        double missing = getItem().getAEMaxPower(tool) - getItem().getAECurrentPower(tool);
-        if (missing <= 0) return;
-        var energy = current.grid().getEnergyService();
-        double available = energy.getStoredPower() - energy.getMaxStoredPower() / 2;
-        if (available > 0) getItem().injectAEPower(tool,
-            energy.extractAEPower(Math.min(missing, available), Actionable.MODULATE, PowerMultiplier.ONE), Actionable.MODULATE);
-    }
-
-    public @Nullable IGridNode connect() {
-        var current = connected();
-        if (current == null) return null;
-        recharge(current);
-        if (consumeIdlePower(Actionable.SIMULATE)) return current;
-        status = GuiText.OutOfPower.text();
-        return null;
-    }
-
     public ITextComponent unavailableReason() {
         return status;
     }
 
     @Override
     public void tick() {
-        if (connect() != null) consumeConnectionPower();
-    }
-
-    private void consumeConnectionPower() {
-        long now = getPlayer().world.getTotalWorldTime();
-        if (poweredAt == now) return;
-        consumeIdlePower(Actionable.MODULATE);
-        poweredAt = now;
-    }
-
-    @Override
-    protected double getPowerDrainPerTick() {
-        return drain;
-    }
-
-    @Override
-    public double extractAEPower(double amount, Actionable mode, PowerMultiplier multiplier) {
-        return getItem().extractAEPower(tool, amount, mode);
+        connect();
     }
 
     @Override
@@ -237,8 +187,7 @@ public final class ConstructionMEAccess extends ItemGuiHost<BuilderInstrumentIte
         if (amount <= 0) return 0;
         var current = connect();
         if (current == null) return 0;
-        if (action == Actionable.MODULATE) consumeConnectionPower();
-        return StorageHelper.poweredExtraction(this, current.grid().getStorageService().getInventory(), key, amount, source, action);
+        return current.grid().getStorageService().getInventory().extract(key, amount, action, source);
     }
 
     long insert(AEKey key, long amount) {
@@ -250,15 +199,7 @@ public final class ConstructionMEAccess extends ItemGuiHost<BuilderInstrumentIte
         if (amount <= 0) return 0;
         var current = connect();
         if (current == null) return 0;
-        if (action == Actionable.MODULATE) consumeConnectionPower();
-        return StorageHelper.poweredInsert(this, current.grid().getStorageService().getInventory(), key, amount, source, action);
-    }
-
-    long refund(AEKey key, long amount) {
-        var current = connected();
-        if (current == null) return 0;
-        // 退回已扣材料不再收取无线传输电量。
-        return current.grid().getStorageService().getInventory().insert(key, amount, Actionable.MODULATE, source);
+        return current.grid().getStorageService().getInventory().insert(key, amount, action, source);
     }
 
     boolean craftable(AEKey key) {

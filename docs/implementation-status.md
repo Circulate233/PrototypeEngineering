@@ -1,6 +1,18 @@
 # 实施进度
 
+## 2026-11-14 移除构建器误加的供电功能
+
+用户明确未要求工具供电，上一提交将独立绑定扩展为充电与能量卡属于擅自增加功能，现已撤销。BuilderInstrumentItem 改回普通 AEBaseItem，移除电量容量、充电速度和能量卡注册，原生升级页保留一个量子桥卡槽及条件显示的纠缠奇点槽。主界面尺寸与独立配置页沿用户确认的方案。
+
+ConstructionMEAccess 删除 IEnergySource、待机扣费、距离耗电、量子桥补电和所有电量字段。资源提取、存入和退款直接调用已绑定网络的存储接口及原玩家来源。无线接入点、量子桥的 AE 网络供电与权限要求仍由实际网络节点处理；没有工具侧电量。有效无线接入点找到后直接使用，避免继续查询量子桥及计算距离费用。工具提示复用 AE 原生 GuiText.Linked/Unlinked 和 Tooltips.colored，绿色已链接、红色未链接表示工具保存的绑定状态。
+
+5 份 Java 已经本机 IDEA MCP 格式化并逐文件执行 errorsOnly:false，错误、警告、弱警告均为零。只进行源码复核及构建验证，没有为删除供电功能新增或运行专项测试。Gradle build -x test、Spotless 及 IDEA MCP 构建均通过。绑定、卡片装卸与提示实际显示待用户实机复验。
+
+证据目录：C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261114/，文件为 builder-no-power-idea.json、builder-no-power-build.log、builder-no-power-idea-build.json。本地提交，保留用户的 AGENTS.md 修改。
+
 ## 2026-11-14 构建器独立网络绑定与量子桥升级
+
+本条保留 e69e335 的历史记录，其中误加的工具供电、能量卡和第二个升级槽已由上一条撤销。
 
 构建器独立为 BuilderInstrumentItem，使用 AEBasePoweredItem 保存电量和提供充电能力；扫描器保留普通物品实现。构建器注册 GridLinkables/IGridLinkableHandler，在 AE 无线接入点绑定槽内保存网络位置，解绑只删除网络绑定。结构绑定、采掘工具融合、投影、任务设置和原注册名继续沿用。
 

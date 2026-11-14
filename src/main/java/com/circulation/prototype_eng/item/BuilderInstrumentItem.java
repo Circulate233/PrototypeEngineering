@@ -6,12 +6,10 @@ import ae2.api.implementations.guiobjects.IGuiItem;
 import ae2.api.upgrades.IUpgradeInventory;
 import ae2.api.upgrades.IUpgradeableItem;
 import ae2.api.upgrades.UpgradeInventories;
-import ae2.api.upgrades.Upgrades;
-import ae2.core.AEConfig;
 import ae2.core.gui.locator.ItemGuiHostLocator;
 import ae2.core.localization.GuiText;
 import ae2.core.localization.Tooltips;
-import ae2.items.tools.powered.powersink.AEBasePoweredItem;
+import ae2.items.AEBaseItem;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.container.ContainerStructureTool;
@@ -40,17 +38,15 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 
 /**
- * 自身保存 AE 绑定、升级卡与电量，结构绑定独立保存在原构建数据中。
+ * 自身保存 AE 绑定与升级卡，结构绑定独立保存在原构建数据中。
  */
 @SuppressWarnings("NonExtendableApiUsage") // AE 的物品升级槽与卡片合成通过 IUpgradeableItem 识别物品。
-public final class BuilderInstrumentItem extends AEBasePoweredItem implements IGuiItem, IUpgradeableItem, IGridLinkableHandler {
+public final class BuilderInstrumentItem extends AEBaseItem implements IGuiItem, IUpgradeableItem, IGridLinkableHandler {
     public static final String NETWORK = "BuilderNetwork";
-    public static final int UPGRADE_SLOTS = 2;
-    private final double powerCapacity;
+    public static final int UPGRADE_SLOTS = 1;
 
     BuilderInstrumentItem() {
-        super(AEConfig.instance().getWirelessTerminalBattery());
-        powerCapacity = AEConfig.instance().getWirelessTerminalBattery();
+        setMaxStackSize(1);
         setRegistryName(new ResourceLocation(Tags.MOD_ID, "build_instrument"));
         setCreativeTab(PrototypeCreativeTab.INSTANCE);
         GridLinkables.register(this, this);
@@ -71,7 +67,7 @@ public final class BuilderInstrumentItem extends AEBasePoweredItem implements IG
         var link = new NBTTagCompound();
         link.setInteger("Dimension", world.provider.getDimension());
         link.setLong("Position", pos.toLong());
-        openNbtData(stack).setTag(NETWORK, link);
+        BuilderState.data(stack).setTag(NETWORK, link);
     }
 
     @Override
@@ -82,13 +78,7 @@ public final class BuilderInstrumentItem extends AEBasePoweredItem implements IG
 
     @Override
     public IUpgradeInventory getUpgrades(ItemStack stack) {
-        return UpgradeInventories.forItem(stack, UPGRADE_SLOTS, (item, upgrades) ->
-            setAEMaxPower(item, powerCapacity * (1 + Upgrades.getEnergyCardMultiplier(upgrades))));
-    }
-
-    @Override
-    public double getChargeRate(ItemStack stack) {
-        return 800d * (1 + Upgrades.getEnergyCardMultiplier(getUpgrades(stack)));
+        return UpgradeInventories.forItem(stack, UPGRADE_SLOTS);
     }
 
     @Override

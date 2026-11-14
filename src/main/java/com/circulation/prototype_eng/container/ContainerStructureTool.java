@@ -325,8 +325,8 @@ public final class ContainerStructureTool extends AEBaseContainer {
         if (builder) {
             snapshot.getKeySet().clear();
             for (var key : tag.getKeySet()) {
-                if (key.equals("upgrades") || key.equals("BuilderNetwork") || key.equals("BuilderSingularity")
-                    || key.equals("stored_energy") || key.equals("energy_capacity")) continue;
+                if (key.equals("upgrades") || key.equals("BuilderNetwork") || key.equals("BuilderSingularity"))
+                    continue;
                 snapshot.setTag(key, tag.getTag(key));
             }
             state = snapshot.toString();

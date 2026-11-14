@@ -160,7 +160,7 @@ final class ConstructionPayment {
             itemTaken = ItemStack.EMPTY;
         }
         if (resource != null && networkTaken > 0) {
-            long restored = me == null ? 0 : me.refund(resource.what(), networkTaken);
+            long restored = me == null ? 0 : me.insert(resource.what(), networkTaken);
             if (restored < networkTaken)
                 give(player, GenericResourcePackageItem.wrap(resource.what(), networkTaken - restored));
             networkTaken = 0;

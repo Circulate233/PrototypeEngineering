@@ -20,7 +20,6 @@ public final class StructureToolItems {
     @SubscribeEvent
     public static void registerItems(RegistryEvent.Register<Item> event) {
         event.getRegistry().registerAll(SCANNER, BUILDER);
-        Upgrades.add(AEItems.ENERGY_CARD.item(), BUILDER, BuilderInstrumentItem.UPGRADE_SLOTS);
         Upgrades.add(AEItems.QUANTUM_BRIDGE_CARD.item(), BUILDER, 1);
     }
 
