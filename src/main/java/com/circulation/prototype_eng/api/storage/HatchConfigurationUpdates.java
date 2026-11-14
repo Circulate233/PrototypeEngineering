@@ -13,6 +13,7 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * PM-compatible loaded propagation through the existing server scheduler boundary.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class HatchConfigurationUpdates {
     private HatchConfigurationUpdates() {
@@ -53,7 +54,10 @@ public final class HatchConfigurationUpdates {
                 for (var world : DimensionManager.getWorlds()) {
                     if (world.isRemote || world.getMinecraftServer() != server) continue;
                     // No chunk lookup is used to discover hosts, and each loaded world is visited once.
-                    for (var tile : new ObjectArrayList<>(world.loadedTileEntityList)) {
+
+                    var elements = new ObjectArrayList<>(world.loadedTileEntityList);
+                    for (int index = 0; index < elements.size(); index++) {
+                        var tile = elements.get(index);
                         if (tile.isInvalid() || tile.getWorld() != world || !world.isBlockLoaded(tile.getPos(), false)
                             || world.getTileEntity(tile.getPos()) != tile || !(tile instanceof ReconfigurableHatch host))
                             continue;
@@ -64,6 +68,7 @@ public final class HatchConfigurationUpdates {
                             : HatchConfig.energyConfiguration(host.tier(), effective.mode());
                         outcomes.add(new Outcome(host, host.requestConfiguration(target)));
                     }
+
                 }
                 result.complete(new Report(revision, HatchReconfigurationStatus.APPLIED, outcomes));
             } catch (RuntimeException | Error failure) {

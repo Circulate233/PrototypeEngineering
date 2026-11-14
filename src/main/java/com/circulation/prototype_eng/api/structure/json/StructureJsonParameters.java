@@ -24,6 +24,7 @@ import java.util.Set;
 
 /**
  * Immutable parameter view with typed reads and source paths; JSON copies never expose backing data.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class StructureJsonParameters {
     private final String source;
@@ -308,10 +309,14 @@ public final class StructureJsonParameters {
         private void finishToken() throws IOException {
             String literal = token.toString();
             token.setLength(0);
-            for (String keyword : List.of("true", "false", "null")) {
+
+            var elements = List.of("true", "false", "null");
+            for (int index = 0; index < elements.size(); index++) {
+                String keyword = elements.get(index);
                 if (keyword.equalsIgnoreCase(literal) && !keyword.equals(literal))
                     throw invalid("JSON literal must be lowercase");
             }
+
         }
 
         @Override

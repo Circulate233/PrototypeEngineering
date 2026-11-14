@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.api.research.download;
 
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragmentNbt;
@@ -9,6 +8,7 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 
 import java.util.UUID;
@@ -38,21 +38,18 @@ public final class ResearchDownloadNbt {
     }
 
     private static ResearchDownloadOperation.Intent intent(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Player", "Nonce", "Database", "Team", "Research", "Level", "Slot");
-        return new ResearchDownloadOperation.Intent(uuid(StrictNbt.requireString(tag, "Player")), uuid(StrictNbt.requireString(tag, "Nonce")),
-            uuid(StrictNbt.requireString(tag, "Database")), StrictNbt.requireString(tag, "Team"), StrictNbt.requireId(tag, "Research"),
-            StrictNbt.requireInt(tag, "Level"), StrictNbt.requireInt(tag, "Slot"));
+        return new ResearchDownloadOperation.Intent(uuid(tag.getString("Player")), uuid(tag.getString("Nonce")),
+            uuid(tag.getString("Database")), tag.getString("Team"), new ResourceLocation(tag.getString("Research")),
+            tag.getInteger("Level"), tag.getInteger("Slot"));
     }
 
     private static void requireVersion(NBTTagCompound tag) {
-        if (StrictNbt.requireInt(tag, "Version") != 1)
+        if (tag.getInteger("Version") != 1)
             throw new IllegalArgumentException("Unknown download envelope version");
     }
 
     private static UUID uuid(String text) {
-        var id = UUID.fromString(text);
-        if (!id.toString().equals(text)) throw new IllegalArgumentException("Noncanonical download UUID");
-        return id;
+        return UUID.fromString(text);
     }
 
     public NBTTagCompound encode(ResearchDownloadOperation operation) {
@@ -66,12 +63,11 @@ public final class ResearchDownloadNbt {
     }
 
     public ResearchDownloadOperation decodeOperation(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Version", "Id", "Intent", "Sources", "Output", "Amount", "Material", "CreatedAt", "Status", "MaterialArmed", "Fragments");
         requireVersion(tag);
-        return new ResearchDownloadOperation(uuid(StrictNbt.requireString(tag, "Id")), intent(StrictNbt.requireCompound(tag, "Intent")),
-            sources.codec().decode(StrictNbt.requireCompound(tag, "Sources")), ResearchDownloadMaterial.CODEC.decode(StrictNbt.requireCompound(tag, "Material")),
-            StrictNbt.requireCompound(tag, "Output"), StrictNbt.requireLong(tag, "Amount"), StrictNbt.requireLong(tag, "CreatedAt"),
-            ResearchDownloadOperation.Status.valueOf(StrictNbt.requireString(tag, "Status")), StrictNbt.requireBoolean(tag, "MaterialArmed"), decodeFragments(tag));
+        return new ResearchDownloadOperation(uuid(tag.getString("Id")), intent(tag.getCompoundTag("Intent")),
+            sources.codec().decode(tag.getCompoundTag("Sources")), ResearchDownloadMaterial.CODEC.decode(tag.getCompoundTag("Material")),
+            tag.getCompoundTag("Output"), tag.getLong("Amount"), tag.getLong("CreatedAt"),
+            ResearchDownloadOperation.Status.valueOf(tag.getString("Status")), tag.getBoolean("MaterialArmed"), decodeFragments(tag));
     }
 
     public NBTTagCompound encode(ResearchDownloadReceipt receipt) {
@@ -82,11 +78,10 @@ public final class ResearchDownloadNbt {
     }
 
     public ResearchDownloadReceipt decodeReceipt(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Version", "Id", "Intent", "Sources", "Output", "Amount", "Outcome", "Fragments");
         requireVersion(tag);
-        return new ResearchDownloadReceipt(uuid(StrictNbt.requireString(tag, "Id")), intent(StrictNbt.requireCompound(tag, "Intent")),
-            sources.codec().decode(StrictNbt.requireCompound(tag, "Sources")), StrictNbt.requireCompound(tag, "Output"), StrictNbt.requireLong(tag, "Amount"),
-            ResearchDownloadReceipt.Outcome.valueOf(StrictNbt.requireString(tag, "Outcome")), decodeFragments(tag));
+        return new ResearchDownloadReceipt(uuid(tag.getString("Id")), intent(tag.getCompoundTag("Intent")),
+            sources.codec().decode(tag.getCompoundTag("Sources")), tag.getCompoundTag("Output"), tag.getLong("Amount"),
+            ResearchDownloadReceipt.Outcome.valueOf(tag.getString("Outcome")), decodeFragments(tag));
     }
 
     private NBTTagCompound common(UUID id, ResearchDownloadOperation.Intent intent, ResearchDownloadSources.Plan plan, NBTTagCompound output, long amount) {
@@ -102,12 +97,15 @@ public final class ResearchDownloadNbt {
 
     private NBTTagList encodeFragments(ObjectList<ItemDeliveryFragment> values) {
         var tags = new NBTTagList();
-        for (var fragment : values) tags.appendTag(fragments.encode(fragment));
+        for (int index1 = 0; index1 < values.size(); index1++) {
+            var fragment = values.get(index1);
+            tags.appendTag(fragments.encode(fragment));
+        }
         return tags;
     }
 
     private ObjectList<ItemDeliveryFragment> decodeFragments(NBTTagCompound tag) {
-        var tags = StrictNbt.requireList(tag, "Fragments", Constants.NBT.TAG_COMPOUND);
+        var tags = tag.getTagList("Fragments", Constants.NBT.TAG_COMPOUND);
         var values = new ObjectArrayList<ItemDeliveryFragment>(tags.tagCount());
         for (int index = 0; index < tags.tagCount(); index++)
             values.add(fragments.decode(tags.getCompoundTagAt(index)));

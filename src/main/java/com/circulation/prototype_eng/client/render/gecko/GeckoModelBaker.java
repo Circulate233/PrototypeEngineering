@@ -54,13 +54,16 @@ public class GeckoModelBaker {
 
     public int[] estimateRoutedFilteredVertexCounts(GeoModel model, Set<String> active, BakeMode mode, Set<String> potential) {
         var hit = estimates.getAndMoveToLast(new Estimate(model, active, mode, potential));
-        if (hit != null) return hit.clone();
+        if (hit != null) return hit;
         var key = new Estimate(model, Set.copyOf(active), mode, Set.copyOf(potential));
         int[] out = new int[4];
-        for (var bone : model.topLevelBones) estimate(bone, active, potential, mode, false, false, 0, out);
+        for (int index2 = 0; index2 < model.topLevelBones.size(); index2++) {
+            var bone = model.topLevelBones.get(index2);
+            estimate(bone, active, potential, mode, false, false, 0, out);
+        }
         if (estimates.size() == 64) estimates.removeFirst();
         estimates.put(key, out);
-        return out.clone();
+        return out;
     }
 
     private void estimate(GeoBone bone, Set<String> active, Set<String> potential, BakeMode mode,
@@ -70,13 +73,16 @@ public class GeckoModelBaker {
         if (skipSubtree(mode, dynamic, possible)) return;
         int pass = route(bone.name, inheritedPass);
         if (emit(mode, dynamic, possible) && !bone.isHidden) {
-            for (var cube : bone.childCubes) {
+            for (int index6 = 0; index6 < bone.childCubes.size(); index6++) {
+                var cube = bone.childCubes.get(index6);
                 int count = cubes.get(cube).vertexCount();
                 out[pass] = Math.addExact(out[pass], count);
             }
         }
-        if (!bone.childBonesAreHiddenToo()) for (var child : bone.childBones)
+        if (!bone.childBonesAreHiddenToo()) for (int index3 = 0; index3 < bone.childBones.size(); index3++) {
+            var child = bone.childBones.get(index3);
             estimate(child, active, potential, mode, dynamic, possible, pass, out);
+        }
     }
 
     public void bakeRoutedFiltered(GeoModel model, GeckoBakerMath.MatrixStack stack,
@@ -96,8 +102,10 @@ public class GeckoModelBaker {
                                          Function<MachineRenderPass, PackedVertexDataWriter> outputs,
                                          Set<String> active, BakeMode mode, Set<String> potential) {
         var scratch = new Scratch();
-        for (var root : model.topLevelBones)
+        for (int index4 = 0; index4 < model.topLevelBones.size(); index4++) {
+            var root = model.topLevelBones.get(index4);
             bake(root, stack, outputs, active, potential, mode, false, false, 0, scratch);
+        }
     }
 
     protected void bake(GeoBone bone, GeckoBakerMath.MatrixStack stack,
@@ -117,11 +125,16 @@ public class GeckoModelBaker {
             stack.moveBackFromPivot(bone);
             if (emit(mode, dynamic, possible) && !bone.isHidden && !bone.childCubes.isEmpty()) {
                 var writer = outputs.apply(pass(routed));
-                for (var cube : bone.childCubes) writeCube(cube, stack, writer, scratch);
+                for (int index = 0; index < bone.childCubes.size(); index++) {
+                    var cube = bone.childCubes.get(index);
+                    writeCube(cube, stack, writer, scratch);
+                }
             }
             // A non-potential parent still carries the transform to a potentially animated descendant.
-            if (!bone.childBonesAreHiddenToo()) for (var child : bone.childBones)
+            if (!bone.childBonesAreHiddenToo()) for (int index5 = 0; index5 < bone.childBones.size(); index5++) {
+                var child = bone.childBones.get(index5);
                 bake(child, stack, outputs, active, potential, mode, dynamic, possible, routed, scratch);
+            }
         } finally {
             stack.pop();
         }

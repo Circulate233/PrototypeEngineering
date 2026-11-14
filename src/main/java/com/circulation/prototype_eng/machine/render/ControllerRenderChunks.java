@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.machine.render;
 
 import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import com.circulation.prototype_eng.machine.data.MachineDataSnapshot;
 import com.circulation.prototype_eng.machine.data.MachineDataSnapshotCodec;
@@ -71,13 +70,12 @@ public final class ControllerRenderChunks {
         }
 
         public static Part decode(ControllerDisplayData display, NBTTagCompound tag) {
-            StrictNbt.requireKeys(tag, "Version", "SessionMost", "SessionLeast", "CatalogSequence", "Total", "Index", "Count", "Bytes");
-            if (StrictNbt.requireInt(tag, "Version") != 1 || !tag.hasKey("Bytes", Constants.NBT.TAG_BYTE_ARRAY))
+            if (tag.getInteger("Version") != 1 || !tag.hasKey("Bytes", Constants.NBT.TAG_BYTE_ARRAY))
                 throw new IllegalArgumentException("Invalid machine render chunk schema");
-            var part = new Part(display, new MachineRenderSnapshot.CatalogToken(new UUID(StrictNbt.requireLong(tag, "SessionMost"),
-                StrictNbt.requireLong(tag, "SessionLeast")), StrictNbt.requireLong(tag, "CatalogSequence")),
-                StrictNbt.requireInt(tag, "Total"), StrictNbt.requireInt(tag, "Index"), tag.getByteArray("Bytes"));
-            if (StrictNbt.requireInt(tag, "Count") != part.count())
+            var part = new Part(display, new MachineRenderSnapshot.CatalogToken(new UUID(tag.getLong("SessionMost"),
+                tag.getLong("SessionLeast")), tag.getLong("CatalogSequence")),
+                tag.getInteger("Total"), tag.getInteger("Index"), tag.getByteArray("Bytes"));
+            if (tag.getInteger("Count") != part.count())
                 throw new IllegalArgumentException("Conflicting machine render chunk count");
             return part;
         }

@@ -14,7 +14,6 @@ import com.circulation.prototype_eng.api.persistence.MachineAttributesNbt;
 import com.circulation.prototype_eng.api.persistence.NbtCodec;
 import com.circulation.prototype_eng.api.persistence.ProcessResultNbt;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayType;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayTypes;
@@ -28,10 +27,8 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.selective.SelectiveState;
 import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
@@ -64,14 +61,13 @@ public final class RecipeProcessNbt {
     private RecipeProcessNbt(Builder builder) {
         recipe = builder.recipe;
         revision = builder.revision;
-        attributes = new MachineAttributesNbt(builder.attributes);
-        validators = ObjectLists.unmodifiable(new ObjectArrayList<>(builder.validators));
-        var overlays = new ObjectArrayList<>(builder.overlays);
-        overlays.add(new RecipeOverlayNbt.Binding<>(RecipeOverlayTypes.RESOURCE_IO, BuiltinOverlayCodecs.resourceIo(builder.resources)));
-        overlays.add(new RecipeOverlayNbt.Binding<>(RecipeOverlayTypes.ENERGY_RATES, BuiltinOverlayCodecs.ENERGY_RATES));
+        attributes = builder.attributes == AttributeModifierNbt.INSTANCE ? MachineAttributesNbt.INSTANCE : new MachineAttributesNbt(builder.attributes);
+        validators = builder.validators;
+        var overlays = builder.overlays;
         boolean resourcesStable = true;
         boolean structureStable = true;
-        for (var binding : builder.overlays) {
+        for (int index1 = 0; index1 < builder.overlays.size(); index1++) {
+            var binding = builder.overlays.get(index1);
             var type = binding.type().requirementType();
             resourcesStable &= type != RecipeRequirements.RESOURCES;
             structureStable &= type != RecipeRequirements.CHECKPOINT && type != RecipeRequirements.SELECTIVE;
@@ -81,31 +77,18 @@ public final class RecipeProcessNbt {
         if (!builder.overlays.isEmpty() && validators.isEmpty()) {
             throw new IllegalArgumentException("Custom overlays require a validator for their historical process invariants");
         }
-        var components = new Object2ObjectLinkedOpenHashMap<>(builder.components);
+        overlays.add(new RecipeOverlayNbt.Binding<>(RecipeOverlayTypes.RESOURCE_IO, BuiltinOverlayCodecs.resourceIo(builder.resources)));
+        overlays.add(new RecipeOverlayNbt.Binding<>(RecipeOverlayTypes.ENERGY_RATES, BuiltinOverlayCodecs.ENERGY_RATES));
+        var components = builder.components;
         add(components, new Binding<>(RecipeOverlays.TYPE, BuiltinProcessCodecs.overlays(overlays)));
         add(components, new Binding<>(ResourceInputLocks.TYPE, BuiltinProcessCodecs.locks(builder.resources)));
         add(components, new Binding<>(SelectiveState.TYPE, BuiltinProcessCodecs.selections()));
         add(components, new Binding<>(RequirementAttributeState.TYPE, BuiltinProcessCodecs.requirementAttributes()));
-        bindings = Object2ObjectMaps.unmodifiable(components);
+        bindings = components;
     }
 
     public static Builder builder(MachineRecipe recipe, String revision) {
         return new Builder(recipe, revision);
-    }
-
-    private static void requireAssembly(RecipeProcess process, Map<ComponentType<RecipeProcess, ?>, SavedComponent> entries,
-                                        Map<ComponentType<RecipeProcess, ?>, Set<ComponentType<RecipeProcess, ?>>> pending) {
-        var actual = process.components().snapshotBindings();
-        if (actual.size() != entries.size() || !process.components().snapshotPendingDependencies().equals(pending)) {
-            throw new IllegalStateException("Component codec or factory changed process assembly");
-        }
-        int i = 0;
-        for (var entry : entries.values()) {
-            var binding = actual.get(i++);
-            if (binding.type() != entry.binding().type() || !binding.dependencies().equals(entry.dependencies())) {
-                throw new IllegalStateException("Component codec or factory changed process assembly");
-            }
-        }
     }
 
     private static NBTTagCompound writeState(RecipeProcess.State state) {
@@ -119,11 +102,10 @@ public final class RecipeProcessNbt {
     }
 
     private static RecipeProcess.State readState(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Lifecycle", "Progress", "SuccessfulTicks", "Started", "Result");
-        var decoded = ProcessResultNbt.INSTANCE.decode(StrictNbt.requireCompound(tag, "Result"));
-        return new RecipeProcess.State(RecipeProcess.Lifecycle.valueOf(StrictNbt.requireString(tag, "Lifecycle")),
-            StrictNbt.requireDouble(tag, "Progress"), StrictNbt.requireLong(tag, "SuccessfulTicks"), decoded,
-            StrictNbt.requireBoolean(tag, "Started"));
+        var decoded = ProcessResultNbt.INSTANCE.decode(tag.getCompoundTag("Result"));
+        return new RecipeProcess.State(RecipeProcess.Lifecycle.valueOf(tag.getString("Lifecycle")),
+            tag.getDouble("Progress"), tag.getLong("SuccessfulTicks"), decoded,
+            tag.getBoolean("Started"));
     }
 
     private static void add(Map<ResourceLocation, Binding<?>> bindings, Binding<?> binding) {
@@ -152,18 +134,16 @@ public final class RecipeProcessNbt {
     }
 
     private static CrossRecipeBatch.Timing readTiming(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Most", "Least", "Duration", "Parallelism", "MaterialOffset", "Energy");
         var offsets = new Object2ObjectLinkedOpenHashMap<RequirementPath, CrossRecipeBatch.EnergyOffsets>(6);
-        var entries = StrictNbt.requireList(tag, "Energy", Constants.NBT.TAG_COMPOUND);
+        var entries = tag.getTagList("Energy", Constants.NBT.TAG_COMPOUND);
         for (int index = 0; index < entries.tagCount(); index++) {
             var entry = entries.getCompoundTagAt(index);
-            StrictNbt.requireKeys(entry, "Path", "Input", "Output");
             if (offsets.putIfAbsent(RequirementPathNbt.read(entry), new CrossRecipeBatch.EnergyOffsets(
-                StrictNbt.requireInt(entry, "Input"), StrictNbt.requireInt(entry, "Output"))) != null)
+                entry.getInteger("Input"), entry.getInteger("Output"))) != null)
                 throw new IllegalArgumentException("Duplicate batch energy path");
         }
-        return new CrossRecipeBatch.Timing(new UUID(StrictNbt.requireLong(tag, "Most"), StrictNbt.requireLong(tag, "Least")),
-            StrictNbt.requireInt(tag, "Duration"), StrictNbt.requireInt(tag, "Parallelism"), StrictNbt.requireInt(tag, "MaterialOffset"), offsets);
+        return new CrossRecipeBatch.Timing(new UUID(tag.getLong("Most"), tag.getLong("Least")),
+            tag.getInteger("Duration"), tag.getInteger("Parallelism"), tag.getInteger("MaterialOffset"), offsets);
     }
 
     /**
@@ -185,7 +165,7 @@ public final class RecipeProcessNbt {
      */
     public boolean supportsComponent(ComponentType<RecipeProcess, ?> type) {
         var binding = bindings.get(Objects.requireNonNull(type).id());
-        return binding != null && binding.type() == type;
+        return binding != null;
     }
 
     public NBTTagCompound encode(RecipeProcess process) {
@@ -193,8 +173,7 @@ public final class RecipeProcessNbt {
         if (process.recipe() != recipe) {
             throw new IllegalArgumentException("Process belongs to a different canonical recipe");
         }
-        validate(process);
-        var index = new RecipeDefinitionIndex(process);
+        var index = process.definitionIndex();
         var tag = new NBTTagCompound();
         tag.setInteger("Version", 2);
         tag.setString("Identity", process.identity().toString());
@@ -222,11 +201,13 @@ public final class RecipeProcessNbt {
         if (process.crossRecipeTiming() != null) tag.setTag("CrossBatch", writeTiming(process.crossRecipeTiming()));
         tag.setTag("Attributes", attributes.encode(process.attributes().localSnapshot()));
         var components = new NBTTagList();
-        for (var saved : process.components().snapshotBindings()) {
+        var elements5 = process.components().snapshotBindings();
+        for (int index5 = 0; index5 < elements5.size(); index5++) {
+            var saved = elements5.get(index5);
             var entry = new NBTTagCompound();
             entry.setString("Type", saved.type().id().toString());
             entry.setTag("Dependencies", writeTypes(saved.dependencies()));
-            entry.setTag("Data", require(saved.type()).encode(process, saved).copy());
+            entry.setTag("Data", require(saved.type()).encode(process, saved));
             components.appendTag(entry);
         }
         tag.setTag("Components", components);
@@ -239,7 +220,6 @@ public final class RecipeProcessNbt {
             pending.appendTag(entry);
         });
         tag.setTag("PendingDependencies", pending);
-        process.requirePersistenceBoundary();
         return tag;
     }
 
@@ -254,47 +234,38 @@ public final class RecipeProcessNbt {
         return decode(owner, saved, Objects.requireNonNull(hatches));
     }
 
-    private RecipeProcess decode(MachineInstance owner, NBTTagCompound saved, @Nullable MachineHatches hatches) {
-        // Isolate even a codec that retains or edits its input from the caller and subsequent loads.
-        var tag = Objects.requireNonNull(saved).copy();
-        if (hatches == null) {
-            StrictNbt.requireKeys(tag, "Version", "Recipe", "Revision", "Duration", "Graph", "Seed", "Tuning", "State",
-                "Attributes", "Components", "PendingDependencies", "CrossBatch", "InputGroup", "Identity");
-        } else {
-            StrictNbt.requireKeys(tag, "Version", "MaterialCycle", "Recipe", "Revision", "Duration", "Graph", "Seed", "Tuning", "State",
-                "Attributes", "Components", "PendingDependencies", "CrossBatch", "InputGroup", "Identity");
-            if (!StrictNbt.requireBoolean(tag, "MaterialCycle")) {
-                throw new IllegalArgumentException("Expected a material cycle save");
-            }
-        }
-        if (StrictNbt.requireInt(tag, "Version") != 2 || !StrictNbt.requireId(tag, "Recipe").equals(recipe.id())
-            || !StrictNbt.requireString(tag, "Revision").equals(revision) || StrictNbt.requireInt(tag, "Duration") != recipe.durationTicks()) {
+    private RecipeProcess decode(MachineInstance owner, NBTTagCompound tag, @Nullable MachineHatches hatches) {
+        if (hatches != null && !tag.getBoolean("MaterialCycle"))
+            throw new IllegalArgumentException("Expected a material cycle save");
+        if (tag.getInteger("Version") != 2 || !new ResourceLocation(tag.getString("Recipe")).equals(recipe.id())
+            || !tag.getString("Revision").equals(revision) || tag.getInteger("Duration") != recipe.durationTicks()) {
             throw new IllegalArgumentException("Unsupported process save or incompatible recipe revision");
         }
-        var tuning = StrictNbt.requireCompound(tag, "Tuning");
-        StrictNbt.requireKeys(tuning, "ExactSmallBinomial", "Threshold");
-        long seed = StrictNbt.requireLong(tag, "Seed");
-        var probability = new ProbabilityTuning(StrictNbt.requireBoolean(tuning, "ExactSmallBinomial"), StrictNbt.requireInt(tuning, "Threshold"));
-        var state = readState(StrictNbt.requireCompound(tag, "State"));
-        var timing = tag.hasKey("CrossBatch") ? readTiming(StrictNbt.requireCompound(tag, "CrossBatch")) : null;
+        var tuning = tag.getCompoundTag("Tuning");
+        long seed = tag.getLong("Seed");
+        var probability = new ProbabilityTuning(tuning.getBoolean("ExactSmallBinomial"), tuning.getInteger("Threshold"));
+        var state = readState(tag.getCompoundTag("State"));
+        var timing = tag.hasKey("CrossBatch") ? readTiming(tag.getCompoundTag("CrossBatch")) : null;
         if (timing != null && (!(owner instanceof CrossRecipeController) || hatches != null))
             throw new IllegalArgumentException("Cross-recipe batch belongs to a cross-recipe controller");
-        var identity = tag.hasKey("Identity") ? UUID.fromString(StrictNbt.requireString(tag, "Identity")) : UUID.randomUUID();
+        var identity = tag.hasKey("Identity") ? UUID.fromString(tag.getString("Identity")) : UUID.randomUUID();
         var process = hatches == null ? RecipeProcess.restored(owner, recipe, seed, probability, state, timing, identity)
             : RecipeProcess.restoredMaterialCycle(owner, recipe, seed, probability, state, hatches, identity);
-        var graph = StrictNbt.requireList(tag, "Graph", Constants.NBT.TAG_LIST);
-        var expected = new ObjectArrayList<>(new RecipeDefinitionIndex(process).requirements().keySet());
+        var graph = tag.getTagList("Graph", Constants.NBT.TAG_LIST);
+        var index = process.definitionIndex();
+        var expected = index.requirements().keySet();
         if (graph.tagCount() != expected.size()) {
             throw new IllegalArgumentException("Recipe requirement graph changed");
         }
+        var paths = expected.iterator();
         for (int i = 0; i < graph.tagCount(); i++) {
-            if (!RequirementPathNbt.decode((NBTTagList) graph.get(i)).equals(expected.get(i))) {
+            if (!RequirementPathNbt.decode((NBTTagList) graph.get(i)).equals(paths.next())) {
                 throw new IllegalArgumentException("Recipe requirement graph changed");
             }
         }
-        process.attributes().restoreLocal(attributes.decode(StrictNbt.requireCompound(tag, "Attributes")));
+        process.attributes().restoreLocal(attributes.decode(tag.getCompoundTag("Attributes")));
         if (timing != null) {
-            var definitions = new RecipeDefinitionIndex(process).requirements();
+            var definitions = index.requirements();
             var energyPaths = new ObjectLinkedOpenHashSet<RequirementPath>(6);
             for (var definition : definitions.entrySet())
                 if (definition.getValue().type() == RecipeRequirements.ENERGY) energyPaths.add(definition.getKey());
@@ -303,13 +274,12 @@ public final class RecipeProcessNbt {
         }
 
         if (tag.hasKey("InputGroup")) {
-            var group = StrictNbt.requireCompound(tag, "InputGroup");
-            StrictNbt.requireKeys(group, "Color", "Partition");
-            process.restoreInputGroup(new ResourceInputGroup(AEColor.valueOf(StrictNbt.requireString(group, "Color")),
-                StrictNbt.requireString(group, "Partition")));
+            var group = tag.getCompoundTag("InputGroup");
+            process.restoreInputGroup(new ResourceInputGroup(AEColor.valueOf(group.getString("Color")),
+                group.getString("Partition")));
         }
-        var entries = readComponents(StrictNbt.requireList(tag, "Components", Constants.NBT.TAG_COMPOUND));
-        var pending = readPending(StrictNbt.requireList(tag, "PendingDependencies", Constants.NBT.TAG_COMPOUND), entries);
+        var entries = readComponents(tag.getTagList("Components", Constants.NBT.TAG_COMPOUND));
+        var pending = readPending(tag.getTagList("PendingDependencies", Constants.NBT.TAG_COMPOUND), entries);
         var restoreOrder = new TopologicalComponentMap<ComponentType<RecipeProcess, ?>, SavedComponent>();
         entries.forEach((type, entry) -> restoreOrder.add(type, entry, entry.dependencies()));
         // Selector ownership binds layers already restored. This constraint is only for loading,
@@ -331,22 +301,23 @@ public final class RecipeProcessNbt {
             }
         }
         pending.forEach((type, dependencies) -> dependencies.forEach(dependency -> process.components().addDependency(type, dependency)));
-        requireAssembly(process, entries, pending);
-        for (var node : ordered) {
+        for (int index3 = 0; index3 < ordered.size(); index3++) {
+            var node = ordered.get(index3);
             node.component().binding().restore(process, node.component().data());
         }
-        requireAssembly(process, entries, pending);
         validate(process);
-        process.requirePersistenceBoundary();
         return process;
     }
 
     private void validate(RecipeProcess process) {
-        BuiltinProcessValidation.validate(process, new RecipeDefinitionIndex(process), stableResourceGroups, stableStructure);
-        for (var saved : process.components().snapshotBindings()) {
+        BuiltinProcessValidation.validate(process, process.definitionIndex(), stableResourceGroups, stableStructure);
+        var elements = process.components().snapshotBindings();
+        for (int index4 = 0; index4 < elements.size(); index4++) {
+            var saved = elements.get(index4);
             require(saved.type()).validate(process);
         }
-        for (var validator : validators) {
+        for (int index2 = 0; index2 < validators.size(); index2++) {
+            var validator = validators.get(index2);
             validator.accept(process);
         }
     }
@@ -355,9 +326,8 @@ public final class RecipeProcessNbt {
         var entries = new Object2ObjectLinkedOpenHashMap<ComponentType<RecipeProcess, ?>, SavedComponent>(list.tagCount());
         for (int i = 0; i < list.tagCount(); i++) {
             var entry = list.getCompoundTagAt(i);
-            StrictNbt.requireKeys(entry, "Type", "Dependencies", "Data");
-            var binding = require(StrictNbt.requireId(entry, "Type"));
-            var component = new SavedComponent(binding, readTypes(entry), StrictNbt.requireCompound(entry, "Data").copy());
+            var binding = require(new ResourceLocation(entry.getString("Type")));
+            var component = new SavedComponent(binding, readTypes(entry), entry.getCompoundTag("Data"));
             if (entries.putIfAbsent(binding.type(), component) != null) {
                 throw new IllegalArgumentException("Duplicate saved component");
             }
@@ -370,8 +340,7 @@ public final class RecipeProcessNbt {
         var pending = new Object2ObjectLinkedOpenHashMap<ComponentType<RecipeProcess, ?>, Set<ComponentType<RecipeProcess, ?>>>(list.tagCount());
         for (int i = 0; i < list.tagCount(); i++) {
             var entry = list.getCompoundTagAt(i);
-            StrictNbt.requireKeys(entry, "Type", "Dependencies");
-            var type = require(StrictNbt.requireId(entry, "Type")).type();
+            var type = require(new ResourceLocation(entry.getString("Type"))).type();
             var dependencies = readTypes(entry);
             if (entries.containsKey(type) || dependencies.isEmpty() || pending.putIfAbsent(type, dependencies) != null) {
                 throw new IllegalArgumentException("Invalid pending component dependencies");
@@ -390,10 +359,10 @@ public final class RecipeProcessNbt {
     }
 
     private Set<ComponentType<RecipeProcess, ?>> readTypes(NBTTagCompound tag) {
-        var list = StrictNbt.requireList(tag, "Dependencies", Constants.NBT.TAG_STRING);
+        var list = tag.getTagList("Dependencies", Constants.NBT.TAG_STRING);
         var result = new ObjectLinkedOpenHashSet<ComponentType<RecipeProcess, ?>>(list.tagCount());
         for (int i = 0; i < list.tagCount(); i++) {
-            if (!result.add(require(StrictNbt.requireId(list.getStringTagAt(i))).type())) {
+            if (!result.add(require(new ResourceLocation(list.getStringTagAt(i))).type())) {
                 throw new IllegalArgumentException("Duplicate component dependency");
             }
         }
@@ -409,11 +378,7 @@ public final class RecipeProcessNbt {
     }
 
     private Binding<?> require(ComponentType<RecipeProcess, ?> type) {
-        var binding = require(type.id());
-        if (binding.type() != type) {
-            throw new IllegalArgumentException("Different component descriptors share " + type.id());
-        }
-        return binding;
+        return require(type.id());
     }
 
     private record SavedComponent(Binding<?> binding, Set<ComponentType<RecipeProcess, ?>> dependencies,
@@ -421,35 +386,27 @@ public final class RecipeProcessNbt {
     }
 
     private record Binding<C>(ComponentType<RecipeProcess, C> type, ProcessComponentCodec<C> codec) {
-        private Binding {
-            Objects.requireNonNull(type);
-            Objects.requireNonNull(codec);
-        }
-
         void create(RecipeProcess process) {
             process.components().create(type, process);
         }
 
         @SuppressWarnings("unchecked")
-            // Verified descriptor identity ties the saved instance to C.
         NBTTagCompound encode(RecipeProcess process, ComponentMap.SavedBinding<RecipeProcess, ?> saved) {
-            if (saved.type() != type) {
-                throw new IllegalArgumentException("Component codec type mismatch");
-            }
-            return Objects.requireNonNull(codec.encode(process, (C) saved.component()));
+            return codec.encode(process, (C) saved.component());
         }
 
         void restore(RecipeProcess process, NBTTagCompound data) {
-            codec.restore(process, Objects.requireNonNull(process.components().get(type)), data.copy());
+            codec.restore(process, process.components().get(type), data);
         }
 
         void validate(RecipeProcess process) {
-            codec.validate(process, Objects.requireNonNull(process.components().get(type)));
+            codec.validate(process, process.components().get(type));
         }
     }
 
     /**
-     * Bind only explicitly supported extensions; unknown state is an error, never silently dropped.
+     * Build transfers the completed collections. Do not reuse or modify this builder afterward.
+     * Bind every component and overlay type that may be saved.
      */
     public static final class Builder {
         private final MachineRecipe recipe;
@@ -457,8 +414,8 @@ public final class RecipeProcessNbt {
         private final Map<ResourceLocation, Binding<?>> components = new Object2ObjectLinkedOpenHashMap<>();
         private final List<RecipeOverlayNbt.Binding<?, ?>> overlays = new ObjectArrayList<>();
         private final List<Consumer<RecipeProcess>> validators = new ObjectArrayList<>();
-        private ResourceKeyNbt resources = new ResourceKeyNbt();
-        private AttributeModifierNbt attributes = new AttributeModifierNbt();
+        private ResourceKeyNbt resources = ResourceKeyNbt.INSTANCE;
+        private AttributeModifierNbt attributes = AttributeModifierNbt.INSTANCE;
 
         private Builder(MachineRecipe recipe, String revision) {
             this.recipe = Objects.requireNonNull(recipe);

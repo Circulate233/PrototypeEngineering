@@ -73,11 +73,6 @@ var allocation = InputAllocation.create("pe_run_tests:core_allocation", function
     if (context.isEnergy) {
         return [AllocationPortion.create(context.sources[1].index, context.amount)] as AllocationPortion[];
     }
-    // Mutation of returned arrays must not change the frozen source facts used by the planner.
-    var localSources = context.sources;
-    localSources[0] = localSources[1];
-    var localResources = context.sources[0].resources;
-    localResources[0] = product.withAmount(99);
     return [AllocationPortion.create(context.sources[0].index, context.sources[0].resources[0].amount - 2),
             AllocationPortion.create(context.sources[1].index, context.amount - 7)] as AllocationPortion[];
 });

@@ -10,7 +10,6 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectRBTreeMap;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.BlockPos;
@@ -123,7 +122,11 @@ public final class BuilderState {
 
     public static StructureDisplay.BlockOption choice(NBTTagCompound tag, StructureDisplay display) {
         var key = tag.getCompoundTag("MaterialSelections").getString(display.key());
-        for (var option : display.options()) if (optionKey(option).equals(key)) return option;
+        var elements = display.options();
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var option = elements.get(index1);
+            if (optionKey(option).equals(key)) return option;
+        }
         return display.options().getFirst();
     }
 
@@ -131,8 +134,7 @@ public final class BuilderState {
         if (!tag.hasKey("MaterialSelections", 10)) tag.setTag("MaterialSelections", new NBTTagCompound());
         tag.getCompoundTag("MaterialSelections").setString(material, option);
         var cells = tag.getCompoundTag("CellMaterialSelections");
-        for (var key : new ObjectArrayList<>(cells.getKeySet()))
-            if (cells.getCompoundTag(key).getString("Material").equals(material)) cells.removeTag(key);
+        cells.getKeySet().removeIf(key -> cells.getCompoundTag(key).getString("Material").equals(material));
     }
 
     public static String cellKey(BlockPos position) {

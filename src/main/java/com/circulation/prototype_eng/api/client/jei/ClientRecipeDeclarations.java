@@ -13,6 +13,7 @@ import java.util.Objects;
 
 /**
  * Separate client objects and prepared display providers; server JVM objects are never a resolution source.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 @SideOnly(Side.CLIENT)
 public final class ClientRecipeDeclarations {
@@ -36,7 +37,10 @@ public final class ClientRecipeDeclarations {
         }
         declarations.put(key, new Binding(displays, new Declaration(snapshot, displays.frozenCopy())));
         Throwable failure = null;
-        for (var listener : new ObjectArrayList<>(listeners)) {
+
+        var elements = new ObjectArrayList<>(listeners);
+        for (int index = 0; index < elements.size(); index++) {
+            var listener = elements.get(index);
             try {
                 listener.run();
             } catch (RuntimeException | Error caught) {
@@ -44,6 +48,7 @@ public final class ClientRecipeDeclarations {
                 else if (failure != caught) failure.addSuppressed(caught);
             }
         }
+
         if (failure instanceof RuntimeException runtime) throw runtime;
         if (failure instanceof Error error) throw error;
     }

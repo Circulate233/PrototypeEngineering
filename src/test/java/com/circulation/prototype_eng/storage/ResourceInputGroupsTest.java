@@ -329,7 +329,7 @@ class ResourceInputGroupsTest {
         var original = Objects.requireNonNull(admitted.process());
         original.tick();
         var keys = new ResourceKeyNbt(location -> location.equals(TYPE.getId()) ? TYPE : null);
-        var codec = RecipeProcessNbt.builder(recipe, "group-1").resources(keys).attributes(new AttributeModifierNbt()).build();
+        var codec = RecipeProcessNbt.builder(recipe, "group-1").resources(keys).attributes(AttributeModifierNbt.INSTANCE).build();
         var saved = codec.encode(original);
         var lateFixture = new Fixture();
         var late = codec.decode(lateFixture.machine, saved);

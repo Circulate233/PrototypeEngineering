@@ -21,6 +21,7 @@ import java.util.Objects;
  * includes its parent's calculation and blocks ancestor modifiers while retaining local modifiers.
  * Clearing local state reveals the parent again. All bases, fallbacks and intermediate results must
  * be finite; negative values are allowed so each consumer can apply its own domain rules.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class MachineAttributes {
     private final @Nullable MachineAttributes parent;
@@ -419,7 +420,8 @@ public final class MachineAttributes {
         public boolean current() {
             if (capturedLocal != localMarker) return false;
             if (next != null && nextMarker != next.localMarker) return false;
-            for (var captured : layers) {
+            for (int index = 0; index < layers.size(); index++) {
+                var captured = layers.get(index);
                 if (captured.marker != captured.attributes.localMarker) return false;
             }
             return true;

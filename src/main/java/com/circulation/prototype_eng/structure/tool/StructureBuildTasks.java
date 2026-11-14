@@ -99,7 +99,9 @@ public final class StructureBuildTasks {
             boolean dismantle = host.formed();
             var targets = new ObjectArrayList<Target>();
             boolean unresolved = false;
-            for (var cell : plan.cells()) {
+            var elements3 = plan.cells();
+            for (int index3 = 0; index3 < elements3.size(); index3++) {
+                var cell = elements3.get(index3);
                 var position = StructureBuildPlan.add(pos, cell.position());
                 if (dismantle) targets.add(new Target(position, null));
                 else if (cell.display() != null) {
@@ -185,7 +187,8 @@ public final class StructureBuildTasks {
         var candidates = new ObjectArrayList<Target>(targets.size());
         var resources = new ObjectArrayList<GenericStack>(targets.size());
         int blocked = 0;
-        for (var target : targets) {
+        for (int index2 = 0; index2 < targets.size(); index2++) {
+            var target = targets.get(index2);
             if (player.world.isOutsideBuildHeight(target.position()) || !player.world.isBlockLoaded(target.position(), false)) {
                 blocked++;
                 continue;
@@ -217,7 +220,11 @@ public final class StructureBuildTasks {
         });
         reportMissing(player, result.missing());
         var admitted = new ObjectArrayList<Target>(result.positions().size());
-        for (int index : result.positions()) admitted.add(candidates.get(index));
+        var elements = result.positions();
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            int index = elements.getInt(index1);
+            admitted.add(candidates.get(index));
+        }
         boolean requireAll = BuilderState.Setting.REQUIRE_MATERIALS.enabled(tag);
         if (!result.missing().isEmpty() && BuilderState.meMode(tag) == 2 && me != null) {
             var craft = new ObjectArrayList<GenericStack>(result.missing().size());
@@ -389,12 +396,12 @@ public final class StructureBuildTasks {
             var source = FluidUtil.getFluidHandler(world, pos, EnumFacing.UP);
             if (source == null) return false;
             var available = source.drain(Integer.MAX_VALUE, false);
-            // 流动流体没有可独立抽取的源，不产生回收量。
+            // Flowing fluid has no independently drainable source.
             if (available == null || available.amount <= 0) return world.setBlockToAir(pos);
             var drained = source.drain(available, true);
             if (drained == null || drained.amount <= 0) return false;
             BuilderFluidRecovery.deliver((EntityPlayerMP) player, drained, task.me);
-            // 成功抽取后完成此位置，邻居补流不能再次产生回收量。
+            // Successful extraction completes this position so neighbor refill cannot produce another recovery.
             return true;
         }
         try (var _ = BuilderDropRecovery.capture((EntityPlayerMP) player, task.me)) {

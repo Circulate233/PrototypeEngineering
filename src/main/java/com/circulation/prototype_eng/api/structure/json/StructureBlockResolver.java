@@ -10,6 +10,7 @@ import java.util.Map;
 
 /**
  * Definition-time block resolution. Implementations reject unknown IDs instead of defaulting to air.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public interface StructureBlockResolver {
     StructurePredicate block(ResourceLocation id);

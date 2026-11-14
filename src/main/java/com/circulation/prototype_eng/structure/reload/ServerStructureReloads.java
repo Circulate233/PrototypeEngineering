@@ -47,7 +47,11 @@ public final class ServerStructureReloads {
         var coordinator = new StructureReloadCoordinator(scheduler, MachineTypeRegistry.INSTANCE,
             () -> StructureJsonLoader.readDirectory(directory).resolve(javaDefinitions, factories, new ForgeStructureBlocks()),
             publication -> {
-                for (var player : server.getPlayerList().getPlayers()) InitNetwork.send(publication, player);
+                var elements = server.getPlayerList().getPlayers();
+                for (int index = 0; index < elements.size(); index++) {
+                    var player = elements.get(index);
+                    InitNetwork.send(publication, player);
+                }
             });
         var subscription = MachineLifecycleRegistry.GLOBAL.register(new MachineLifecycleListener() {
             @Override

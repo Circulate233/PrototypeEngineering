@@ -20,7 +20,6 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -80,7 +79,7 @@ class ResearchWorldCloudCaptureTest {
     }
 
     private static OwnerTeamResolution membership(UUID actor, String team, UUID... members) {
-        return OwnerTeamResolution.resolved(actor, team, OwnerTeamType.PLAYER, members(members), Optional.of(actor));
+        return OwnerTeamResolution.resolved(actor, team, OwnerTeamType.PLAYER, members(members), actor);
     }
 
     private static ObjectSet<UUID> members(UUID... values) {

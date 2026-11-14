@@ -102,7 +102,10 @@ public final class GuiStructurePreview<C extends AEBaseContainer> extends AEBase
             return;
         }
         if (panel.ownsSlot(hoveredSlot)) hoveredSlot = null;
-        for (var control : buttonList) if (control.visible && control.isMouseOver()) return;
+        for (int index2 = 0; index2 < buttonList.size(); index2++) {
+            var control = buttonList.get(index2);
+            if (control.visible && control.isMouseOver()) return;
+        }
         if (panel.renderItemTooltip(mouseX, mouseY, mouseX - guiLeft, mouseY - guiTop)) return;
         var tooltip = panel.tooltip(mouseX - guiLeft, mouseY - guiTop);
         if (!tooltip.isEmpty()) drawHoveringText(tooltip, mouseX, mouseY);
@@ -131,12 +134,14 @@ public final class GuiStructurePreview<C extends AEBaseContainer> extends AEBase
     protected void mouseClicked(int x, int y, int button) {
         if (!navigation.viewerCurrent(this)) return;
         // The AE close control owns clicks above the scene at their shared edge.
-        if (button == 0 || button == 1) for (var control : buttonList)
+        if (button == 0 || button == 1) for (int index3 = 0; index3 < buttonList.size(); index3++) {
+            var control = buttonList.get(index3);
             if (control.mousePressed(mc, x, y)) {
                 control.playPressSound(mc.getSoundHandler());
                 actionPerformed(control);
                 return;
             }
+        }
         if (inputCurrent()) panel.press(x - guiLeft, y - guiTop, button);
     }
 
@@ -149,7 +154,10 @@ public final class GuiStructurePreview<C extends AEBaseContainer> extends AEBase
     protected void mouseReleased(int x, int y, int button) {
         if (!navigation.viewerCurrent(this)) return;
         if (inputCurrent()) panel.release(x - guiLeft, y - guiTop, button);
-        for (var control : buttonList) control.mouseReleased(x, y);
+        for (int index = 0; index < buttonList.size(); index++) {
+            var control = buttonList.get(index);
+            control.mouseReleased(x, y);
+        }
         backRequest.finishReleased();
     }
 

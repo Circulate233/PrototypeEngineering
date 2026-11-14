@@ -14,7 +14,8 @@ public record RecipeInformationLayout(List<Paragraph> paragraphs, int height) {
     public static RecipeInformationLayout measure(List<JeiRecipeDisplay.Text> information, int width, Font font) {
         var paragraphs = new ObjectArrayList<Paragraph>(information.size());
         int y = 0;
-        for (var source : information) {
+        for (int index = 0; index < information.size(); index++) {
+            var source = information.get(index);
             int x = source.energy() == null ? 4 : 26;
             var lines = font.wrap().apply(source, width - x - 4);
             int height = Math.max(source.energy() == null ? 0 : 18, lines.size() * font.lineHeight());

@@ -129,7 +129,7 @@ public final class ScannerState {
     }
 
     public static void reset(NBTTagCompound data, String name) {
-        for (String key : List.copyOf(data.getKeySet())) data.removeTag(key);
+        data.getKeySet().clear();
         defaults(data, name);
     }
 
@@ -239,7 +239,7 @@ public final class ScannerState {
                 for (long y = 0; y < ny; y++)
                     for (long z = 0; z < nz; z++)
                         result.add(new BlockPos(Math.min(max.getX(), min.getX() + x * low), Math.min(max.getY(), min.getY() + y * low), Math.min(max.getZ(), min.getZ() + z * low)));
-            return List.copyOf(result);
+            return result;
         }
 
         private double sampleCount(long stride) {

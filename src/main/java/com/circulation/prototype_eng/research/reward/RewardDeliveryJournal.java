@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.research.reward;
 
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKey;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKeyNbt;
@@ -10,6 +9,7 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 import org.jetbrains.annotations.Nullable;
 
@@ -36,16 +36,15 @@ final class RewardDeliveryJournal {
         Objects.requireNonNull(entityData);
         var result = new RewardDeliveryJournal(player);
         if (!entityData.hasKey(EntityPlayer.PERSISTED_NBT_TAG)) return result;
-        var persisted = StrictNbt.requireCompound(entityData, EntityPlayer.PERSISTED_NBT_TAG);
+        var persisted = entityData.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG);
         if (!persisted.hasKey(NAMESPACE)) return result;
-        var namespace = StrictNbt.requireCompound(persisted, NAMESPACE);
+        var namespace = persisted.getCompoundTag(NAMESPACE);
         if (!namespace.hasKey(STORE)) return result;
-        var store = StrictNbt.requireCompound(namespace, STORE);
-        StrictNbt.requireKeys(store, "version", "receipts");
-        int version = StrictNbt.requireInt(store, "version");
+        var store = namespace.getCompoundTag(STORE);
+        int version = store.getInteger("version");
         if (version != 1 && version != 2)
             throw new IllegalArgumentException("Unsupported item delivery receipt version");
-        var list = StrictNbt.requireList(store, "receipts", Constants.NBT.TAG_COMPOUND);
+        var list = store.getTagList("receipts", Constants.NBT.TAG_COMPOUND);
         if (list.tagCount() > MAX_RECEIPTS) throw new IllegalArgumentException("Too many reward delivery receipts");
         for (int index = 0; index < list.tagCount(); index++) {
             var receipt = decode(list.getCompoundTagAt(index), version);
@@ -120,7 +119,7 @@ final class RewardDeliveryJournal {
             tag.setTag("delivery", ItemDeliveryKeyNbt.identity(receipt.parent(), receipt.id()));
         }
         tag.setInteger("count", receipt.count());
-        tag.setTag("stack", receipt.stack().copy());
+        tag.setTag("stack", receipt.stack());
         tag.setTag("target", encodeTarget(receipt.target()));
         tag.setString("state", receipt.state().name());
         return tag;
@@ -151,41 +150,32 @@ final class RewardDeliveryJournal {
         if (tag.hasKey("delivery")) {
             if (version != 2)
                 throw new IllegalArgumentException("Legacy reward receipt cannot contain download identity");
-            StrictNbt.requireKeys(tag, "fragment", "player", "delivery", "count", "stack", "target", "state");
-            var identity = StrictNbt.requireCompound(tag, "delivery");
+            var identity = tag.getCompoundTag("delivery");
             parent = ItemDeliveryKeyNbt.readIdentity(identity);
             if (parent instanceof RewardEventKey || !parent.playerUuid().equals(uuid(tag, "player"))
                 || !ItemDeliveryKeyNbt.fragmentId(identity).equals(uuid(tag, "fragment"))) {
                 throw new IllegalArgumentException("Item delivery receipt envelope identity differs");
             }
         } else {
-            StrictNbt.requireKeys(tag, "fragment", "player", "research", "level", "group", "child", "count", "stack", "target", "state");
-            parent = new RewardEventKey(uuid(tag, "player"), StrictNbt.requireId(tag, "research"), StrictNbt.requireInt(tag, "level"),
-                StrictNbt.requireId(tag, "group"), StrictNbt.requireId(tag, "child"));
+            parent = new RewardEventKey(uuid(tag, "player"), new ResourceLocation(tag.getString("research")), tag.getInteger("level"),
+                new ResourceLocation(tag.getString("group")), new ResourceLocation(tag.getString("child")));
         }
-        var target = StrictNbt.requireCompound(tag, "target");
-        var decodedTarget = switch (StrictNbt.requireString(target, "type")) {
-            case "inventory" -> {
-                StrictNbt.requireKeys(target, "type", "slot");
-                yield new ItemDeliveryFragment.Inventory(StrictNbt.requireInt(target, "slot"));
-            }
-            case "drop" -> {
-                StrictNbt.requireKeys(target, "type", "dimension", "chunkX", "chunkZ", "x", "y", "z");
-                yield new ItemDeliveryFragment.WorldDrop(StrictNbt.requireInt(target, "dimension"), StrictNbt.requireInt(target, "chunkX"),
-                    StrictNbt.requireInt(target, "chunkZ"), StrictNbt.requireDouble(target, "x"), StrictNbt.requireDouble(target, "y"),
-                    StrictNbt.requireDouble(target, "z"));
-            }
+        var target = tag.getCompoundTag("target");
+        var decodedTarget = switch (target.getString("type")) {
+            case "inventory" -> new ItemDeliveryFragment.Inventory(target.getInteger("slot"));
+            case "drop" ->
+                new ItemDeliveryFragment.WorldDrop(target.getInteger("dimension"), target.getInteger("chunkX"),
+                    target.getInteger("chunkZ"), target.getDouble("x"), target.getDouble("y"),
+                    target.getDouble("z"));
             default -> throw new IllegalArgumentException("Unknown reward receipt target");
         };
-        return new Receipt(uuid(tag, "fragment"), parent, StrictNbt.requireInt(tag, "count"), StrictNbt.requireCompound(tag, "stack"),
-            decodedTarget, State.valueOf(StrictNbt.requireString(tag, "state")));
+        return new Receipt(uuid(tag, "fragment"), parent, tag.getInteger("count"), tag.getCompoundTag("stack"),
+            decodedTarget, State.valueOf(tag.getString("state")));
     }
 
     private static UUID uuid(NBTTagCompound tag, String key) {
-        var raw = StrictNbt.requireString(tag, key);
-        var parsed = UUID.fromString(raw);
-        if (!parsed.toString().equals(raw)) throw new IllegalArgumentException("Non-canonical reward receipt UUID");
-        return parsed;
+        var raw = tag.getString(key);
+        return UUID.fromString(raw);
     }
 
     /**
@@ -263,13 +253,12 @@ final class RewardDeliveryJournal {
     }
 
     /**
-     * Preserves the current manual receipts and other namespaces without retaining borrowed tags.
+     * Updates the receipt namespace while preserving other player data.
      */
     void writeTo(NBTTagCompound entityData) {
         Objects.requireNonNull(entityData);
-        var persisted = entityData.hasKey(EntityPlayer.PERSISTED_NBT_TAG)
-            ? StrictNbt.requireCompound(entityData, EntityPlayer.PERSISTED_NBT_TAG).copy() : new NBTTagCompound();
-        var namespace = persisted.hasKey(NAMESPACE) ? StrictNbt.requireCompound(persisted, NAMESPACE).copy() : new NBTTagCompound();
+        var persisted = entityData.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG);
+        var namespace = persisted.getCompoundTag(NAMESPACE);
         if (receipts.isEmpty()) namespace.removeTag(STORE);
         else namespace.setTag(STORE, snapshot());
         persisted.setTag(NAMESPACE, namespace);
@@ -297,17 +286,14 @@ final class RewardDeliveryJournal {
             Objects.requireNonNull(parent);
             Objects.requireNonNull(target);
             Objects.requireNonNull(state);
-            stack = Objects.requireNonNull(stack).copy();
-            if (count < 1 || count > Byte.MAX_VALUE || StrictNbt.requireByte(stack, "Count") != count) {
+
+            if (count < 1 || count > Byte.MAX_VALUE || stack.getByte("Count") != count) {
                 throw new IllegalArgumentException("Invalid reward receipt item count");
             }
             if (target instanceof ItemDeliveryFragment.Inventory(int slot) && slot >= 36) {
                 throw new IllegalArgumentException("Reward receipt inventory target is outside main inventory");
             }
-            StrictNbt.requireId(stack, "id");
-            StrictNbt.requireShort(stack, "Damage");
-            if (stack.hasKey("ForgeCaps")) StrictNbt.requireCompound(stack, "ForgeCaps");
-            var identity = StrictNbt.requireCompound(StrictNbt.requireCompound(stack, "tag"), ItemDeliveryTemplates.DELIVERY_TAG);
+            var identity = stack.getCompoundTag("tag").getCompoundTag(ItemDeliveryTemplates.DELIVERY_TAG);
             if (!ItemDeliveryKeyNbt.readIdentity(identity).equals(parent) || !ItemDeliveryKeyNbt.fragmentId(identity).equals(id)) {
                 throw new IllegalArgumentException("Reward receipt stack identity differs");
             }

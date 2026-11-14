@@ -27,7 +27,10 @@ public final class MachineControllerModels {
     }
 
     public static void registerModels() {
-        for (var block : MachineControllerBlocks.all()) {
+
+        var elements = MachineControllerBlocks.all();
+        for (int index = 0; index < elements.size(); index++) {
+            var block = elements.get(index);
             var location = Objects.requireNonNullElse(block.type().controllerModel(), DEFAULT_CONTROLLER);
             ModelLoader.setCustomStateMapper(block, new StateMapperBase() {
                 @Override
@@ -38,6 +41,7 @@ public final class MachineControllerModels {
             ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(block), 0,
                 new ModelResourceLocation(location, "inventory"));
         }
+
     }
 
     /**
@@ -63,7 +67,10 @@ public final class MachineControllerModels {
 
     public static void bakeModels(ModelBakeEvent event) {
         var visited = new ObjectOpenHashSet<ModelResourceLocation>();
-        for (var block : MachineControllerBlocks.all()) {
+
+        var elements2 = MachineControllerBlocks.all();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var block = elements2.get(index2);
             var location = Objects.requireNonNullElse(block.type().controllerModel(), DEFAULT_CONTROLLER);
             var mapper = new StateMapperBase() {
                 @Override
@@ -82,5 +89,6 @@ public final class MachineControllerModels {
                     event.getModelRegistry().putObject(key, new ControllerRotatedModel(model, facing, twist));
             }
         }
+
     }
 }

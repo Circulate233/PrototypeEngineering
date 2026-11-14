@@ -9,6 +9,7 @@ import java.util.Objects;
  * Optional immutable display geometry for an external shape; no matcher/factory crosses the wire.
  * Read only the immutable definition. Do not inspect World, mutate configuration or enter scheduler
  * callbacks. Children reference the existing shape graph, not another expansion/matching algorithm.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public interface StructurePreviewProvider {
     Geometry previewGeometry();

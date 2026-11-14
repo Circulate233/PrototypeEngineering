@@ -31,7 +31,9 @@ public final class ResearchDataCenters {
         ComponentType<MachineInstance, ?> storageType = null;
         MachineNetworkDevice role = null;
         DataCenterStorage storage = null;
-        for (var binding : machine.components().assemblyBindings()) {
+        var elements3 = machine.components().assemblyBindings();
+        for (int index3 = 0; index3 < elements3.size(); index3++) {
+            var binding = elements3.get(index3);
             if (binding.component() instanceof MachineNetworkDevice candidate) {
                 if (role != null)
                     throw new IllegalStateException("Data-center machine has multiple network component bindings");
@@ -52,7 +54,9 @@ public final class ResearchDataCenters {
     @Nullable
     private static StorageBinding storageBinding(MachineInstance machine) {
         StorageBinding result = null;
-        for (var binding : machine.components().assemblyBindings()) {
+        var elements1 = machine.components().assemblyBindings();
+        for (int index1 = 0; index1 < elements1.size(); index1++) {
+            var binding = elements1.get(index1);
             if (binding.component() instanceof DataCenterStorage candidate) {
                 if (result != null)
                     throw new IllegalStateException("Data-center machine has multiple storage component bindings");
@@ -73,7 +77,10 @@ public final class ResearchDataCenters {
         }
         Objects.requireNonNull(expectedDataCenterId);
         long revision = identities.revision();
-        for (var identity : identities.uniqueRegistrations()) {
+
+        var elements2 = identities.uniqueRegistrations();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var identity = elements2.get(index2);
             if (!identity.identity().machineId().equals(expectedDataCenterId)
                 || !(identity.runtimeIdentity() instanceof MachineInstance machine)) continue;
             var bindings = bindings(machine);
@@ -85,6 +92,7 @@ public final class ResearchDataCenters {
             var result = new Capture(this, revision, identity, machine, bindings, permit, backend);
             return result.current() ? result : null;
         }
+
         return null;
     }
 
@@ -97,7 +105,10 @@ public final class ResearchDataCenters {
         ownerCheck.run();
         Objects.requireNonNull(target);
         long revision = identities.revision();
-        for (var identity : identities.uniqueRegistrations()) {
+
+        var elements = identities.uniqueRegistrations();
+        for (int index = 0; index < elements.size(); index++) {
+            var identity = elements.get(index);
             if (!identity.identity().machineId().equals(target.dataCenterId())
                 || !identity.identity().ownerId().equals(target.ownerId()) || !identity.location().equals(target.location())
                 || !(identity.runtimeIdentity() instanceof MachineInstance machine)) continue;
@@ -106,6 +117,7 @@ public final class ResearchDataCenters {
             var result = new PhysicalCapture(this, revision, identity, machine, binding);
             return result.current() ? result : null;
         }
+
         return null;
     }
 

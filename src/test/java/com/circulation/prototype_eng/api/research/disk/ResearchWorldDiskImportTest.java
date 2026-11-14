@@ -39,7 +39,6 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
@@ -227,7 +226,7 @@ class ResearchWorldDiskImportTest {
         var world = fixture.world();
         assertThrows(IllegalStateException.class, () -> fixture.request(world));
         fixture.storage.failBeforeCommit = false;
-        var cloud = new TeamResearchView(fixture.registry, "team", ObjectList.of(PLAYER), Object2IntMaps.emptyMap(),
+        var cloud = new TeamResearchView(fixture.registry, "team", Set.of(PLAYER), Object2IntMaps.emptyMap(),
             Object2IntMaps.emptyMap(), Set.of());
         assertEquals(DataCenterStorage.Result.UPDATED, fixture.storage.storeFromDisk(fixture.data.entries(), cloud, () -> true));
         assertEquals(ResearchDiskImportResult.Status.PENDING, fixture.recover(world, false).status());
@@ -314,7 +313,7 @@ class ResearchWorldDiskImportTest {
         fixture.storage.failPersist = true;
         var world = fixture.world();
         assertThrows(IllegalStateException.class, () -> fixture.request(world));
-        var cloud = new TeamResearchView(fixture.registry, "team", ObjectList.of(PLAYER),
+        var cloud = new TeamResearchView(fixture.registry, "team", Set.of(PLAYER),
             Object2IntMaps.singleton(LOOP, 80), Object2IntMaps.emptyMap(), Set.of());
         assertEquals(DataCenterStorage.Result.UPDATED, fixture.storage.downloadResearch(LOOP, 5, cloud, () -> true));
         fixture.storage.failPersist = false;
@@ -421,7 +420,7 @@ class ResearchWorldDiskImportTest {
             new MachineIdentity(new ResourceLocation("disk_world_test", "center"), 0, new BlockPos(1, 2, 3)));
         final ResearchDiskOperation.Intent intent = new ResearchDiskOperation.Intent(PLAYER, NONCE, DATABASE, "team", SLOT);
         final OwnerTeamResolution membership = OwnerTeamResolution.resolved(PLAYER, "team", OwnerTeamType.PLAYER,
-            new ObjectOpenHashSet<>(ObjectList.of(PLAYER)), Optional.of(PLAYER));
+            new ObjectOpenHashSet<>(ObjectList.of(PLAYER)), PLAYER);
         final ResearchPermissionContext permission = new ResearchPermissionContext(PLAYER, "team", PLAYER, "team", false, false, false);
         ResearchDiskData data;
 

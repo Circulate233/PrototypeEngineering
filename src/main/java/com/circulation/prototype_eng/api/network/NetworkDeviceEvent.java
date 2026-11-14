@@ -4,7 +4,7 @@ import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.event.MachineEvent;
 
 /**
- * 在服务器所属线程修改本设备的候选数据。回调可重复计算，禁止修改其他设备或直接扣费。
+ * Modifies this device's candidate values on the server owner thread. Repeatable callbacks must not mutate other devices or charge costs.
  */
 public record NetworkDeviceEvent(MachineInstance machine, NetworkData network,
                                  NetworkResourceState values) implements MachineEvent {

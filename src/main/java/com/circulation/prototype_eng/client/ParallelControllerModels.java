@@ -24,7 +24,10 @@ public final class ParallelControllerModels {
 
     @SubscribeEvent
     public static void registerModels(ModelRegistryEvent event) {
-        for (var block : ParallelControllerBlocks.all()) {
+
+        var elements = ParallelControllerBlocks.all();
+        for (int index = 0; index < elements.size(); index++) {
+            var block = elements.get(index);
             var model = block.type().modelLocation();
             ModelLoader.setCustomStateMapper(block, new StateMapperBase() {
                 @Override
@@ -34,12 +37,16 @@ public final class ParallelControllerModels {
             });
             ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(block), 0, new ModelResourceLocation(model, "inventory"));
         }
+
     }
 
     @SubscribeEvent
     public static void bakeModels(ModelBakeEvent event) {
         var visited = new ObjectOpenHashSet<ModelResourceLocation>();
-        for (var block : ParallelControllerBlocks.all()) {
+
+        var elements2 = ParallelControllerBlocks.all();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var block = elements2.get(index2);
             var location = block.type().modelLocation();
             var mapper = new StateMapperBase() {
                 @Override
@@ -58,5 +65,6 @@ public final class ParallelControllerModels {
                     event.getModelRegistry().putObject(key, new ControllerRotatedModel(model, facing, twist));
             }
         }
+
     }
 }

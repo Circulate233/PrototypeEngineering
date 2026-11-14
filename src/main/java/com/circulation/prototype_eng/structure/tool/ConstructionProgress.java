@@ -4,7 +4,7 @@ import java.util.function.IntFunction;
 import java.util.function.IntPredicate;
 
 /**
- * 跟踪完成位置；优先阶段尚有未完成位置时，普通位置保持等待。
+ * Tracks completed positions; ordinary positions wait until the priority phase completes.
  */
 final class ConstructionProgress {
     private static final byte PENDING = 0, DEFERRED = 1, COMPLETE = 2;
@@ -64,7 +64,7 @@ final class ConstructionProgress {
     }
 
     /**
-     * DEFER 仅用于将优先阶段的位置移交普通阶段。
+     * DEFER moves a priority position to the ordinary phase.
      */
     enum Step {COMPLETE, RETRY, WAIT, DEFER}
 }

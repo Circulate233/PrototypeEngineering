@@ -12,6 +12,7 @@ import java.util.List;
  * or publish effects during capture, and must be installed before restoring work slots that use them.
  * Incompatible definition or behavior changes require the host's machine/recipe persistence revision
  * to change; existing processes retain their original frozen definitions until their lifecycle ends.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 @FunctionalInterface
 public interface MachineRecipeRequirements {

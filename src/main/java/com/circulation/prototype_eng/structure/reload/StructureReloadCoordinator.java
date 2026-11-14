@@ -85,7 +85,10 @@ public final class StructureReloadCoordinator {
         capturedLoaded = null;
         var removed = new ObjectArrayList<ControllerStructureUpdates>();
         for (var updates : registrations.keySet()) if (updates.lifecycle() == lifecycle) removed.add(updates);
-        for (var updates : removed) unregister(updates);
+        for (int index = 0; index < removed.size(); index++) {
+            var updates = removed.get(index);
+            unregister(updates);
+        }
     }
 
     /**
@@ -112,7 +115,9 @@ public final class StructureReloadCoordinator {
         if (closed || applying)
             throw new IllegalStateException("Loaded enrollment requires a live idle structure owner");
         // Fastutil map entries retain table indexes; removing an earlier host can invalidate them.
-        for (var entry : loadedSnapshot()) {
+        var elements7 = loadedSnapshot();
+        for (int index7 = 0; index7 < elements7.size(); index7++) {
+            var entry = elements7.get(index7);
             var lifecycle = entry.lifecycle();
             var loaded = entry.loaded();
             if (loadedHosts.get(lifecycle) != loaded) continue;
@@ -141,7 +146,9 @@ public final class StructureReloadCoordinator {
         scheduler.runAtBoundary(() -> {
             if (closed) return;
             enrollLoaded();
-            for (var captured : loadedSnapshot()) {
+            var elements1 = loadedSnapshot();
+            for (int index1 = 0; index1 < elements1.size(); index1++) {
+                var captured = elements1.get(index1);
                 var loaded = captured.loaded();
                 var automatic = loaded.automatic;
                 if (automatic == null || !automatic.loaded()) continue;
@@ -207,7 +214,10 @@ public final class StructureReloadCoordinator {
             try {
                 replacement = registry.prepareReplacement(Objects.requireNonNull(readCandidate.get()));
                 next = presentation(replacement.catalog(), publication.view().session(), Math.incrementExact(publication.view().sequence()));
-                for (var registration : new ObjectArrayList<>(registrations.values())) {
+
+                var elements = new ObjectArrayList<>(registrations.values());
+                for (int index6 = 0; index6 < elements.size(); index6++) {
+                    var registration = elements.get(index6);
                     if (!registration.active || !registration.updates.loaded()) {
                         unregister(registration.updates);
                         continue;
@@ -215,20 +225,26 @@ public final class StructureReloadCoordinator {
                     var reload = registration.updates.prepareReload(replacement.catalog());
                     if (reload != null) batch.add(new Prepared(registration, reload));
                 }
+
                 if (!registry.replacementCurrent(replacement))
                     throw new IllegalStateException("Runtime changed during reload preflight");
-                for (var prepared : batch)
+                for (int index3 = 0; index3 < batch.size(); index3++) {
+                    var prepared = batch.get(index3);
                     if (!current(prepared) || !prepared.registration.updates.reloadCurrent(prepared.reload))
                         throw new IllegalStateException("Host changed during reload preflight");
+                }
             } catch (RuntimeException failure) {
                 completed.accept(new Result(false, publication.view().sequence(), failure));
                 return;
             }
             // Configuration setters assign only. Old request identities are revoked before any new snapshot can publish.
-            for (var prepared : batch)
+            for (int index2 = 0; index2 < batch.size(); index2++) {
+                var prepared = batch.get(index2);
                 if (current(prepared)) prepared.registration.updates.revokeReload(prepared.reload);
+            }
             Throwable failure = null;
-            for (var prepared : batch) {
+            for (int index4 = 0; index4 < batch.size(); index4++) {
+                var prepared = batch.get(index4);
                 try {
                     prepared.registration.updates.pauseReload(prepared.reload);
                 } catch (RuntimeException | Error caught) {
@@ -246,7 +262,8 @@ public final class StructureReloadCoordinator {
                 completed.accept(new Result(false, publication.view().sequence(), caught));
                 throw caught;
             }
-            for (var prepared : batch)
+            for (int index5 = 0; index5 < batch.size(); index5++) {
+                var prepared = batch.get(index5);
                 if (current(prepared)) {
                     try {
                         prepared.registration.updates.installReload(prepared.reload);
@@ -254,6 +271,7 @@ public final class StructureReloadCoordinator {
                         failure = append(failure, caught);
                     }
                 }
+            }
             publication = next;
             // The committed directory must be broadcast even if an individual refresh callback failed.
             try {
@@ -316,16 +334,6 @@ public final class StructureReloadCoordinator {
     }
 
     public record Publication(StructureCatalog catalog, StructureCatalogView view, byte[] bytes) {
-        public Publication {
-            Objects.requireNonNull(catalog);
-            Objects.requireNonNull(view);
-            bytes = bytes.clone();
-        }
-
-        @Override
-        public byte[] bytes() {
-            return bytes.clone();
-        }
     }
 
     public static final class Registration implements AutoCloseable {

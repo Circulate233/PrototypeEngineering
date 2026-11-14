@@ -207,7 +207,9 @@ public final class StructurePreviewCamera {
                 hit = controller;
             }
         }
-        for (var cell : model.cells()) {
+        var elements = model.cells();
+        for (int index = 0; index < elements.size(); index++) {
+            var cell = elements.get(index);
             if (!view.visible(cell)) continue;
             double distance = distanceTo.applyAsDouble(cell);
             if (distance >= 0 && distance < best) {

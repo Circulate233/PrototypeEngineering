@@ -29,6 +29,7 @@ import com.circulation.prototype_eng.api.network.ComputerInputWork;
  * Immutable machine declaration shared by registration, assembly and later controller bindings.
  * A structure ID permits declaration before Forge block resolution. Neither this definition nor
  * its resolved structure grants world, owner, scheduler or planned-execution authority.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class MachineType {
     private final List<Consumer<NetworkDeviceEvent>> networkEvents;

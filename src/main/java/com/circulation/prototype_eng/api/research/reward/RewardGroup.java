@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.research.reward;
 import ae2.core.localization.LocalizationEnum;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -14,21 +13,21 @@ import java.util.Objects;
 /**
  * One choice; all children execute in their declared order without a second selection.
  * Optional title and description are display metadata, outside saved claims and execution identity.
+ * The supplied child list must remain immutable for the lifetime of this group.
  * Client GUIs call the configured enum's getLocal() directly and use id.toString() when it is absent.
  */
 public record RewardGroup(ResourceLocation id, @Nullable LocalizationEnum title,
                           @Nullable LocalizationEnum description, ObjectList<RewardChild> children) {
     public RewardGroup {
         Objects.requireNonNull(id, "id");
-        var copy = new ObjectArrayList<>(Objects.requireNonNull(children, "children"));
-        if (copy.isEmpty()) throw new IllegalArgumentException("Reward group must have children");
-        var ids = new ObjectOpenHashSet<ResourceLocation>(copy.size());
-        for (var child : copy) {
+        if (children.isEmpty()) throw new IllegalArgumentException("Reward group must have children");
+        var ids = new ObjectOpenHashSet<ResourceLocation>(children.size());
+        for (int index = 0; index < children.size(); index++) {
+            var child = children.get(index);
             if (!ids.add(Objects.requireNonNull(child, "child").id())) {
                 throw new IllegalArgumentException("Duplicate reward child: " + child.id());
             }
         }
-        children = ObjectLists.unmodifiable(copy);
     }
 
     public RewardGroup(ResourceLocation id, ObjectList<RewardChild> children) {

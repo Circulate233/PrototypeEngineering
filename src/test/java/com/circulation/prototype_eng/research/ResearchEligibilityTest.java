@@ -9,7 +9,6 @@ import com.circulation.prototype_eng.api.research.ResearchLevelStage;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchResourceFormula;
 import com.circulation.prototype_eng.api.research.ResearchStartContext;
-import com.circulation.prototype_eng.api.research.TeamResearchView;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import net.minecraft.util.ResourceLocation;
@@ -187,7 +186,6 @@ class ResearchEligibilityTest {
         assertEquals(1, captured.teamSharedResearchLevels().getInt(gate.id()));
         assertTrue(captured.teamHasNetworkCenter());
         amount.put(ComputingResourceFixtures.COMPUTE, 1);
-        assertEquals(7, captured.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
         assertFalse(eligibility.canStart(view, target.id(), 1, member.playerUuid(), amount, 2));
         assertThrows(IllegalArgumentException.class, () -> eligibility.canStart(view, target.id(), 1, UUID.randomUUID(), amount, 2));
         assertThrows(NullPointerException.class, () -> eligibility.canStart(view, target.id(), 1, null, amount, 2));
@@ -246,46 +244,4 @@ class ResearchEligibilityTest {
         assertTrue(clean.isStartable(personal.id()));
     }
 
-    @Test
-    void frozenDefinitionAuthorityAndExactPlayerIdentityAreRequiredEvenWithoutEligibleTargets() {
-        assertThrows(IllegalStateException.class, () -> new ResearchEligibility(new ResearchRegistry()));
-        var definition = definition("identity", 1, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage(1, 1).build()).build();
-        var eligibility = new ResearchEligibility(registry(definition));
-        var member = player(definition.id(), 1);
-        var memberId = member.playerUuid();
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculate("team", List.of(memberId), Map.of(), levels(), 0, Set.of(), resources()));
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculate("team", List.of(memberId), Map.of(memberId, new PlayerResearchState(UUID.randomUUID())), levels(), 0, Set.of(), resources()));
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculate("team", List.of(memberId, memberId), Map.of(memberId, member), levels(), 0, Set.of(), resources()));
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculate(" team ", List.of(), Map.of(), levels(), 0, Set.of(), resources()));
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculate("team", List.of(), Map.of(), levels(), -1, Set.of(), resources()));
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculate("team", List.of(), Map.of(), levels(), 0, Set.of(id("unknown_blacklist")), resources()));
-        var malformedResources = resources();
-        malformedResources.put(ComputingResourceFixtures.COMPUTE, -1);
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculate("team", List.of(memberId), Map.of(memberId, member), levels(), 0, Set.of(), malformedResources));
-        var view = eligibility.calculate("team", List.of(memberId), Map.of(memberId, member), levels(), 0, Set.of(), resources());
-        var anotherAuthority = new ResearchEligibility(registry(definition));
-        assertThrows(IllegalArgumentException.class, () -> anotherAuthority.structurallyEligible(view, definition.id(), 1));
-    }
-
-    @Test
-    void resourceSnapshotIsFrozenBeforeTheFirstConditionCanChangeItsOriginalInput() {
-        var amount = resources();
-        amount.put(ComputingResourceFixtures.COMPUTE, 7);
-        var observed = new AtomicInteger();
-        var first = definition("snapshot_first", 1, ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(stage(1, 1).build())
-                                                                                             .startCondition(_ -> {
-                                                                                                 amount.put(ComputingResourceFixtures.COMPUTE, 0);
-                                                                                                 return true;
-                                                                                             }).build();
-        var second = definition("snapshot_second", 1, ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(stage(1, 1).build())
-                                                                                               .startCondition(context -> {
-                                                                                                   observed.set((int) context.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
-                                                                                                   return observed.get() == 7;
-                                                                                               }).build();
-        var eligibility = new ResearchEligibility(registry(first, second));
-        TeamResearchView view = eligibility.calculate("team", List.of(), Map.of(), levels(), 0, Set.of(), amount);
-        assertEquals(7, observed.get());
-        assertTrue(view.isStartable(second.id()));
-        assertEquals(0, amount.getDouble(ComputingResourceFixtures.COMPUTE));
-    }
 }

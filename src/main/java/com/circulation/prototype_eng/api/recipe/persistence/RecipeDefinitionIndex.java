@@ -5,17 +5,15 @@ import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.process.RequirementPath;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
- * Canonical definition graph for one immutable recipe, including external structural wrappers.
+ * Canonical definition graph, including external structural wrappers. Definitions must form an
+ * acyclic graph with unique paths and remain unchanged for the lifetime of this index.
  */
-@SuppressWarnings("ClassCanBeRecord") // Only a traversed recipe may construct this index, not an arbitrary path map.
+@SuppressWarnings("ClassCanBeRecord")
 public final class RecipeDefinitionIndex {
     private final Map<RequirementPath, RecipeRequirement<?>> requirements;
 
@@ -29,40 +27,36 @@ public final class RecipeDefinitionIndex {
 
     private RecipeDefinitionIndex(List<RecipeRequirement<?>> roots) {
         var entries = new Object2ObjectLinkedOpenHashMap<RequirementPath, RecipeRequirement<?>>(6);
-        var visiting = new ReferenceOpenHashSet<RecipeRequirement<?>>();
-        for (var root : roots) {
-            add(root, root.path(null), visiting, entries);
+        for (int index2 = 0; index2 < roots.size(); index2++) {
+            var root = roots.get(index2);
+            add(root, root.path(null), entries);
         }
-        requirements = Collections.unmodifiableMap(entries);
+        requirements = entries;
     }
 
     private static <C> void add(RecipeRequirement<C> requirement, RequirementPath path,
-                                ReferenceOpenHashSet<RecipeRequirement<?>> visiting,
                                 Object2ObjectLinkedOpenHashMap<RequirementPath, RecipeRequirement<?>> entries) {
-        if (requirement != requirement.definition()) {
-            throw new IllegalArgumentException("Recipe structure contains an effective view");
+        entries.put(path, requirement);
+
+        var elements = requirement.type().system().children(requirement.payload());
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var child = elements.get(index1);
+            add(child, child.path(path), entries);
         }
-        if (!visiting.add(requirement)) {
-            throw new IllegalArgumentException("Cyclic nested requirement definitions");
-        }
-        if (entries.putIfAbsent(path, requirement) != null) {
-            throw new IllegalArgumentException("Duplicate nested requirement path: " + path);
-        }
-        for (var child : requirement.type().system().children(requirement.payload())) {
-            Objects.requireNonNull(child);
-            add(child, child.path(path), visiting, entries);
-        }
-        visiting.remove(requirement);
+
     }
 
     public RecipeRequirement<?> require(RequirementPath path) {
-        var requirement = requirements.get(Objects.requireNonNull(path));
+        var requirement = requirements.get(path);
         if (requirement == null) {
             throw new IllegalArgumentException("Unknown saved requirement path: " + path);
         }
         return requirement;
     }
 
+    /**
+     * Returns the indexed definitions. Callers must not modify this map.
+     */
     public Map<RequirementPath, RecipeRequirement<?>> requirements() {
         return requirements;
     }

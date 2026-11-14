@@ -73,17 +73,22 @@ public class MachineModelRenderState implements AutoCloseable {
 
     private static void closeEntries(List<MachineModelPasses.Entry> entries) {
         Throwable failure = null;
-        for (var entry : entries)
+        for (int index4 = 0; index4 < entries.size(); index4++) {
+            var entry = entries.get(index4);
             try {
                 entry.lease().close();
             } catch (RuntimeException | Error exception) {
                 failure = BuiltModelBuffers.append(failure, exception);
             }
+        }
         BuiltModelBuffers.rethrow(failure);
     }
 
     private static boolean forcesGlobalRenderer(List<StructureRenderAnchors.Anchor> geometry) {
-        for (var anchor : geometry) if (anchor.binding().forceGlobalRenderer()) return true;
+        for (int index1 = 0; index1 < geometry.size(); index1++) {
+            var anchor = geometry.get(index1);
+            if (anchor.binding().forceGlobalRenderer()) return true;
+        }
         return false;
     }
 
@@ -125,9 +130,11 @@ public class MachineModelRenderState implements AutoCloseable {
         AxisAlignedBB renderBounds = new AxisAlignedBB(bounds.min(), bounds.max().add(1, 1, 1));
         int light = tile.getWorld().getCombinedLight(tile.getPos(), 0);
         try {
-            for (var anchor : selected) {
+            for (int index7 = 0; index7 < selected.size(); index7++) {
+                var anchor = selected.get(index7);
                 var modes = anchor.binding().animation() == null ? List.of(GeckoModelBaker.BakeMode.ALL) : ANIMATED;
-                for (var mode : modes) {
+                for (int index2 = 0; index2 < modes.size(); index2++) {
+                    var mode = modes.get(index2);
                     var request = GeckoRenderRequest.from(captured.owner, captured.bindingEpoch, cache.resourceEpoch(), anchor, origin, mode, sample);
                     var lease = cache.request(request);
                     if (lease == null) {
@@ -196,12 +203,15 @@ public class MachineModelRenderState implements AutoCloseable {
         } catch (RuntimeException | Error exception) {
             failure = exception;
             // A failed native replacement must revoke its cached draw and world-hiding permissions.
-            for (var tile : tileSnapshot())
+            var elements5 = tileSnapshot();
+            for (int index5 = 0; index5 < elements5.size(); index5++) {
+                var tile = elements5.get(index5);
                 try {
                     withdraw(tile);
                 } catch (RuntimeException | Error cleanup) {
                     failure = BuiltModelBuffers.append(failure, cleanup);
                 }
+            }
             try {
                 MachineModelBloom.clear();
             } catch (RuntimeException | Error cleanup) {
@@ -262,12 +272,14 @@ public class MachineModelRenderState implements AutoCloseable {
             captured.add(new OwnedView(entry.getKey(), entry.getValue(), entry.getValue().view));
         capturedFailureRevoker = () -> {
             Throwable failure = null;
-            for (var owned : captured)
+            for (int index = 0; index < captured.size(); index++) {
+                var owned = captured.get(index);
                 if (states.get(owned.tile) == owned.state && owned.state.view == owned.view) try {
                     withdraw(owned.tile);
                 } catch (RuntimeException | Error cleanup) {
                     failure = BuiltModelBuffers.append(failure, cleanup);
                 }
+            }
             BuiltModelBuffers.rethrow(failure);
         };
         return capturedFailureRevoker;
@@ -307,7 +319,9 @@ public class MachineModelRenderState implements AutoCloseable {
         } catch (RuntimeException | Error exception) {
             failure = exception;
         }
-        for (var tile : tileSnapshot())
+        var elements6 = tileSnapshot();
+        for (int index6 = 0; index6 < elements6.size(); index6++) {
+            var tile = elements6.get(index6);
             try {
                 var state = states.get(tile);
                 if (state != null && (tile.isInvalid() || tile.getWorld() != state.world || !state.origin.equals(origin)))
@@ -315,6 +329,7 @@ public class MachineModelRenderState implements AutoCloseable {
             } catch (RuntimeException | Error cleanup) {
                 failure = BuiltModelBuffers.append(failure, cleanup);
             }
+        }
         try {
             hides.tick();
         } catch (RuntimeException | Error cleanup) {
@@ -345,12 +360,15 @@ public class MachineModelRenderState implements AutoCloseable {
     @Override
     public void close() {
         Throwable failure = null;
-        for (var tile : tileSnapshot())
+        var elements = tileSnapshot();
+        for (int index3 = 0; index3 < elements.size(); index3++) {
+            var tile = elements.get(index3);
             try {
                 withdraw(tile);
             } catch (RuntimeException | Error exception) {
                 failure = BuiltModelBuffers.append(failure, exception);
             }
+        }
         try {
             closeEntries(pending);
         } catch (RuntimeException | Error exception) {

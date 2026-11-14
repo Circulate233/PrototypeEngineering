@@ -46,7 +46,9 @@ public final class StructureCatalogCodec {
             output.writeLong(view.session().getLeastSignificantBits());
             output.writeLong(view.sequence());
             count(output, view.nodes().size());
-            for (var node : view.nodes()) {
+            var elements4 = view.nodes();
+            for (int index4 = 0; index4 < elements4.size(); index4++) {
+                var node = elements4.get(index4);
                 id(output, node.id());
                 output.writeByte(node.orientation().getSide(RelativeSide.FRONT).getIndex());
                 output.writeByte(node.orientation().getSide(RelativeSide.TOP).getIndex());
@@ -57,9 +59,17 @@ public final class StructureCatalogCodec {
                 output.writeInt(node.maxCount());
                 position(output, node.sliceOffset());
                 count(output, node.cells().size());
-                for (var cell : node.cells()) position(output, cell);
+                var elements = node.cells();
+                for (int index = 0; index < elements.size(); index++) {
+                    var cell = elements.get(index);
+                    position(output, cell);
+                }
                 count(output, node.children().size());
-                for (int child : node.children()) output.writeInt(child);
+                var elements2 = node.children();
+                for (int index2 = 0; index2 < elements2.size(); index2++) {
+                    int child = elements2.getInt(index2);
+                    output.writeInt(child);
+                }
                 displays(output, node.displays());
             }
             count(output, view.entries().size());
@@ -132,7 +142,9 @@ public final class StructureCatalogCodec {
             nullable(output, display.tileNbt());
             output.writeBoolean(display.complete());
             count(output, display.options().size());
-            for (var option : display.options()) {
+            var elements3 = display.options();
+            for (int index3 = 0; index3 < elements3.size(); index3++) {
+                var option = elements3.get(index3);
                 id(output, option.blockId());
                 output.writeByte(option.meta());
                 fields(output, option.nbt());

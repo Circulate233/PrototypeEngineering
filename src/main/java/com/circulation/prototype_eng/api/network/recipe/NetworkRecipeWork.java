@@ -17,6 +17,7 @@ import java.util.Objects;
 
 /**
  * Machine-wide PN defaults and per-recipe extensions, executed by the ordinary requirement pipeline.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 @SuppressWarnings("unused") // Machine declarations install this recreated component through the public Java API.
 public final class NetworkRecipeWork implements MachineRecipeRequirements {

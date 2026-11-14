@@ -26,9 +26,12 @@ public record ZenComputerComponent(NetworkComputerComponent value) {
         return new ZenComputerComponent(NetworkComputerComponent.fixed(resources.value()));
     }
 
+    /**
+     * The registration item must remain unchanged until definitions are registered.
+     */
     @ZenMethod
     public void register(IItemStack item) {
-        var stack = CraftTweakerMC.getItemStack(Objects.requireNonNull(item)).copy();
+        var stack = CraftTweakerMC.getItemStack(item);
         DefinitionRegistrations.computerComponents(event -> event.registry().register(stack, value));
     }
 }

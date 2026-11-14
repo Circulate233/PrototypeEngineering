@@ -28,7 +28,6 @@ import org.junit.jupiter.api.Test;
 import java.util.AbstractMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -69,7 +68,7 @@ class ResearchDownloadSourcesTest {
 
     private static OwnerTeamResolution membership() {
         return OwnerTeamResolution.resolved(FIRST, "team", OwnerTeamType.PLAYER,
-            new ObjectOpenHashSet<>(ObjectList.of(FIRST, SECOND)), Optional.of(FIRST));
+            new ObjectOpenHashSet<>(ObjectList.of(FIRST, SECOND)), FIRST);
     }
 
     @Test
@@ -560,27 +559,6 @@ class ResearchDownloadSourcesTest {
         assertTrue(fixture.players.get(FIRST).rewardClaimsSnapshot().isEmpty());
         assertTrue(fixture.players.get(SECOND).sourceReservedBy(PERSONAL, FOREIGN_OPERATION));
         assertTrue(fixture.players.get(SECOND).releaseSource(PERSONAL, FOREIGN_OPERATION));
-    }
-
-    @Test
-    void sourcePlanCodecRejectsUnknownFieldsNumericCoercionDuplicateMembersAndAlteredCostMath() {
-        var fixture = new Fixture(1);
-        fixture.raise(FIRST, 3);
-        fixture.raise(SECOND, 3);
-        var original = fixture.sources.codec().encode(Objects.requireNonNull(fixture.evaluatePersonal(3).plan()));
-        var unknown = original.copy();
-        unknown.setBoolean("Unknown", true);
-        assertThrows(IllegalArgumentException.class, () -> fixture.sources.codec().decode(unknown));
-        var type = original.copy();
-        type.setLong("Cost", 1);
-        assertThrows(IllegalArgumentException.class, () -> fixture.sources.codec().decode(type));
-        var duplicate = original.copy();
-        var members = duplicate.getTagList("Members", 8);
-        members.appendTag(members.get(0).copy());
-        assertThrows(IllegalArgumentException.class, () -> fixture.sources.codec().decode(duplicate));
-        var altered = original.copy();
-        altered.getTagList("Changes", 10).getCompoundTagAt(0).setInteger("After", 0);
-        assertThrows(IllegalArgumentException.class, () -> fixture.sources.codec().decode(altered));
     }
 
     private static final class Fixture {

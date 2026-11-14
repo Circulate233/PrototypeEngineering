@@ -94,7 +94,8 @@ public final class ZenRecipePool {
         for (var pool : pools) {
             Objects.requireNonNull(pool);
             providers.add(pool.value);
-            for (var recipe : pool.recipes) {
+            for (int index3 = 0; index3 < pool.recipes.size(); index3++) {
+                var recipe = pool.recipes.get(index3);
                 var previous = handles.putIfAbsent(recipe.recipe(), recipe);
                 if (previous != null && (previous.codec() != recipe.codec() || !previous.revision().equals(recipe.revision())))
                     throw new IllegalArgumentException("Shared recipe must retain one exact codec and revision: " + recipe.id());
@@ -102,7 +103,11 @@ public final class ZenRecipePool {
         }
         var combined = new CompositeRecipePool(ZenRecipeSupport.id(id), translationKey, providers);
         var bindings = new ObjectArrayList<ZenRecipe>(combined.recipes().size());
-        for (var recipe : combined.recipes()) bindings.add(Objects.requireNonNull(handles.get(recipe)));
+        var elements = combined.recipes();
+        for (int index = 0; index < elements.size(); index++) {
+            var recipe = elements.get(index);
+            bindings.add(Objects.requireNonNull(handles.get(recipe)));
+        }
         return new ZenRecipePool(combined, ObjectLists.unmodifiable(bindings));
     }
 
@@ -137,7 +142,10 @@ public final class ZenRecipePool {
         declareClient();
         DefinitionRegistrations.recipes(event -> {
             event.registry().register(value);
-            for (var recipe : recipes) event.registry().declareRevision(recipe.recipe(), recipe.revision());
+            for (int index2 = 0; index2 < recipes.size(); index2++) {
+                var recipe = recipes.get(index2);
+                event.registry().declareRevision(recipe.recipe(), recipe.revision());
+            }
         });
     }
 

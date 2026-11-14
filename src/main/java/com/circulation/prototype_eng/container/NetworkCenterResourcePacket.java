@@ -26,7 +26,8 @@ public record NetworkCenterResourcePacket(boolean full, IntList removed, List<De
      */
     @SuppressWarnings("unused") // AE's PacketWritable field invokes this constructor reflectively.
     public NetworkCenterResourcePacket(ByteBuf data) {
-        this(data.readBoolean(), readRemoved(new PacketBuffer(data)), readAdded(new PacketBuffer(data)), readChanges(new PacketBuffer(data)));
+        var packet = new PacketBuffer(data);
+        this(packet.readBoolean(), readRemoved(packet), readAdded(packet), readChanges(packet));
     }
 
     private static IntList readRemoved(PacketBuffer data) {
@@ -62,14 +63,16 @@ public record NetworkCenterResourcePacket(boolean full, IntList removed, List<De
         packet.writeVarInt(removed.size());
         for (int index = 0; index < removed.size(); index++) packet.writeVarInt(removed.getInt(index));
         packet.writeVarInt(added.size());
-        for (var entry : added) {
+        for (int index1 = 0; index1 < added.size(); index1++) {
+            var entry = added.get(index1);
             packet.writeVarInt(entry.index);
             NetworkResourcePackets.write(packet, entry.resource);
             packet.writeDouble(entry.occupied);
             packet.writeDouble(entry.capacity);
         }
         packet.writeVarInt(changed.size());
-        for (var entry : changed) {
+        for (int index2 = 0; index2 < changed.size(); index2++) {
+            var entry = changed.get(index2);
             packet.writeVarInt(entry.index);
             packet.writeByte(entry.fields);
             if ((entry.fields & OCCUPIED) != 0) packet.writeDouble(entry.occupied);

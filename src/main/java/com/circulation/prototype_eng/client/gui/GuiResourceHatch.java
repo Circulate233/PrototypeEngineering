@@ -102,7 +102,8 @@ public final class GuiResourceHatch extends AEBaseGui<ContainerResourceHatch> {
     private void updateResourceSlots() {
         container.presentation.beginLayout(container.snapshot.revision());
         container.requestView((int) (inputScrollbar.scroll() / 18), (int) (outputScrollbar.scroll() / 18));
-        for (Slot slot : container.inventorySlots) {
+        for (int index3 = 0; index3 < container.inventorySlots.size(); index3++) {
+            Slot slot = container.inventorySlots.get(index3);
             if (container.isResourceSlot(slot.slotNumber)) {
                 var resource = (AppEngSlot) slot;
                 boolean input = container.isInputSlot(slot.slotNumber);
@@ -139,7 +140,8 @@ public final class GuiResourceHatch extends AEBaseGui<ContainerResourceHatch> {
         int left = input ? container.inputLeft : container.outputLeft;
         beginClip(left);
         try {
-            for (var slot : container.inventorySlots) {
+            for (int index1 = 0; index1 < container.inventorySlots.size(); index1++) {
+                var slot = container.inventorySlots.get(index1);
                 if (container.isResourceSlot(slot.slotNumber) && container.isInputSlot(slot.slotNumber) == input && slot.isEnabled())
                     GuiAtlas.state(x + slot.xPos - 1, y + slot.yPos - 1, 73, 0, 18, 18);
             }
@@ -170,7 +172,8 @@ public final class GuiResourceHatch extends AEBaseGui<ContainerResourceHatch> {
     @Override
     protected boolean isPointInRegion(int left, int top, int regionWidth, int regionHeight, int pointX, int pointY) {
         if (regionWidth == 16 && regionHeight == 16) {
-            for (var slot : container.inventorySlots) {
+            for (int index2 = 0; index2 < container.inventorySlots.size(); index2++) {
+                var slot = container.inventorySlots.get(index2);
                 if (container.isResourceSlot(slot.slotNumber) && slot.xPos == left && slot.yPos == top
                     && (pointY < guiTop + container.resourceTop || pointY >= guiTop + container.resourceTop + container.visibleRows * 18))
                     return false;
@@ -180,8 +183,9 @@ public final class GuiResourceHatch extends AEBaseGui<ContainerResourceHatch> {
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        GuiLabel.draw(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 29, 8, titleWidth(), 10, 0x404040, false);
+        GuiLabel.draw(fontRenderer, container.getGuiTitle().getFormattedText(), 29, 8, titleWidth(), 10, 0x404040, false);
         if (container.mode().hasInput())
             GuiAtlas.inset(container.inputLeft, container.resourceTop, container.columns * 18, container.visibleRows * 18);
         if (container.mode().hasOutput())

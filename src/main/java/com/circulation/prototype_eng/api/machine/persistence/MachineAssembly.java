@@ -1,14 +1,10 @@
 package com.circulation.prototype_eng.api.machine.persistence;
 
-import com.circulation.prototype_eng.api.network.ComputerInputWork;
 import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.component.TopologicalComponentMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
-import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
-import com.circulation.prototype_eng.api.network.resource.ComputerRecipe;
 import com.circulation.prototype_eng.api.machine.MachineType;
-import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.component.MachineScheduling;
 import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
@@ -19,9 +15,11 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleHost;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
+import com.circulation.prototype_eng.api.network.ComputerInputWork;
+import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
+import com.circulation.prototype_eng.api.network.resource.ComputerRecipe;
 import com.circulation.prototype_eng.api.persistence.AttributeModifierNbt;
 import com.circulation.prototype_eng.api.persistence.MachineAttributesNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.structure.StructureComponents;
@@ -62,9 +60,8 @@ public final class MachineAssembly {
 
         @Override
         public MachineScheduling restore(MachineInstance owner, MachineScheduling component, NBTTagCompound saved) {
-            StrictNbt.requireKeys(saved, "Mode", "Policy");
-            return new MachineScheduling(ExecutionMode.valueOf(StrictNbt.requireString(saved, "Mode")),
-                saved.hasKey("Policy") ? ControllerExecutionPolicy.valueOf(StrictNbt.requireString(saved, "Policy")) : null);
+            return new MachineScheduling(ExecutionMode.valueOf(saved.getString("Mode")),
+                saved.hasKey("Policy") ? ControllerExecutionPolicy.valueOf(saved.getString("Policy")) : null);
         }
     };
 
@@ -80,7 +77,7 @@ public final class MachineAssembly {
         instanceFactory = builder.instanceFactory;
         type = builder.type;
         revision = builder.revision;
-        attributes = new MachineAttributesNbt(builder.attributes);
+        attributes = builder.attributes == AttributeModifierNbt.INSTANCE ? MachineAttributesNbt.INSTANCE : new MachineAttributesNbt(builder.attributes);
         validators = builder.validators;
         computerRecipes = builder.computerRecipes;
         var copy = builder.bindings;
@@ -90,7 +87,9 @@ public final class MachineAssembly {
         if (type.componentTypes().contains(ComputerInputWork.TYPE))
             add(copy, new Binding<>(ComputerInputWork.TYPE, ComputerInputWork.CODEC));
         bindings = copy;
-        for (var declared : type.componentTypes()) {
+        var elements8 = type.componentTypes();
+        for (int index8 = 0; index8 < elements8.size(); index8++) {
+            var declared = elements8.get(index8);
             if (isStructureDerived(declared)) {
                 throw new IllegalArgumentException("Structure-derived hatches must be established by structure publication, not declared as components");
             }
@@ -106,71 +105,20 @@ public final class MachineAssembly {
     }
 
     private static <C> void createBinding(MachineInstance machine, Binding<C> binding) {
-        var before = Graph.capture(machine);
         var component = binding.type().create(machine);
-        before.requireSame(machine);
         machine.components().put(binding.type(), component);
     }
 
     private static <C> void restoreBinding(MachineInstance machine, Binding<C> binding, NBTTagCompound tag) {
-        var before = Graph.capture(machine);
-        var local = machine.attributes().localSnapshot();
         var component = Objects.requireNonNull(machine.components().get(binding.type()));
-        var restored = binding.restore(machine, component, tag.copy());
-        requireUnchanged(machine, before, local);
+        var restored = binding.restore(machine, component, tag);
         if (restored != component) {
             machine.components().replaceValue(binding.type(), restored);
         }
     }
 
     private static boolean isStructureDerived(ComponentType<MachineInstance, ?> descriptor) {
-        if (descriptor.id().equals(StructureComponents.TYPE.id())) {
-            if (descriptor != StructureComponents.TYPE) {
-                throw new IllegalArgumentException("Different component descriptor uses the structure-port ID");
-            }
-            return true;
-        }
-        if (!descriptor.id().equals(MachineHatches.TYPE.id())) {
-            return false;
-        }
-        if (descriptor != MachineHatches.TYPE) {
-            throw new IllegalArgumentException("Different component descriptor uses the structure-hatches ID");
-        }
-        return true;
-    }
-
-    private static void requireUnchanged(MachineInstance machine, Graph graph, Map<ResourceLocation, MachineAttributes.LocalAttribute> attributes) {
-        graph.requireSame(machine);
-        requireSameAttributes(attributes, machine.attributes().localSnapshot());
-        graph.requireSame(machine);
-    }
-
-    private static void requireSameAttributes(Map<ResourceLocation, MachineAttributes.LocalAttribute> expected,
-                                              Map<ResourceLocation, MachineAttributes.LocalAttribute> actual) {
-        if (expected.size() != actual.size()) {
-            throw new IllegalStateException("Machine callback changed owner attributes");
-        }
-        var original = expected.entrySet().iterator();
-        var current = actual.entrySet().iterator();
-        while (original.hasNext()) {
-            var before = original.next();
-            var after = current.next();
-            var left = before.getValue();
-            var right = after.getValue();
-            if (!before.getKey().equals(after.getKey()) || !Objects.equals(left.baseOverride(), right.baseOverride())
-                || left.inheritModifiers() != right.inheritModifiers() || left.modifiers().size() != right.modifiers().size()) {
-                throw new IllegalStateException("Machine callback changed owner attributes");
-            }
-            var oldModifiers = left.modifiers().entrySet().iterator();
-            var newModifiers = right.modifiers().entrySet().iterator();
-            while (oldModifiers.hasNext()) {
-                var old = oldModifiers.next();
-                var replacement = newModifiers.next();
-                if (!old.getKey().equals(replacement.getKey()) || old.getValue() != replacement.getValue()) {
-                    throw new IllegalStateException("Machine callback replaced an owner attribute modifier");
-                }
-            }
-        }
+        return descriptor == StructureComponents.TYPE || descriptor == MachineHatches.TYPE;
     }
 
     private static void add(Map<ResourceLocation, Binding<?>> bindings, Binding<?> binding) {
@@ -187,7 +135,7 @@ public final class MachineAssembly {
     }
 
     /**
-     * 已完成的只读计算机配方声明。JEI 直接读取本列表，禁止创建机器实例探查配方。
+     * Completed read-only computer recipe declarations. JEI reads this list without creating a machine instance.
      */
     public List<ComputerRecipe> computerRecipes() {
         return computerRecipes;
@@ -197,32 +145,27 @@ public final class MachineAssembly {
      * Read this assembly's explicit ownership codec without factories, loading or world effects.
      */
     @Nullable
-    public PersistentMachineIdentity savedIdentity(NBTTagCompound saved) {
-        var tag = Objects.requireNonNull(saved).copy();
-        StrictNbt.requireKeys(tag, "Version", "Type", "Revision", "Attributes", "Components", "PendingDependencies", "FormationGeneration");
-        if (StrictNbt.requireInt(tag, "Version") != 2 || !StrictNbt.requireId(tag, "Type").equals(type.id())
-            || !StrictNbt.requireString(tag, "Revision").equals(revision)) {
+    public PersistentMachineIdentity savedIdentity(NBTTagCompound tag) {
+        if (tag.getInteger("Version") != 2 || !new ResourceLocation(tag.getString("Type")).equals(type.id())
+            || !tag.getString("Revision").equals(revision)) {
             throw new IllegalArgumentException("Saved identity requires this exact machine assembly");
         }
         PersistentMachineIdentity identity = null;
-        for (var component : readComponents(StrictNbt.requireList(tag, "Components", Constants.NBT.TAG_COMPOUND)).values()) {
-            if (component.binding().codec() == MachineOwnership.CODEC) {
-                if (identity != null) {
+        var components = tag.getTagList("Components", Constants.NBT.TAG_COMPOUND);
+        for (int index = 0; index < components.tagCount(); index++) {
+            var component = components.getCompoundTagAt(index);
+            var binding = require(new ResourceLocation(component.getString("Type")));
+            if (binding.codec() == MachineOwnership.CODEC) {
+                if (identity != null)
                     throw new IllegalArgumentException("Saved machine has multiple ownership components");
-                }
-                identity = PersistentMachineIdentity.decode(component.data());
+                identity = PersistentMachineIdentity.decode(component.getCompoundTag("Data"));
             }
         }
         return identity;
     }
 
     private MachineInstance createInstance() {
-        var machine = Objects.requireNonNull(instanceFactory.apply(type), "Machine instance factory returned null");
-        if (machine.type() != type || machine.lifecycle() != null || !machine.components().assemblyBindings().isEmpty()
-            || !machine.components().snapshotPendingDependencies().isEmpty()) {
-            throw new IllegalArgumentException("Machine instance factory must return a fresh empty instance of this canonical type");
-        }
-        return machine;
+        return instanceFactory.apply(type);
     }
 
     public MachineInstance create(MachineLifecycleHost host) {
@@ -233,7 +176,9 @@ public final class MachineAssembly {
         var machine = createInstance();
         var lifecycle = new MachineLifecycle(machine, host, registry);
         lifecycle.assemble(() -> {
-            for (var declared : type.componentTypes()) {
+            var elements = type.componentTypes();
+            for (int index2 = 0; index2 < elements.size(); index2++) {
+                var declared = elements.get(index2);
                 createBinding(machine, require(declared));
             }
             if (machine.components().get(MachineScheduling.TYPE) == null) {
@@ -257,18 +202,14 @@ public final class MachineAssembly {
     public MachineInstance restore(MachineLifecycleHost host, NBTTagCompound saved, MachineLifecycleRegistry registry) {
         var machine = createInstance();
         var lifecycle = new MachineLifecycle(machine, host, registry);
-        lifecycle.assemble(() -> restoreState(machine, Objects.requireNonNull(saved).copy()));
+        lifecycle.assemble(() -> restoreState(machine, saved));
         lifecycle.load(MachineLifecycleEvent.LoadBoundary.RESTORED);
         return machine;
     }
 
     public NBTTagCompound encode(MachineInstance machine) {
-        Objects.requireNonNull(machine);
-        if (machine.type() != type) {
-            throw new IllegalArgumentException("Machine belongs to a different canonical declaration");
-        }
         var lifecycle = Objects.requireNonNull(machine.lifecycle(), "Machine has no attached lifecycle");
-        return lifecycle.withPersistence(() -> encodeState(machine)).copy();
+        return lifecycle.withPersistence(() -> encodeState(machine));
     }
 
     private NBTTagCompound encodeState(MachineInstance machine) {
@@ -276,16 +217,16 @@ public final class MachineAssembly {
         var graph = Graph.capture(machine);
         var local = machine.attributes().localSnapshot();
         validate(machine);
-        requireUnchanged(machine, graph, local);
         var tag = new NBTTagCompound();
         tag.setInteger("Version", 2);
         tag.setString("Type", type.id().toString());
         tag.setString("Revision", revision);
         tag.setLong("FormationGeneration", Objects.requireNonNull(machine.lifecycle()).formationGeneration());
-        tag.setTag("Attributes", attributes.encode(local).copy());
-        requireUnchanged(machine, graph, local);
+        tag.setTag("Attributes", attributes.encode(local));
         var components = new NBTTagList();
-        for (var saved : graph.components()) {
+        var elements9 = graph.components();
+        for (int index9 = 0; index9 < elements9.size(); index9++) {
+            var saved = elements9.get(index9);
             if (isStructureDerived(saved.type())) {
                 continue;
             }
@@ -293,9 +234,7 @@ public final class MachineAssembly {
             var entry = new NBTTagCompound();
             entry.setString("Type", saved.type().id().toString());
             entry.setTag("Dependencies", writeTypes(saved.dependencies()));
-            requireUnchanged(machine, graph, local);
-            entry.setTag("Data", binding.encode(machine, saved).copy());
-            requireUnchanged(machine, graph, local);
+            entry.setTag("Data", binding.encode(machine, saved));
             components.appendTag(entry);
         }
         tag.setTag("Components", components);
@@ -308,25 +247,23 @@ public final class MachineAssembly {
             pending.appendTag(entry);
         });
         tag.setTag("PendingDependencies", pending);
-        requireUnchanged(machine, graph, local);
         machine.requirePersistenceBoundary();
         return tag;
     }
 
     private void restoreState(MachineInstance machine, NBTTagCompound tag) {
         requireOwner(machine);
-        StrictNbt.requireKeys(tag, "Version", "Type", "Revision", "Attributes", "Components", "PendingDependencies", "FormationGeneration");
-        if (StrictNbt.requireInt(tag, "Version") != 2 || !StrictNbt.requireId(tag, "Type").equals(type.id())
-            || !StrictNbt.requireString(tag, "Revision").equals(revision)) {
+        if (tag.getInteger("Version") != 2 || !new ResourceLocation(tag.getString("Type")).equals(type.id())
+            || !tag.getString("Revision").equals(revision)) {
             throw new IllegalArgumentException("Unsupported machine save or incompatible declaration revision");
         }
-        long generation = StrictNbt.requireLong(tag, "FormationGeneration");
+        long generation = tag.getLong("FormationGeneration");
         if (generation < 0) {
             throw new IllegalArgumentException("Formation generation must be nonnegative");
         }
         Objects.requireNonNull(machine.lifecycle()).restoreFormationGeneration(generation);
-        var entries = readComponents(StrictNbt.requireList(tag, "Components", Constants.NBT.TAG_COMPOUND));
-        var pending = readPending(StrictNbt.requireList(tag, "PendingDependencies", Constants.NBT.TAG_COMPOUND), entries);
+        var entries = readComponents(tag.getTagList("Components", Constants.NBT.TAG_COMPOUND));
+        var pending = readPending(tag.getTagList("PendingDependencies", Constants.NBT.TAG_COMPOUND), entries);
         var dependencies = new Object2ObjectLinkedOpenHashMap<ComponentType<MachineInstance, ?>, Set<ComponentType<MachineInstance, ?>>>();
         var order = new TopologicalComponentMap<ComponentType<MachineInstance, ?>, SavedComponent>();
         entries.forEach((descriptor, entry) -> {
@@ -335,10 +272,7 @@ public final class MachineAssembly {
         });
         ComponentMap.validateGraph(dependencies);
         var ordered = order.orderedComponents();
-        var before = Graph.capture(machine);
-        var beforeAttributes = machine.attributes().localSnapshot();
-        var restoredAttributes = attributes.decode(StrictNbt.requireCompound(tag, "Attributes").copy());
-        requireUnchanged(machine, before, beforeAttributes);
+        var restoredAttributes = attributes.decode(tag.getCompoundTag("Attributes"));
         for (var entry : entries.values()) {
             createBinding(machine, entry.binding());
         }
@@ -354,14 +288,17 @@ public final class MachineAssembly {
         pending.forEach((descriptor, edges) -> edges.forEach(dependency -> machine.components().addDependency(descriptor, dependency)));
         machine.attributes().restoreLocal(restoredAttributes);
         supplementDefaults(machine);
-        for (var node : ordered) {
+        for (int index3 = 0; index3 < ordered.size(); index3++) {
+            var node = ordered.get(index3);
             restoreBinding(machine, node.component().binding(), node.component().data());
         }
         validate(machine);
     }
 
     private static boolean hasOwnership(MachineInstance machine) {
-        for (var binding : machine.components().assemblyBindings()) {
+        var elements4 = machine.components().assemblyBindings();
+        for (int index4 = 0; index4 < elements4.size(); index4++) {
+            var binding = elements4.get(index4);
             if (binding.component() instanceof MachineOwnership) return true;
         }
         return false;
@@ -384,15 +321,13 @@ public final class MachineAssembly {
     private void validate(MachineInstance machine) {
         requireOwner(machine);
         var graph = Graph.capture(machine);
-        var local = machine.attributes().localSnapshot();
-        machine.components().snapshotBindings();
-        requireUnchanged(machine, graph, local);
-        for (var saved : graph.components()) {
+        var elements7 = graph.components();
+        for (int index7 = 0; index7 < elements7.size(); index7++) {
+            var saved = elements7.get(index7);
             if (isStructureDerived(saved.type())) {
                 continue;
             }
             require(saved.type()).validate(machine, saved);
-            requireUnchanged(machine, graph, local);
         }
         graph.pending().forEach((dependent, dependencies) -> {
             require(dependent);
@@ -400,23 +335,21 @@ public final class MachineAssembly {
                 requireReference(dependency);
             }
         });
-        for (var saved : graph.components()) {
+        var elements5 = graph.components();
+        for (int index5 = 0; index5 < elements5.size(); index5++) {
+            var saved = elements5.get(index5);
             for (var dependency : saved.dependencies()) {
                 requireReference(dependency);
             }
         }
-        for (var validator : validators) {
-            requireUnchanged(machine, graph, local);
+        for (int index1 = 0; index1 < validators.size(); index1++) {
+            var validator = validators.get(index1);
             validator.accept(machine);
-            requireUnchanged(machine, graph, local);
         }
         machine.requirePersistenceBoundary();
     }
 
     private void requireOwner(MachineInstance machine) {
-        if (machine.type() != type) {
-            throw new IllegalArgumentException("Machine belongs to a different canonical declaration");
-        }
         machine.requirePersistenceBoundary();
     }
 
@@ -424,12 +357,8 @@ public final class MachineAssembly {
         var entries = new Object2ObjectLinkedOpenHashMap<ComponentType<MachineInstance, ?>, SavedComponent>(list.tagCount());
         for (int index = 0; index < list.tagCount(); index++) {
             var entry = list.getCompoundTagAt(index);
-            StrictNbt.requireKeys(entry, "Type", "Dependencies", "Data");
-            var binding = require(StrictNbt.requireId(entry, "Type"));
-            var data = StrictNbt.requireCompound(entry, "Data").copy();
-            if (binding.codec() == null) {
-                StrictNbt.requireKeys(data);
-            }
+            var binding = require(new ResourceLocation(entry.getString("Type")));
+            var data = entry.getCompoundTag("Data");
             var component = new SavedComponent(binding, readTypes(entry), data);
             if (entries.putIfAbsent(binding.type(), component) != null) {
                 throw new IllegalArgumentException("Duplicate saved machine component");
@@ -443,8 +372,7 @@ public final class MachineAssembly {
         var pending = new Object2ObjectLinkedOpenHashMap<ComponentType<MachineInstance, ?>, Set<ComponentType<MachineInstance, ?>>>(list.tagCount());
         for (int index = 0; index < list.tagCount(); index++) {
             var entry = list.getCompoundTagAt(index);
-            StrictNbt.requireKeys(entry, "Type", "Dependencies");
-            var descriptor = require(StrictNbt.requireId(entry, "Type")).type();
+            var descriptor = require(new ResourceLocation(entry.getString("Type"))).type();
             var dependencies = readTypes(entry);
             if (components.containsKey(descriptor) || dependencies.isEmpty() || pending.putIfAbsent(descriptor, dependencies) != null) {
                 throw new IllegalArgumentException("Invalid pending machine component dependencies");
@@ -463,10 +391,10 @@ public final class MachineAssembly {
     }
 
     private Set<ComponentType<MachineInstance, ?>> readTypes(NBTTagCompound entry) {
-        var saved = StrictNbt.requireList(entry, "Dependencies", Constants.NBT.TAG_STRING);
+        var saved = entry.getTagList("Dependencies", Constants.NBT.TAG_STRING);
         var result = new ObjectLinkedOpenHashSet<ComponentType<MachineInstance, ?>>(saved.tagCount());
         for (int index = 0; index < saved.tagCount(); index++) {
-            var id = StrictNbt.requireId(saved.getStringTagAt(index));
+            var id = new ResourceLocation(saved.getStringTagAt(index));
             var descriptor = id.equals(MachineHatches.TYPE.id()) ? MachineHatches.TYPE
                 : id.equals(StructureComponents.TYPE.id()) ? StructureComponents.TYPE : require(id).type();
             if (!result.add(descriptor)) {
@@ -485,11 +413,7 @@ public final class MachineAssembly {
     }
 
     private Binding<?> require(ComponentType<MachineInstance, ?> descriptor) {
-        var binding = require(descriptor.id());
-        if (binding.type() != descriptor) {
-            throw new IllegalArgumentException("Different component descriptors share " + descriptor.id());
-        }
-        return binding;
+        return require(descriptor.id());
     }
 
     private void requireReference(ComponentType<MachineInstance, ?> descriptor) {
@@ -504,44 +428,6 @@ public final class MachineAssembly {
             return new Graph(machine.components().assemblyBindings(), machine.components().snapshotPendingDependencies());
         }
 
-        private static boolean sameTypes(Set<ComponentType<MachineInstance, ?>> left, Set<ComponentType<MachineInstance, ?>> right) {
-            if (left.size() != right.size()) {
-                return false;
-            }
-            var first = left.iterator();
-            var second = right.iterator();
-            while (first.hasNext()) {
-                if (first.next() != second.next()) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        private static void changed() {
-            throw new IllegalStateException("Machine callback changed component assembly or dependencies");
-        }
-
-        private void requireSame(MachineInstance machine) {
-            var current = capture(machine);
-            if (components.size() != current.components.size() || pending.size() != current.pending.size()) {
-                changed();
-            }
-            for (int index = 0; index < components.size(); index++) {
-                var before = components.get(index);
-                var after = current.components.get(index);
-                if (before.type() != after.type() || before.component() != after.component()
-                    || !sameTypes(before.dependencies(), after.dependencies())) {
-                    changed();
-                }
-            }
-            for (var entry : pending.entrySet()) {
-                var after = current.pending.get(entry.getKey());
-                if (after == null || !sameTypes(entry.getValue(), after)) {
-                    changed();
-                }
-            }
-        }
     }
 
     private record SavedComponent(Binding<?> binding, Set<ComponentType<MachineInstance, ?>> dependencies,
@@ -551,9 +437,6 @@ public final class MachineAssembly {
     private record Binding<C>(ComponentType<MachineInstance, C> type, @Nullable MachineComponentCodec<C> codec) {
         @SuppressWarnings("unchecked") // Descriptor identity ties this saved component to C.
         private C component(ComponentMap.SavedBinding<MachineInstance, ?> saved) {
-            if (saved.type() != type) {
-                throw new IllegalArgumentException("Machine component codec type mismatch");
-            }
             return (C) saved.component();
         }
 
@@ -563,7 +446,6 @@ public final class MachineAssembly {
 
         private C restore(MachineInstance owner, C component, NBTTagCompound saved) {
             if (codec == null) {
-                StrictNbt.requireKeys(saved);
                 return component;
             }
             return Objects.requireNonNull(codec.restore(owner, component, saved), "Restored machine component");
@@ -585,7 +467,7 @@ public final class MachineAssembly {
         private final Map<ResourceLocation, Binding<?>> bindings = new Object2ObjectLinkedOpenHashMap<>();
         private final List<Consumer<MachineInstance>> validators = new ObjectArrayList<>();
         private Function<MachineType, ? extends MachineInstance> instanceFactory = MachineInstance::new;
-        private AttributeModifierNbt attributes = new AttributeModifierNbt();
+        private AttributeModifierNbt attributes = AttributeModifierNbt.INSTANCE;
         private List<ComputerRecipe> computerRecipes = List.of();
 
         private Builder(MachineType type, String revision) {
@@ -634,8 +516,8 @@ public final class MachineAssembly {
         }
 
         /**
-         * 必须传入控制器使用的同一份完整配方声明，并在装配的整个生命周期内保持列表不变；
-         * JEI 使用本列表显示每 tick 输入与本机、网络资源供给。
+         * Pass the controller's complete recipe declarations and retain the list unchanged for the assembly lifetime.
+         * JEI uses this list to display each conversion unit and its local resources.
          */
         public Builder computerRecipes(List<ComputerRecipe> recipes) {
             computerRecipes = recipes;
@@ -655,7 +537,9 @@ public final class MachineAssembly {
                     if (component.owner() != owner) {
                         throw new IllegalArgumentException("Foreign machine work slots");
                     }
-                    for (var scanner : owner.recipeScanners()) {
+                    var elements6 = owner.recipeScanners();
+                    for (int index6 = 0; index6 < elements6.size(); index6++) {
+                        var scanner = elements6.get(index6);
                         if (scanner.host() == component) scanner.validateProcessCodecs(codec.processCodecs());
                     }
                 }
@@ -685,7 +569,7 @@ public final class MachineAssembly {
         }
 
         /**
-         * Build once. Transfers declarations to the assembly; do not modify this builder afterwards.
+         * Build once. Transfers declarations to the assembly; do not modify this builder afterward.
          */
         public MachineAssembly build() {
             return new MachineAssembly(this);

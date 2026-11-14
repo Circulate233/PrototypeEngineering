@@ -12,7 +12,6 @@ import net.minecraft.server.MinecraftServer;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -82,7 +81,9 @@ public final class FtbOwnerTeamResolver implements OwnerTeamResolver {
         }
         String teamId = team.getUIDCode();
         var members = new ObjectOpenHashSet<UUID>();
-        for (var member : team.getMembers()) {
+        var elements = team.getMembers();
+        for (int index = 0; index < elements.size(); index++) {
+            var member = elements.get(index);
             members.add(requirePlayerId(member, teamId, "member"));
         }
         if (!members.contains(ownerId)) {
@@ -90,8 +91,8 @@ public final class FtbOwnerTeamResolver implements OwnerTeamResolver {
                 "FTBLib team " + teamId + " does not contain queried owner " + ownerId);
         }
         var teamOwner = team.getOwner();
-        var teamOwnerId = teamOwner == null ? Optional.<UUID>empty()
-            : Optional.of(requirePlayerId(teamOwner, teamId, "owner"));
+        var teamOwnerId = teamOwner == null ? null
+            : requirePlayerId(teamOwner, teamId, "owner");
         return OwnerTeamResolution.resolved(ownerId, teamId, type, members, teamOwnerId);
     }
 }

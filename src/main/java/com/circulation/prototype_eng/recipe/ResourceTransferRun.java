@@ -49,12 +49,16 @@ public final class ResourceTransferRun {
     @Nullable
     public static ResourceTransferPlan findPlan(List<ResourceTransferPlan> plans, List<? extends ResourceHatch> hatches) {
         var visited = new ReferenceOpenHashSet<>(plans.size());
-        for (ResourceTransferPlan recipe : plans) {
+        for (int index6 = 0; index6 < plans.size(); index6++) {
+            ResourceTransferPlan recipe = plans.get(index6);
             boolean matches = true;
-            for (GenericStack required : recipe.inputs()) {
+            var elements = recipe.inputs();
+            for (int index5 = 0; index5 < elements.size(); index5++) {
+                GenericStack required = elements.get(index5);
                 long missing = required.amount();
                 visited.clear();
-                for (ResourceHatch hatch : hatches) {
+                for (int index = 0; index < hatches.size(); index++) {
+                    ResourceHatch hatch = hatches.get(index);
                     if (!hatch.isValid()) {
                         continue;
                     }
@@ -94,7 +98,8 @@ public final class ResourceTransferRun {
             GenericStack required = recipe.inputs().get(i);
             long missing = required.amount() - acquired[i];
             visited.clear();
-            for (ResourceHatch hatch : hatches) {
+            for (int index3 = 0; index3 < hatches.size(); index3++) {
+                ResourceHatch hatch = hatches.get(index3);
                 if (missing == 0) {
                     break;
                 }
@@ -118,7 +123,8 @@ public final class ResourceTransferRun {
         }
         if (progress < recipe.durationTicks()) {
             visited.clear();
-            for (EnergyInput input : energy) {
+            for (int index2 = 0; index2 < energy.size(); index2++) {
+                EnergyInput input = energy.get(index2);
                 long missing = recipe.energyPerTick() - energyCredit;
                 if (missing == 0) {
                     break;
@@ -145,7 +151,8 @@ public final class ResourceTransferRun {
         for (int i = 0; i < remainingOutputs.length; i++) {
             GenericStack product = recipe.outputs().get(i);
             visited.clear();
-            for (ResourceHatch hatch : hatches) {
+            for (int index4 = 0; index4 < hatches.size(); index4++) {
+                ResourceHatch hatch = hatches.get(index4);
                 if (remainingOutputs[i] == 0) {
                     break;
                 }
@@ -226,24 +233,10 @@ public final class ResourceTransferRun {
     public enum Status {COLLECTING_INPUTS, WAITING_FOR_ENERGY, WORKING, WAITING_FOR_OUTPUT, COMPLETE}
 
     /**
-     * A complete checkpoint including the recipe definition; later registry edits cannot reprice active work.
+     * Checkpoint arrays belong to the captured run and must not be modified by readers.
+     * Restoring transfers them to the replacement run; the original run must no longer execute.
      */
     public record Snapshot(ResourceTransferPlan recipe, long[] acquired, long[] remainingOutputs, int progress,
                            long energyCredit) {
-        public Snapshot {
-            Objects.requireNonNull(recipe);
-            acquired = acquired.clone();
-            remainingOutputs = remainingOutputs.clone();
-        }
-
-        @Override
-        public long[] acquired() {
-            return acquired.clone();
-        }
-
-        @Override
-        public long[] remainingOutputs() {
-            return remainingOutputs.clone();
-        }
     }
 }

@@ -17,9 +17,9 @@ import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
 import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.research.DataCenterStorage;
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
@@ -37,10 +37,10 @@ import com.circulation.prototype_eng.localization.GuiText;
 import com.circulation.prototype_eng.research.DataCenterStorageNbt;
 import com.circulation.prototype_eng.research.ResearchEligibility;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -51,7 +51,6 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
@@ -226,7 +225,7 @@ class MachineDataCenterStorageTest {
         private final PlayerResearchState player = new PlayerResearchState(new UUID(0, 1));
         private final MachineIdentityRegistry identities = new MachineIdentityRegistry(this::requireOwner);
         private final NetworkRuntime network = new NetworkRuntime(identities,
-            owner -> OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER, ObjectSets.singleton(owner), Optional.empty()), this::requireOwner);
+            owner -> OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER, ObjectSets.singleton(owner), null), this::requireOwner);
         private final ComponentType<MachineInstance, MachineOwnership> ownership = new ComponentType<>(id("ownership"),
             owner -> new MachineOwnership(owner, _ -> identities), List.of());
         private final ComponentType<MachineInstance, MachineDataCenterStorage> storage = MachineDataCenterStorage.component(id("storage"),
@@ -236,7 +235,7 @@ class MachineDataCenterStorageTest {
         private final Reference2DoubleOpenHashMap<NetworkResourceType> supply = new Reference2DoubleOpenHashMap<>();
         private final ComponentType<MachineInstance, MachineNetworkDevice> centerRole = MachineNetworkDevice.component(id("center_role"),
             ownership, (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER, 1,
-                Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), 5, NetworkResourceModifier.copyResources(supply),
+                Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), 5, new Reference2DoubleOpenHashMap<>(supply),
                 NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
         private final MachineType dataType = MachineType.builder(id("data_machine"), GuiText.ResourceStorage, id("structure"))
                                                         .component(ownership).component(storage).component(dataRole).build();

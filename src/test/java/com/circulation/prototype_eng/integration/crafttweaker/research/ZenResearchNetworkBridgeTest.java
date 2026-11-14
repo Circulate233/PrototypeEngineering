@@ -47,6 +47,7 @@ import stanhebben.zenscript.impl.GenericCompileEnvironment;
 import stanhebben.zenscript.impl.GenericErrorLogger;
 import stanhebben.zenscript.impl.GenericRegistry;
 
+import java.util.Set;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.io.StringReader;
@@ -125,7 +126,7 @@ class ZenResearchNetworkBridgeTest {
         var player = UUID.randomUUID();
         var permission = new ResearchPermissionContext(player, "team", player, "team", false, false, false);
         var levels = new Object2IntOpenHashMap<ResourceLocation>();
-        var view = new TeamResearchView(research, "team", List.of(player), levels, levels, List.of());
+        var view = new TeamResearchView(research, "team", Set.of(player), levels, levels, Set.of());
         var queue = new TeamResearchQueue(research, "team");
         var amounts = new Reference2DoubleOpenHashMap<NetworkResourceType>();
         var admission = new TeamResearchStart(research, configuration.permissions());

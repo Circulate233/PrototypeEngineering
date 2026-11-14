@@ -82,7 +82,9 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
         }
         long remaining = amount;
         var visited = new ReferenceOpenHashSet<StorageContext>();
-        for (var source : hatches.energyInputs()) {
+        var elements = hatches.energyInputs();
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var source = elements.get(index1);
             var context = source.context();
             if (!source.isValid() || !visited.add(context)) {
                 continue;
@@ -121,7 +123,9 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
         }
         long remaining = amount;
         var visited = new ReferenceOpenHashSet<StorageContext>();
-        for (var target : hatches.energyOutputs()) {
+        var elements2 = hatches.energyOutputs();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var target = elements2.get(index2);
             var context = target.context();
             if (!target.isValid() || !visited.add(context)) {
                 continue;

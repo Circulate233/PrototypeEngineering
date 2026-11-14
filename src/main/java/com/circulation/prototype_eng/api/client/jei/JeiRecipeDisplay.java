@@ -93,7 +93,8 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
 
         public String local() {
             var result = new StringBuilder();
-            for (var explanation : context) {
+            for (int index = 0; index < context.size(); index++) {
+                var explanation = context.get(index);
                 result.append(explanation.local()).append(" · ");
             }
             return result.append(text.getLocal(arguments.toArray())).toString();

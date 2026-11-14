@@ -81,8 +81,11 @@ public final class ControllerRenderSync {
         var position = tile.getPos();
         var entry = world.getPlayerChunkMap().getEntry(position.getX() >> 4, position.getZ() >> 4);
         if (entry == null) return;
-        for (var player : entry.getWatchingPlayers())
+        var elements = entry.getWatchingPlayers();
+        for (int index2 = 0; index2 < elements.size(); index2++) {
+            var player = elements.get(index2);
             send(world, tile, parts, player, player.connection, 1, ordinary, null);
+        }
     }
 
     @SubscribeEvent
@@ -99,7 +102,8 @@ public final class ControllerRenderSync {
         var server = Objects.requireNonNull(world.getMinecraftServer());
         ServerTaskSchedulers.forServer(server).runAtBoundary(() -> {
             if (!loaded(world, chunk)) return;
-            for (var tile : tiles) {
+            for (int index1 = 0; index1 < tiles.size(); index1++) {
+                var tile = tiles.get(index1);
                 if (!currentWatcher(world, tile, player, connection)) continue;
                 var parts = tile.serverRenderParts();
                 var dataParts = tile.serverDataParts();

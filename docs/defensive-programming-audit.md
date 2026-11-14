@@ -48,3 +48,17 @@
 测试不以“不许修改借用集合”为目标。删除剩余防写断言与违约输入；Map 原测试改为真实漏复制回归，输入分组增加一项共享前缀/次序/实际扣料回归。其余沿现有结算、恢复、并发和交互测试。
 
 IDEA MCP 已对全部 1105 份 Java 执行 `reformat_file`，包括 801 main、280 test、21 addon、2 文档示例和 1 独立验证源码；五批均返回成功。完整逐文件 `errorsOnly:false`、构建和最终计数见 [实施进度](implementation-status.md)。格式化后仓库 Spotless 的 12 文件换行符差异已统一，未改 IDE 设置。
+
+## 2026-11-14 防御检查、复制与循环清理
+
+本轮复查 b72090aacf2896c25c82c1b15135dcf0f95df30e 之后新增及修改的 Java，并扩展检查当前生产源码的数组 clone 和 List 循环。删除 StrictNbt、DownloadValidation、字段白名单、重复 NBT 类型检查、构造器中的数据复验、保存回调前后装配图比较，以及对应的防写和违约输入测试。
+
+默认 ResourceKeyNbt、AttributeModifierNbt 和 MachineAttributesNbt 复用单例。RecipeOverlayNbt 改为静态编解码，绑定表在构建时生成一次；固定需求图通过 RecipeProcess.definitionIndex() 按需建立并复用，删除重复遍历、临时编码器和重复路径解析。研究与网络数据、下载输出、输入锁和控制器待加载 NBT 按只读约定直接交付。库内 Optional 改为 nullable 对象或原始类型无效值，奖励时间用 long 的 -1 表示尚未发生；依赖库要求的类型保留。
+
+生产源码中 969 个 List 增强 for 已改为索引访问。API 明确要求 List 参数及返回值，包括嵌套列表，支持常数时间索引访问；调用方提供 ArrayList、ObjectArrayList、List.of 或符合要求的自定义实现。计算组件在一次遍历中汇总供给、消耗、并发和 FE，删除单独的回调列表；研究站参与者判断按既有排序线性匹配，数据库并发拒绝只扫描一次设备列表。手动会话列表在实际变化后重建，ZS 事件包装对象和资源表包装对象按事件复用。
+
+Snapshot、手动材料凭据、发布数据、网络分片及缓存 getter 中的数组 clone 已移除。生产源码仅保留 ControllerRotatedModel 和 PreviewBlockVertices 的两处 clone，用于生成会修改坐标、法线、颜色或光照的模型顶点。网络分片、重组、流体属性数组合并和统计排序仍保留实际数据转换需要的复制；分片构造器与 getter 不再二次复制。ResourceTransferRun.Snapshot 直接借用数组，恢复交接后原运行实例必须停止执行。
+
+最终完整 Gradle build、Spotless 和 IDEA MCP 构建通过；1735 项测试、269 suites，零失败、错误和跳过。451 份改动 Java 已通过本机 IDEA 格式化及 errorsOnly:false 检查，449 份全级零诊断；HatchCasingModels 保留既有 CTM 依赖解析造成的 9 条 ERROR，1 份 run 文件被 IDE 排除。未将这些文件记录为全级零。27 份 Java addon 编译和 15 份真实 ZS 脚本编译、核心 API 行为检查通过。run addon 生成成功，本轮未安装。
+
+最近两个中文提交信息已重写为英文，文件树未改变；新增代码注释已扫描，未发现中文注释。证据目录为 C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261114/，最终文件包括 audit-verified-build.log、audit-idea-verified-full.json、audit-idea-verified-summary.json、audit-run-verified.log、audit-zs-verified/、audit-verified-test-counts.json、audit-added-comments-verified.json 与 list-loop-final.log。阶段本地提交，保留用户 AGENTS.md 修改。

@@ -27,11 +27,11 @@ import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeWork;
 import com.circulation.prototype_eng.api.network.recipe.NetworkWorkRequirements;
 import com.circulation.prototype_eng.api.network.resource.ComputerSupplyFixtures;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponent;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
@@ -55,10 +55,10 @@ import com.circulation.prototype_eng.localization.GuiText;
 import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -67,7 +67,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -172,7 +171,7 @@ class NetworkControllerParallelismTest {
             var research = new ResearchRegistry();
             research.freeze();
             network = new NetworkRuntime(identities, owner -> OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER,
-                ObjectSets.singleton(owner), Optional.empty()), this::requireOwner);
+                ObjectSets.singleton(owner), null), this::requireOwner);
             workerRole = role("worker_role", NetworkDeviceRole.DEVICE);
             var extensions = new NetworkRecipeExtensions();
             extensions.register((_, builder) -> builder.resource(ComputingResourceFixtures.COMPUTE, 6));
@@ -190,7 +189,7 @@ class NetworkControllerParallelismTest {
             supply.put(ComputingResourceFixtures.COMPUTE, 100);
             var card = ComputerSupplyFixtures.key("controller_card");
             var components = new NetworkComputerComponentRegistry();
-            ComputerSupplyFixtures.register(components, card, _ -> new NetworkComputerComponent.Capture(1, NetworkResourceModifier.copyResources(supply), Reference2DoubleMaps.emptyMap(), 0, () -> true));
+            ComputerSupplyFixtures.register(components, card, _ -> new NetworkComputerComponent.Capture(1, new Reference2DoubleOpenHashMap<>(supply), Reference2DoubleMaps.emptyMap(), 0, () -> true));
             components.freeze();
             var installed = MachineComputerComponents.component(id("computer_supply"), components, ComputerSupplyFixtures::warehouses);
             var computerRole = MachineNetworkDevice.capturedComponent(id("computer_role"), ownership,

@@ -17,12 +17,18 @@ public record HatchReplacement(HatchReconfigurationStatus status, List<Version> 
 
     public static List<Version> captureVersions(List<StorageContext> contexts) {
         var result = new ObjectArrayList<Version>(contexts.size());
-        for (var context : contexts) result.add(new Version(context, context.revision()));
+        for (int index2 = 0; index2 < contexts.size(); index2++) {
+            var context = contexts.get(index2);
+            result.add(new Version(context, context.revision()));
+        }
         return result;
     }
 
     public static boolean current(List<Version> versions) {
-        for (var version : versions) if (!version.current()) return false;
+        for (int index = 0; index < versions.size(); index++) {
+            var version = versions.get(index);
+            if (!version.current()) return false;
+        }
         return true;
     }
 

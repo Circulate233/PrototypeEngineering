@@ -114,11 +114,13 @@ public final class PreviewEmbeddedInput {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void key(GuiScreenEvent.KeyboardInputEvent.Pre event) {
         if (Keyboard.getEventKeyState() && Keyboard.getEventKey() == Keyboard.KEY_ESCAPE)
-            for (var entry : active)
+            for (int index1 = 0; index1 < active.size(); index1++) {
+                var entry = active.get(index1);
                 if (entry.host == event.getGui() && fresh(entry) && entry.panel.dismissMaterials()) {
                     event.setCanceled(true);
                     return;
                 }
+            }
     }
 
     private record Active(GuiScreen host, StructurePreviewPanel panel, int x, int y, long touched) {

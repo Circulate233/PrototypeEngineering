@@ -12,11 +12,10 @@ import ae2.api.storage.MEStorage;
 import com.circulation.prototype_eng.api.network.resource.ComputationHatch;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponent;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
+import com.circulation.prototype_eng.api.storage.HatchTier;
 import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import com.circulation.prototype_eng.localization.HatchGuiTitle;
-import com.circulation.prototype_eng.api.storage.HatchTier;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2LongOpenHashMap;
 import net.minecraft.nbt.NBTTagCompound;
@@ -32,7 +31,7 @@ import java.util.function.Consumer;
  * Fixed four-tier shared storage; component discovery is driven by its change notifications.
  */
 public final class BufferedComputationHatch implements ComputationHatch {
-    private static final ResourceKeyNbt KEYS = new ResourceKeyNbt();
+    private static final ResourceKeyNbt KEYS = ResourceKeyNbt.INSTANCE;
     private final SlottedResourceBuffer inventory;
     private final AEKey[] installedItems;
     private final CopyOnWriteArrayList<Runnable> listeners = new CopyOnWriteArrayList<>();
@@ -153,12 +152,11 @@ public final class BufferedComputationHatch implements ComputationHatch {
     public void load(NBTTagCompound tag) {
         var contents = new ObjectArrayList<GenericStack>();
         contents.size(inventory.size());
-        var entries = StrictNbt.requireList(tag, "Contents", 10);
+        var entries = tag.getTagList("Contents", 10);
         for (int i = 0; i < entries.tagCount(); i++) {
             var entry = entries.getCompoundTagAt(i);
-            int slot = StrictNbt.requireInt(entry, "Slot");
-            if (contents.get(slot) != null) throw new IllegalArgumentException("Repeated computation hatch slot");
-            contents.set(slot, new GenericStack(KEYS.decode(StrictNbt.requireCompound(entry, "Key")), StrictNbt.requireLong(entry, "Quantity")));
+            int slot = entry.getInteger("Slot");
+            contents.set(slot, new GenericStack(KEYS.decode(entry.getCompoundTag("Key")), entry.getLong("Quantity")));
         }
         inventory.restore(contents);
     }
@@ -166,13 +164,11 @@ public final class BufferedComputationHatch implements ComputationHatch {
     private final class AutomationPort implements MEStorage {
         @Override
         public long insert(AEKey what, long amount, Actionable mode, IActionSource source) {
-            MEStorage.checkPreconditions(what, amount, mode, source);
             return inventory.insert(what, amount, mode);
         }
 
         @Override
         public long extract(AEKey what, long amount, Actionable mode, IActionSource source) {
-            MEStorage.checkPreconditions(what, amount, mode, source);
             return inventory.extract(what, amount, mode);
         }
 

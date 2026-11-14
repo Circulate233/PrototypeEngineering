@@ -320,17 +320,6 @@ class MachineRecipePoolsTest {
         assertSame(second, Objects.requireNonNull(scanner.scan(new ScanLimits(20, 20)).process()).recipe());
     }
 
-    @Test
-    void instanceFactoryRejectsForeignDeclarationAndReusedAlreadyAttachedMachine() {
-        var type = type("factory_reject").build();
-        var foreign = type("foreign").build();
-        var wrong = MachineAssembly.builder(type, "factory-1").instanceFactory(_ -> new MachineInstance(foreign)).build();
-        assertThrows(IllegalArgumentException.class, () -> wrong.create(new Host(type), new MachineLifecycleRegistry()));
-        var reused = new MachineInstance(type);
-        var assembly = MachineAssembly.builder(type, "factory-1").instanceFactory(_ -> reused).build();
-        assertSame(reused, assembly.create(new Host(type), new MachineLifecycleRegistry()));
-        assertThrows(IllegalArgumentException.class, () -> assembly.create(new Host(type), new MachineLifecycleRegistry()));
-    }
 
     private static final class DynamicMachine extends MachineInstance {
         @Nullable

@@ -156,24 +156,24 @@ SelectiveContext 的 `putRequirementOverlay` 支持 root 或完整 nested target
 
 ## 严格进程保存恢复
 
-`api.persistence` 提供 StrictNbt、NbtCodec、资源 key、属性 modifier 和局部属性编解码；`api.recipe.persistence` 的主入口是 `RecipeProcessNbt.builder(canonicalRecipe, revision)`。构建后绑定固定 canonical 配方、显式非空白 revision、资源/属性/组件/overlay codecs 和宿主 validators。encode 拒绝其他 canonical recipe 实例；decode 同时核验格式版本、recipe ID、revision、duration 及完整有序 RequirementPath graph。图由各需求系统的 children() 声明遍历，拒绝循环、重复路径和 effective view 充当 canonical child。
+`api.persistence` 提供 NbtCodec、资源 key、属性 modifier 和局部属性编解码；`api.recipe.persistence` 的主入口是 `RecipeProcessNbt.builder(canonicalRecipe, revision)`。构建后绑定固定 canonical 配方、显式非空白 revision、资源/属性/组件/overlay codecs 和宿主 validators。encode 拒绝其他 canonical recipe 实例；decode 同时核验格式版本、recipe ID、revision、duration 及完整有序 RequirementPath graph。需求系统必须返回固定、无环且路径唯一的定义图。进程按需建立一次 RecipeDefinitionIndex，后续保存、恢复和内置组件复用该索引。
 
 ID、graph 和 duration 只能证明结构身份与显式字段，不能证明任意 Java matcher、comparator、applier、modifier、系统或 codec 函数行为一致。宿主变更这些定义的兼容语义时必须更换 revision；也必须保持结构定义稳定及纯 applier 的剩余层重组能力，不能仅以相同 ID 声称旧状态兼容。每层 overlay 的直接 children 校验同样用于 put/remove/undo 和恢复重算，但不能代替任意外部行为的兼容性证明。
 
-NBT 读取要求确切类型，不使用数字强转或缺字段默认值。StrictNbt 校验列表声明类型和每个元素类型、规范 ID、有限浮点、Boolean byte 0/1，拒绝未知字段；组件、依赖、属性/modifier、选择/锁、层 ID/order 等唯一位置拒绝重复。所有已保存组件、缺失 dependent 的 pending 依赖类型、overlay data 和外部属性 modifier 都须显式 codec 覆盖，未知、歧义或不匹配时失败，不跳过条目。encode 输出及传给外部 decode/restore 的 mutable tags 在边界复制，避免共享调用者输入。
+NBT 读取使用原生 getter，资源 ID 和 UUID 使用原生解析器。保存格式版本、定义修订及资源结算需要的检查保留。所有已保存组件、依赖、overlay 和外部属性 modifier 都须具有对应 codec，未知类型和歧义会报告错误。编码数据直接传递，codec 必须遵守只读输入和已完成输出的 Javadoc 约束。
 
-保存要求进程独占执行边界，并在编码前后检查：没有执行中的 tick/路径上下文、open requirement transaction、pending overlay stage Change 或未完成 selector START。抛异常的 tick、事务终结/清理故障会使进程拒绝保存及后续 tick，即使生命周期已推进或已终态也不能把该次调用当作认证保存点。首次异常前后完成的阶段补偿或通知清理，不代表允许原进程重试；正常业务 Blocked 仍可重试。预留令牌和半提交阶段不能跨存档恢复。状态保留 seed、ProbabilityTuning、double 绝对 progress、long successfulTicks、started、生命周期及结构化结果；属性只保存本地 base override/modifier，父机器属性和世界由宿主提供。
+保存要求进程独占执行边界，并在编码入口检查：没有执行中的 tick/路径上下文、open requirement transaction、pending overlay stage Change 或未完成 selector START。抛异常的 tick、事务终结/清理故障会使进程拒绝保存及后续 tick，即使生命周期已推进或已终态也不能把该次调用当作认证保存点。首次异常前后完成的阶段补偿或通知清理，不代表允许原进程重试；正常业务 Blocked 仍可重试。预留令牌和半提交阶段不能跨存档恢复。状态保留 seed、ProbabilityTuning、double 绝对 progress、long successfulTicks、started、生命周期及结构化结果；属性只保存本地 base override/modifier，父机器属性和世界由宿主提供。
 
 未启动进程中由宿主预种的解析锁属于不可保存的准备状态；本 codec 不持久化尚未成功完成 START 的半准备选择。
 
 decode 返回新的未发布 RecipeProcess，恢复顺序如下：
 
-1. 隔离输入，核验配方/revision/graph/duration，解析状态、局部属性、全部组件条目及有效依赖，拒绝未知/重复数据。
+1. 直接读取输入，核验配方/revision/graph/duration，解析状态、局部属性、全部组件条目及有效依赖，拒绝未知/重复数据。
 2. 按已保存的真实 assembly 顺序创建全部组件，再恢复有效依赖及尚未安装 dependent 的 pending 约束；不依赖当前 type 默认装配顺序替代旧状态。
-3. 按依赖拓扑恢复各组件数据。selector load 额外依赖 overlay 先恢复，这条加载约束不改保存的 tick 依赖图。组件 factory/codec 不得改 assembly、修改旧进程/owner 或发布世界效果；恢复前后核对真实装配。
-4. 运行 BuiltinProcessValidation、各组件 codec.validate 及宿主 validators，最后确认稳定边界，全部通过才返回。宿主之后决定何时将新进程加入工位。
+3. 按依赖拓扑恢复各组件数据。selector load 额外依赖 overlay 先恢复，这条加载约束不改保存的 tick 依赖图。组件 factory/codec 不得改 assembly、修改旧进程/owner 或发布世界效果，框架不在回调前后重复比较装配图。
+4. 运行 BuiltinProcessValidation、各组件 codec.validate 及宿主 validators，全部通过才返回。宿主之后决定何时将新进程加入工位。
 
-ResourceKeyNbt 保存显式 AEKeyType ID 与 key data，先解析准确类型再调用该类型 loadKeyFromTag，拒绝未知类型、null 或类型不匹配结果，不补缺失内容为其他 key；资源条目数量用正 long，合法重复资源条目保留。overlay 保存 canonical target path、layerId、long order、准确 type 与 immutable data，全部核验并重算后替换新组件状态。选择器保存 committed/index/completed 和自有属性/overlay 引用，恢复只绑定已安装 modifier 的准确对象与现有层清理权，不重新跑 modifier、pipeline 或 START，不再次扣料。
+ResourceKeyNbt 保存显式 AEKeyType ID 与 key data，先解析准确类型再调用该类型 loadKeyFromTag，拒绝未知类型或无法解码的资源数据，不补缺失内容为其他 key；资源条目数量用正 long，合法重复资源条目保留。overlay 保存 canonical target path、layerId、long order、准确 type 与 immutable data，全部核验并重算后替换新组件状态。选择器保存 committed/index/completed 和自有属性/overlay 引用，恢复只绑定已安装 modifier 的准确对象与现有层清理权，不重新跑 modifier、pipeline 或 START，不再次扣料。
 
 BuiltinProcessValidation 校验可证明的内置范围：路径、START 锁类别、稳定资源组匹配、选择索引、未执行分支、已执行分支所需状态和效果唯一所有权。自定义 overlay 必须配置宿主 validator；曾改变资源组或 checkpoint/selector 结构的历史，不能靠当前 payload 或已移除的层推测，宿主须提供历史完整性依据。嵌套正阈值 checkpoint 只看到外层那一个触发 tick，完整历史区间没有保存；仅 time=0、可证明重合或互斥的阈值可强制推断，其余激活完整性由宿主验证。外部 wrapper/component 须声明 children、codec、恢复依赖和跨组件 validator，不能借内置 walker 宣称任意扩展已验证。
 
@@ -200,9 +200,9 @@ boolean admitted = host.startIn("main", process); // 只挂接，不执行 START
 
 Blocked 保留同一进程及选择/进度，下次重试；正常 COMPLETED/FAILED/CANCELLED 解除双向挂接并腾空槽，保留结构化 ProcessResult，业务 Failure 不阻止其他槽执行。恢复出的终态进程下一 tick 直接解除挂接，不调用 executor。RuntimeException/Error 立即终止本次遍历并使宿主 faulted，后续 tick、挂接/解除和 snapshot/NBT 保存均拒绝；不能在部分槽已完成后重跑整批。当前 `detach(process)` 要求稳定边界，仅解除挂接并交还生命周期所有权，不执行 END、不退款，**不是取消**。本阶段 host.cancel/cancelAll 另行协调显式终态清理；faulted host 仍可清理其他稳定进程，但不会因此恢复 tick/save 权限，见“显式取消与失败清理”。
 
-`MachineWorkSlotsNbt(revision, recipeBindings)` 绑定非空白布局 revision 与唯一 recipe ID → RecipeProcessNbt。Version 1 保存有序槽的 Name、Groups、Core、RestartPolicy、结构化 Result 和可选 Process。codec 使用当前宿主布局与 executor，revision 同时承担其兼容行为；不从存档恢复调度器或执行权限。encode 在前后 snapshot 核对宿主未被外部 codec 改动。
+`MachineWorkSlotsNbt(revision, recipeBindings)` 绑定非空白布局 revision 与唯一 recipe ID → RecipeProcessNbt。Version 1 保存有序槽的 Name、Groups、Core、RestartPolicy、结构化 Result 和可选 Process。codec 使用当前宿主布局与 executor，revision 同时承担其兼容行为；不从存档恢复调度器或执行权限。编码读取一次宿主快照；codec 必须遵守独占访问和只修改自身状态的要求。
 
-恢复先复制输入并校验 exact NBT、版本/revision、槽数/顺序/完整定义、重复名称/组以及所有 recipe binding，再把每个进程完整 decode 成新实例。整组全部通过并确认旧宿主未变化后，才调用 `host.restore`；该方法再次验证 owner、组、按对象身份唯一的进程、结果一致性、稳定边界与跨宿主挂接，再一起解除旧挂接并建立新双向挂接。最后条目失败也不会先清空或部分发布旧宿主。外部 codec/factory/validator 必须遵守无旧宿主/世界副作用的契约，不能靠事后 snapshot 撤销任意外部写入。机器/世界恢复、旧 PM 格式升级及 PN epoch/lease/ready authority 恢复不在此格式内；运行权仍须重新发现并取得。
+恢复直接读取原生 NBT，并校验版本/revision、槽数/顺序/完整定义、重复名称/组以及所有 recipe binding，再把每个进程完整 decode 成新实例。整组全部通过后，才调用 `host.restore`；该方法再次验证 owner、组、按对象身份唯一的进程、结果一致性、稳定边界与跨宿主挂接，再一起解除旧挂接并建立新双向挂接。最后条目失败也不会先清空或部分发布旧宿主。外部 codec/factory/validator 必须遵守无旧宿主/世界副作用的契约，框架不在每个 codec 回调后比较完整宿主状态。机器/世界恢复、旧 PM 格式升级及 PN epoch/lease/ready authority 恢复不在此格式内；运行权仍须重新发现并取得。
 
 旧 planned 的 [createPlannedSlots](F:/clone/PrototypeMachinery/src/main/kotlin/impl/machine/planned/RegistryBackedMachinePlannedExecution.kt:142) 另造 [PlannedWorkSlot](F:/clone/PrototypeMachinery/src/main/kotlin/impl/machine/planned/RegistryBackedMachinePlannedExecution.kt:245)，其 process 永远 null、非 null setter 抛错，仅消费 name/groups 与槽位 identity。当前 WorkSlot 是传统进程宿主实际状态类，无需为复现这种假槽机械增加接口。未来 planned context 应复用稳定 WorkSlotDefinition 等元数据并提供真实 planned 状态及所有权，不能假称该状态承载 RecipeProcess；真实 planned 的功能、扩展与多线程能力仍完整保留待迁移。
 
@@ -383,3 +383,5 @@ Default/Simple两种池缓存同一固定输入索引供公开库存API复用；
 `RecipeCandidateIndex.Cursor.beginValidation()` 与 `RecipeCatalog.CandidatePass.beginValidation()` 返回可保留的 `Validation`：`advance(budget)` 返回 true 只表示核验结束，再读取 `current()` 判断本次证明是否仍有效。内置简单池与资源索引逐 binding/已完成 quantity capture 收取预算；外部旧 cursor 的默认实现以一个 credit 调用其 cooperative `current()`。尚未发布数量的 partial capture 由自己的 revision 游标继续或重取，不能把它的 incomplete 状态当作整池失效。未完成 discovery 在新 tick 续办核验，仍有效时保留 partial 索引进度；纯候选事实不授予来源权限，目录穷尽前再次预算化核验 live 意见，失效才清候选、search 和 cursor 并重取。纯让步必须先完整结束原 probe/kernel/source 义务，不能只丢弃已获得预留的 START session。
 
 本阶段最终行为与验证：两controller的真实worker并发及final over-cap资源/FE/PN、纯计算跨tick续办/公平轮换/live变更/空dynamic restore均已覆盖。focused70 tests/9 suites、实际完整build重跑1620 tests/206 suites全零；本机IDEA逐文件全级零和完整读回一致，最终MCP build成功。真实失败与最终日志/XML/最早before/精确提交见 `build/staging/controller-shared-parallel/` 与 `build/staging/recipe-pool-strategies/`。结构、JEI及RESCAN/isCore未据此验收；显式旧ResourceRecipeIndex同context临时adapter freshness另有待修P2，当前两默认scanner未配置该index。
+
+2026-11-14 本轮保存清理：RecipeOverlayNbt 使用静态编解码，绑定表在构建时建立一次；默认资源和属性 codec 复用单例。ResourceInputLocks 的保存读取直接借用当前 Map，恢复接收解码完成的可修改 Map。ResourceTransferRun.Snapshot 的数组只读借用；恢复交接后原运行实例必须停止执行。代码不在 DTO 构造器或 getter 中复制数组。

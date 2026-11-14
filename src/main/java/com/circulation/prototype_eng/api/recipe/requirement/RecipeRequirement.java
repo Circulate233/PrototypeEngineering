@@ -111,11 +111,15 @@ public final class RecipeRequirement<C> {
         if (type.system().continuedAcquisition(payload)) {
             return true;
         }
-        for (var child : type.system().children(payload)) {
+
+        var elements = type.system().children(payload);
+        for (int index = 0; index < elements.size(); index++) {
+            var child = elements.get(index);
             if (child.usesContinuations()) {
                 return true;
             }
         }
+
         return false;
     }
 

@@ -16,11 +16,8 @@ import java.util.Objects;
  * Frozen explicit modifier codec bindings. Unknown or ambiguous implementations cannot be saved.
  */
 public final class AttributeModifierNbt implements NbtCodec<AttributeModifier> {
+    public static final AttributeModifierNbt INSTANCE = new AttributeModifierNbt(List.of());
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, AttributeModifierCodec> codecs = new Object2ObjectLinkedOpenHashMap<>();
-
-    public AttributeModifierNbt() {
-        this(List.of());
-    }
 
     public AttributeModifierNbt(Collection<Binding> bindings) {
         register(new Binding(new ResourceLocation(Tags.MOD_ID, "numeric"), new NumericCodec()));
@@ -30,14 +27,8 @@ public final class AttributeModifierNbt implements NbtCodec<AttributeModifier> {
         }
     }
 
-    private static void validate(AttributeModifier modifier) {
-        if (modifier == null || modifier.id() == null || modifier.id().isBlank() || modifier.operation() == null) {
-            throw new IllegalArgumentException("Attribute modifier requires a nonblank ID and operation");
-        }
-    }
-
     private static AttributeModifier.Operation readOperation(NBTTagCompound tag) {
-        var name = StrictNbt.requireString(tag, "Operation");
+        var name = tag.getString("Operation");
         for (var operation : AttributeModifier.Operation.VALUES) {
             if (operation.name().equals(name)) {
                 return operation;
@@ -48,7 +39,6 @@ public final class AttributeModifierNbt implements NbtCodec<AttributeModifier> {
 
     @Override
     public NBTTagCompound encode(AttributeModifier value) {
-        validate(value);
         ResourceLocation typeId = null;
         AttributeModifierCodec selected = null;
         for (var entry : codecs.entrySet()) {
@@ -65,25 +55,19 @@ public final class AttributeModifierNbt implements NbtCodec<AttributeModifier> {
         }
         var tag = new NBTTagCompound();
         tag.setString("Type", Objects.requireNonNull(typeId).toString());
-        tag.setTag("Data", Objects.requireNonNull(selected.encode(value), "modifier data").copy());
+        tag.setTag("Data", selected.encode(value));
         return tag;
     }
 
     @Override
     public AttributeModifier decode(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Type", "Data");
-        var id = StrictNbt.requireId(tag, "Type");
-        var data = StrictNbt.requireCompound(tag, "Data");
+        var id = new ResourceLocation(tag.getString("Type"));
+        var data = tag.getCompoundTag("Data");
         var codec = codecs.get(id);
         if (codec == null) {
             throw new IllegalArgumentException("Unknown attribute modifier codec: " + id);
         }
-        var modifier = codec.decode(data.copy());
-        validate(modifier);
-        if (!codec.supports(modifier)) {
-            throw new IllegalArgumentException("Decoded modifier does not match its codec: " + id);
-        }
-        return modifier;
+        return codec.decode(data);
     }
 
     private void register(Binding binding) {
@@ -93,10 +77,6 @@ public final class AttributeModifierNbt implements NbtCodec<AttributeModifier> {
     }
 
     public record Binding(ResourceLocation id, AttributeModifierCodec codec) {
-        public Binding {
-            StrictNbt.requireId(Objects.requireNonNull(id, "id").toString());
-            Objects.requireNonNull(codec, "codec");
-        }
     }
 
     private static final class NumericCodec implements AttributeModifierCodec {
@@ -120,9 +100,8 @@ public final class AttributeModifierNbt implements NbtCodec<AttributeModifier> {
 
         @Override
         public AttributeModifier decode(NBTTagCompound tag) {
-            StrictNbt.requireKeys(tag, "Id", "Operation", "Amount", "Adder");
-            return new NumericAttributeModifier(StrictNbt.requireString(tag, "Id"), StrictNbt.requireDouble(tag, "Amount"),
-                readOperation(tag), tag.hasKey("Adder") ? StrictNbt.requireString(tag, "Adder") : null);
+            return new NumericAttributeModifier(tag.getString("Id"), tag.getDouble("Amount"),
+                readOperation(tag), tag.hasKey("Adder") ? tag.getString("Adder") : null);
         }
     }
 
@@ -143,9 +122,8 @@ public final class AttributeModifierNbt implements NbtCodec<AttributeModifier> {
 
         @Override
         public AttributeModifier decode(NBTTagCompound tag) {
-            StrictNbt.requireKeys(tag, "Id", "Delegate");
-            return new RenamedAttributeModifier(StrictNbt.requireString(tag, "Id"),
-                AttributeModifierNbt.this.decode(StrictNbt.requireCompound(tag, "Delegate")));
+            return new RenamedAttributeModifier(tag.getString("Id"),
+                AttributeModifierNbt.this.decode(tag.getCompoundTag("Delegate")));
         }
     }
 }

@@ -65,9 +65,7 @@ class NetworkTeamBudgetTest {
             assertEquals(3L, budget.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(0L, budget.availableResources().getDouble(ComputingResourceFixtures.QUBIT));
             assertEquals(10L, budget.numericResources().getDouble(ComputingResourceFixtures.COMPUTE));
-            var retained = budget.availableResources();
             reservation.rollback();
-            assertEquals(3L, retained.getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(10L, budget.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(2L, budget.availableResources().getDouble(ComputingResourceFixtures.QUBIT));
         }

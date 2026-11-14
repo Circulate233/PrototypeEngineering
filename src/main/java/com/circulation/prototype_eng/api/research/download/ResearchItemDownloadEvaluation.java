@@ -26,7 +26,7 @@ public final class ResearchItemDownloadEvaluation {
     }
 
     static ResearchItemDownloadEvaluation success(ItemStack output) {
-        return new ResearchItemDownloadEvaluation(Status.SUCCESS, DownloadValidation.copyStack(output, "Download output"));
+        return new ResearchItemDownloadEvaluation(Status.SUCCESS, output);
     }
 
     public Status status() {
@@ -34,10 +34,10 @@ public final class ResearchItemDownloadEvaluation {
     }
 
     /**
-     * Independent stack on each access, or EMPTY for either business refusal.
+     * Borrowed read-only output, or EMPTY for either business refusal.
      */
     public ItemStack output() {
-        return output == null ? ItemStack.EMPTY : output.copy();
+        return output == null ? ItemStack.EMPTY : output;
     }
 
     public enum Status {NO_EVENT, REJECTED, SUCCESS}

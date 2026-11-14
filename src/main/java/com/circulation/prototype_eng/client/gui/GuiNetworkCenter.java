@@ -13,7 +13,6 @@ import org.lwjgl.input.Mouse;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Objects;
 
 @SideOnly(Side.CLIENT)
 public class GuiNetworkCenter extends AEBaseGui<ContainerNetworkCenter> {
@@ -88,8 +87,9 @@ public class GuiNetworkCenter extends AEBaseGui<ContainerNetworkCenter> {
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        fontRenderer.drawString(Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 14, 9, 0x404040);
+        fontRenderer.drawString(container.getGuiTitle().getFormattedText(), 14, 9, 0x404040);
         GlStateManager.pushMatrix();
         GlStateManager.translate(24, 42, 0);
         GlStateManager.scale(3, 3, 1);

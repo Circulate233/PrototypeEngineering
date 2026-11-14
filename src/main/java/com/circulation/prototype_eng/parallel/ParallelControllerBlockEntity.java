@@ -8,7 +8,6 @@ import com.circulation.prototype_eng.api.machine.ParallelController;
 import com.circulation.prototype_eng.api.machine.ParallelControllerRegistry;
 import com.circulation.prototype_eng.api.machine.ParallelControllerType;
 import com.circulation.prototype_eng.api.machine.ParallelControllers;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.structure.StructureComponentProvider;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.entity.player.EntityPlayer;
@@ -89,7 +88,7 @@ public class ParallelControllerBlockEntity extends AEBaseTile implements Paralle
     public void importSettings(SettingsFrom mode, NBTTagCompound input, @Nullable EntityPlayer player) {
         super.importSettings(mode, input, player);
         if (input.hasKey("SelectedParallelism")) {
-            int value = StrictNbt.requireInt(input, "SelectedParallelism");
+            int value = input.getInteger("SelectedParallelism");
             if (value < 0) throw new IllegalArgumentException("Invalid saved controller setting");
             setSelectedParallelism(Math.min(value, state.maximum()));
         }
@@ -103,10 +102,9 @@ public class ParallelControllerBlockEntity extends AEBaseTile implements Paralle
     @Override
     public void loadTag(NBTTagCompound data) {
         super.loadTag(data);
-        var tag = StrictNbt.requireCompound(data, "ParallelController");
-        StrictNbt.requireKeys(tag, "Type", "Selected");
-        var loadedType = ParallelControllerRegistry.INSTANCE.require(new ResourceLocation(StrictNbt.requireString(tag, "Type")));
-        int selected = StrictNbt.requireInt(tag, "Selected");
+        var tag = data.getCompoundTag("ParallelController");
+        var loadedType = ParallelControllerRegistry.INSTANCE.require(new ResourceLocation(tag.getString("Type")));
+        int selected = tag.getInteger("Selected");
         if (selected < 0) throw new IllegalArgumentException("Invalid saved parallelism");
         configure(loadedType, selected);
     }

@@ -28,7 +28,7 @@ public final class HatchConfigurationPacket extends ConnectionClientboundPacket 
         this.sequence = sequence;
         this.totalBytes = totalBytes;
         this.index = index;
-        this.bytes = bytes.clone();
+        this.bytes = bytes;
         validate();
     }
 
@@ -58,7 +58,7 @@ public final class HatchConfigurationPacket extends ConnectionClientboundPacket 
     }
 
     public byte[] bytes() {
-        return bytes.clone();
+        return bytes;
     }
 
     private void validate() {

@@ -12,27 +12,28 @@ import com.circulation.prototype_eng.api.network.resource.NetworkComputerCompone
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
 /**
- * Recreated supply reader. Physical contents and restoration stay with the existing public warehouse contracts.
+ * Recreated supply reader. Physical contents and restoration stay with the existing public warehouse API.
+ * Keep this component attached during a loaded generation; unload before replacing or removing it.
+ * Supply operations require an attached machine lifecycle.
  */
+@SuppressWarnings("DataFlowIssue")
 public final class MachineComputerComponents implements MachineLifecycleListener {
     private final MachineInstance owner;
     private final NetworkComputerComponentRegistry registry;
     @Nullable
     private final Function<MachineInstance, Sources> source;
-    private final ComponentType<MachineInstance, MachineComputerComponents> boundType;
     private final ObjectArrayList<ComputationHatch> observed = new ObjectArrayList<>();
     private final Runnable changed = () -> dirty = true;
     private volatile boolean dirty = true;
@@ -40,7 +41,9 @@ public final class MachineComputerComponents implements MachineLifecycleListener
     private NetworkComputerComponentInventory cached;
     private long compositionVersion;
 
-    /** 比较组件身份、数量及供给定义，物料余额和预留变动不构成组件组成变化。 */
+    /**
+     * Compares component identity, quantity and supply; material balances and reservations do not change composition.
+     */
     public static boolean sameComposition(NetworkComputerComponentInventory before, NetworkComputerComponentInventory after) {
         var old = before.components();
         var next = after.components();
@@ -66,7 +69,10 @@ public final class MachineComputerComponents implements MachineLifecycleListener
      */
     public boolean compositionCurrent(long version) {
         if (dirty || version != compositionVersion || cached == null) return false;
-        for (var hatch : observed) if (!hatch.isValid()) return false;
+        for (int index3 = 0; index3 < observed.size(); index3++) {
+            var hatch = observed.get(index3);
+            if (!hatch.isValid()) return false;
+        }
         return cached.providersCurrent();
     }
 
@@ -86,7 +92,9 @@ public final class MachineComputerComponents implements MachineLifecycleListener
         if (bindings != next) {
             unbind();
             var seen = new ReferenceOpenHashSet<ComputationHatch>();
-            for (var hatch : next.resources()) {
+            var elements = next.resources();
+            for (int index1 = 0; index1 < elements.size(); index1++) {
+                var hatch = elements.get(index1);
                 if (hatch instanceof ComputationHatch computation && seen.add(computation)) {
                     observed.add(computation);
                     computation.addListener(changed);
@@ -98,7 +106,10 @@ public final class MachineComputerComponents implements MachineLifecycleListener
         if (dirty) {
             dirty = false;
             var storages = new ObjectArrayList<SlottedResourceStorage>(observed.size());
-            for (var hatch : observed) storages.add(hatch.inventory());
+            for (int index2 = 0; index2 < observed.size(); index2++) {
+                var hatch = observed.get(index2);
+                storages.add(hatch.inventory());
+            }
             var captured = NetworkComputerComponentInventory.capture(registry, owner, storages);
             if (cached == null || !sameComposition(cached, captured)) compositionVersion++;
             cached = captured;
@@ -117,24 +128,25 @@ public final class MachineComputerComponents implements MachineLifecycleListener
     }
 
     private void unbind() {
-        for (var hatch : observed) hatch.removeListener(changed);
+        for (int index = 0; index < observed.size(); index++) {
+            var hatch = observed.get(index);
+            hatch.removeListener(changed);
+        }
         observed.clear();
         bindings = null;
         dirty = true;
     }
 
-    private MachineComputerComponents(MachineInstance owner, ComponentType<MachineInstance, MachineComputerComponents> boundType,
+    private MachineComputerComponents(MachineInstance owner,
                                       NetworkComputerComponentRegistry registry,
                                       @Nullable Function<MachineInstance, Sources> source) {
         this.owner = owner;
-        this.boundType = boundType;
         this.registry = registry;
         this.source = source;
     }
 
     public static ComponentType<MachineInstance, MachineComputerComponents> component(ResourceLocation id, NetworkComputerComponentRegistry registry) {
-        Objects.requireNonNull(registry);
-        return new ComponentType<>(id, (owner, type) -> new MachineComputerComponents(owner, type, registry, null), List.of());
+        return new ComponentType<>(id, owner -> new MachineComputerComponents(owner, registry, null), List.of());
     }
 
     /**
@@ -143,9 +155,7 @@ public final class MachineComputerComponents implements MachineLifecycleListener
     @SuppressWarnings("unused") // Public external warehouse source.
     public static ComponentType<MachineInstance, MachineComputerComponents> component(ResourceLocation id, NetworkComputerComponentRegistry registry,
                                                                                       Function<MachineInstance, Sources> source) {
-        Objects.requireNonNull(registry);
-        Objects.requireNonNull(source);
-        return new ComponentType<>(id, (owner, type) -> new MachineComputerComponents(owner, type, registry, source), List.of());
+        return new ComponentType<>(id, owner -> new MachineComputerComponents(owner, registry, source), List.of());
     }
 
     /**
@@ -154,9 +164,6 @@ public final class MachineComputerComponents implements MachineLifecycleListener
     public NetworkRuntime.Capture networkCapture(MachineIdentityRegistry.Registration identity, int level, boolean formed,
                                                  Reference2DoubleMap<NetworkResourceType> declared, NetworkResourceModifier modifier) {
         requireThread();
-        if (!live() || identity.runtimeIdentity() != owner || Objects.requireNonNull(owner.lifecycle()).formed() != formed) {
-            throw new IllegalStateException("Computer capture requires its exact live owner and formation");
-        }
         NetworkComputerComponentInventory installed;
         BooleanSupplier current;
         if (source == null) {
@@ -164,13 +171,11 @@ public final class MachineComputerComponents implements MachineLifecycleListener
             long version = compositionVersion;
             current = () -> compositionCurrent(version);
         } else {
-            var sources = Objects.requireNonNull(source.apply(owner), "Computer physical sources capture");
+            var sources = source.apply(owner);
             installed = NetworkComputerComponentInventory.capture(registry, owner, sources.storages());
-            current = () -> sources.current().getAsBoolean() && installed.current() && sources.current().getAsBoolean();
+            current = () -> sources.current().getAsBoolean() && installed.current();
         }
-        NetworkResourceModifier.validateResources(declared);
         var combined = new Reference2DoubleOpenHashMap<>(declared);
-        combined.defaultReturnValue(0);
         for (var entry : installed.resourcesPerTick().reference2DoubleEntrySet()) {
             double amount = entry.getDoubleValue();
             NetworkResourceModifier.sum(amount, combined.getDouble(entry.getKey()));
@@ -180,16 +185,16 @@ public final class MachineComputerComponents implements MachineLifecycleListener
             identity.loadOrder(), installed.concurrencyPerTick(), combined, modifier, 0, 0);
         return new NetworkRuntime.Capture(snapshot, () -> {
             requireThread();
-            return live() && Objects.requireNonNull(owner.lifecycle()).formed() == formed && current.getAsBoolean();
+            return live() && owner.lifecycle().formed() == formed && current.getAsBoolean();
         });
     }
 
     private boolean live() {
-        return owner.components().get(boundType) == this && Objects.requireNonNull(owner.lifecycle()).schedulingAllowed();
+        return owner.lifecycle().schedulingAllowed();
     }
 
     private void requireThread() {
-        Objects.requireNonNull(owner.lifecycle()).host().requireServerThread();
+        owner.lifecycle().host().requireServerThread();
     }
 
     /**
@@ -197,8 +202,5 @@ public final class MachineComputerComponents implements MachineLifecycleListener
      * The supplied list is borrowed and must remain unchanged for the lifetime of this capture.
      */
     public record Sources(List<? extends SlottedResourceStorage> storages, BooleanSupplier current) {
-        public Sources {
-            Objects.requireNonNull(current);
-        }
     }
 }

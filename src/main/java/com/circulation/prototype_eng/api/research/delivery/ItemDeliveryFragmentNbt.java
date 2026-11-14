@@ -2,11 +2,9 @@ package com.circulation.prototype_eng.api.research.delivery;
 
 import com.circulation.prototype_eng.api.persistence.NbtCodec;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import net.minecraft.nbt.NBTTagCompound;
 
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -40,10 +38,7 @@ public final class ItemDeliveryFragmentNbt implements NbtCodec<ItemDeliveryFragm
     }
 
     private static UUID uuid(String text) {
-        var parsed = UUID.fromString(text);
-        if (!parsed.toString().equals(text))
-            throw new IllegalArgumentException("Non-canonical item delivery fragment UUID");
-        return parsed;
+        return UUID.fromString(text);
     }
 
     @Override
@@ -55,12 +50,9 @@ public final class ItemDeliveryFragmentNbt implements NbtCodec<ItemDeliveryFragm
 
     @Override
     public ItemDeliveryFragment decode(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Parent", "Id", "Resource", "Count", "Stack", "Status", "Entity", "Target");
-        var identity = StrictNbt.requireCompound(tag, "Parent");
+        var identity = tag.getCompoundTag("Parent");
         var parent = ItemDeliveryKeyNbt.readIdentity(identity);
-        var payload = tag.copy();
-        payload.removeTag("Parent");
-        var result = decodePayload(payload, parent);
+        var result = decodePayload(tag, parent);
         if (!ItemDeliveryKeyNbt.fragmentId(identity).equals(result.id()))
             throw new IllegalArgumentException("Item delivery parent fragment ID differs");
         return result;
@@ -76,29 +68,23 @@ public final class ItemDeliveryFragmentNbt implements NbtCodec<ItemDeliveryFragm
         tag.setInteger("Count", value.count());
         tag.setTag("Stack", value.taggedStackNbt());
         tag.setString("Status", value.status().name());
-        if (value.entityUuid().isPresent()) tag.setString("Entity", value.entityUuid().orElseThrow().toString());
+        if ((value.entityUuid() != null)) tag.setString("Entity", value.entityUuid().toString());
         tag.setTag("Target", encodeTarget(value.target()));
         return tag;
     }
 
     public ItemDeliveryFragment decodePayload(NBTTagCompound tag, ItemDeliveryKey parent) {
-        StrictNbt.requireKeys(tag, "Id", "Resource", "Count", "Stack", "Status", "Entity", "Target");
-        var targetTag = StrictNbt.requireCompound(tag, "Target");
-        var target = switch (StrictNbt.requireString(targetTag, "Kind")) {
-            case "INVENTORY" -> {
-                StrictNbt.requireKeys(targetTag, "Kind", "Slot");
-                yield new ItemDeliveryFragment.Inventory(StrictNbt.requireInt(targetTag, "Slot"));
-            }
-            case "WORLD_DROP" -> {
-                StrictNbt.requireKeys(targetTag, "Kind", "Dimension", "ChunkX", "ChunkZ", "X", "Y", "Z");
-                yield new ItemDeliveryFragment.WorldDrop(StrictNbt.requireInt(targetTag, "Dimension"), StrictNbt.requireInt(targetTag, "ChunkX"),
-                    StrictNbt.requireInt(targetTag, "ChunkZ"), StrictNbt.requireDouble(targetTag, "X"), StrictNbt.requireDouble(targetTag, "Y"), StrictNbt.requireDouble(targetTag, "Z"));
-            }
+        var targetTag = tag.getCompoundTag("Target");
+        var target = switch (targetTag.getString("Kind")) {
+            case "INVENTORY" -> new ItemDeliveryFragment.Inventory(targetTag.getInteger("Slot"));
+            case "WORLD_DROP" ->
+                new ItemDeliveryFragment.WorldDrop(targetTag.getInteger("Dimension"), targetTag.getInteger("ChunkX"),
+                    targetTag.getInteger("ChunkZ"), targetTag.getDouble("X"), targetTag.getDouble("Y"), targetTag.getDouble("Z"));
             default -> throw new IllegalArgumentException("Unknown item delivery target");
         };
-        return new ItemDeliveryFragment(uuid(StrictNbt.requireString(tag, "Id")), parent, resources.decode(StrictNbt.requireCompound(tag, "Resource")),
-            StrictNbt.requireInt(tag, "Count"), StrictNbt.requireCompound(tag, "Stack"), target,
-            tag.hasKey("Entity") ? Optional.of(uuid(StrictNbt.requireString(tag, "Entity"))) : Optional.empty(),
-            ItemDeliveryFragment.Status.valueOf(StrictNbt.requireString(tag, "Status")));
+        return new ItemDeliveryFragment(uuid(tag.getString("Id")), parent, resources.decode(tag.getCompoundTag("Resource")),
+            tag.getInteger("Count"), tag.getCompoundTag("Stack"), target,
+            tag.hasKey("Entity") ? uuid(tag.getString("Entity")) : null,
+            ItemDeliveryFragment.Status.valueOf(tag.getString("Status")));
     }
 }

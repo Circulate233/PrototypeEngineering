@@ -25,7 +25,8 @@ public final class ResourceInputReceipts {
         var resources = source.resources();
         if (resources.isEmpty()) return source;
         var observed = new ObjectArrayList<ResourceHatch>(resources.size());
-        for (var hatch : resources) {
+        for (int index1 = 0; index1 < resources.size(); index1++) {
+            var hatch = resources.get(index1);
             observed.add(new ObservedHatch(hatch, hatch instanceof ResourceRecipeObserver observer ? observer : null, process));
         }
         return new MachineHatches(observed, source.energyInputs(), source.energyOutputs());
@@ -52,7 +53,8 @@ public final class ResourceInputReceipts {
             var groups = new Reference2ObjectLinkedOpenHashMap<Object, Committed>();
             var total = new AEKey2LongMap.OpenHashMap();
             boolean overflow = false;
-            for (var receipt : receipts) {
+            for (int index2 = 0; index2 < receipts.size(); index2++) {
+                var receipt = receipts.get(index2);
                 if (!receipt.completed) continue;
                 if (!overflow) {
                     if (total.getLong(receipt.key) > Long.MAX_VALUE - receipt.amount) overflow = true;
@@ -93,7 +95,8 @@ public final class ResourceInputReceipts {
             Throwable failure = null;
             for (var committed : groups.values()) {
                 committed.finish();
-                for (var chunk : committed.chunks) {
+                for (int index = 0; index < committed.chunks.size(); index++) {
+                    var chunk = committed.chunks.get(index);
                     try {
                         committed.observer.inputsCommitted(process, stage, chunk);
                     } catch (RuntimeException | Error observed) {

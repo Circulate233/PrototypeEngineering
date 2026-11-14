@@ -27,7 +27,9 @@ final class ControllerRotatedModel implements IBakedModel {
         this.base = base;
         for (int i = 0; i < 7; i++) quads.add(new ObjectArrayList<>());
         for (int source = 0; source < 7; source++) {
-            for (var quad : base.getQuads(null, source == 6 ? null : EnumFacing.VALUES[source], 0)) {
+            var elements = base.getQuads(null, source == 6 ? null : EnumFacing.VALUES[source], 0);
+            for (int index = 0; index < elements.size(); index++) {
+                var quad = elements.get(index);
                 int[] data = quad.getVertexData().clone();
                 var format = quad.getFormat();
                 float[] values = new float[4];

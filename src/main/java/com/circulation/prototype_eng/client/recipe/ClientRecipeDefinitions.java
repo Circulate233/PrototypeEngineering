@@ -137,7 +137,7 @@ public final class ClientRecipeDefinitions {
         if (desiredBytes != null) {
             int offset = packet.index() * RecipeDefinitionManifestPacket.CHUNK_BYTES;
             if (packet.totalBytes() != desiredBytes.length
-                || !Arrays.equals(bytes, Arrays.copyOfRange(desiredBytes, offset, offset + bytes.length)))
+                || !Arrays.equals(bytes, 0, bytes.length, desiredBytes, offset, offset + bytes.length))
                 conflict("Conflicting completed recipe manifest generation");
             return false;
         }

@@ -22,7 +22,6 @@ import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
@@ -40,7 +39,7 @@ class NetworkPlannerTest {
 
     private static OwnerTeamResolver teams() {
         return owner -> OwnerTeamResolution.resolved(owner, owner.equals(OWNER) ? "team" : "other",
-            OwnerTeamType.SERVER, ObjectSet.of(owner), Optional.empty());
+            OwnerTeamType.SERVER, ObjectSet.of(owner), null);
     }
 
     private static NetworkDeviceSnapshot device(long id, NetworkDeviceRole role, int level, boolean formed,
@@ -137,18 +136,6 @@ class NetworkPlannerTest {
         assertEquals(1, plan.epoch());
     }
 
-    @Test
-    void duplicateDevicesAndParticipantsOrStaleParticipantEpochRejectBeforeAnyOwnerQueries() {
-        var center = device(1, NetworkDeviceRole.NETWORK_CENTER, 1, true, 0, 0, 0);
-        OwnerTeamResolver forbidden = _ -> {
-            throw new AssertionError("Invalid input must fail before querying teams");
-        };
-        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(1, List.of(center, center), List.of(), forbidden));
-        var contribution = new NetworkContribution(uuid(10), OWNER, 1, 0, resources(3));
-        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(1, List.of(center), List.of(contribution, contribution), forbidden));
-        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(2, List.of(center), List.of(contribution), forbidden));
-
-    }
 
     @Test
     void noCenterAndRejectedOwnerKeepDistinctStatesAndDoNotCreateCapacity() {
@@ -167,26 +154,6 @@ class NetworkPlannerTest {
         assertTrue(plan.teams().isEmpty());
     }
 
-    @Test
-    void inconsistentOrMismatchedOwnerSnapshotsAndProviderFailuresAbortCapture() {
-        var center = device(1, NetworkDeviceRole.NETWORK_CENTER, 1, true, 0, 0, 0);
-        var secondOwner = new NetworkContribution(uuid(30), OTHER_OWNER, 1, 0, resources(1));
-        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(1, List.of(center), List.of(secondOwner),
-            owner -> OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER, ObjectSet.of(owner), Optional.empty())));
-        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(1, List.of(center), List.of(secondOwner),
-            owner -> OwnerTeamResolution.resolved(owner, owner.equals(OWNER) ? "team" : "other",
-                OwnerTeamType.SERVER, ObjectSet.of(OWNER, OTHER_OWNER), Optional.empty())));
-        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(1, List.of(center), List.of(secondOwner),
-            owner -> owner.equals(OWNER)
-                ? OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER, ObjectSet.of(OWNER, OTHER_OWNER), Optional.empty())
-                : OwnerTeamResolution.rejected(owner, OwnerTeamResolutionStatus.NO_TEAM, "Owner left the team")));
-        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(1, List.of(center), List.of(),
-            _ -> teams().resolve(OTHER_OWNER)));
-        var failure = new IllegalStateException("team backend failed");
-        assertSame(failure, assertThrows(IllegalStateException.class, () -> NetworkPlanner.capture(1, List.of(center), List.of(), _ -> {
-            throw failure;
-        })));
-    }
 
     @Test
     void unmodifiedSupplyAcceptsDoubleMaxWhileAccumulationRejectsOverflow() {

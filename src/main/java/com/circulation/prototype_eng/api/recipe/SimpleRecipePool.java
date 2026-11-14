@@ -73,7 +73,8 @@ public final class SimpleRecipePool implements RecipePool {
         var ids = new ObjectOpenHashSet<ResourceLocation>(entries.size());
         var rows = new ObjectArrayList<MachineRecipe>(entries.size());
         var postings = new Object2ObjectOpenHashMap<AEKey, ObjectArrayList<Entry>>(entries.size());
-        for (var entry : entries) {
+        for (int index5 = 0; index5 < entries.size(); index5++) {
+            var entry = entries.get(index5);
             Objects.requireNonNull(entry);
             if (!ids.add(entry.recipe.id()))
                 throw new IllegalArgumentException("Duplicate simple recipe: " + entry.recipe.id());
@@ -136,14 +137,20 @@ public final class SimpleRecipePool implements RecipePool {
      */
     public SimpleRecipePool withExistingJeiPage(@Nullable String categoryUid) {
         var entries = new ObjectArrayList<Entry>(recipes.size());
-        for (var recipe : recipes) entries.add(Entry.of(recipe));
+        for (int index3 = 0; index3 < recipes.size(); index3++) {
+            var recipe = recipes.get(index3);
+            entries.add(Entry.of(recipe));
+        }
         return new SimpleRecipePool(id, translationKey, entries, machines, stableInputs, categoryUid);
     }
 
     @Override
     public SimpleRecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines) {
         var entries = new ObjectArrayList<Entry>(recipes.size());
-        for (var recipe : recipes) entries.add(Entry.of(recipe));
+        for (int index4 = 0; index4 < recipes.size(); index4++) {
+            var recipe = recipes.get(index4);
+            entries.add(Entry.of(recipe));
+        }
         return new SimpleRecipePool(id, translationKey, entries, machines, stableInputs, existingJeiPageId);
     }
 
@@ -362,8 +369,14 @@ public final class SimpleRecipePool implements RecipePool {
             if (stale) return false;
             if (phase != 3) return true;
             if (!stableInputs.test(machine) || MachineHatches.get(machine) != sourceBindings) return false;
-            for (var binding : bindings) if (!binding.current()) return false;
-            for (var capture : captures) if (!capture.current()) return false;
+            for (int index1 = 0; index1 < bindings.size(); index1++) {
+                var binding = bindings.get(index1);
+                if (!binding.current()) return false;
+            }
+            for (int index2 = 0; index2 < captures.size(); index2++) {
+                var capture = captures.get(index2);
+                if (!capture.current()) return false;
+            }
             return true;
         }
 

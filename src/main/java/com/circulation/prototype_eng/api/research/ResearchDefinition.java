@@ -2,23 +2,22 @@ package com.circulation.prototype_eng.api.research;
 
 import ae2.api.stacks.AEKey;
 import ae2.core.localization.LocalizationEnum;
-import org.jetbrains.annotations.Nullable;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.research.reward.RewardGroup;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
-import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
 /**
  * Immutable PN research definition. Continuous stages cover exactly 1..maxLevel.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 @SuppressWarnings("unused")
 public final class ResearchDefinition {
@@ -51,7 +50,8 @@ public final class ResearchDefinition {
             throw new IllegalArgumentException("Research must declare stages: " + id);
         }
         long expectedFirst = 1;
-        for (var stage : builder.stages) {
+        for (int index = 0; index < builder.stages.size(); index++) {
+            var stage = builder.stages.get(index);
             if (stage.firstLevel() != expectedFirst) {
                 throw new IllegalArgumentException("Research stages must be contiguous at level " + expectedFirst + ": " + id);
             }
@@ -60,13 +60,13 @@ public final class ResearchDefinition {
         if (expectedFirst != (long) maxLevel + 1) {
             throw new IllegalArgumentException("Research stages must end at maxLevel: " + id);
         }
-        stages = ObjectLists.unmodifiable(new ObjectArrayList<>(builder.stages));
+        stages = builder.stages;
         for (var level : builder.unlockLevels.values()) {
             if (level > maxLevel) {
                 throw new IllegalArgumentException("Unlock level exceeds maxLevel: " + id);
             }
         }
-        unlockLevels = Object2IntMaps.unmodifiable(new Object2IntOpenHashMap<>(builder.unlockLevels));
+        unlockLevels = builder.unlockLevels;
         startCondition = builder.startCondition;
     }
 
@@ -163,6 +163,9 @@ public final class ResearchDefinition {
     private record UnlockKey(ResourceLocation effectId, ResourceLocation targetId) {
     }
 
+    /**
+     * Transfers its completed collections on build; do not reuse or mutate the builder afterward.
+     */
     public static final class Builder {
         private final ResourceLocation id;
         private @Nullable LocalizationEnum displayName;
@@ -180,12 +183,12 @@ public final class ResearchDefinition {
         }
 
         public Builder displayName(LocalizationEnum name) {
-            displayName = Objects.requireNonNull(name);
+            displayName = name;
             return this;
         }
 
         public Builder icon(AEKey resource) {
-            icon = Objects.requireNonNull(resource);
+            icon = resource;
             return this;
         }
 

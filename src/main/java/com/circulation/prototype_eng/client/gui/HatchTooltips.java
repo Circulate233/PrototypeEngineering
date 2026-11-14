@@ -18,10 +18,16 @@ public final class HatchTooltips {
 
     public static List<ITextComponent> wrap(FontRenderer font, List<ITextComponent> lines, int maxWidth) {
         var expanded = new ObjectArrayList<ITextComponent>(lines.size());
-        for (var line : lines) expanded.add(expandLineBreaks(line));
+        for (int index = 0; index < lines.size(); index++) {
+            var line = lines.get(index);
+            expanded.add(expandLineBreaks(line));
+        }
         var result = new ObjectArrayList<ITextComponent>(lines.size());
-        for (var line : new Tooltip(expanded).content())
+        var elements = new Tooltip(expanded).content();
+        for (int index2 = 0; index2 < elements.size(); index2++) {
+            var line = elements.get(index2);
             result.addAll(GuiUtilRenderComponents.splitText(line, Math.max(40, maxWidth), font, false, false));
+        }
         return result;
     }
 

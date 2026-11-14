@@ -207,7 +207,8 @@ public final class WorldProjectionManager implements AutoCloseable {
         try {
             buffer.begin(outline ? GL11.GL_LINES : GL11.GL_QUADS, DefaultVertexFormats.POSITION_COLOR);
             building = true;
-            for (var sample : samples) {
+            for (int index = 0; index < samples.size(); index++) {
+                var sample = samples.get(index);
                 var position = sample.position();
                 double x = position.getX() - cameraX, y = position.getY() - cameraY, z = position.getZ() - cameraZ;
                 double dx = x + 0.5, dy = y + 0.5, dz = z + 0.5;

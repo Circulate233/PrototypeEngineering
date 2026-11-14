@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.api.research.delivery;
 
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
@@ -19,12 +18,9 @@ public final class ItemDeliveryTemplates {
 
     public static NBTTagCompound copy(NBTTagCompound template) {
         var result = Objects.requireNonNull(template).copy();
-        StrictNbt.requireId(result, "id");
-        StrictNbt.requireShort(result, "Damage");
-        if (StrictNbt.requireByte(result, "Count") < 1)
+        if (result.getByte("Count") < 1)
             throw new IllegalArgumentException("Empty item delivery template");
-        if (result.hasKey("ForgeCaps")) StrictNbt.requireCompound(result, "ForgeCaps");
-        if (result.hasKey("tag") && StrictNbt.requireCompound(result, "tag").hasKey(DELIVERY_TAG)) {
+        if (result.hasKey("tag") && result.getCompoundTag("tag").hasKey(DELIVERY_TAG)) {
             throw new IllegalArgumentException("Business item contains reserved delivery tag");
         }
         normalizeEmptyLists(result);
@@ -56,7 +52,7 @@ public final class ItemDeliveryTemplates {
         if (count < 1 || count > Byte.MAX_VALUE) throw new IllegalArgumentException("Invalid item delivery leaf count");
         var result = copy(template);
         result.setByte("Count", (byte) count);
-        var root = result.hasKey("tag") ? StrictNbt.requireCompound(result, "tag") : new NBTTagCompound();
+        var root = result.hasKey("tag") ? result.getCompoundTag("tag") : new NBTTagCompound();
         root.setTag(DELIVERY_TAG, ItemDeliveryKeyNbt.identity(key, id));
         result.setTag("tag", root);
         return result;

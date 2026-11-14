@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.research;
 
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
+import org.jetbrains.annotations.Nullable;
+
 import com.circulation.prototype_eng.api.research.ResearchWorldSnapshot;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
@@ -16,7 +17,6 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
  * Sole owner of the research file; compressed data uses PN's sync, atomic replace and final force.
@@ -34,9 +34,9 @@ public final class ResearchStateFile {
     /**
      * Only a genuinely absent path starts an empty world; unreadable/corrupt files fail visibly.
      */
-    public Optional<ResearchWorldSnapshot> read() throws IOException {
+    public @Nullable ResearchWorldSnapshot read() throws IOException {
         if (Files.notExists(target)) {
-            return Optional.empty();
+            return null;
         }
         if (!Files.readAttributes(target, BasicFileAttributes.class).isRegularFile()) {
             throw new IOException("Research state is not a regular file: " + target);
@@ -46,8 +46,7 @@ public final class ResearchStateFile {
         }
         try (var input = Files.newInputStream(target)) {
             var root = CompressedStreamTools.readCompressed(input);
-            StrictNbt.requireKeys(root, "data");
-            return Optional.of(codec.decode(StrictNbt.requireCompound(root, "data")));
+            return codec.decode(root.getCompoundTag("data"));
         }
     }
 

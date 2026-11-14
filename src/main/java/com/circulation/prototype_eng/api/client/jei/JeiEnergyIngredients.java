@@ -45,8 +45,11 @@ public final class JeiEnergyIngredients {
 
     public static List<Energy> values(JeiRecipeDisplay display, Role role) {
         var result = new ObjectArrayList<Energy>();
-        for (var line : display.information())
+        var elements = display.information();
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var line = elements.get(index1);
             if (line.energy() != null && line.energy().role() == role) result.add(line.energy());
+        }
         return ObjectLists.unmodifiable(result);
     }
 

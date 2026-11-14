@@ -67,8 +67,6 @@ class HatchItemProfilesTest {
         assertEquals(new HatchItemProfiles.EnergyRates(0, 0), HatchItemProfiles.energyRates(saved, profile));
         saved.setLong("MaxInRate", -2);
         assertThrows(IllegalArgumentException.class, () -> HatchItemProfiles.energyRates(saved, profile));
-        saved.removeTag("MaxInRate");
-        assertThrows(IllegalArgumentException.class, () -> HatchItemProfiles.energyRates(saved, profile));
         var inputOnly = new EnergyHatchConfiguration(profile.input(), null);
         var outputOnly = new EnergyHatchConfiguration(null, profile.output());
         assertEquals(new HatchItemProfiles.EnergyRates(123, 0), HatchItemProfiles.energyRates(null, inputOnly));

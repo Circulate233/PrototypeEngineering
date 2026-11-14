@@ -53,24 +53,30 @@ public class MachineModelHides implements AutoCloseable {
     public void tick() {
         requireOwner();
         Throwable failure = null;
-        for (var lease : leaseSnapshot())
+        var elements3 = leaseSnapshot();
+        for (int index3 = 0; index3 < elements3.size(); index3++) {
+            var lease = elements3.get(index3);
             try {
                 if (!lease.current.getAsBoolean() || entries().get(lease.controller) != lease.positions) lease.close();
             } catch (RuntimeException | Error cleanup) {
                 failure = BuiltModelBuffers.append(failure, cleanup);
             }
+        }
         BuiltModelBuffers.rethrow(failure);
     }
 
     public void unload(Object world) {
         requireOwner();
         Throwable failure = null;
-        for (var lease : leaseSnapshot())
+        var elements2 = leaseSnapshot();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var lease = elements2.get(index2);
             if (lease.world == world) try {
                 lease.close();
             } catch (RuntimeException | Error exception) {
                 failure = BuiltModelBuffers.append(failure, exception);
             }
+        }
         BuiltModelBuffers.rethrow(failure);
     }
 
@@ -78,12 +84,15 @@ public class MachineModelHides implements AutoCloseable {
     public void close() {
         requireOwner();
         Throwable failure = null;
-        for (var lease : leaseSnapshot())
+        var elements = leaseSnapshot();
+        for (int index = 0; index < elements.size(); index++) {
+            var lease = elements.get(index);
             try {
                 lease.close();
             } catch (RuntimeException | Error exception) {
                 failure = BuiltModelBuffers.append(failure, exception);
             }
+        }
         BuiltModelBuffers.rethrow(failure);
     }
 

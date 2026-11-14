@@ -60,7 +60,8 @@ public class GeckoAnimationDriver implements IAnimatable {
 
     public static List<String> pickAnimationNames(AnimationFile file, List<String> preferred) {
         var chosen = new ObjectArrayList<String>();
-        for (var value : preferred) {
+        for (int index3 = 0; index3 < preferred.size(); index3++) {
+            var value = preferred.get(index3);
             var name = value.trim();
             if (!name.isEmpty() && file.getAnimation(name) != null) chosen.add(name);
         }
@@ -94,7 +95,10 @@ public class GeckoAnimationDriver implements IAnimatable {
         if (selected.isEmpty()) return;
         data.clearSnapshotCache();
         model.processor.clearModelRendererList();
-        for (var root : geo.topLevelBones) register(root);
+        for (int index = 0; index < geo.topLevelBones.size(); index++) {
+            var root = geo.topLevelBones.get(index);
+            register(root);
+        }
         var event = new AnimationEvent<>(this, 0, 0, 0, false, List.of());
         model.processor.preAnimationSetup(this, ticks);
         model.processor.tickAnimation(this, 0, ticks, event, parser, false);
@@ -102,7 +106,10 @@ public class GeckoAnimationDriver implements IAnimatable {
 
     private void register(GeoBone bone) {
         model.processor.registerModelRenderer(bone);
-        for (var child : bone.childBones) register(child);
+        for (int index2 = 0; index2 < bone.childBones.size(); index2++) {
+            var child = bone.childBones.get(index2);
+            register(child);
+        }
     }
 
     /**

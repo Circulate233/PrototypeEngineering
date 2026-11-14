@@ -1,13 +1,13 @@
 package com.circulation.prototype_eng.machine.data;
 
 import com.circulation.prototype_eng.api.data.ComponentData;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.machine.render.ControllerRenderSnapshotCodec;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 import org.jetbrains.annotations.Nullable;
 
@@ -25,11 +25,15 @@ public final class MachineDataSnapshotCodec {
         tag.setLong("Revision", snapshot.revision());
         component(tag, snapshot.machine());
         var hosts = new NBTTagList();
-        for (var host : snapshot.hosts()) {
+        var elements2 = snapshot.hosts();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var host = elements2.get(index2);
             var entry = new NBTTagCompound();
             entry.setLong("Identity", host.identity());
             var slots = new NBTTagList();
-            for (var slot : host.slots()) {
+            var elements = host.slots();
+            for (int index = 0; index < elements.size(); index++) {
+                var slot = elements.get(index);
                 var item = new NBTTagCompound();
                 item.setString("Name", slot.name());
                 if (slot.process() != null) {
@@ -50,40 +54,36 @@ public final class MachineDataSnapshotCodec {
 
     public static MachineDataSnapshot decode(byte[] bytes) {
         var tag = ControllerRenderSnapshotCodec.decodeCompound(bytes);
-        StrictNbt.requireKeys(tag, "Version", "Generation", "Revision", "ComponentRevision", "Data", "Hosts");
-        if (StrictNbt.requireInt(tag, "Version") != 1)
+        if (tag.getInteger("Version") != 1)
             throw new IllegalArgumentException("Unknown machine data schema");
-        var entries = StrictNbt.requireList(tag, "Hosts", Constants.NBT.TAG_COMPOUND);
+        var entries = tag.getTagList("Hosts", Constants.NBT.TAG_COMPOUND);
         var hosts = new ObjectArrayList<MachineDataSnapshot.Host>(entries.tagCount());
         var hostIds = new LongOpenHashSet(entries.tagCount());
         var processIds = new LongOpenHashSet();
         for (int h = 0; h < entries.tagCount(); h++) {
             var entry = entries.getCompoundTagAt(h);
-            StrictNbt.requireKeys(entry, "Identity", "Slots");
-            var items = StrictNbt.requireList(entry, "Slots", Constants.NBT.TAG_COMPOUND);
-            long hostId = StrictNbt.requireLong(entry, "Identity");
+            var items = entry.getTagList("Slots", Constants.NBT.TAG_COMPOUND);
+            long hostId = entry.getLong("Identity");
             if (!hostIds.add(hostId)) throw new IllegalArgumentException("Duplicate data host identity");
             var slots = new ObjectArrayList<MachineDataSnapshot.Slot>(items.tagCount());
             var names = new ObjectOpenHashSet<String>();
             for (int s = 0; s < items.tagCount(); s++) {
                 var item = items.getCompoundTagAt(s);
-                StrictNbt.requireKeys(item, "Name", "Process");
                 MachineDataSnapshot.Process process = null;
                 if (item.hasKey("Process")) {
-                    var saved = StrictNbt.requireCompound(item, "Process");
-                    StrictNbt.requireKeys(saved, "Identity", "Recipe", "ComponentRevision", "Data");
-                    long processId = StrictNbt.requireLong(saved, "Identity");
+                    var saved = item.getCompoundTag("Process");
+                    long processId = saved.getLong("Identity");
                     if (!processIds.add(processId))
                         throw new IllegalArgumentException("Duplicate data process identity");
-                    process = new MachineDataSnapshot.Process(processId, StrictNbt.requireId(saved, "Recipe"), component(saved));
+                    process = new MachineDataSnapshot.Process(processId, new ResourceLocation(saved.getString("Recipe")), component(saved));
                 }
-                var name = StrictNbt.requireString(item, "Name");
+                var name = item.getString("Name");
                 if (!names.add(name)) throw new IllegalArgumentException("Duplicate data slot name");
                 slots.add(new MachineDataSnapshot.Slot(name, process));
             }
             hosts.add(new MachineDataSnapshot.Host(hostId, slots));
         }
-        return new MachineDataSnapshot(StrictNbt.requireLong(tag, "Generation"), StrictNbt.requireLong(tag, "Revision"), component(tag), hosts);
+        return new MachineDataSnapshot(tag.getLong("Generation"), tag.getLong("Revision"), component(tag), hosts);
     }
 
     private static void component(NBTTagCompound tag, @Nullable ComponentData.Snapshot data) {
@@ -94,6 +94,6 @@ public final class MachineDataSnapshotCodec {
 
     private static @Nullable ComponentData.Snapshot component(NBTTagCompound tag) {
         if (!tag.hasKey("Data") && !tag.hasKey("ComponentRevision")) return null;
-        return new ComponentData.Snapshot(StrictNbt.requireLong(tag, "ComponentRevision"), StrictNbt.requireCompound(tag, "Data"));
+        return new ComponentData.Snapshot(tag.getLong("ComponentRevision"), tag.getCompoundTag("Data"));
     }
 }

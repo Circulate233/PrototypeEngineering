@@ -43,7 +43,9 @@ public final class MachineControllerBlocks {
         }
         var generated = new ObjectArrayList<MachineControllerBlock<?>>(registry.types().size());
         var names = new ObjectOpenHashSet<ResourceLocation>(registry.types().size());
-        for (var type : registry.types()) {
+        var elements = registry.types();
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var type = elements.get(index1);
             var factory = factories.get(type.id());
             var block = factory == null ? new BasicMachineControllerBlock(type)
                 : Objects.requireNonNull(factory.apply(type), "Controller factory returned null");
@@ -64,7 +66,8 @@ public final class MachineControllerBlocks {
     @SubscribeEvent
     public static void registerItems(RegistryEvent.Register<Item> event) {
         var generated = new ObjectArrayList<Item>(blocks.size());
-        for (var block : blocks) {
+        for (int index = 0; index < blocks.size(); index++) {
+            var block = blocks.get(index);
             var item = Objects.requireNonNull(block.createItem(), "Controller item factory returned null");
             if (item.getBlock() != block) {
                 throw new IllegalArgumentException("Controller item factory must target its own block");

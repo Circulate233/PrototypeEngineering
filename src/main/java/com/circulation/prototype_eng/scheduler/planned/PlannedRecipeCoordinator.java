@@ -333,7 +333,8 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                 var accepted = unresolved();
                 if (accepted == null) break;
                 Entry cohortRejected = null;
-                for (var entry : accepted) {
+                for (int index1 = 0; index1 < accepted.size(); index1++) {
+                    var entry = accepted.get(index1);
                     var timing = entry.stage.process().crossRecipeTiming();
                     if (timing != null && rejectedCohorts.contains(timing.batch())) {
                         cohortRejected = entry;
@@ -515,7 +516,8 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         if (settlement != null && settlement.barrier != null) barriers.add(settlement.barrier);
         if (preparedCleanup != null && preparedCleanup.barrier != null) barriers.add(preparedCleanup.barrier);
         Throwable observed = null;
-        for (var barrier : barriers) {
+        for (int index2 = 0; index2 < barriers.size(); index2++) {
+            var barrier = barriers.get(index2);
             try {
                 barrier.awaitQuiescence();
             } catch (RuntimeException | Error failure) {

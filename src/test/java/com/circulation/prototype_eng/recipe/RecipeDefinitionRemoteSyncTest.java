@@ -224,7 +224,7 @@ class RecipeDefinitionRemoteSyncTest {
         assertEquals(wanted, state.applied());
         assertEquals(1, renderer.applies);
         assertFalse(state.receive(connection, last));
-        var altered = last.bytes();
+        var altered = last.bytes().clone();
         altered[0] ^= 1;
         assertThrows(IllegalArgumentException.class, () -> state.receive(connection,
             wire(new RecipeDefinitionManifestPacket(session, 2, last.totalBytes(), last.index(), altered))));
@@ -247,7 +247,7 @@ class RecipeDefinitionRemoteSyncTest {
         var payload = RecipeDefinitionManifestCodec.encode(wanted);
         var first = wire(RecipeDefinitionManifestPacket.part(wanted, payload, 0));
         state.receive(connection, first);
-        var changed = first.bytes();
+        var changed = first.bytes().clone();
         changed[10] ^= 1;
         assertThrows(IllegalArgumentException.class, () -> state.receive(connection,
             wire(new RecipeDefinitionManifestPacket(session, 0, first.totalBytes(), 0, changed))));

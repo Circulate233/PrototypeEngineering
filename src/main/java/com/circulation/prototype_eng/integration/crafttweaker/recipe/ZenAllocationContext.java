@@ -63,6 +63,6 @@ public final class ZenAllocationContext {
 
     @ZenGetter("sources")
     public ZenAllocationSource[] sources() {
-        return sources.clone();
+        return sources;
     }
 }

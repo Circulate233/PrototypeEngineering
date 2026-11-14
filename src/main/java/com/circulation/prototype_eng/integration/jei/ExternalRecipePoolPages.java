@@ -20,7 +20,8 @@ public final class ExternalRecipePoolPages {
     }
 
     public static boolean requested(List<RecipePool> pools) {
-        for (var pool : pools) {
+        for (int index = 0; index < pools.size(); index++) {
+            var pool = pools.get(index);
             var id = pool.existingJeiPageId();
             if (pool.hasExistingJeiPage() && id != null && !id.isBlank()) return true;
         }

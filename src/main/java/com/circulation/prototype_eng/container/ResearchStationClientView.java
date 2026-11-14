@@ -29,22 +29,33 @@ public final class ResearchStationClientView {
             materials.clear();
             resources.clear();
             if (definition != null) {
-                for (var key : definition.materials()) materials.add(new Material(key));
-                for (var resource : definition.resources())
+                var elements = definition.materials();
+                for (int index4 = 0; index4 < elements.size(); index4++) {
+                    var key = elements.get(index4);
+                    materials.add(new Material(key));
+                }
+                var elements5 = definition.resources();
+                for (int index5 = 0; index5 < elements5.size(); index5++) {
+                    var resource = elements5.get(index5);
                     resources.add(new Resource(resource.type(), resource.total()));
+                }
             }
         }
         if (packet.queue() != null) {
             queue = packet.queue();
             queueNames.clear();
         }
-        for (var change : packet.materials()) {
+        var elements6 = packet.materials();
+        for (int index6 = 0; index6 < elements6.size(); index6++) {
+            var change = elements6.get(index6);
             var row = materials.get(change.index());
             if ((change.fields() & ResearchStationPacket.FIRST) != 0) row.available = change.available();
             if ((change.fields() & ResearchStationPacket.SECOND) != 0) row.remaining = change.remaining();
             row.amounts = null;
         }
-        for (var change : packet.resources()) {
+        var elements7 = packet.resources();
+        for (int index7 = 0; index7 < elements7.size(); index7++) {
+            var change = elements7.get(index7);
             var row = resources.get(change.index());
             if ((change.fields() & ResearchStationPacket.FIRST) != 0) row.occupied = change.occupied();
             if ((change.fields() & ResearchStationPacket.SECOND) != 0) row.capacity = change.capacity();
@@ -57,11 +68,13 @@ public final class ResearchStationClientView {
     public void invalidateText() {
         name = null;
         queueNames.clear();
-        for (var row : materials) {
+        for (int index1 = 0; index1 < materials.size(); index1++) {
+            var row = materials.get(index1);
             row.name = null;
             row.amounts = null;
         }
-        for (var row : resources) {
+        for (int index2 = 0; index2 < resources.size(); index2++) {
+            var row = resources.get(index2);
             row.name = null;
             row.amounts = null;
             row.progress = null;
@@ -83,7 +96,8 @@ public final class ResearchStationClientView {
 
     @SideOnly(Side.CLIENT)
     public String queueName(int index) {
-        if (queueNames.isEmpty()) for (var entry : queue) {
+        if (queueNames.isEmpty()) for (int index3 = 0; index3 < queue.size(); index3++) {
+            var entry = queue.get(index3);
             LocalizationEnum localized = entry::name;
             queueNames.add(localized.getLocal());
         }

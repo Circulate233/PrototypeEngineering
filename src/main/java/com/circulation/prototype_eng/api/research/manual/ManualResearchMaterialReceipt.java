@@ -8,7 +8,8 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Immutable operation proof shared by player inventory and the exact world-owned session intent.
+ * Operation proof shared by player inventory and the exact world-owned session intent.
+ * Inventory arrays are completed immutable images; suppliers and readers must not modify them.
  */
 public record ManualResearchMaterialReceipt(UUID sessionId, String teamId, TeamResearchQueue.Key queueKey,
                                             ManualResearchSession.MaterialIntent intent, byte[] inventoryBefore,
@@ -23,13 +24,11 @@ public record ManualResearchMaterialReceipt(UUID sessionId, String teamId, TeamR
         if (teamId.isBlank() || !teamId.equals(teamId.trim()) || preparedAt < 0) {
             throw new IllegalArgumentException("Invalid material receipt team identity or preparation time");
         }
-        inventoryBefore = ManualResearchMaterialReceiptNbt.copyInventory(inventoryBefore);
         if (status == Status.PREPARED) {
             if (inventoryAfter != null || committedAt != -1 || confirmedAt != -1) {
                 throw new IllegalArgumentException("PREPARED receipt cannot carry committed evidence");
             }
         } else {
-            inventoryAfter = ManualResearchMaterialReceiptNbt.copyInventory(Objects.requireNonNull(inventoryAfter));
             if (committedAt < preparedAt || (status == Status.COMMITTED ? confirmedAt != -1 : confirmedAt < committedAt)) {
                 throw new IllegalArgumentException("Invalid committed material receipt chronology");
             }
@@ -42,16 +41,6 @@ public record ManualResearchMaterialReceipt(UUID sessionId, String teamId, TeamR
 
     public UUID playerId() {
         return intent.contributor();
-    }
-
-    @Override
-    public byte[] inventoryBefore() {
-        return inventoryBefore.clone();
-    }
-
-    @Override
-    public byte @Nullable [] inventoryAfter() {
-        return inventoryAfter == null ? null : inventoryAfter.clone();
     }
 
     public ManualResearchMaterialReceipt committed(byte[] after, long worldTime) {

@@ -7,7 +7,6 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.Function;
 
 /**
@@ -20,15 +19,14 @@ public final class NetworkComputerComponentRegistry {
     private volatile Frozen frozen;
 
     /**
-     * Registration keys must identify exactly one item; count is absent from the AEItemKey identity.
+     * Registration uses AEItemKey identity; the supplied stack count does not affect the component definition.
      */
+    @SuppressWarnings("DataFlowIssue")
     public void register(ItemStack item, NetworkComputerComponent provider) {
-        Objects.requireNonNull(item);
-        Objects.requireNonNull(provider);
-        if (item.isEmpty() || item.getCount() != 1) {
-            throw new IllegalArgumentException("Computer component registration requires one nonempty item");
+        if (item.isEmpty()) {
+            throw new IllegalArgumentException("Computer component registration requires a nonempty item");
         }
-        var key = Objects.requireNonNull(AEItemKey.of(item));
+        var key = AEItemKey.of(item);
         registerKey(key, machine -> provider.capture(key.toStack(), machine));
     }
 
@@ -39,8 +37,6 @@ public final class NetworkComputerComponentRegistry {
         if (frozen != null) {
             throw new IllegalStateException("Computer component registration has ended");
         }
-        Objects.requireNonNull(key);
-        Objects.requireNonNull(capture);
         if (registrations.putIfAbsent(key, capture) != null) {
             throw new IllegalArgumentException("Duplicate computer component item");
         }
@@ -50,8 +46,7 @@ public final class NetworkComputerComponentRegistry {
         if (frozen != null) {
             throw new IllegalStateException("Computer component registry already frozen");
         }
-        frozen = new Frozen(new Object2ObjectOpenHashMap<>(registrations));
-        registrations.clear();
+        frozen = new Frozen(registrations);
     }
 
     /**
@@ -64,8 +59,8 @@ public final class NetworkComputerComponentRegistry {
         if (provider == null && itemProvider == null) {
             throw new IllegalArgumentException("Unregistered computer component item");
         }
-        return Objects.requireNonNull(itemProvider == null ? provider.apply(computer)
-            : itemProvider.capture(((AEItemKey) key).toStack(), computer), "Computer component supply capture");
+        return itemProvider == null ? provider.apply(computer)
+            : itemProvider.capture(((AEItemKey) key).toStack(), computer);
     }
 
     void requireReady() {

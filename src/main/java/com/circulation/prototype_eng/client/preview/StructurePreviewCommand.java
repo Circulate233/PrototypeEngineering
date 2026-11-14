@@ -113,8 +113,11 @@ public final class StructurePreviewCommand extends CommandBase {
         }
         if (args.length == 3 && args[0].equals("gui") && args[1].matches("(?:[a-z0-9_.-]+:)?[a-z0-9/._-]+")) {
             var structure = new ResourceLocation(args[1]);
-            for (var machine : MachineTypeRegistry.INSTANCE.types())
+            var elements = MachineTypeRegistry.INSTANCE.types();
+            for (int index = 0; index < elements.size(); index++) {
+                var machine = elements.get(index);
                 if (machine.structureId().equals(structure)) choices.add(machine.id().toString());
+            }
         }
         return getListOfStringsMatchingLastWord(args, choices);
     }

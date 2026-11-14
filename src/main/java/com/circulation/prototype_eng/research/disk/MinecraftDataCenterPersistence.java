@@ -46,7 +46,9 @@ public final class MinecraftDataCenterPersistence implements MachineDataCenterPe
 
     private static MachineOwnership ownership(MachineInstance owner, ResourceLocation type) {
         MachineOwnership result = null;
-        for (var binding : owner.components().assemblyBindings()) {
+        var elements2 = owner.components().assemblyBindings();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var binding = elements2.get(index2);
             if (binding.type().id().equals(type) && binding.component() instanceof MachineOwnership candidate) {
                 if (result != null) throw new IllegalStateException("Database has duplicate ownership bindings");
                 result = candidate;
@@ -85,7 +87,9 @@ public final class MinecraftDataCenterPersistence implements MachineDataCenterPe
             || !registration.location().equals(target.location()) || !physicalCurrent.getAsBoolean())
             throw new IllegalStateException("Original database identity binding is stale");
         int storages = 0;
-        for (var binding : owner.components().assemblyBindings()) {
+        var elements = owner.components().assemblyBindings();
+        for (int index = 0; index < elements.size(); index++) {
+            var binding = elements.get(index);
             if (binding.type().id().equals(storageType) && binding.component() instanceof DataCenterStorage storage
                 && storage.snapshot().dataCenterId().equals(identity.machineId())) storages++;
         }

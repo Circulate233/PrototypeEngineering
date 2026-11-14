@@ -37,7 +37,13 @@ public final class ParallelControllerBlocks {
         registerBuiltins(registry);
         MinecraftForge.EVENT_BUS.post(new ParallelControllerRegistrationEvent());
         var created = new ObjectArrayList<ParallelControllerBlock>();
-        for (var type : registry.freeze()) created.add(new ParallelControllerBlock(type));
+
+        var elements = registry.freeze();
+        for (int index = 0; index < elements.size(); index++) {
+            var type = elements.get(index);
+            created.add(new ParallelControllerBlock(type));
+        }
+
         event.getRegistry().registerAll(created.toArray(ParallelControllerBlock[]::new));
         GameRegistry.registerTileEntity(ParallelControllerBlockEntity.class, new ResourceLocation(Tags.MOD_ID, "parallel_controller"));
         blocks = created;
@@ -55,7 +61,9 @@ public final class ParallelControllerBlocks {
 
     @SubscribeEvent
     public static void registerItems(RegistryEvent.Register<Item> event) {
-        for (var block : blocks)
+        for (int index2 = 0; index2 < blocks.size(); index2++) {
+            var block = blocks.get(index2);
             event.getRegistry().register(block.createItem().setRegistryName(Objects.requireNonNull(block.getRegistryName())));
+        }
     }
 }

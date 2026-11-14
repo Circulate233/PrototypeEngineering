@@ -49,7 +49,9 @@ public class RecipePanelLayout {
         this.repeatInput = repeatInput;
         var inputRows = new ObjectArrayList<JeiRecipeDisplay.Resource>(6);
         var outputRows = new ObjectArrayList<JeiRecipeDisplay.Resource>(6);
-        for (var resource : display.resources()) {
+        var elements = display.resources();
+        for (int index2 = 0; index2 < elements.size(); index2++) {
+            var resource = elements.get(index2);
             (resource.role() == JeiRecipeDisplay.Role.INPUT ? inputRows : outputRows).add(resource);
         }
         information = display.information();
@@ -65,13 +67,15 @@ public class RecipePanelLayout {
                                                                 JeiRenderOptions options, @Nullable JeiRecipeIngredients ingredients) {
         var grouped = new Reference2ObjectOpenHashMap<JeiRecipeDisplay.CandidateGroup, ObjectArrayList<JeiRecipeDisplay.Resource>>(rows.size());
         if (options.candidates() == JeiRenderOptions.CandidateMode.ALTERNATIVES && ingredients != null) {
-            for (var row : rows) {
+            for (int index3 = 0; index3 < rows.size(); index3++) {
+                var row = rows.get(index3);
                 if (row.candidates() != null)
                     grouped.computeIfAbsent(row.candidates(), _ -> new ObjectArrayList<>()).add(row);
             }
         }
         var result = new ObjectArrayList<List<JeiRecipeDisplay.Resource>>(rows.size());
-        for (var row : rows) {
+        for (int index5 = 0; index5 < rows.size(); index5++) {
+            var row = rows.get(index5);
             var group = row.candidates();
             var candidates = grouped.get(group);
             if (group != null && candidates != null && ingredients != null && ingredients.canCombine(candidates)) {
@@ -100,7 +104,9 @@ public class RecipePanelLayout {
     public static int maximumSlots(JeiRecipeDisplay display, JeiRecipeDisplay.Role role, JeiRenderOptions options, int capacity) {
         long count = 0;
         var seen = new ReferenceOpenHashSet<JeiRecipeDisplay.CandidateGroup>();
-        for (var row : display.resources()) {
+        var elements4 = display.resources();
+        for (int index4 = 0; index4 < elements4.size(); index4++) {
+            var row = elements4.get(index4);
             if (row.role() != role) continue;
             count++;
             var group = row.candidates();
@@ -113,7 +119,10 @@ public class RecipePanelLayout {
 
     private static List<JeiRecipeDisplay.Resource> flattened(List<List<JeiRecipeDisplay.Resource>> groups) {
         var result = new ObjectArrayList<JeiRecipeDisplay.Resource>();
-        for (var group : groups) result.addAll(group);
+        for (int index = 0; index < groups.size(); index++) {
+            var group = groups.get(index);
+            result.addAll(group);
+        }
         return result;
     }
 

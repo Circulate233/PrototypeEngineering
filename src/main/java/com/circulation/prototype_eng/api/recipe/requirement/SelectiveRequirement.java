@@ -17,7 +17,8 @@ public record SelectiveRequirement(List<RecipeRequirement<?>> candidates, List<S
     public SelectiveRequirement {
         var candidateCopy = new ObjectArrayList<RecipeRequirement<?>>(candidates.size());
         var candidateIds = new ObjectOpenHashSet<RequirementPath>(candidates.size());
-        for (var candidate : candidates) {
+        for (int index2 = 0; index2 < candidates.size(); index2++) {
+            var candidate = candidates.get(index2);
             Objects.requireNonNull(candidate);
             if (!candidateIds.add(candidate.path(null))) {
                 throw new IllegalArgumentException("Duplicate selective candidate identity");
@@ -26,7 +27,8 @@ public record SelectiveRequirement(List<RecipeRequirement<?>> candidates, List<S
         }
         var modifierCopy = new ObjectArrayList<SelectiveModifierDescriptor>(modifiers.size());
         var modifierIds = new ObjectOpenHashSet<ResourceLocation>(modifiers.size());
-        for (var modifier : modifiers) {
+        for (int index = 0; index < modifiers.size(); index++) {
+            var modifier = modifiers.get(index);
             Objects.requireNonNull(modifier);
             if (!modifierIds.add(modifier.id())) {
                 throw new IllegalArgumentException("Duplicate selective modifier id: " + modifier.id());

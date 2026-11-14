@@ -66,7 +66,8 @@ public final class StorageContext {
             throw new IllegalStateException("Budget owner operations must advance per domain; lockAll requires a synchronous scope");
         }
         long previous = -1;
-        for (var context : contexts) {
+        for (int index2 = 0; index2 < contexts.size(); index2++) {
+            var context = contexts.get(index2);
             if (Objects.requireNonNull(context).order <= previous) {
                 throw new IllegalArgumentException("Storage contexts must be distinct and ordered");
             }
@@ -81,7 +82,8 @@ public final class StorageContext {
         while (true) {
             int locked = 0;
             try {
-                for (var context : contexts) {
+                for (int index1 = 0; index1 < contexts.size(); index1++) {
+                    var context = contexts.get(index1);
                     if (!context.tryOrdinaryLock()) {
                         break;
                     }

@@ -11,19 +11,17 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.container.ComputerDetailsPacket;
 import com.circulation.prototype_eng.container.ContainerComputer;
 import com.circulation.prototype_eng.localization.ComputerGuiText;
-import com.circulation.prototype_eng.localization.NetworkCenterGuiText;
 import com.circulation.prototype_eng.localization.MachineGuiText;
+import com.circulation.prototype_eng.localization.NetworkCenterGuiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.util.ResourceLocation;
+import org.lwjgl.input.Mouse;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Objects;
-
-import org.lwjgl.input.Mouse;
 
 public class GuiComputer extends AEBaseGui<ContainerComputer> {
     private static final ResourceLocation BACKGROUND = GuiAtlas.texture("gui_network_center");
@@ -84,7 +82,8 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         if (knownComponents != container.components) {
             knownComponents = container.components;
             componentText.clear();
-            for (var row : knownComponents) {
+            for (int index1 = 0; index1 < knownComponents.size(); index1++) {
+                var row = knownComponents.get(index1);
                 componentText.add(new ComponentText(row.item().getDisplayName().getFormattedText(),
                     GuiNumbers.grouped(row.count()), GuiNumbers.grouped(Math.multiplyExact(row.count(), row.concurrency())),
                     GuiNumbers.grouped(Math.multiplyExact(row.count(), row.energy())),
@@ -96,12 +95,14 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
     }
 
     private static String resources(Reference2DoubleMap<NetworkResourceType> values) {
-        var labels = new ObjectArrayList<String>(values.size());
+        var labels = new StringBuilder();
         for (var entry : values.reference2DoubleEntrySet()) {
-            if (entry.getDoubleValue() != 0)
-                labels.add(entry.getKey().displayName() + " " + entry.getKey().format(entry.getDoubleValue()));
+            if (entry.getDoubleValue() != 0) {
+                if (!labels.isEmpty()) labels.append(", ");
+                labels.append(entry.getKey().displayName()).append(' ').append(entry.getKey().format(entry.getDoubleValue()));
+            }
         }
-        return labels.isEmpty() ? ComputerGuiText.None.getLocal() : String.join(", ", labels);
+        return labels.isEmpty() ? ComputerGuiText.None.getLocal() : labels.toString();
     }
 
     private void panel(int x, int y, int width, int height) {
@@ -168,8 +169,9 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        text(Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 16, 13, 350, TEXT);
+        text(container.getGuiTitle().getFormattedText(), 16, 13, 350, TEXT);
         text(status().getLocal(), 20, 43, 210, container.supplyState == ComputerController.SupplyState.ACTIVE ? GOOD : BAD);
         text(ComputerGuiText.StructureNetwork.getLocal((container.formed ? MachineGuiText.Formed : MachineGuiText.NotFormed).getLocal(),
             (container.networkState == NetworkWorkState.ACTIVE_DEVICE ? NetworkCenterGuiText.Active : status()).getLocal()), 237, 51, 127, TEXT);

@@ -12,7 +12,6 @@ import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotRestartPolicy;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.persistence.ProcessComponentCodec;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
@@ -149,15 +148,9 @@ class MachineWorkSlotsPersistenceTest {
             tag -> slots(tag).getCompoundTagAt(2).setString("RestartPolicy", "LOCKED_RETRY"),
             tag -> slots(tag).getCompoundTagAt(2).setString("RestartPolicy", "UNKNOWN"),
             tag -> tag.setInteger("Version", 2),
-            tag -> tag.setLong("Version", 1),
             tag -> tag.setString("Revision", "incompatible"),
             tag -> slots(tag).removeTag(2),
-            tag -> slots(tag).getCompoundTagAt(2).removeTag("Result"),
-            tag -> {
-                var result = new NBTTagCompound();
-                result.setString("Kind", "SUCCESS");
-                slots(tag).getCompoundTagAt(1).setTag("Result", result);
-            });
+            tag -> slots(tag).getCompoundTagAt(2).removeTag("Result"));
         for (int index = 0; index < corruptions.size(); index++) {
             var malformed = saved.copy();
             corruptions.get(index).accept(malformed);
@@ -267,8 +260,6 @@ class MachineWorkSlotsPersistenceTest {
 
         @Override
         public void restore(RecipeProcess process, Probe component, NBTTagCompound data) {
-            StrictNbt.requireKeys(data, "Stamp");
-            StrictNbt.requireInt(data, "Stamp");
             component.data = data.copy();
             decoded.add(process);
         }

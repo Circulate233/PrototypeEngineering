@@ -16,7 +16,7 @@ import net.minecraftforge.items.IItemHandlerModifiable;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 单格材料先从玩家库存支付，差额从本次构建器绑定的网络支付。
+ * Pays one block's material from player inventory, then from the builder's bound network.
  */
 final class ConstructionPayment {
     static final ConstructionPayment FREE = new ConstructionPayment(null, null, 0, null, new ObjectArrayList<>(), null);
@@ -52,7 +52,8 @@ final class ConstructionPayment {
         long local = 0;
         var fluids = new ObjectArrayList<FluidEdit>();
         inventoryLoop:
-        for (var inventory : inventories) {
+        for (int index6 = 0; index6 < inventories.size(); index6++) {
+            var inventory = inventories.get(index6);
             for (int slot = 0; slot < inventory.getSlots(); slot++) {
                 if (resource.what() instanceof AEItemKey key) {
                     var take = inventory.extractItem(slot, 1, true);
@@ -70,7 +71,7 @@ final class ConstructionPayment {
                 long taken = 0;
                 int count = stack.getCount();
                 for (int container = 0; container < count && local + taken < resource.amount(); container++) {
-                    var copy = stack.copy();
+                    var copy = count == 1 ? after : stack.copy();
                     copy.setCount(1);
                     var handler = FluidUtil.getFluidHandler(copy);
                     if (handler == null) break;
@@ -102,8 +103,10 @@ final class ConstructionPayment {
 
     boolean commit() {
         if (resource == null) return true;
-        for (var edit : fluids)
+        for (int index3 = 0; index3 < fluids.size(); index3++) {
+            var edit = fluids.get(index3);
             if (!ItemStack.areItemStacksEqual(edit.inventory.getStackInSlot(edit.slot), edit.before)) return false;
+        }
         if (me != null && networkAmount > 0) {
             networkTaken = me.extract(resource.what(), networkAmount, Actionable.MODULATE);
             if (networkTaken != networkAmount) {
@@ -118,13 +121,16 @@ final class ConstructionPayment {
                 return false;
             }
         }
-        for (var edit : fluids)
+        for (int index4 = 0; index4 < fluids.size(); index4++) {
+            var edit = fluids.get(index4);
             if (!ItemStack.areItemStacksEqual(edit.inventory.getStackInSlot(edit.slot), edit.before)) {
                 refund(owner);
                 return false;
             }
-        for (var edit : fluids) {
-            // Include the current setter in rollback even if a capability throws after writing.
+        }
+        for (int index5 = 0; index5 < fluids.size(); index5++) {
+            var edit = fluids.get(index5);
+// Include the current setter in rollback even if a capability throws after writing.
             edited++;
             edit.inventory.setStackInSlot(edit.slot, edit.after.copy());
         }
@@ -133,7 +139,13 @@ final class ConstructionPayment {
 
     void finish() {
         if (owner == null) return;
-        for (var edit : fluids) for (var container : edit.returned) give(owner, container);
+        for (int index2 = 0; index2 < fluids.size(); index2++) {
+            var edit = fluids.get(index2);
+            for (int index = 0; index < edit.returned.size(); index++) {
+                var container = edit.returned.get(index);
+                give(owner, container);
+            }
+        }
         owner.inventory.markDirty();
     }
 

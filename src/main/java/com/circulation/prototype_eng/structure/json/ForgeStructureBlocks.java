@@ -63,7 +63,8 @@ public final class ForgeStructureBlocks implements StructureBlockResolver {
         var result = new ObjectArrayList<Block>(6);
         var ids = new ObjectArrayList<>(Block.REGISTRY.getKeys());
         ids.sort(Comparator.naturalOrder());
-        for (var id : ids) {
+        for (int index = 0; index < ids.size(); index++) {
+            var id = ids.get(index);
             if (regex.matcher(id.toString()).matches()) {
                 var block = Block.REGISTRY.getObject(id);
                 if (block != Blocks.AIR) result.add(block);
@@ -93,7 +94,9 @@ public final class ForgeStructureBlocks implements StructureBlockResolver {
     public List<StructureDisplay.BlockOption> displayRegex(String expression) {
         var result = new ObjectArrayList<StructureDisplay.BlockOption>();
         // Preserve PM's bounded representative display; matcher membership always includes all matches.
-        for (var block : expand(expression)) {
+        var elements = expand(expression);
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var block = elements.get(index1);
             if (result.size() == 32) break;
             result.add(displayState(block.getRegistryName(), 0, Map.of()));
         }

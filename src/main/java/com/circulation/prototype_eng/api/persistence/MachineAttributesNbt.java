@@ -3,13 +3,11 @@ package com.circulation.prototype_eng.api.persistence;
 import com.circulation.prototype_eng.api.machine.attribute.AttributeModifier;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 
-import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
 
@@ -17,6 +15,7 @@ import java.util.Objects;
  * Saves only ordered local attributes; callers restore the decoded map after complete validation.
  */
 public final class MachineAttributesNbt implements NbtCodec<Map<ResourceLocation, MachineAttributes.LocalAttribute>> {
+    public static final MachineAttributesNbt INSTANCE = new MachineAttributesNbt(AttributeModifierNbt.INSTANCE);
     private final AttributeModifierNbt modifiers;
 
     public MachineAttributesNbt(AttributeModifierNbt modifiers) {
@@ -27,22 +26,17 @@ public final class MachineAttributesNbt implements NbtCodec<Map<ResourceLocation
     public NBTTagCompound encode(Map<ResourceLocation, MachineAttributes.LocalAttribute> value) {
         Objects.requireNonNull(value, "value");
         var entries = new NBTTagList();
-        var ids = new ObjectOpenHashSet<ResourceLocation>(value.size());
         for (var entry : value.entrySet()) {
-            var id = StrictNbt.requireId(Objects.requireNonNull(entry.getKey(), "attribute ID").toString());
-            if (!ids.add(id)) {
-                throw new IllegalArgumentException("Duplicate local attribute ID: " + id);
-            }
+            var id = entry.getKey();
             var state = Objects.requireNonNull(entry.getValue(), "local attribute");
-            var checked = new MachineAttributes.LocalAttribute(state.baseOverride(), state.modifiers(), state.inheritModifiers());
             var tag = new NBTTagCompound();
             tag.setString("Id", id.toString());
-            tag.setBoolean("InheritModifiers", checked.inheritModifiers());
-            if (checked.baseOverride() != null) {
-                tag.setDouble("Base", checked.baseOverride());
+            tag.setBoolean("InheritModifiers", state.inheritModifiers());
+            if (state.baseOverride() != null) {
+                tag.setDouble("Base", state.baseOverride());
             }
             var modifierList = new NBTTagList();
-            for (var modifier : checked.modifiers().values()) {
+            for (var modifier : state.modifiers().values()) {
                 modifierList.appendTag(modifiers.encode(modifier));
             }
             tag.setTag("Modifiers", modifierList);
@@ -56,19 +50,17 @@ public final class MachineAttributesNbt implements NbtCodec<Map<ResourceLocation
 
     @Override
     public Map<ResourceLocation, MachineAttributes.LocalAttribute> decode(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Version", "Attributes");
-        if (StrictNbt.requireInt(tag, "Version") != 2) {
+        if (tag.getInteger("Version") != 2) {
             throw new IllegalArgumentException("Unsupported local attribute NBT version");
         }
-        var entries = StrictNbt.requireList(tag, "Attributes", Constants.NBT.TAG_COMPOUND);
+        var entries = tag.getTagList("Attributes", Constants.NBT.TAG_COMPOUND);
         var replacement = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAttributes.LocalAttribute>(entries.tagCount());
         for (int index = 0; index < entries.tagCount(); index++) {
             var entry = entries.getCompoundTagAt(index);
-            StrictNbt.requireKeys(entry, "Id", "Base", "Modifiers", "InheritModifiers");
-            var id = StrictNbt.requireId(entry, "Id");
-            Double base = entry.hasKey("Base") ? StrictNbt.requireDouble(entry, "Base") : null;
-            boolean inheritModifiers = StrictNbt.requireBoolean(entry, "InheritModifiers");
-            var modifierList = StrictNbt.requireList(entry, "Modifiers", Constants.NBT.TAG_COMPOUND);
+            var id = new ResourceLocation(entry.getString("Id"));
+            Double base = entry.hasKey("Base") ? entry.getDouble("Base") : null;
+            boolean inheritModifiers = entry.getBoolean("InheritModifiers");
+            var modifierList = entry.getTagList("Modifiers", Constants.NBT.TAG_COMPOUND);
             var localModifiers = new Object2ObjectLinkedOpenHashMap<String, AttributeModifier>(modifierList.tagCount());
             for (int modifierIndex = 0; modifierIndex < modifierList.tagCount(); modifierIndex++) {
                 var modifier = modifiers.decode(modifierList.getCompoundTagAt(modifierIndex));
@@ -81,6 +73,6 @@ public final class MachineAttributesNbt implements NbtCodec<Map<ResourceLocation
                 throw new IllegalArgumentException("Duplicate local attribute ID: " + id);
             }
         }
-        return Collections.unmodifiableMap(replacement);
+        return replacement;
     }
 }

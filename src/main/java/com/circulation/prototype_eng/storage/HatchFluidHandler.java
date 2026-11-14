@@ -54,6 +54,8 @@ public final class HatchFluidHandler implements IFluidHandler {
         var inputs = tankProperties(input, inputStorage);
         if (inputStorage != null && inputStorage == outputStorage) return inputs;
         var outputs = tankProperties(output, outputStorage);
+        if (inputs.length == 0) return outputs;
+        if (outputs.length == 0) return inputs;
         var result = Arrays.copyOf(inputs, inputs.length + outputs.length);
         System.arraycopy(outputs, 0, result, inputs.length, outputs.length);
         return result;

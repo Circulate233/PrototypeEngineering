@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.storage;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.AEKeyTypes;
 import com.circulation.prototype_eng.api.energy.EnergyHatchConfiguration;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
@@ -42,30 +41,30 @@ public final class HatchConfigurationNbt {
 
     public static ResourceHatchConfiguration resource(NBTTagCompound tag, HatchMode mode) {
         requireSides(tag, mode);
-        return new ResourceHatchConfiguration(mode.hasInput() ? resourceSide(StrictNbt.requireCompound(tag, "Input")) : null,
-            mode.hasOutput() ? resourceSide(StrictNbt.requireCompound(tag, "Output")) : null);
+        return new ResourceHatchConfiguration(mode.hasInput() ? resourceSide(tag.getCompoundTag("Input")) : null,
+            mode.hasOutput() ? resourceSide(tag.getCompoundTag("Output")) : null);
     }
 
     public static ResourceHatchConfiguration.Side resourceSide(NBTTagCompound tag) {
-        var limits = StrictNbt.requireCompound(tag, "Capacities");
+        var limits = tag.getCompoundTag("Capacities");
         var capacities = new Reference2LongArrayMap<AEKeyType>(limits.getSize());
         for (var id : limits.getKeySet()) {
             var type = AEKeyTypes.get(new ResourceLocation(id));
             if (type == null) throw new IllegalArgumentException("Unknown saved resource type " + id);
-            capacities.put(type, StrictNbt.requireLong(limits, id));
+            capacities.put(type, limits.getLong(id));
         }
         if (tag.hasKey("ItemEquivalent") || tag.hasKey("CapacityRatios")) {
             var ratios = new Reference2LongArrayMap<AEKeyType>(2);
-            var savedRatios = StrictNbt.requireCompound(tag, "CapacityRatios");
+            var savedRatios = tag.getCompoundTag("CapacityRatios");
             for (var id : savedRatios.getKeySet()) {
                 var type = AEKeyTypes.get(new ResourceLocation(id));
                 if (type == null) throw new IllegalArgumentException("Unknown saved resource ratio type " + id);
-                ratios.put(type, StrictNbt.requireLong(savedRatios, id));
+                ratios.put(type, savedRatios.getLong(id));
             }
-            return new ResourceHatchConfiguration.Side(StrictNbt.requireInt(tag, "Slots"), capacities,
-                new ResourceHatchConfiguration.CapacityBasis(StrictNbt.requireLong(tag, "ItemEquivalent"), ratios));
+            return new ResourceHatchConfiguration.Side(tag.getInteger("Slots"), capacities,
+                new ResourceHatchConfiguration.CapacityBasis(tag.getLong("ItemEquivalent"), ratios));
         }
-        return new ResourceHatchConfiguration.Side(StrictNbt.requireInt(tag, "Slots"), capacities);
+        return new ResourceHatchConfiguration.Side(tag.getInteger("Slots"), capacities);
     }
 
     public static NBTTagCompound energy(EnergyHatchConfiguration profile) {
@@ -89,24 +88,23 @@ public final class HatchConfigurationNbt {
 
     private static @Nullable EnergyHatchConfiguration.Side energySide(NBTTagCompound tag, String name, boolean present) {
         if (!present) return null;
-        var side = StrictNbt.requireCompound(tag, name);
-        return new EnergyHatchConfiguration.Side(StrictNbt.requireLong(side, "Capacity"), StrictNbt.requireLong(side, "Transfer"));
+        var side = tag.getCompoundTag(name);
+        return new EnergyHatchConfiguration.Side(side.getLong("Capacity"), side.getLong("Transfer"));
     }
 
     private static void requireSides(NBTTagCompound tag, HatchMode mode) {
-        StrictNbt.requireKeys(tag, "Input", "Output");
         if (tag.hasKey("Input") != mode.hasInput() || tag.hasKey("Output") != mode.hasOutput())
             throw new IllegalArgumentException("Saved profile differs from physical hatch direction");
     }
 
     public static long nonnegative(NBTTagCompound tag, String name) {
-        long amount = tag.hasKey(name) ? StrictNbt.requireLong(tag, name) : 0;
+        long amount = tag.hasKey(name) ? tag.getLong(name) : 0;
         if (amount < 0) throw new IllegalArgumentException("Negative saved hatch value " + name);
         return amount;
     }
 
     public static long energyRate(NBTTagCompound tag, String name) {
-        long rate = tag.hasKey(name) ? StrictNbt.requireLong(tag, name) : -1;
+        long rate = tag.hasKey(name) ? tag.getLong(name) : -1;
         if (rate < -1) throw new IllegalArgumentException("Invalid saved hatch rate " + name);
         return rate;
     }

@@ -128,7 +128,11 @@ public final class PlayerResearchState {
         boolean raised = raiseCompletedLevel && levels.getInt(id) < targetLevel;
         if (raised) levels.put(id, targetLevel);
         var claims = new Object2ObjectLinkedOpenHashMap<RewardClaim.Key, RewardClaim>();
-        for (var claim : state.rewardClaims()) claims.put(claim.key(), claim);
+        var elements = state.rewardClaims();
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var claim = elements.get(index1);
+            claims.put(claim.key(), claim);
+        }
         var unique = new IntOpenHashSet(rewardEligibilityLevels.size());
         boolean eligibility = false;
         for (int level : rewardEligibilityLevels) {
@@ -357,7 +361,11 @@ public final class PlayerResearchState {
         public RewardClaim current() {
             synchronized (owner) {
                 requireOwner();
-                for (var claim : owner.state.rewardClaims()) if (claim.key().equals(key)) return claim;
+                var elements2 = owner.state.rewardClaims();
+                for (int index2 = 0; index2 < elements2.size(); index2++) {
+                    var claim = elements2.get(index2);
+                    if (claim.key().equals(key)) return claim;
+                }
                 return null;
             }
         }
@@ -409,7 +417,9 @@ public final class PlayerResearchState {
             completedLevels = levels;
             var claims = new ObjectArrayList<RewardClaim>(rewardClaims.size());
             var keys = new ObjectOpenHashSet<RewardClaim.Key>(rewardClaims.size());
-            for (var claim : Objects.requireNonNull(rewardClaims, "rewardClaims")) {
+            var elements3 = Objects.requireNonNull(rewardClaims, "rewardClaims");
+            for (int index3 = 0; index3 < elements3.size(); index3++) {
+                var claim = elements3.get(index3);
                 if (!Objects.requireNonNull(claim, "claim").key().playerUuid().equals(playerUuid) || !keys.add(claim.key())) {
                     throw new IllegalArgumentException("Invalid or duplicate player reward claim");
                 }

@@ -7,7 +7,6 @@ import ae2.api.stacks.AEKeyTypes;
 import ae2.api.stacks.GenericStack;
 import ae2.api.util.AEColor;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
@@ -28,7 +27,7 @@ import java.util.function.Supplier;
  * Independent input markers and real input/output balances for the universal ME assemblies.
  */
 public final class MEResourceHatch implements ResourceHatch {
-    private static final ResourceKeyNbt KEYS = new ResourceKeyNbt();
+    private static final ResourceKeyNbt KEYS = ResourceKeyNbt.INSTANCE;
     private final HatchMode mode;
     private final @Nullable SlottedResourceBuffer input;
     private final @Nullable UnboundedResourceBuffer output;
@@ -67,26 +66,26 @@ public final class MEResourceHatch implements ResourceHatch {
     }
 
     public static MEResourceHatch load(NBTTagCompound tag, Runnable onChanged, Supplier<AEColor> color) {
-        var mode = HatchMode.valueOf(StrictNbt.requireString(tag, "Mode"));
-        int savedInputSlots = StrictNbt.requireInt(tag, "InputSlots");
+        var mode = HatchMode.valueOf(tag.getString("Mode"));
+        int savedInputSlots = tag.getInteger("InputSlots");
         if (mode.hasInput() ? savedInputSlots <= 0 : savedInputSlots != 0)
             throw new IllegalArgumentException("Saved ME input layout does not match the hatch mode");
         var next = new MEResourceHatch(mode, Math.max(1, savedInputSlots), onChanged, color);
         if (tag.hasKey("MarkRevision")) {
-            long savedRevision = StrictNbt.requireLong(tag, "MarkRevision");
+            long savedRevision = tag.getLong("MarkRevision");
             if (savedRevision < 0 || savedRevision == Long.MAX_VALUE)
                 throw new IllegalArgumentException("Invalid saved ME marker revision");
             next.markRevision = savedRevision + 1;
         }
-        var marks = StrictNbt.requireList(tag, "InputMarks", 10);
+        var marks = tag.getTagList("InputMarks", 10);
         readSlotted(marks, next.inputMarks, next.input);
         if (next.input != null) {
             var savedInput = new GenericStack[savedInputSlots];
-            readSlotted(StrictNbt.requireList(tag, "Input", 10), savedInput, next.input);
+            readSlotted(tag.getTagList("Input", 10), savedInput, next.input);
             next.input.restore(Arrays.asList(savedInput));
         } else if (tag.hasKey("Input"))
             throw new IllegalArgumentException("Saved input exists on an output-only assembly");
-        if (next.output != null) next.output.restore(KEYS.readStacks(StrictNbt.requireList(tag, "Output", 10)));
+        if (next.output != null) next.output.restore(KEYS.readStacks(tag.getTagList("Output", 10)));
         else if (tag.hasKey("Output"))
             throw new IllegalArgumentException("Saved output exists on an input-only assembly");
         return next;
@@ -95,9 +94,9 @@ public final class MEResourceHatch implements ResourceHatch {
     private static void readSlotted(NBTTagList list, GenericStack[] destination, @Nullable SlottedResourceBuffer input) {
         for (int index = 0; index < list.tagCount(); index++) {
             var entry = list.getCompoundTagAt(index);
-            int slot = Objects.checkIndex(StrictNbt.requireInt(entry, "Slot"), destination.length);
-            var key = KEYS.decode(StrictNbt.requireCompound(entry, "Key"));
-            long amount = StrictNbt.requireLong(entry, "Quantity");
+            int slot = Objects.checkIndex(entry.getInteger("Slot"), destination.length);
+            var key = KEYS.decode(entry.getCompoundTag("Key"));
+            long amount = entry.getLong("Quantity");
             if (destination[slot] != null || amount <= 0 || input == null || !input.isSupportedType(key.getType()))
                 throw new IllegalArgumentException("Invalid saved ME input slot");
             destination[slot] = new GenericStack(key, amount);
@@ -252,7 +251,10 @@ public final class MEResourceHatch implements ResourceHatch {
     public void invalidate() {
         lockAll();
         try {
-            for (var context : contexts) context.invalidate();
+            for (int index1 = 0; index1 < contexts.size(); index1++) {
+                var context = contexts.get(index1);
+                context.invalidate();
+            }
         } finally {
             unlockAll();
         }
@@ -274,8 +276,14 @@ public final class MEResourceHatch implements ResourceHatch {
         try {
             if (input != null && !input.idleForReplacement() || output != null && !output.context().idleForReplacement())
                 return false;
-            for (var context : contexts) context.requireRetirement();
-            for (var context : contexts) context.invalidate();
+            for (int index4 = 0; index4 < contexts.size(); index4++) {
+                var context = contexts.get(index4);
+                context.requireRetirement();
+            }
+            for (int index2 = 0; index2 < contexts.size(); index2++) {
+                var context = contexts.get(index2);
+                context.invalidate();
+            }
             return true;
         } finally {
             unlockAll();
@@ -338,7 +346,10 @@ public final class MEResourceHatch implements ResourceHatch {
 
     private void unlockAll() {
         for (int index = contexts.size() - 1; index >= 0; index--) contexts.get(index).unlockDeferred();
-        for (var context : contexts) context.publishChanges();
+        for (int index3 = 0; index3 < contexts.size(); index3++) {
+            var context = contexts.get(index3);
+            context.publishChanges();
+        }
     }
 
     /**

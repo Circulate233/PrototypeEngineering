@@ -1,8 +1,8 @@
 package com.circulation.prototype_eng.api.research.delivery;
 
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.reward.RewardEventKey;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.ResourceLocation;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
@@ -37,16 +37,14 @@ public final class ItemDeliveryKeyNbt {
 
     public static ItemDeliveryKey readIdentity(NBTTagCompound tag) {
         if (tag.hasKey("Kind")) {
-            StrictNbt.requireKeys(tag, "Kind", "Player", "Operation", "Fragment");
-            if (!StrictNbt.requireString(tag, "Kind").equals("DOWNLOAD"))
+            if (!tag.getString("Kind").equals("DOWNLOAD"))
                 throw new IllegalArgumentException("Unknown item delivery kind");
             fragmentId(tag);
             return new DownloadOutputKey(uuid(tag, "Player"), uuid(tag, "Operation"));
         }
-        StrictNbt.requireKeys(tag, "Player", "Research", "Level", "Group", "Child", "Fragment");
         fragmentId(tag);
-        return new RewardEventKey(uuid(tag, "Player"), StrictNbt.requireId(tag, "Research"), StrictNbt.requireInt(tag, "Level"),
-            StrictNbt.requireId(tag, "Group"), StrictNbt.requireId(tag, "Child"));
+        return new RewardEventKey(uuid(tag, "Player"), new ResourceLocation(tag.getString("Research")), tag.getInteger("Level"),
+            new ResourceLocation(tag.getString("Group")), new ResourceLocation(tag.getString("Child")));
     }
 
     public static UUID fragmentId(NBTTagCompound tag) {
@@ -71,9 +69,7 @@ public final class ItemDeliveryKeyNbt {
     }
 
     private static UUID uuid(NBTTagCompound tag, String field) {
-        var raw = StrictNbt.requireString(tag, field);
-        var parsed = UUID.fromString(raw);
-        if (!parsed.toString().equals(raw)) throw new IllegalArgumentException("Non-canonical item delivery UUID");
-        return parsed;
+        var raw = tag.getString(field);
+        return UUID.fromString(raw);
     }
 }

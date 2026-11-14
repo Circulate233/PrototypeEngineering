@@ -30,7 +30,8 @@ public final class MachineModelBloom {
     static void submit(ModelBuildCache cache, List<MachineModelPasses.Entry> entries, Runnable revoke) {
         var retained = new ObjectArrayList<MachineModelPasses.Entry>();
         try {
-            for (var entry : entries)
+            for (int index5 = 0; index5 < entries.size(); index5++) {
+                var entry = entries.get(index5);
                 if (entry.current().getAsBoolean()) {
                     var lease = entry.lease().fork();
                     try {
@@ -44,14 +45,17 @@ public final class MachineModelBloom {
                         throw failure;
                     }
                 }
+            }
             pending.add(new Batch(cache, retained, revoke));
         } catch (RuntimeException | Error failure) {
-            for (var entry : retained)
+            for (int index2 = 0; index2 < retained.size(); index2++) {
+                var entry = retained.get(index2);
                 try {
                     entry.lease().close();
                 } catch (RuntimeException | Error cleanup) {
                     failure.addSuppressed(cleanup);
                 }
+            }
             throw failure;
         }
     }
@@ -67,7 +71,10 @@ public final class MachineModelBloom {
             GlStateManager.pushMatrix();
             pushed = true;
             GlStateManager.translate(-camera.x, -camera.y, -camera.z);
-            for (var batch : pending) MachineModelPasses.drawBloom(batch.cache, batch.entries, camera);
+            for (int index = 0; index < pending.size(); index++) {
+                var batch = pending.get(index);
+                MachineModelPasses.drawBloom(batch.cache, batch.entries, camera);
+            }
         } catch (RuntimeException | Error exception) {
             failure = exception;
         }
@@ -92,12 +99,17 @@ public final class MachineModelBloom {
         }
         Throwable failure = null;
         // Capture the batch identities before a revocation callback can mutate the pending queue.
-        for (var batch : new ObjectArrayList<>(pending))
+
+        var elements = new ObjectArrayList<>(pending);
+        for (int index3 = 0; index3 < elements.size(); index3++) {
+            var batch = elements.get(index3);
             try {
                 batch.revoke.run();
             } catch (RuntimeException | Error cleanup) {
                 failure = BuiltModelBuffers.append(failure, cleanup);
             }
+        }
+
         try {
             clear();
         } catch (RuntimeException | Error cleanup) {
@@ -115,13 +127,17 @@ public final class MachineModelBloom {
         reusable = null;
         secondPhase = false;
         Throwable failure = null;
-        for (var batch : old)
-            for (var entry : batch.entries)
+        for (int index4 = 0; index4 < old.size(); index4++) {
+            var batch = old.get(index4);
+            for (int index1 = 0; index1 < batch.entries.size(); index1++) {
+                var entry = batch.entries.get(index1);
                 try {
                     entry.lease().close();
                 } catch (RuntimeException | Error exception) {
                     failure = BuiltModelBuffers.append(failure, exception);
                 }
+            }
+        }
         old.clear();
         if (reusable == null) reusable = old;
         BuiltModelBuffers.rethrow(failure);

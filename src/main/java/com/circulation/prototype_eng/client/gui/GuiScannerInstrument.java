@@ -83,7 +83,10 @@ public final class GuiScannerInstrument extends AEBaseGui<ContainerStructureTool
     }
 
     private void commitFocused() {
-        for (var field : fields) if (field.widget().isFocused()) commit(field);
+        for (int index = 0; index < fields.size(); index++) {
+            var field = fields.get(index);
+            if (field.widget().isFocused()) commit(field);
+        }
     }
 
     @Override
@@ -114,7 +117,8 @@ public final class GuiScannerInstrument extends AEBaseGui<ContainerStructureTool
     public void drawFG(int x, int y, int mx, int my) {
         hits.clear();
         var tag = container.snapshot();
-        for (var input : fields) {
+        for (int index6 = 0; index6 < fields.size(); index6++) {
+            var input = fields.get(index6);
             StructureToolDraw.horizontal("gui_states/input_box/box_expand", input.x(), input.y(), input.width(), 13, 8, 3, 3, 4, 4);
             if (!input.widget().isFocused()) {
                 String value = input.field() == ScannerState.Field.NAME || input.field() == ScannerState.Field.ID ? tag.getString(input.field().key) : Integer.toString(tag.getInteger(input.field().key));
@@ -193,24 +197,29 @@ public final class GuiScannerInstrument extends AEBaseGui<ContainerStructureTool
     @Override
     public void drawScreen(int x, int y, float partial) {
         super.drawScreen(x, y, partial);
-        for (var hit : hits)
+        for (int index2 = 0; index2 < hits.size(); index2++) {
+            var hit = hits.get(index2);
             if (hit.contains(x - guiLeft, y - guiTop)) {
                 drawHoveringText(List.of(hit.tip().getLocal()), x, y);
                 break;
             }
+        }
     }
 
     @Override
     protected void mouseClicked(int x, int y, int button) throws IOException {
         commitFocused();
-        for (var input : fields)
+        for (int index4 = 0; index4 < fields.size(); index4++) {
+            var input = fields.get(index4);
             if (x >= guiLeft + input.x() && x < guiLeft + input.x() + input.width() && y >= guiTop + input.y() && y < guiTop + input.y() + 13) {
                 input.widget().mouseClicked(x, y, button);
                 input.widget().setFocused(true);
                 return;
             }
+        }
         if (scene != null && scene.press(x, y, button)) return;
-        if (button == 0) for (var hit : hits)
+        if (button == 0) for (int index5 = 0; index5 < hits.size(); index5++) {
+            var hit = hits.get(index5);
             if (hit.contains(x - guiLeft, y - guiTop)) {
                 pressed = hit.id();
                 if (hit.id().equals("slider")) {
@@ -219,6 +228,7 @@ public final class GuiScannerInstrument extends AEBaseGui<ContainerStructureTool
                 } else if (hit.action() != null) hit.action().run();
                 return;
             }
+        }
         super.mouseClicked(x, y, button);
     }
 
@@ -250,12 +260,14 @@ public final class GuiScannerInstrument extends AEBaseGui<ContainerStructureTool
             commitFocused();
             return;
         }
-        for (var field : fields)
+        for (int index3 = 0; index3 < fields.size(); index3++) {
+            var field = fields.get(index3);
             if (field.widget().isFocused()) {
                 if (key == Keyboard.KEY_ESCAPE) commit(field);
                 else field.widget().textboxKeyTyped(ch, key);
                 return;
             }
+        }
         super.keyTyped(ch, key);
     }
 

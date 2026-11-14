@@ -150,7 +150,9 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
     public void unloadWorld(Object world) {
         requireOwner();
         boolean removed = false;
-        for (var owner : ownerSnapshot())
+        var elements5 = ownerSnapshot();
+        for (int index5 = 0; index5 < elements5.size(); index5++) {
+            var owner = elements5.get(index5);
             if (owner.world == world) {
                 owner.active = false;
                 owner.view = null;
@@ -160,6 +162,7 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
                 capturedOwners = null;
                 removed = true;
             }
+        }
         if (removed) invalidate();
     }
 
@@ -175,7 +178,9 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
     public void tick() {
         requireOwner();
         boolean removed = false;
-        for (var owner : ownerSnapshot())
+        var elements4 = ownerSnapshot();
+        for (int index4 = 0; index4 < elements4.size(); index4++) {
+            var owner = elements4.get(index4);
             if (!attached(owner)) {
                 owner.active = false;
                 owner.view = null;
@@ -185,6 +190,7 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
                 capturedOwners = null;
                 removed = true;
             }
+        }
         if (removed) invalidate();
     }
 
@@ -193,7 +199,9 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
         // Revoke all prior views before consumer cleanup. Partial directory data never calls this.
         for (var owner : owners.values()) owner.view = null;
         invalidate();
-        for (var owner : ownerSnapshot()) {
+        var elements2 = ownerSnapshot();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var owner = elements2.get(index2);
             if (!catalog.connectedTo(owner.connection)) {
                 owner.close();
                 continue;
@@ -206,7 +214,11 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
         requireOwner();
         for (var owner : owners.values()) owner.view = null;
         invalidate();
-        for (var owner : ownerSnapshot()) publish(owner);
+        var elements = ownerSnapshot();
+        for (int index = 0; index < elements.size(); index++) {
+            var owner = elements.get(index);
+            publish(owner);
+        }
     }
 
     private void publish(Owner owner) {
@@ -250,7 +262,9 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
 
     private void invalidate() {
         Throwable failure = null;
-        for (var entry : listenerSnapshot()) {
+        var elements3 = listenerSnapshot();
+        for (int index3 = 0; index3 < elements3.size(); index3++) {
+            var entry = elements3.get(index3);
             try {
                 entry.callback.run();
             } catch (RuntimeException | Error caught) {

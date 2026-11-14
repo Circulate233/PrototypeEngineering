@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.research.download;
 
 import com.circulation.prototype_eng.api.persistence.PlayerInventoryNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadInventory;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadMaterial;
 import com.circulation.prototype_eng.research.MaterialInventoryEvidence;
@@ -56,15 +55,14 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
     static Object2ObjectLinkedOpenHashMap<UUID, ResearchDownloadMaterial> readReceipts(NBTTagCompound data, UUID playerId) {
         var receipts = new Object2ObjectLinkedOpenHashMap<UUID, ResearchDownloadMaterial>();
         if (!data.hasKey(EntityPlayer.PERSISTED_NBT_TAG)) return receipts;
-        var persisted = StrictNbt.requireCompound(data, EntityPlayer.PERSISTED_NBT_TAG);
+        var persisted = data.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG);
         if (!persisted.hasKey(NAMESPACE)) return receipts;
-        var namespace = StrictNbt.requireCompound(persisted, NAMESPACE);
+        var namespace = persisted.getCompoundTag(NAMESPACE);
         if (!namespace.hasKey(STORE)) return receipts;
-        var store = StrictNbt.requireCompound(namespace, STORE);
-        StrictNbt.requireKeys(store, "version", "receipts");
-        if (StrictNbt.requireInt(store, "version") != 1)
+        var store = namespace.getCompoundTag(STORE);
+        if (store.getInteger("version") != 1)
             throw new IllegalArgumentException("Unknown download material store version");
-        var list = StrictNbt.requireList(store, "receipts", Constants.NBT.TAG_COMPOUND);
+        var list = store.getTagList("receipts", Constants.NBT.TAG_COMPOUND);
         if (list.tagCount() != 1)
             throw new IllegalArgumentException("Download material store must own exactly one player inventory operation");
         var receipt = ResearchDownloadMaterial.CODEC.decode(list.getCompoundTagAt(0));
@@ -113,7 +111,6 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
     @Override
     public boolean matches(NBTTagCompound image) {
         requireOwner();
-        PlayerInventoryNbt.validate(image);
         return image.equals(PlayerInventoryNbt.capture(inventory));
     }
 
@@ -236,9 +233,8 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
         store.setInteger("version", 1);
         store.setTag("receipts", list);
         var data = player.getEntityData();
-        var persisted = data.hasKey(EntityPlayer.PERSISTED_NBT_TAG)
-            ? StrictNbt.requireCompound(data, EntityPlayer.PERSISTED_NBT_TAG).copy() : new NBTTagCompound();
-        var namespace = persisted.hasKey(NAMESPACE) ? StrictNbt.requireCompound(persisted, NAMESPACE).copy() : new NBTTagCompound();
+        var persisted = data.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG);
+        var namespace = persisted.getCompoundTag(NAMESPACE);
         if (receipts.isEmpty()) namespace.removeTag(STORE);
         else namespace.setTag(STORE, store);
         persisted.setTag(NAMESPACE, namespace);

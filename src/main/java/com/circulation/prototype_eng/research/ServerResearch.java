@@ -4,7 +4,6 @@ import ae2.api.stacks.AEItemKey;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.DataCenterResearchAccess;
 import com.circulation.prototype_eng.api.research.DataCenterStorage;
 import com.circulation.prototype_eng.api.research.ResearchDataCenters;
@@ -53,10 +52,10 @@ import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.feed_the_beast.ftblib.lib.data.ForgeTeam;
 import com.feed_the_beast.ftblib.lib.data.TeamType;
 import com.feed_the_beast.ftblib.lib.data.Universe;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -84,7 +83,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
@@ -127,7 +125,7 @@ public final class ServerResearch {
         var overworld = Objects.requireNonNull(server.getWorld(0), "Research startup requires the overworld");
         var registry = ResearchRegistry.INSTANCE;
         var file = new ResearchStateFile(overworld.getSaveHandler().getMapFileFromName("prototype_eng_research").toPath(),
-            new ResearchWorldNbt(registry, new ResourceKeyNbt()));
+            new ResearchWorldNbt(registry, ResourceKeyNbt.INSTANCE));
         var permissions = ResearchServerConfiguration.INSTANCE.permissions();
         var world = new ResearchWorld(registry, permissions, snapshot -> {
             try {
@@ -137,7 +135,8 @@ public final class ServerResearch {
             }
         });
         try {
-            file.read().ifPresent(world::restore);
+            var saved = file.read();
+            if (saved != null) world.restore(saved);
         } catch (IOException failure) {
             throw new UncheckedIOException(failure);
         }
@@ -361,7 +360,9 @@ public final class ServerResearch {
                 return;
             }
             DataCenterStorage clickedStorage = null;
-            for (var binding : machine.components().assemblyBindings()) {
+            var elements6 = machine.components().assemblyBindings();
+            for (int index6 = 0; index6 < elements6.size(); index6++) {
+                var binding = elements6.get(index6);
                 if (!(binding.component() instanceof DataCenterStorage storage)) continue;
                 if (clickedStorage != null)
                     throw new IllegalStateException("Clicked machine has multiple data-center storage bindings");
@@ -469,7 +470,10 @@ public final class ServerResearch {
 
     private static void recoverDiskImports(Session current, EntityPlayerMP actor) {
         if (!currentActor(current, actor)) return;
-        for (var operation : current.world.pendingDiskImports(actor.getUniqueID())) {
+
+        var elements2 = current.world.pendingDiskImports(actor.getUniqueID());
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var operation = elements2.get(index2);
             if (!currentActor(current, actor)) return;
             var inventory = new MinecraftResearchDownloadInventory(actor);
             if (operation.status() == ResearchDiskOperation.Status.ABORTING) {
@@ -507,6 +511,7 @@ public final class ServerResearch {
                 new ResearchDiskRecovery(storage, original.target(), original::current, membership, permission, authorized), operationTime(current),
                 () -> currentActor(current, actor));
         }
+
     }
 
 
@@ -545,7 +550,8 @@ public final class ServerResearch {
         var membership = Objects.requireNonNull(captures.get(actor.getUniqueID()));
         var intent = operation.intent();
         if (!membership.accepted() || !intent.teamId().equals(membership.teamId())
-            || !membership.members().equals(new ObjectOpenHashSet<>(operation.sources().members()))) return false;
+            || (membership.members().size() != operation.sources().members().size()
+            || !membership.members().containsAll(operation.sources().members()))) return false;
         var permission = permission(current, actor, membership);
         if (permission == null) return false;
         var authority = proof(current, captures, online);
@@ -677,7 +683,7 @@ public final class ServerResearch {
         submitAction(current, () -> {
             if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
                 result.accept(new ResearchRewardClaimer.Result(ResearchRewardClaimer.Status.STALE_CONTEXT,
-                    "Reward actor is no longer current", Optional.empty()));
+                    "Reward actor is no longer current", null));
                 return;
             }
             result.accept(current.world.claimReward(actor.getUniqueID(), id, level, group, operationTime(current),
@@ -890,7 +896,9 @@ public final class ServerResearch {
         if (targetPlayer != null) seeds.add(targetPlayer);
         var liveTeam = targetTeam == null ? null : levelTeam(current, targetTeam);
         if (liveTeam != null) {
-            for (var member : liveTeam.getMembers()) {
+            var elements5 = liveTeam.getMembers();
+            for (int index5 = 0; index5 < elements5.size(); index5++) {
+                var member = elements5.get(index5);
                 if (member == null || member.getId() == null)
                     throw new IllegalStateException("Invalid target team member");
                 seeds.add(member.getId());
@@ -911,7 +919,9 @@ public final class ServerResearch {
             if (!membership.accepted()) return ResearchLevelResult.STALE_CONTEXT;
             teamId = membership.teamId();
         } else if (liveTeam != null) {
-            for (var member : liveTeam.getMembers()) {
+            var elements10 = liveTeam.getMembers();
+            for (int index10 = 0; index10 < elements10.size(); index10++) {
+                var member = elements10.get(index10);
                 var resolution = captures.get(member.getId());
                 if (resolution == null || !resolution.accepted() || !targetTeam.equals(resolution.teamId()))
                     throw new IllegalStateException("Target team capture contradicts its member");
@@ -926,10 +936,9 @@ public final class ServerResearch {
         var permission = new ResearchPermissionContext(actor.getUniqueID(), actorTeam.teamId(), targetPlayer, teamId,
             actorPermission.teamLeader(), actorPermission.teamModerator(), actorPermission.serverOperator());
         var authority = proof(current, captures, online);
-        var capturedTargetMembers = Set.copyOf(targetMembers);
         BooleanSupplier valid = () -> authority.getAsBoolean() && currentActor(current, actor) && ownerCurrent.getAsBoolean()
             && actorPermission.equals(permission(current, actor, actorTeam))
-            && (targetTeam == null || currentLevelTeam(current, targetTeam, liveTeam, capturedTargetMembers));
+            && (targetTeam == null || currentLevelTeam(current, targetTeam, liveTeam, targetMembers));
         if (!valid.getAsBoolean()) return ResearchLevelResult.STALE_CONTEXT;
         return operation.apply(membership, permission, valid);
     }
@@ -952,7 +961,9 @@ public final class ServerResearch {
             return false;
         var now = new ObjectOpenHashSet<UUID>();
         if (captured != null) {
-            for (var member : captured.getMembers()) {
+            var elements4 = captured.getMembers();
+            for (int index4 = 0; index4 < elements4.size(); index4++) {
+                var member = elements4.get(index4);
                 if (member == null || member.getId() == null)
                     throw new IllegalStateException("Invalid target team member");
                 now.add(member.getId());
@@ -1165,7 +1176,7 @@ public final class ServerResearch {
             return;
         }
         requireThread(current.server);
-        var identity = StrictNbt.requireCompound(Objects.requireNonNull(stack.getTagCompound()), MinecraftItemDeliveryAdapter.DELIVERY_TAG);
+        var identity = Objects.requireNonNull(stack.getTagCompound()).getCompoundTag(MinecraftItemDeliveryAdapter.DELIVERY_TAG);
         var parent = ItemDeliveryKeyNbt.readIdentity(identity);
         var id = parent.playerUuid();
         var player = current.server.getPlayerList().getPlayerByUUID(id);
@@ -1271,12 +1282,18 @@ public final class ServerResearch {
         recoverDownloads(current, player);
         if (current.world.busy() || current.world.savePending()) return;
         var delivery = new MinecraftItemDeliveryAdapter(player);
-        for (var saved : current.world.snapshot().players()) {
+        var elements11 = current.world.snapshot().players();
+        for (int index11 = 0; index11 < elements11.size(); index11++) {
+            var saved = elements11.get(index11);
             if (!saved.playerUuid().equals(player.getUniqueID())) {
                 continue;
             }
-            for (var claim : saved.rewardClaims()) {
-                for (var child : claim.children()) {
+            var elements9 = saved.rewardClaims();
+            for (int index9 = 0; index9 < elements9.size(); index9++) {
+                var claim = elements9.get(index9);
+                var elements8 = claim.children();
+                for (int index8 = 0; index8 < elements8.size(); index8++) {
+                    var child = elements8.get(index8);
                     for (var fragment : child.fragments().values()) {
                         if (!currentActor(current, player)) {
                             return;
@@ -1289,18 +1306,26 @@ public final class ServerResearch {
             }
             break;
         }
-        for (var receipt : current.world.downloadReceipts(player.getUniqueID())) {
-            for (var fragment : receipt.fragments()) {
+
+        var elements = current.world.downloadReceipts(player.getUniqueID());
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var receipt = elements.get(index1);
+            var elements3 = receipt.fragments();
+            for (int index3 = 0; index3 < elements3.size(); index3++) {
+                var fragment = elements3.get(index3);
                 if (!currentActor(current, player)) return;
                 delivery.release(fragment);
             }
         }
+
     }
 
     private static Object2ObjectOpenHashMap<UUID, EntityPlayerMP> onlinePlayers(Session current) {
         requireThread(current.server);
         var result = new Object2ObjectOpenHashMap<UUID, EntityPlayerMP>();
-        for (var player : current.server.getPlayerList().getPlayers()) {
+        var elements7 = current.server.getPlayerList().getPlayers();
+        for (int index7 = 0; index7 < elements7.size(); index7++) {
+            var player = elements7.get(index7);
             if (!belongsTo(current, player) || current.server.getPlayerList().getPlayerByUUID(player.getUniqueID()) != player) {
                 continue;
             }
@@ -1388,7 +1413,7 @@ public final class ServerResearch {
 
     private static boolean sameTeam(OwnerTeamResolution left, OwnerTeamResolution right) {
         return left.teamId().equals(right.teamId()) && left.teamType() == right.teamType()
-            && left.members().equals(right.members()) && left.teamOwnerId().equals(right.teamOwnerId());
+            && left.members().equals(right.members()) && Objects.equals(left.teamOwnerId(), right.teamOwnerId());
     }
 
     private static boolean unavailable(Map<UUID, OwnerTeamResolution> captures) {

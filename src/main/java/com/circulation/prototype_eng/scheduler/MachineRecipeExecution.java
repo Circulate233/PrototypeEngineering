@@ -59,7 +59,8 @@ final class MachineRecipeExecution implements PlannedExecution {
         this.refresh = Objects.requireNonNull(refresh);
         this.tickCurrent = Objects.requireNonNull(tickCurrent);
         boolean needsGroups = false;
-        for (var candidate : candidates) {
+        for (int index21 = 0; index21 < candidates.size(); index21++) {
+            var candidate = candidates.get(index21);
             entries.add(new Entry(candidate));
             needsGroups |= candidate.policy != null && candidate.policy.workAsync();
         }
@@ -76,9 +77,13 @@ final class MachineRecipeExecution implements PlannedExecution {
         for (int index = 0; index < entries.size(); index++)
             groups.computeIfAbsent(union.find(index), _ -> new ObjectArrayList<>()).add(entries.get(index));
         callbackGroups.addAll(groups.values());
-        for (var group : callbackGroups) {
+        for (int index4 = 0; index4 < callbackGroups.size(); index4++) {
+            var group = callbackGroups.get(index4);
             String affinity = group.getFirst().affinity;
-            for (var entry : group) entry.affinity = affinity;
+            for (int index1 = 0; index1 < group.size(); index1++) {
+                var entry = group.get(index1);
+                entry.affinity = affinity;
+            }
         }
     }
 
@@ -138,7 +143,8 @@ final class MachineRecipeExecution implements PlannedExecution {
                 try {
                     advanceCursors();
                     boolean scans = false;
-                    for (var entry : entries) {
+                    for (int index9 = 0; index9 < entries.size(); index9++) {
+                        var entry = entries.get(index9);
                         if (entry.handle != null && !entry.handle.finished() && entry.handle.deferredRecipeScan() != null) {
                             scans = true;
                             break;
@@ -150,7 +156,8 @@ final class MachineRecipeExecution implements PlannedExecution {
                     }
                     var hosts = new ObjectArrayList<MachineWorkSlots>(entries.size());
                     boolean resumedWork = false;
-                    for (var entry : entries) {
+                    for (int index19 = 0; index19 < entries.size(); index19++) {
+                        var entry = entries.get(index19);
                         var handle = entry.handle;
                         if (handle != null && !handle.finished()) {
                             var deferred = handle.deferredRecipeWork();
@@ -169,11 +176,13 @@ final class MachineRecipeExecution implements PlannedExecution {
                     }
                     if (hosts.isEmpty()) {
                         boolean policyPending = false;
-                        for (var entry : entries)
+                        for (int index6 = 0; index6 < entries.size(); index6++) {
+                            var entry = entries.get(index6);
                             if (entry.policyWork != null) {
                                 policyPending = true;
                                 break;
                             }
+                        }
                         if (policyPending || resumedWork) continue;
                         releaseMachines();
                         break;
@@ -196,7 +205,8 @@ final class MachineRecipeExecution implements PlannedExecution {
     }
 
     private void acquireMachines() {
-        for (var entry : entries) {
+        for (int index12 = 0; index12 < entries.size(); index12++) {
+            var entry = entries.get(index12);
             if (!forwardAllowed()) {
                 return;
             }
@@ -262,7 +272,8 @@ final class MachineRecipeExecution implements PlannedExecution {
         var jobs = new ObjectArrayList<PlannedTaskExecutor.Job<Boolean>>(entries.size());
         Throwable failure = null;
         try {
-            for (var entry : entries) {
+            for (int index18 = 0; index18 < entries.size(); index18++) {
+                var entry = entries.get(index18);
                 var policy = entry.candidate.policy;
                 if (policy == null || !policy.workAsync()) {
                     advanceCursor(entry);
@@ -279,15 +290,21 @@ final class MachineRecipeExecution implements PlannedExecution {
                 entry.dispatchWorker = dispatchAction;
                 entry.worker = handle.delegateWorker(dispatchAction);
             }
-            for (var group : callbackGroups) {
+            for (int index14 = 0; index14 < callbackGroups.size(); index14++) {
+                var group = callbackGroups.get(index14);
                 boolean ready = false;
-                for (var entry : group)
+                for (int index3 = 0; index3 < group.size(); index3++) {
+                    var entry = group.get(index3);
                     if (entry.worker != null) {
                         ready = true;
                         break;
                     }
+                }
                 if (ready) jobs.add(new PlannedTaskExecutor.Job<>(cancellation, () -> {
-                    for (var entry : group) if (entry.worker != null && workerAllowed(entry)) entry.worker.run();
+                    for (int index2 = 0; index2 < group.size(); index2++) {
+                        var entry = group.get(index2);
+                        if (entry.worker != null && workerAllowed(entry)) entry.worker.run();
+                    }
                     return true;
                 }));
             }
@@ -342,7 +359,10 @@ final class MachineRecipeExecution implements PlannedExecution {
         }
         workerBatch = null;
         boolean reclaimed = true;
-        for (var entry : delegated) reclaimed &= entry.worker == null && entry.dispatchWorker == null;
+        for (int index10 = 0; index10 < delegated.size(); index10++) {
+            var entry = delegated.get(index10);
+            reclaimed &= entry.worker == null && entry.dispatchWorker == null;
+        }
         if (reclaimed) delegated.clear();
         return failure;
     }
@@ -376,7 +396,8 @@ final class MachineRecipeExecution implements PlannedExecution {
         var jobs = new ObjectArrayList<PlannedTaskExecutor.SourceJob<Boolean>>(entries.size());
         Throwable failure = null;
         try {
-            for (var entry : entries) {
+            for (int index17 = 0; index17 < entries.size(); index17++) {
+                var entry = entries.get(index17);
                 var work = entry.policyWork;
                 if (work == null) continue;
                 var handle = Objects.requireNonNull(entry.handle);
@@ -398,7 +419,8 @@ final class MachineRecipeExecution implements PlannedExecution {
         }
         if (failure != null) record(failure);
         boolean complete = true;
-        for (var entry : entries) {
+        for (int index15 = 0; index15 < entries.size(); index15++) {
+            var entry = entries.get(index15);
             var work = entry.policyWork;
             if (work == null) continue;
             var handle = Objects.requireNonNull(entry.handle);
@@ -421,7 +443,8 @@ final class MachineRecipeExecution implements PlannedExecution {
         var jobs = new ObjectArrayList<PlannedTaskExecutor.Job<Boolean>>(entries.size());
         while (true) {
             boolean settled = true;
-            for (var entry : entries) {
+            for (int index20 = 0; index20 < entries.size(); index20++) {
+                var entry = entries.get(index20);
                 var handle = entry.handle;
                 if (handle == null || handle.finished()) continue;
                 var request = handle.deferredRecipeScan();
@@ -630,7 +653,8 @@ final class MachineRecipeExecution implements PlannedExecution {
             current.awaitExit();
         }
         if (current.failure() != null) {
-            for (var entry : entries) {
+            for (int index7 = 0; index7 < entries.size(); index7++) {
+                var entry = entries.get(index7);
                 var handle = entry.handle;
                 if (handle != null && !handle.finished()) {
                     handle.recordFailure(current.failure());
@@ -640,7 +664,8 @@ final class MachineRecipeExecution implements PlannedExecution {
         if (current.stopReason() != null) {
             cancellation.cancel(current.stopReason());
         }
-        for (var entry : entries) {
+        for (int index11 = 0; index11 < entries.size(); index11++) {
+            var entry = entries.get(index11);
             var handle = entry.handle;
             if (handle == null || handle.finished()) {
                 continue;
@@ -666,7 +691,8 @@ final class MachineRecipeExecution implements PlannedExecution {
         } else if (!tickCurrent.getAsBoolean()) {
             reason = Reason.EPOCH_CHANGED;
         } else {
-            for (var entry : entries) {
+            for (int index8 = 0; index8 < entries.size(); index8++) {
+                var entry = entries.get(index8);
                 if (!entry.candidate.current.getAsBoolean() || !entry.candidate.lifecycle.schedulingAllowed()) {
                     reason = Reason.OWNER_CHANGED;
                     break;
@@ -681,7 +707,8 @@ final class MachineRecipeExecution implements PlannedExecution {
     }
 
     private void retireCursors() {
-        for (var entry : entries) {
+        for (int index13 = 0; index13 < entries.size(); index13++) {
+            var entry = entries.get(index13);
             var handle = entry.handle;
             if (handle == null || handle.finished()) {
                 continue;
@@ -700,7 +727,8 @@ final class MachineRecipeExecution implements PlannedExecution {
 
     private void releaseMachines() {
         boolean released = true;
-        for (var entry : entries) {
+        for (int index5 = 0; index5 < entries.size(); index5++) {
+            var entry = entries.get(index5);
             var handle = entry.handle;
             if (handle != null && !handle.finished()) {
                 released &= handle.tryFinish();
@@ -733,7 +761,8 @@ final class MachineRecipeExecution implements PlannedExecution {
         } catch (RuntimeException | Error observed) {
             failure = appendFailure(failure, observed);
         }
-        for (var entry : entries) {
+        for (int index16 = 0; index16 < entries.size(); index16++) {
+            var entry = entries.get(index16);
             try {
                 if (entry.scan != null && entry.scan.barrier != null) entry.scan.barrier.awaitQuiescence();
             } catch (RuntimeException | Error observed) {
@@ -837,22 +866,23 @@ final class MachineRecipeExecution implements PlannedExecution {
         @Nullable
         private Reason stopReason;
 
+        private static boolean requiresOwnerThread(List<MachineWorkSlots> hosts) {
+            for (int hostIndex = 0; hostIndex < hosts.size(); hostIndex++) {
+                var slots = hosts.get(hostIndex).slots();
+                for (int slotIndex = 0; slotIndex < slots.size(); slotIndex++) {
+                    var process = slots.get(slotIndex).process();
+                    if (process != null && process.requiresOwnerThread()) return true;
+                }
+            }
+            return false;
+        }
+
         private PolicyWork(Entry entry, MachineWorkSlots host) {
             this.entry = entry;
             this.host = host;
             hosts = entry.candidate.machine instanceof CrossRecipeController ? entry.candidate.machine.recipeHosts() : List.of(host);
             boolean workAsync = Objects.requireNonNull(entry.candidate.policy).workAsync();
-            boolean ownerRequired = false;
-            if (workAsync) {
-                for (var cohortHost : hosts)
-                    for (var slot : cohortHost.slots()) {
-                        var process = slot.process();
-                        if (process != null && process.requiresOwnerThread()) {
-                            ownerRequired = true;
-                            break;
-                        }
-                    }
-            }
+            boolean ownerRequired = workAsync && requiresOwnerThread(hosts);
             asynchronous = workAsync && !ownerRequired;
             runner = !workAsync ? tasks.synchronous() : ownerRequired ? tasks : tasks.synchronousSources();
         }

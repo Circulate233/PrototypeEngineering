@@ -55,17 +55,17 @@ public final class ZenResource {
         var tag = NBTConverter.from(Objects.requireNonNull(data));
         if (!(tag instanceof NBTTagCompound compound))
             throw new IllegalArgumentException("Resource key requires a compound");
-        return new ZenResource(new ResourceKeyNbt().decode(compound), amount);
+        return new ZenResource(ResourceKeyNbt.INSTANCE.decode(compound), amount);
     }
 
     @ZenMethod
     public IData toTag() {
-        return NBTConverter.from(new ResourceKeyNbt().encode(key()), true);
+        return NBTConverter.from(ResourceKeyNbt.INSTANCE.encode(key()), true);
     }
 
     @ZenMethod
     public IData keyData() {
-        return NBTConverter.from(key().toTag().copy(), true);
+        return NBTConverter.from(key().toTag(), true);
     }
 
     @ZenMethod

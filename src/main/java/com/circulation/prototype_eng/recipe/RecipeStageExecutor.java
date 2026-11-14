@@ -172,7 +172,8 @@ public final class RecipeStageExecutor {
 
     private static void publish(List<StorageContext> contexts, @Nullable Throwable primary) {
         Throwable failure = primary;
-        for (var context : contexts) {
+        for (int index8 = 0; index8 < contexts.size(); index8++) {
+            var context = contexts.get(index8);
             try {
                 context.publishChanges();
             } catch (RuntimeException | Error notification) {
@@ -1408,6 +1409,15 @@ public final class RecipeStageExecutor {
             }
         }
 
+        private static boolean applyReservedSources(ResourceBatch batch) {
+            var sources = batch.sources();
+            for (int index = 0; index < sources.size(); index++) {
+                var source = sources.get(index);
+                if (source.state() == ResourceBatch.SourceState.RESERVED && !source.apply()) return false;
+            }
+            return true;
+        }
+
         private ProcessResult settleSequentially(boolean probe) {
             requireReady();
             if (synchronousStarted || decision != Settlement.NONE) {
@@ -1428,9 +1438,13 @@ public final class RecipeStageExecutor {
                 while (!acquisitionFailed) {
                     if (hasRejectedAlternative()) {
                         batch.rollbackTo(rejectedSavepoint());
-                        for (var source : batch.sources()) {
+
+                        var elements = batch.sources();
+                        for (int index2 = 0; index2 < elements.size(); index2++) {
+                            var source = elements.get(index2);
                             source.resolve();
                         }
+
                         if (!finishAlternativeRollback(batch)) {
                             break;
                         }
@@ -1439,16 +1453,7 @@ public final class RecipeStageExecutor {
                     if (result != ProcessResult.SUCCESS) {
                         break;
                     }
-                    boolean applied = true;
-                    for (var entry : batch.sources()) {
-                        if (entry.state() == ResourceBatch.SourceState.RESERVED && !entry.apply()) {
-                            applied = false;
-                            break;
-                        }
-                    }
-                    if (!applied) {
-                        break;
-                    }
+                    if (!applyReservedSources(batch)) break;
                     if (hasContinuation()) {
                         if (!staged && !batch.stage(() -> true)) {
                             break;
@@ -1501,11 +1506,13 @@ public final class RecipeStageExecutor {
             }
             var tokens = stepReservations();
             var steps = stepTransactions();
-            for (var token : tokens)
+            for (int index12 = 0; index12 < tokens.size(); index12++) {
+                var token = tokens.get(index12);
                 if (!token.supportsSequentialUse()) {
                     batch.appendForRollback(tokens, steps);
                     throw new IllegalArgumentException("Continued storage reservations must support reversible sequential use");
                 }
+            }
             batch.append(tokens, steps);
         }
 
@@ -1529,7 +1536,10 @@ public final class RecipeStageExecutor {
             }
             if (batch.decision() != ResourceBatch.Decision.OPEN) {
                 decision = batch.decision() == ResourceBatch.Decision.COMPLETE ? Settlement.COMPLETE : Settlement.ROLLBACK;
-                for (var entry : batch.sources()) {
+
+                var elements11 = batch.sources();
+                for (int index11 = 0; index11 < elements11.size(); index11++) {
+                    var entry = elements11.get(index11);
                     if (entry.state() == ResourceBatch.SourceState.COMPLETED || entry.state() == ResourceBatch.SourceState.ROLLED_BACK) {
                         continue;
                     }
@@ -1539,6 +1549,7 @@ public final class RecipeStageExecutor {
                         primary = accumulate(primary, cleanup);
                     }
                 }
+
                 if (batch.readyToFinish()) {
                     try {
                         batch.finish();
@@ -1606,14 +1617,16 @@ public final class RecipeStageExecutor {
                 locked = true;
                 boolean retryable = true;
                 Throwable queryFailure = null;
-                for (var observation : business) {
+                for (int index10 = 0; index10 < business.size(); index10++) {
+                    var observation = business.get(index10);
                     try {
                         retryable &= observation.confirmOrRetry();
                     } catch (RuntimeException | Error query) {
                         queryFailure = accumulate(queryFailure, query);
                     }
                 }
-                for (var observation : sources) {
+                for (int index9 = 0; index9 < sources.size(); index9++) {
+                    var observation = sources.get(index9);
                     try {
                         retryable &= observation.confirmOrRetry();
                     } catch (RuntimeException | Error query) {
@@ -1670,7 +1683,8 @@ public final class RecipeStageExecutor {
 
         private boolean prepareBusiness() {
             synchronousStarted = true;
-            for (var observation : business) {
+            for (int index5 = 0; index5 < business.size(); index5++) {
+                var observation = business.get(index5);
                 if (!observation.prepareCommit()) {
                     return false;
                 }
@@ -1679,7 +1693,8 @@ public final class RecipeStageExecutor {
         }
 
         private boolean validateBusiness() {
-            for (var observation : business) {
+            for (int index6 = 0; index6 < business.size(); index6++) {
+                var observation = business.get(index6);
                 if (!observation.validateCommit()) {
                     return false;
                 }
@@ -1689,7 +1704,8 @@ public final class RecipeStageExecutor {
 
         private void commitBusiness() {
             synchronousStarted = true;
-            for (var observation : business) {
+            for (int index1 = 0; index1 < business.size(); index1++) {
+                var observation = business.get(index1);
                 observation.commit();
             }
         }
@@ -1717,7 +1733,8 @@ public final class RecipeStageExecutor {
         private ObjectArrayList<StorageContext> orderedContexts() {
             var unique = new ReferenceOpenHashSet<StorageContext>(sources.size());
             var contexts = new ObjectArrayList<StorageContext>(sources.size());
-            for (var observation : sources) {
+            for (int index7 = 0; index7 < sources.size(); index7++) {
+                var observation = sources.get(index7);
                 var context = observation.context();
                 if (unique.add(context)) {
                     contexts.add(context);
@@ -1728,12 +1745,14 @@ public final class RecipeStageExecutor {
         }
 
         private boolean allTerminal() {
-            for (var observation : business) {
+            for (int index4 = 0; index4 < business.size(); index4++) {
+                var observation = business.get(index4);
                 if (!observation.terminal) {
                     return false;
                 }
             }
-            for (var observation : sources) {
+            for (int index3 = 0; index3 < sources.size(); index3++) {
+                var observation = sources.get(index3);
                 if (!observation.terminal) {
                     return false;
                 }

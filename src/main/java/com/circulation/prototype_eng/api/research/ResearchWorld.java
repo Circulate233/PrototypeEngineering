@@ -1,10 +1,6 @@
 package com.circulation.prototype_eng.api.research;
 
-import com.circulation.prototype_eng.api.research.reward.RewardClaim;
-import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
-import it.unimi.dsi.fastutil.ints.IntSets;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
-
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.research.delivery.DownloadOutputKey;
 import com.circulation.prototype_eng.api.research.delivery.ItemDelivery;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryAdapter;
@@ -26,22 +22,22 @@ import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory
 import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
+import com.circulation.prototype_eng.api.research.reward.RewardClaim;
 import com.circulation.prototype_eng.api.research.station.ResearchStationWork;
 import com.circulation.prototype_eng.api.research.station.ResearchStations;
 import com.circulation.prototype_eng.api.research.view.ResearchPlayerView;
 import com.circulation.prototype_eng.api.research.view.ResearchStationView;
-import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken.Reason;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedExecution;
+import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
+import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import com.circulation.prototype_eng.research.ResearchEligibility;
+import it.unimi.dsi.fastutil.ints.IntSets;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -50,6 +46,8 @@ import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -58,7 +56,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
@@ -120,7 +117,9 @@ public final class ResearchWorld {
     }
 
     private static void releaseReceipt(ResearchDownloadReceipt receipt, ItemDeliveryAdapter adapter, BooleanSupplier current) {
-        for (var fragment : receipt.fragments()) {
+        var elements13 = receipt.fragments();
+        for (int index13 = 0; index13 < elements13.size(); index13++) {
+            var fragment = elements13.get(index13);
             if (!current.getAsBoolean()) return;
             adapter.release(fragment);
         }
@@ -135,7 +134,7 @@ public final class ResearchWorld {
     }
 
     private static ResearchRewardClaimer.Result rewardResult(ResearchRewardClaimer.Status status) {
-        return new ResearchRewardClaimer.Result(status, status.name(), Optional.empty());
+        return new ResearchRewardClaimer.Result(status, status.name(), null);
     }
 
     @Nullable
@@ -181,7 +180,9 @@ public final class ResearchWorld {
     }
 
     private static boolean queued(TeamResearchQueue queue, TeamResearchQueue.Key key) {
-        for (var entry : queue.queueSnapshot()) {
+        var elements12 = queue.queueSnapshot();
+        for (int index12 = 0; index12 < elements12.size(); index12++) {
+            var entry = elements12.get(index12);
             if (entry.key().equals(key)) {
                 return true;
             }
@@ -233,11 +234,16 @@ public final class ResearchWorld {
             && permissions.can(ResearchPermissionPolicy.Action.MANAGE_RESEARCH_QUEUE, permission) == ResearchPermissionPolicy.Decision.ALLOWED;
         var team = id == null ? null : teams.get(id);
         var work = !visible || team == null ? null : team.queue.activeProgress();
-        if (visible && team != null) for (var session : team.manual.sessions())
-            if (session.materialIntent() != null || session.completionIntent() != null) {
-                canManage = false;
-                break;
+        if (visible && team != null) {
+            var elements2 = team.manual.sessions();
+            for (int index2 = 0; index2 < elements2.size(); index2++) {
+                var session = elements2.get(index2);
+                if (session.materialIntent() != null || session.completionIntent() != null) {
+                    canManage = false;
+                    break;
+                }
             }
+        }
         var current = work == null ? null : work.snapshot();
         var result = team == null ? null : team.station.result();
         boolean advanced = work != null && result != null && result.time() == time && result.key() != null
@@ -268,8 +274,13 @@ public final class ResearchWorld {
                     break;
                 }
             if (index < 0) return false;
-            for (var session : team.manual.sessions())
+
+            var elements = team.manual.sessions();
+            for (int index1 = 0; index1 < elements.size(); index1++) {
+                var session = elements.get(index1);
                 if (session.materialIntent() != null || session.completionIntent() != null) return false;
+            }
+
             var key = rows.get(index).key();
             if (action == ResearchStationView.Action.REMOVE) {
                 var session = team.manual.session(entryId);
@@ -372,10 +383,15 @@ public final class ResearchWorld {
             var personalLevels = Object2IntMaps.<ResourceLocation>emptyMap();
             if (personalDecision == ResearchPermissionPolicy.Decision.ALLOWED && ownSnapshot != null) {
                 personalLevels = ownSnapshot.completedLevels();
-                for (var claim : ownSnapshot.rewardClaims()) {
+                var elements24 = ownSnapshot.rewardClaims();
+                for (int index24 = 0; index24 < elements24.size(); index24++) {
+                    var claim = elements24.get(index24);
                     var choices = new ObjectArrayList<ResourceLocation>();
-                    for (var group : registry.require(claim.key().researchId()).rewardGroupsForLevel(claim.key().level()))
+                    var elements15 = registry.require(claim.key().researchId()).rewardGroupsForLevel(claim.key().level());
+                    for (int index15 = 0; index15 < elements15.size(); index15++) {
+                        var group = elements15.get(index15);
                         choices.add(group.id());
+                    }
                     claims.add(new ResearchPlayerView.ClaimSummary(claim.key().researchId(), claim.key().level(),
                         claim.status(), claim.selectedGroupId(), choices));
                 }
@@ -388,7 +404,9 @@ public final class ResearchWorld {
                 var structural = eligibility.calculateStructural(Objects.requireNonNull(teamId), membership.members(), memberSources,
                     teamSnapshot == null ? Object2IntMaps.emptyMap() : teamSnapshot.levels(), blacklist);
                 sharedLevels = structural.sharedLevels();
-                for (var definition : registry.all()) {
+                var elements23 = registry.all();
+                for (int index23 = 0; index23 < elements23.size(); index23++) {
+                    var definition = elements23.get(index23);
                     int completed = structural.completedLevel(definition.id());
                     if (completed < definition.maxLevel() && eligibility.structurallyEligible(structural, definition.id(), completed + 1)) {
                         structuralTargets.put(definition.id(), completed + 1);
@@ -396,19 +414,23 @@ public final class ResearchWorld {
                 }
             }
             var queueRows = new ObjectArrayList<ResearchPlayerView.QueueRow>();
-            var numericProgress = new Reference2DoubleOpenHashMap<NetworkResourceType>();
+            Reference2DoubleMap<NetworkResourceType> numericProgress = Reference2DoubleMaps.emptyMap();
             var manualRows = new ObjectArrayList<ResearchPlayerView.ManualRow>();
             long queueEpoch = 0;
             if (queueDecision == ResearchPermissionPolicy.Decision.ALLOWED && queueSnapshot != null) {
                 queueEpoch = queueSnapshot.epoch();
-                for (var entry : queueSnapshot.entries())
+                var elements20 = queueSnapshot.entries();
+                for (int index20 = 0; index20 < elements20.size(); index20++) {
+                    var entry = elements20.get(index20);
                     queueRows.add(new ResearchPlayerView.QueueRow(entry.key().queueEntryId(),
                         entry.key().researchId(), entry.key().targetLevel(), entry.requestedBy(), entry.createdAtWorldTime()));
-                for (var progress : queueSnapshot.resourceProgress().reference2DoubleEntrySet())
-                    numericProgress.addTo(progress.getKey(), progress.getDoubleValue());
-                for (var manual : manualSnapshots)
+                }
+                numericProgress = queueSnapshot.resourceProgress();
+                for (int index16 = 0; index16 < manualSnapshots.size(); index16++) {
+                    var manual = manualSnapshots.get(index16);
                     manualRows.add(new ResearchPlayerView.ManualRow(manual.queueKey().queueEntryId(),
                         manual.status(), manual.pauseReason(), manual.contributor(), manual.work()));
+                }
             }
             var status = !membership.accepted()
                 ? membership.status() == OwnerTeamResolutionStatus.UNIVERSE_UNAVAILABLE
@@ -513,7 +535,8 @@ public final class ResearchWorld {
                                         @Nullable TeamOwnedResearch.Snapshot teamSnapshot, ObjectSet<UUID> knownMembers,
                                         ObjectSet<ResourceLocation> blacklist) {
         if (activeTick != null || closing || closed || fatalFailure != null || teams.get(teamId) != team) return false;
-        for (var captured : sources) {
+        for (int index19 = 0; index19 < sources.size(); index19++) {
+            var captured = sources.get(index19);
             var source = players.get(captured.player());
             if (source != captured.source() || source != null && (source.busy() || source.snapshot() != captured.snapshot()))
                 return false;
@@ -545,13 +568,17 @@ public final class ResearchWorld {
                 throw new IllegalStateException("Research world has already been initialized");
             }
             var restoredPlayers = new Object2ObjectLinkedOpenHashMap<UUID, PlayerResearchState>(saved.players().size());
-            for (var snapshot : saved.players()) {
+            var elements17 = saved.players();
+            for (int index17 = 0; index17 < elements17.size(); index17++) {
+                var snapshot = elements17.get(index17);
                 var state = new PlayerResearchState(snapshot.playerUuid());
                 state.restore(snapshot);
                 restoredPlayers.put(snapshot.playerUuid(), state);
             }
             var restoredTeams = new Object2ObjectLinkedOpenHashMap<String, TeamProgress>(saved.teams().size());
-            for (var snapshot : saved.teams()) {
+            var elements25 = saved.teams();
+            for (int index25 = 0; index25 < elements25.size(); index25++) {
+                var snapshot = elements25.get(index25);
                 var team = new TeamProgress(snapshot.teamId(), TeamResearchQueue.restore(registry, snapshot.queue()), restoredPlayers);
                 team.research.restore(snapshot.research());
                 team.knownMembers = snapshot.knownMembers();
@@ -560,7 +587,9 @@ public final class ResearchWorld {
                 team.manual.restore(snapshot.manualSessions());
                 restoredTeams.put(snapshot.teamId(), team);
             }
-            for (var operation : saved.downloads()) {
+            var elements26 = saved.downloads();
+            for (int index26 = 0; index26 < elements26.size(); index26++) {
+                var operation = elements26.get(index26);
                 if (operation.status() == ResearchDownloadOperation.Status.PREPARED || operation.status() == ResearchDownloadOperation.Status.MATERIAL_COMMITTED) {
                     var reservation = downloadSources.reserve(operation.sources(), operation.id(), restoredPlayers, restoredTeams.get(operation.sources().teamId()).research);
                     if (reservation != ResearchDownloadSources.Status.READY)
@@ -570,9 +599,21 @@ public final class ResearchWorld {
             players = restoredPlayers;
             teams.putAll(restoredTeams);
             capturedTeams = null;
-            for (var operation : saved.downloads()) downloads.put(operation.id(), operation);
-            for (var receipt : saved.downloadReceipts()) downloadReceipts.put(receipt.operationId(), receipt);
-            for (var operation : saved.diskImports()) diskImports.put(operation.id(), operation);
+            var elements7 = saved.downloads();
+            for (int index7 = 0; index7 < elements7.size(); index7++) {
+                var operation = elements7.get(index7);
+                downloads.put(operation.id(), operation);
+            }
+            var elements9 = saved.downloadReceipts();
+            for (int index9 = 0; index9 < elements9.size(); index9++) {
+                var receipt = elements9.get(index9);
+                downloadReceipts.put(receipt.operationId(), receipt);
+            }
+            var elements8 = saved.diskImports();
+            for (int index8 = 0; index8 < elements8.size(); index8++) {
+                var operation = elements8.get(index8);
+                diskImports.put(operation.id(), operation);
+            }
             dirty = true; // ACTIVE sessions were intentionally changed to PAUSED during restore.
             return null;
         });
@@ -589,10 +630,15 @@ public final class ResearchWorld {
                 continue;
             }
             tracked.addAll(team.knownMembers);
-            for (var entry : team.queue.queueSnapshot()) {
+            var elements11 = team.queue.queueSnapshot();
+            for (int index11 = 0; index11 < elements11.size(); index11++) {
+                var entry = elements11.get(index11);
                 tracked.add(entry.requestedBy());
             }
-            for (var session : team.manual.sessions()) {
+
+            var elements5 = team.manual.sessions();
+            for (int index5 = 0; index5 < elements5.size(); index5++) {
+                var session = elements5.get(index5);
                 if (session.contributor() != null) {
                     tracked.add(session.contributor());
                 }
@@ -603,6 +649,7 @@ public final class ResearchWorld {
                     tracked.addAll(session.completionIntent().baselines().keySet());
                 }
             }
+
         }
         for (var operation : downloads.values()) {
             tracked.add(operation.intent().playerId());
@@ -754,14 +801,20 @@ public final class ResearchWorld {
             return ObjectList.of(downloadResult(ResearchDownloadResult.Status.BUSY, null));
         return operate(time, false, () -> {
             var result = new ObjectArrayList<ResearchDownloadResult>();
-            for (var operation : new ObjectArrayList<>(downloads.values())) {
+
+            var elements3 = new ObjectArrayList<>(downloads.values());
+            for (int index3 = 0; index3 < elements3.size(); index3++) {
+                var operation = elements3.get(index3);
                 if (operation.intent().playerId().equals(player))
                     result.add(advanceDownload(operation.id(), inventory, delivery,
                         () -> authorized.test(Objects.requireNonNull(downloads.get(operation.id()))), actorCurrent));
             }
+
             for (var receipt : downloadReceipts.values())
                 if (receipt.intent().playerId().equals(player)) releaseReceipt(receipt, delivery, actorCurrent);
-            for (var material : inventory.operations()) {
+            var elements22 = inventory.operations();
+            for (int index22 = 0; index22 < elements22.size(); index22++) {
+                var material = elements22.get(index22);
                 if (!downloads.containsKey(material.operationId()) && !diskImports.containsKey(material.operationId()))
                     result.add(downloadResult(ResearchDownloadResult.Status.RECOVERY_ERROR, material.operationId()));
             }
@@ -885,8 +938,11 @@ public final class ResearchWorld {
         var sources = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
         for (var member : members) sources.put(member, Objects.requireNonNull(players.get(member)));
         var view = eligibility.calculateStructural(team.id, members, sources, team.research.completedLevelsSnapshot(), team.blacklist);
-        for (var rule : definition.mutexRulesForLevel(level))
+        var elements14 = definition.mutexRulesForLevel(level);
+        for (int index14 = 0; index14 < elements14.size(); index14++) {
+            var rule = elements14.get(index14);
             if (view.completedLevel(rule.researchId()) >= rule.minLevel()) return false;
+        }
         return true;
     }
 
@@ -1238,7 +1294,7 @@ public final class ResearchWorld {
             }
             try (reward) {
                 activeReward = reward;
-                return new ResearchRewardClaimer().claim(new ResearchRewardClaimer.Request(player, definition, level,
+                return ResearchRewardClaimer.claim(new ResearchRewardClaimer.Request(player, definition, level,
                     group, time, claim -> rewardCheckpoint(player, reward, claim), delivery, current), reward);
             } finally {
                 activeReward = null;
@@ -1265,11 +1321,15 @@ public final class ResearchWorld {
             }
             for (var team : teams.values()) {
                 var context = new ManualResearch.Context(time, team.knownMembers, remainingOnline, () -> true);
-                for (var session : team.manual.sessions()) {
+
+                var elements4 = team.manual.sessions();
+                for (int index4 = 0; index4 < elements4.size(); index4++) {
+                    var session = elements4.get(index4);
                     if (session.status() == ManualResearchSession.Status.ACTIVE && player.equals(session.contributor())) {
                         team.manual.pause(session.queueKey().queueEntryId(), context, ManualResearchSession.PauseReason.CONTRIBUTOR_OFFLINE);
                     }
                 }
+
             }
             if (dirty) {
                 persist();
@@ -1382,7 +1442,9 @@ public final class ResearchWorld {
                 return ManualResearch.Status.STALE_CONTEXT;
             }
             captureTeam(membership.teamId(), membership.members());
-            for (var entry : team.queue.queueSnapshot()) {
+            var elements27 = team.queue.queueSnapshot();
+            for (int index27 = 0; index27 < elements27.size(); index27++) {
+                var entry = elements27.get(index27);
                 if (entry.key().researchId().equals(id) && entry.key().targetLevel() == target) {
                     if (expectedEntryId != 0 && expectedEntryId != entry.key().queueEntryId())
                         return ManualResearch.Status.STALE_CONTEXT;
@@ -1637,7 +1699,9 @@ public final class ResearchWorld {
                     dirty = true;
                 }
             }
-            for (var team : teamSnapshot()) {
+            var elements28 = teamSnapshot();
+            for (int index28 = 0; index28 < elements28.size(); index28++) {
+                var team = elements28.get(index28);
                 if (!current.getAsBoolean()) {
                     break;
                 }
@@ -1651,7 +1715,7 @@ public final class ResearchWorld {
                 if (!reconcile(team, context, inventories)) {
                     continue;
                 }
-                var head = team.queue.activeHead().orElse(null);
+                var head = team.queue.activeHead();
                 if (head == null || registry.require(head.key().researchId()).stageForLevel(head.key().targetLevel()).researchTier() != 0) {
                     continue;
                 }
@@ -1670,6 +1734,7 @@ public final class ResearchWorld {
 
     /**
      * Captures no business effects; the scheduler owns this execution before its first advance.
+     * The completed capture map and online set are borrowed read-only until execution has exited.
      */
     @SuppressWarnings("ReturnOfInnerClass")
     // The retained scheduler execution deliberately owns this world's pending work.
@@ -1682,8 +1747,7 @@ public final class ResearchWorld {
         if (activeTick != null || executing || closed || closing) {
             throw new IllegalStateException("Research owner already has a tick or is closing");
         }
-        return new StationTick(time, Object2ObjectMaps.unmodifiable(new Object2ObjectOpenHashMap<>(captures)),
-            ObjectSets.unmodifiable(new ObjectOpenHashSet<>(online)), inventories, current, stations, refresh, forwardDeadline);
+        return new StationTick(time, captures, online, inventories, current, stations, refresh, forwardDeadline);
     }
 
     private boolean reconcile(TeamProgress team, ManualResearch.Context context, Function<UUID, ManualResearchInventory> inventories) {
@@ -1692,7 +1756,10 @@ public final class ResearchWorld {
             var view = structural(team, team.knownMembers.isEmpty());
             boolean changed = false;
             boolean pending = false;
-            for (var session : team.manual.sessions()) {
+
+            var elements6 = team.manual.sessions();
+            for (int index6 = 0; index6 < elements6.size(); index6++) {
+                var session = elements6.get(index6);
                 var key = session.queueKey();
                 if (!eligibility.structurallyEligible(view, key.researchId(), key.targetLevel())) {
                     var result = team.manual.cancelInvalidated(key.queueEntryId(), context, inventoryFor(session, inventories));
@@ -1703,6 +1770,7 @@ public final class ResearchWorld {
                     }
                 }
             }
+
             if (pending || !context.current().getAsBoolean()) {
                 return false;
             }
@@ -1710,7 +1778,9 @@ public final class ResearchWorld {
                 continue;
             }
             boolean needsPrune = false;
-            for (var entry : team.queue.queueSnapshot()) {
+            var elements21 = team.queue.queueSnapshot();
+            for (int index21 = 0; index21 < elements21.size(); index21++) {
+                var entry = elements21.get(index21);
                 if (!eligibility.structurallyEligible(view, entry.key().researchId(), entry.key().targetLevel())) {
                     needsPrune = true;
                     break;
@@ -1776,7 +1846,9 @@ public final class ResearchWorld {
         Set<ResourceLocation> blacklist = team.blacklistSnapshot();
         if (disappeared) {
             var blocked = new ObjectOpenHashSet<>(blacklist);
-            for (var definition : registry.all()) {
+            var elements10 = registry.all();
+            for (int index10 = 0; index10 < elements10.size(); index10++) {
+                var definition = elements10.get(index10);
                 blocked.add(definition.id());
             }
             blacklist = blocked;
@@ -1794,7 +1866,8 @@ public final class ResearchWorld {
     }
 
     private boolean sourcesCurrent(ObjectList<PlayerResearchState.Snapshot> snapshots) {
-        for (var snapshot : snapshots) {
+        for (int index18 = 0; index18 < snapshots.size(); index18++) {
+            var snapshot = snapshots.get(index18);
             var current = players.get(snapshot.playerUuid());
             if (current == null || current.busy() || !current.snapshot().equals(snapshot)) {
                 return false;
@@ -1892,7 +1965,7 @@ public final class ResearchWorld {
             if (team.research.busy() && !downloaded && !changedLevel) {
                 throw new IllegalStateException("Cannot snapshot a pending team research mutation");
             }
-            teamSnapshots.add(new ResearchWorldSnapshot.Team(team.id, team.knownMembers, team.blacklist,
+            teamSnapshots.add(new ResearchWorldSnapshot.Team(team.id, team.knownMembers, team.blacklistSnapshot(),
                 changedLevel ? activeTeamLevel.snapshot() : downloaded ? activeDownload.snapshot(team.research) : team.research.snapshot(), team.queue.snapshot(), team.manual.sessions()));
         }
         return new ResearchWorldSnapshot(serverTime, playerSnapshots, teamSnapshots, new ObjectArrayList<>(downloads.values()), new ObjectArrayList<>(downloadReceipts.values()), new ObjectArrayList<>(diskImports.values()));
@@ -2039,6 +2112,7 @@ public final class ResearchWorld {
         }
 
         @Override
+        @SuppressWarnings("DataFlowIssue")
         public boolean advance(PlannedDeadline cleanupDeadline) {
             requireOwner();
             if (finished) return true;
@@ -2052,11 +2126,11 @@ public final class ResearchWorld {
                 for (var team : teams.values()) team.manual.retryCheckpoint();
                 var memberships = validateMemberships(captures);
                 if (memberships != null && forward()) {
-                    if (!captures.keySet().containsAll(trackedPlayers()))
-                        throw new IllegalArgumentException("Research capture omitted tracked players");
                     serverTime = time;
                     for (var entry : memberships.entrySet()) captureTeam(entry.getKey(), entry.getValue());
-                    for (var team : teamSnapshot()) {
+                    var elements29 = teamSnapshot();
+                    for (int index29 = 0; index29 < elements29.size(); index29++) {
+                        var team = elements29.get(index29);
                         var members = memberships.getOrDefault(team.id, ObjectSets.emptySet());
                         if (!members.equals(team.knownMembers)) {
                             team.knownMembers = members;
@@ -2067,11 +2141,11 @@ public final class ResearchWorld {
                             continue;
                         var context = new ManualResearch.Context(time, members, online, this::forward);
                         if (!reconcile(team, context, inventories)) continue;
-                        var head = team.queue.activeHead().orElse(null);
+                        var head = team.queue.activeHead();
                         if (head == null) continue;
                         int tier = registry.require(head.key().researchId()).researchTierForLevel(head.key().targetLevel());
                         if (tier == 0) {
-                            var session = Objects.requireNonNull(team.manual.session(head.key().queueEntryId()), "Manual head has no session");
+                            var session = team.manual.session(head.key().queueEntryId());
                             team.manual.advance(head.key().queueEntryId(), context, inventoryFor(session, inventories));
                         } else {
                             refresh.run();

@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
@@ -66,9 +65,16 @@ public final class NetworkRecipeExtensions {
         Objects.requireNonNull(catalog);
         var identities = new ReferenceOpenHashSet<MachineRecipe>();
         var recipes = new ObjectArrayList<MachineRecipe>();
-        for (var recipe : catalog.catalog().recipes()) if (identities.add(recipe)) recipes.add(recipe);
-        for (var definition : catalog.historicalDefinitions())
+        var elements = catalog.catalog().recipes();
+        for (int index4 = 0; index4 < elements.size(); index4++) {
+            var recipe = elements.get(index4);
+            if (identities.add(recipe)) recipes.add(recipe);
+        }
+        var elements5 = catalog.historicalDefinitions();
+        for (int index5 = 0; index5 < elements5.size(); index5++) {
+            var definition = elements5.get(index5);
             if (identities.add(definition.recipe())) recipes.add(definition.recipe());
+        }
         recipes.sort(Comparator.comparing(MachineRecipe::id)
                                .thenComparing(recipe -> Objects.requireNonNullElse(catalog.revision(recipe), "")));
         publishInitial(recipes);
@@ -79,20 +85,21 @@ public final class NetworkRecipeExtensions {
             if (publicationStarted)
                 throw new IllegalStateException("Network recipe extension publication already started");
             publicationStarted = true;
-            if (!Objects.requireNonNull(research).isFrozen()) {
-                throw new IllegalStateException("Network recipe extensions need frozen research and computing registries");
+            if (!research.isFrozen()) {
+                throw new IllegalStateException("Network recipe extensions need frozen research definitions");
             }
             this.research = research;
-            var ordered = new ObjectArrayList<>(registrations);
-            ordered.sort(Comparator.comparingInt(Registration::priority).thenComparingLong(Registration::sequence));
-            configuration = ObjectLists.unmodifiable(ordered);
-            registrations.clear();
+            registrations.sort(Comparator.comparingInt(Registration::priority).thenComparingLong(Registration::sequence));
+            configuration = registrations;
         }
     }
 
     private void publishInitial(List<MachineRecipe> recipes) {
         var completed = new Reference2ObjectOpenHashMap<MachineRecipe, NetworkWorkRequirements>(recipes.size());
-        for (var recipe : recipes) completed.put(recipe, configure(recipe));
+        for (int index3 = 0; index3 < recipes.size(); index3++) {
+            var recipe = recipes.get(index3);
+            completed.put(recipe, configure(recipe));
+        }
         synchronized (this) {
             frozen = new Snapshot(this, completed);
         }
@@ -154,7 +161,10 @@ public final class NetworkRecipeExtensions {
         var next = expected;
         if (!additions.isEmpty()) {
             var union = new Reference2ObjectOpenHashMap<>(expected.requirements);
-            for (var recipe : additions) union.put(recipe, configure(recipe));
+            for (int index1 = 0; index1 < additions.size(); index1++) {
+                var recipe = additions.get(index1);
+                union.put(recipe, configure(recipe));
+            }
             next = new Snapshot(this, union);
         }
         if (!isCurrent(expected) || publicationBinding != binding || binding != null && !binding.publication.live()) {
@@ -163,6 +173,7 @@ public final class NetworkRecipeExtensions {
         return new Prepared(this, expected, next, binding);
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private NetworkWorkRequirements configure(MachineRecipe recipe) {
         Configuration state;
         synchronized (this) {
@@ -179,9 +190,12 @@ public final class NetworkRecipeExtensions {
         }
         var builder = NetworkWorkRequirements.builder();
         try {
-            for (var registration : configuration) registration.extension.extend(recipe, builder);
+            for (int index2 = 0; index2 < configuration.size(); index2++) {
+                var registration = configuration.get(index2);
+                registration.extension.extend(recipe, builder);
+            }
             var requirements = builder.build();
-            requirements.validate(Objects.requireNonNull(research));
+            requirements.validate(research);
             synchronized (this) {
                 state.requirements = requirements;
                 state.complete = true;
@@ -193,8 +207,6 @@ public final class NetworkRecipeExtensions {
                 state.complete = true;
             }
             throw failure;
-        } finally {
-            builder.seal();
         }
     }
 

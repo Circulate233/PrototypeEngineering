@@ -35,7 +35,9 @@ public class DefaultRecipeDisplays {
     public static JeiRecipeDisplay describe(MachineRecipe recipe, RecipeJeiDisplays extensions) {
         var display = new JeiRecipeDisplay.Builder();
         display.information(of(JeiText.Duration, recipe.durationTicks(), recipe.durationTicks() / 20.0));
-        for (var requirement : recipe.orderedRequirements()) {
+        var elements6 = recipe.orderedRequirements();
+        for (int index6 = 0; index6 < elements6.size(); index6++) {
+            var requirement = elements6.get(index6);
             describe(recipe, requirement, display, extensions);
         }
         return display.build();
@@ -78,7 +80,11 @@ public class DefaultRecipeDisplays {
                 var candidate = nested.build();
                 appendAlternative(display, candidate, INPUT, inputs, requirement.id().toString());
                 appendAlternative(display, candidate, OUTPUT, outputs, requirement.id().toString());
-                for (var line : candidate.information()) display.information(line);
+                var elements = candidate.information();
+                for (int index = 0; index < elements.size(); index++) {
+                    var line = elements.get(index);
+                    display.information(line);
+                }
             }
         } else if (requirement.type() == RecipeRequirements.ATTRIBUTES) {
             var attribute = (AttributeRequirement) requirement.payload();
@@ -98,7 +104,9 @@ public class DefaultRecipeDisplays {
                                           JeiRecipeDisplay.Role role, List<JeiRecipeDisplay.CandidateGroup> slots, String name) {
         var assigned = new Reference2ObjectOpenHashMap<JeiRecipeDisplay.CandidateGroup, List<JeiRecipeDisplay.CandidateGroup>>();
         int nextSlot = 0;
-        for (var row : candidate.resources()) {
+        var elements13 = candidate.resources();
+        for (int index13 = 0; index13 < elements13.size(); index13++) {
+            var row = elements13.get(index13);
             if (row.role() != role) continue;
             var source = row.candidates();
             var targets = source == null ? null : assigned.get(source);
@@ -112,7 +120,8 @@ public class DefaultRecipeDisplays {
                 }
                 if (source != null) assigned.put(source, targets);
             }
-            for (var target : targets) {
+            for (int index10 = 0; index10 < targets.size(); index10++) {
+                var target = targets.get(index10);
                 var output = display.candidates(target);
                 if (row.chance() != null)
                     output = output.chance(row.chance().percent(), row.chance().attributeDriven());
@@ -127,45 +136,63 @@ public class DefaultRecipeDisplays {
         if (resource.chance().attribute() != null) {
             declared = declared.scoped(of(JeiText.ChanceAttribute, resource.chance().attribute()));
         }
-        for (var stack : resource.inputs()) {
+        var elements2 = resource.inputs();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var stack = elements2.get(index2);
             declared.resource(stack, INPUT, of(inputStage));
         }
-        for (var stack : resource.inputsPerTick()) {
+        var elements4 = resource.inputsPerTick();
+        for (int index4 = 0; index4 < elements4.size(); index4++) {
+            var stack = elements4.get(index4);
             declared.resource(stack, INPUT, of(JeiText.Tick));
         }
         var outputs = resource.voidExcessOutputs() ? declared.scoped(of(JeiText.VoidExcess)) : declared;
-        for (var stack : resource.outputsPerTick()) {
+        var elements5 = resource.outputsPerTick();
+        for (int index5 = 0; index5 < elements5.size(); index5++) {
+            var stack = elements5.get(index5);
             outputs.resource(stack, OUTPUT, of(JeiText.Tick));
         }
-        for (var stack : resource.outputs()) {
+        var elements3 = resource.outputs();
+        for (int index3 = 0; index3 < elements3.size(); index3++) {
+            var stack = elements3.get(index3);
             outputs.resource(stack, OUTPUT, of(JeiText.End));
         }
         int groupIndex = 0;
-        for (var group : resource.fuzzyInputs()) {
+        var elements11 = resource.fuzzyInputs();
+        for (int index11 = 0; index11 < elements11.size(); index11++) {
+            var group = elements11.get(index11);
             var groupId = requirement.id() + "/fuzzy/" + groupIndex++;
             if (group.candidates().isEmpty()) {
                 declared.information(of(JeiText.NoCandidates, groupId));
             }
             var alternatives = declared.candidates(new JeiRecipeDisplay.CandidateGroup(groupId));
-            for (var key : group.candidates()) {
+            var elements8 = group.candidates();
+            for (int index8 = 0; index8 < elements8.size(); index8++) {
+                var key = elements8.get(index8);
                 alternatives.resource(new GenericStack(key, group.amount()), INPUT, of(inputStage), of(JeiText.Fuzzy, groupId));
             }
         }
         groupIndex = 0;
-        for (var group : resource.dynamicInputs()) {
+        var elements12 = resource.dynamicInputs();
+        for (int index12 = 0; index12 < elements12.size(); index12++) {
+            var group = elements12.get(index12);
             var groupId = requirement.id() + "/dynamic/" + groupIndex++;
             var dynamic = declared.candidates(new JeiRecipeDisplay.CandidateGroup(groupId))
                                   .scoped(of(JeiText.Dynamic, groupId, group.matcher().id()));
             dynamic.information(of(JeiText.Consume, group.amount()));
             // Only explicitly supplied examples are indexed; pattern and callbacks are not inferred outputs.
-            for (var key : group.displayedCandidates()) {
+            var elements7 = group.displayedCandidates();
+            for (int index7 = 0; index7 < elements7.size(); index7++) {
+                var key = elements7.get(index7);
                 dynamic.resource(new GenericStack(key, group.amount()), INPUT, of(inputStage));
             }
         }
         var random = resource.randomOutputs();
         if (random != null && random.hasOutputs()) {
             var alternatives = outputs.candidates(new JeiRecipeDisplay.CandidateGroup(requirement.id() + "/weighted", random.pickCount()));
-            for (var candidate : random.candidates()) {
+            var elements9 = random.candidates();
+            for (int index9 = 0; index9 < elements9.size(); index9++) {
+                var candidate = elements9.get(index9);
                 alternatives.resource(candidate.value(), OUTPUT, of(JeiText.End),
                     of(JeiText.Weighted, requirement.id(), candidate.weight(), random.pickCount(), random.candidates().size()));
             }

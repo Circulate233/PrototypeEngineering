@@ -1,9 +1,6 @@
 package com.circulation.prototype_eng.api.machine;
 
 import com.circulation.prototype_eng.api.network.NetworkCenter;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 
 /**
  * Ready-to-use network-center runtime. It has no recipe hosts or business ticks; the physical host's
@@ -12,7 +9,6 @@ import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 public class NetworkCenterController extends MachineInstance implements NetworkCenter {
     private final int networkLevel;
     private final long energyPerTick;
-    private final Reference2DoubleMap<NetworkResourceType> networkResources;
     private final long threadCapacity;
 
     public NetworkCenterController(MachineType type, int networkLevel) {
@@ -30,7 +26,6 @@ public class NetworkCenterController extends MachineInstance implements NetworkC
         this.networkLevel = networkLevel;
         this.energyPerTick = energyPerTick;
         this.threadCapacity = threadCapacity;
-        networkResources = Reference2DoubleMaps.emptyMap();
     }
 
     @Override
@@ -41,11 +36,6 @@ public class NetworkCenterController extends MachineInstance implements NetworkC
     @Override
     public long providedConcurrency() {
         return threadCapacity;
-    }
-
-    @Override
-    public Reference2DoubleMap<NetworkResourceType> networkResources() {
-        return networkResources;
     }
 
     @Override

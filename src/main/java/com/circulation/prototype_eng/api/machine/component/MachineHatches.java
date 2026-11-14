@@ -16,6 +16,7 @@ import java.util.List;
  * Immutable discovered hatch bindings, installed by the host at its machine ownership boundary.
  * Discovery belongs to the server thread; recipe execution uses only the captured public contracts.
  * Replacing these bindings does not reactivate old contexts or waive their lifecycle validation.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class MachineHatches {
     public static final ComponentType<MachineInstance, MachineHatches> TYPE =

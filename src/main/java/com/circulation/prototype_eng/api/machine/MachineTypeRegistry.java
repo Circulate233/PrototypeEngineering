@@ -136,7 +136,8 @@ public final class MachineTypeRegistry {
             }
         }
         var resolvedAssemblies = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAssembly>(types.size());
-        for (var type : types) {
+        for (int index = 0; index < types.size(); index++) {
+            var type = types.get(index);
             var assembly = checked.get(type.id());
             if (assembly == null) {
                 throw new IllegalArgumentException("Missing assembly for machine " + type.id());
@@ -152,7 +153,8 @@ public final class MachineTypeRegistry {
                 throw new IllegalArgumentException("Structure key does not match its ID: " + entry.getKey());
         }
         var resolved = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineStructure>(types.size());
-        for (var type : types) {
+        for (int index2 = 0; index2 < types.size(); index2++) {
+            var type = types.get(index2);
             var definition = catalog.get(type.structureId());
             if (definition == null) {
                 throw new IllegalArgumentException("Unknown structure " + type.structureId() + " for machine " + type.id());

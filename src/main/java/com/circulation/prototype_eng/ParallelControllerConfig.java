@@ -10,7 +10,7 @@ import java.io.File;
 public final class ParallelControllerConfig {
     public static final String[] TIERS = {"normal", "reinforced", "elite", "super", "ultimate"};
     private static final int[] DEFAULTS = {4, 16, 64, 256, 512};
-    private static int[] maxima = DEFAULTS.clone();
+    private static int[] maxima = DEFAULTS;
 
     private ParallelControllerConfig() {
     }

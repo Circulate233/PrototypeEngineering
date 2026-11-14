@@ -86,20 +86,24 @@ public final class MachineLifecycle {
     }
 
     private static void requireQuiescent(Captured captured) {
-        for (var slots : captured.workSlots()) {
+        var elements5 = captured.workSlots();
+        for (int index5 = 0; index5 < elements5.size(); index5++) {
+            var slots = elements5.get(index5);
             slots.requireQuiescent();
         }
     }
 
     private static void publish(MachineLifecycleEvent event, List<MachineLifecycleListener> listeners) {
-        for (var listener : listeners) {
+        for (int index1 = 0; index1 < listeners.size(); index1++) {
+            var listener = listeners.get(index1);
             invoke(event, listener);
         }
     }
 
     @Nullable
     private static Throwable publishAll(MachineLifecycleEvent event, List<MachineLifecycleListener> listeners, @Nullable Throwable failure) {
-        for (var listener : listeners) {
+        for (int index11 = 0; index11 < listeners.size(); index11++) {
+            var listener = listeners.get(index11);
             try {
                 invoke(event, listener);
             } catch (RuntimeException | Error cleanup) {
@@ -351,7 +355,9 @@ public final class MachineLifecycle {
             }
             var captured = capture(work);
             if (captured == null) return false;
-            for (var slots : captured.workSlots()) {
+            var elements6 = captured.workSlots();
+            for (int index6 = 0; index6 < elements6.size(); index6++) {
+                var slots = elements6.get(index6);
                 if (!work.take()) return false;
                 slots.requireQuiescent();
             }
@@ -385,7 +391,9 @@ public final class MachineLifecycle {
                                      StructureComponents ports, Captured captured, RecipeWorkBudget work) {
         boolean previous = formed;
         long generation = hatches != null && !previous ? Math.incrementExact(formationGeneration) : formationGeneration;
-        for (var binding : ports.bindings()) {
+        var elements13 = ports.bindings();
+        for (int index13 = 0; index13 < elements13.size(); index13++) {
+            var binding = elements13.get(index13);
             if (!work.take()) return false;
             if (binding.context().machine() != machine || binding.context().formationGeneration() != generation) {
                 throw new IllegalArgumentException("Structure ports belong to a different machine or formation generation");
@@ -427,7 +435,9 @@ public final class MachineLifecycle {
         if (previous != formed) {
             try {
                 var event = new MachineLifecycleEvent.FormedChanged(context(), previous);
-                for (var listener : captured.listeners()) {
+                var elements9 = captured.listeners();
+                for (int index9 = 0; index9 < elements9.size(); index9++) {
+                    var listener = elements9.get(index9);
                     if (accounting != null) accounting.completeReserved();
                     invoke(event, listener);
                 }
@@ -486,7 +496,9 @@ public final class MachineLifecycle {
             broken = true;
             Throwable failure = publishAll(new MachineLifecycleEvent.ControllerBroken(context()), captured.listeners(), attempt.failure());
             var reason = RecipeText.ControllerBroken.failure();
-            for (var slots : captured.workSlots()) {
+            var elements12 = captured.workSlots();
+            for (int index12 = 0; index12 < elements12.size(); index12++) {
+                var slots = elements12.get(index12);
                 try {
                     slots.cancelAll(reason);
                 } catch (RuntimeException | Error cleanup) {
@@ -625,7 +637,8 @@ public final class MachineLifecycle {
         var seenSlots = new ReferenceOpenHashSet<MachineWorkSlots>();
         var ordered = machine.components().orderedBindings(work);
         if (ordered == null) return null;
-        for (var binding : ordered) {
+        for (int index14 = 0; index14 < ordered.size(); index14++) {
+            var binding = ordered.get(index14);
             if (!work.take()) return null;
             if (binding.component() instanceof MachineLifecycleListener listener) {
                 listeners.add(listener);
@@ -640,14 +653,19 @@ public final class MachineLifecycle {
         // Retain only owned components for corrupt-graph cleanup. Global subscriptions can be
         // cancelled independently and must not be kept alive or resurrected by this machine.
         var ownedListeners = new ObjectArrayList<MachineLifecycleListener>();
-        for (var listener : listeners) {
+        for (int index2 = 0; index2 < listeners.size(); index2++) {
+            var listener = listeners.get(index2);
             if (!work.take()) return null;
             ownedListeners.add(listener);
         }
-        for (var listener : registry.snapshot()) {
+
+        var elements = registry.snapshot();
+        for (int index3 = 0; index3 < elements.size(); index3++) {
+            var listener = elements.get(index3);
             if (!work.take()) return null;
             listeners.add(listener);
         }
+
         lastCaptured = new Captured(ownedListeners, workSlots);
         return new Captured(listeners, workSlots);
     }
@@ -664,18 +682,24 @@ public final class MachineLifecycle {
             var seenListeners = new ReferenceOpenHashSet<MachineLifecycleListener>();
             var seenSlots = new ReferenceOpenHashSet<MachineWorkSlots>();
             if (lastCaptured != null) {
-                for (var listener : lastCaptured.listeners()) {
+                var elements10 = lastCaptured.listeners();
+                for (int index10 = 0; index10 < elements10.size(); index10++) {
+                    var listener = elements10.get(index10);
                     if (seenListeners.add(listener)) {
                         listeners.add(listener);
                     }
                 }
-                for (var prior : lastCaptured.workSlots()) {
+                var elements8 = lastCaptured.workSlots();
+                for (int index8 = 0; index8 < elements8.size(); index8++) {
+                    var prior = elements8.get(index8);
                     if (seenSlots.add(prior)) {
                         slots.add(prior);
                     }
                 }
             }
-            for (var binding : machine.components().assemblyBindings()) {
+            var elements15 = machine.components().assemblyBindings();
+            for (int index15 = 0; index15 < elements15.size(); index15++) {
+                var binding = elements15.get(index15);
                 if (binding.component() instanceof MachineLifecycleListener listener && seenListeners.add(listener)) {
                     listeners.add(listener);
                 }
@@ -687,11 +711,15 @@ public final class MachineLifecycle {
                     }
                 }
             }
-            for (var listener : registry.snapshot()) {
+
+            var elements4 = registry.snapshot();
+            for (int index4 = 0; index4 < elements4.size(); index4++) {
+                var listener = elements4.get(index4);
                 if (seenListeners.add(listener)) {
                     listeners.add(listener);
                 }
             }
+
             return new CleanupCapture(new Captured(listeners, slots), failure);
         }
     }
@@ -744,7 +772,8 @@ public final class MachineLifecycle {
         }
 
         private void observe(List<MachineWorkSlots> slots) {
-            for (var candidate : slots) {
+            for (int index7 = 0; index7 < slots.size(); index7++) {
+                var candidate = slots.get(index7);
                 if (observedSlotIdentities.add(candidate)) {
                     observedSlots.add(candidate);
                 }
@@ -921,7 +950,8 @@ public final class MachineLifecycle {
                     return false;
                 }
                 boolean quiescent = true;
-                for (var slots : observedSlots) {
+                for (int index = 0; index < observedSlots.size(); index++) {
+                    var slots = observedSlots.get(index);
                     quiescent &= slots.quiescent();
                 }
                 if (!quiescent) {

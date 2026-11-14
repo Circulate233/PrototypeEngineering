@@ -64,7 +64,7 @@ final class ConstructionInventory {
             } else if (required.what() instanceof AEFluidKey fluid && writable.getBoolean(slot) && !stack.isEmpty()) {
                 int count = stack.getCount();
                 for (int container = 0; container < count && remaining > 0; container++) {
-                    var one = count == 1 ? stacks.get(slot).copy() : stack.copy();
+                    var one = count == 1 ? stack : stack.copy();
                     one.setCount(1);
                     var handler = FluidUtil.getFluidHandler(one);
                     if (handler == null) break;

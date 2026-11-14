@@ -11,6 +11,7 @@ import java.util.List;
 /**
  * Fired only by HEI's client category phase after the common RecipeRegistry has frozen.
  * The frozen registry's pool list is borrowed read-only; event listeners must not mutate it.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 @SideOnly(Side.CLIENT)
 public class RecipePoolJeiRegistrationEvent extends Event {

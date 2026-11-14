@@ -5,7 +5,6 @@ import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
 import ae2.api.util.AEColor;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
@@ -33,7 +32,7 @@ import java.util.function.Supplier;
  * Independent transactional ledgers; ME callbacks and recipe workers share these exact balances.
  */
 public final class MEPatternAssemblyStorage implements ResourceHatch {
-    private static final ResourceKeyNbt KEYS = new ResourceKeyNbt();
+    private static final ResourceKeyNbt KEYS = ResourceKeyNbt.INSTANCE;
     private final ResourceKeyNbt keys;
     private final UnboundedResourceBuffer input;
     private final UnboundedResourceBuffer catalyst;
@@ -112,26 +111,29 @@ public final class MEPatternAssemblyStorage implements ResourceHatch {
 
     static MEPatternAssemblyStorage load(NBTTagCompound tag, int slots, Supplier<AEColor> color, Runnable changed, ResourceKeyNbt keys) {
         var next = new MEPatternAssemblyStorage(slots, color, changed, keys,
-            UUID.fromString(StrictNbt.requireString(tag, "PartitionId")));
-        next.mode = MEPatternAssemblyBlockEntity.Mode.valueOf(StrictNbt.requireString(tag, "Mode"));
-        next.craftingLocked = StrictNbt.requireBoolean(tag, "CraftingLocked");
-        next.lockRecipeSeen = StrictNbt.requireBoolean(tag, "LockRecipeSeen");
+            UUID.fromString(tag.getString("PartitionId")));
+        next.mode = MEPatternAssemblyBlockEntity.Mode.valueOf(tag.getString("Mode"));
+        next.craftingLocked = tag.getBoolean("CraftingLocked");
+        next.lockRecipeSeen = tag.getBoolean("LockRecipeSeen");
         if (next.craftingLocked && next.mode != MEPatternAssemblyBlockEntity.Mode.CRAFTING_LOCK)
             throw new IllegalArgumentException("Invalid saved crafting lock mode");
-        var running = StrictNbt.requireList(tag, "Running", 10);
+        var running = tag.getTagList("Running", 10);
         for (int index = 0; index < running.tagCount(); index++) {
             var record = running.getCompoundTagAt(index);
-            StrictNbt.requireKeys(record, "Process", "Signatures");
-            var process = UUID.fromString(StrictNbt.requireString(record, "Process"));
+            var process = UUID.fromString(record.getString("Process"));
             var signatures = new ObjectArrayList<AEKey2LongMap>();
-            var savedSignatures = StrictNbt.requireList(record, "Signatures", 10);
+            var savedSignatures = record.getTagList("Signatures", 10);
             for (int entry = 0; entry < savedSignatures.tagCount(); entry++) {
                 var signatureTag = savedSignatures.getCompoundTagAt(entry);
-                StrictNbt.requireKeys(signatureTag, "Amounts");
                 AEKey2LongMap signature = new AEKey2LongMap.OpenHashMap();
-                for (var stack : keys.readStacks(StrictNbt.requireList(signatureTag, "Amounts", 10)))
+
+                var elements = keys.readStacks(signatureTag.getTagList("Amounts", 10));
+                for (int index10 = 0; index10 < elements.size(); index10++) {
+                    var stack = elements.get(index10);
                     if (!PatternInputSignature.add(signature, stack.what(), stack.amount()))
                         throw new IllegalArgumentException("Invalid saved resource receipt");
+                }
+
                 signature = PatternInputSignature.normalize(signature);
                 if (signature.isEmpty() || signatures.contains(signature))
                     throw new IllegalArgumentException("Empty or duplicate resource receipt");
@@ -140,23 +142,25 @@ public final class MEPatternAssemblyStorage implements ResourceHatch {
             if (next.started.putIfAbsent(process, signatures) != null)
                 throw new IllegalArgumentException("Duplicate running process receipt");
         }
-        next.input.restore(keys.readStacks(StrictNbt.requireList(tag, "Input", 10)));
-        next.catalyst.restore(keys.readStacks(StrictNbt.requireList(tag, "Catalyst", 10)));
-        next.output.restore(keys.readStacks(StrictNbt.requireList(tag, "Output", 10)));
-        var saved = StrictNbt.requireList(tag, "Isolated", 10);
+        next.input.restore(keys.readStacks(tag.getTagList("Input", 10)));
+        next.catalyst.restore(keys.readStacks(tag.getTagList("Catalyst", 10)));
+        next.output.restore(keys.readStacks(tag.getTagList("Output", 10)));
+        var saved = tag.getTagList("Isolated", 10);
         boolean[] visited = new boolean[slots];
         for (int index = 0; index < saved.tagCount(); index++) {
             var entry = saved.getCompoundTagAt(index);
-            int slot = Objects.checkIndex(StrictNbt.requireInt(entry, "Slot"), slots);
+            int slot = Objects.checkIndex(entry.getInteger("Slot"), slots);
             if (visited[slot]) throw new IllegalArgumentException("Repeated isolated pattern slot");
             visited[slot] = true;
-            next.isolated.get(slot).restore(keys.readStacks(StrictNbt.requireList(entry, "Contents", 10)));
+            next.isolated.get(slot).restore(keys.readStacks(entry.getTagList("Contents", 10)));
         }
         if (next.mode == MEPatternAssemblyBlockEntity.Mode.PATTERN_ISOLATION) {
             if (!empty(next.input))
                 throw new IllegalArgumentException("Isolated mode has an unpartitioned input balance");
-        } else for (var buffer : next.isolated)
+        } else for (int index7 = 0; index7 < next.isolated.size(); index7++) {
+            var buffer = next.isolated.get(index7);
             if (!empty(buffer)) throw new IllegalArgumentException("Non-isolated mode has hidden isolated inputs");
+        }
         next.rebuildPartitions();
         return next;
     }
@@ -341,14 +345,21 @@ public final class MEPatternAssemblyStorage implements ResourceHatch {
 
     private boolean inputsEmpty() {
         if (!empty(input)) return false;
-        for (var buffer : isolated) if (!empty(buffer)) return false;
+        for (int index2 = 0; index2 < isolated.size(); index2++) {
+            var buffer = isolated.get(index2);
+            if (!empty(buffer)) return false;
+        }
         return true;
     }
 
     public boolean hasReservations() {
         if (input.hasReservations() || catalyst.hasReservations() || output.hasReservations()) return true;
-        for (var buffer : isolated) if (buffer.hasReservations()) return true;
-        for (var context : contexts) {
+        for (int index3 = 0; index3 < isolated.size(); index3++) {
+            var buffer = isolated.get(index3);
+            if (buffer.hasReservations()) return true;
+        }
+        for (int index9 = 0; index9 < contexts.size(); index9++) {
+            var context = contexts.get(index9);
             context.lock();
             try {
                 if (!context.idleForReplacement()) return true;
@@ -362,8 +373,10 @@ public final class MEPatternAssemblyStorage implements ResourceHatch {
     public List<GenericStack> inputContents() {
         var values = new ObjectArrayList<GenericStack>();
         input.snapshot().available().forEachEntry((key, amount) -> values.add(new GenericStack(key, amount)));
-        for (var buffer : isolated)
+        for (int index6 = 0; index6 < isolated.size(); index6++) {
+            var buffer = isolated.get(index6);
             buffer.snapshot().available().forEachEntry((key, amount) -> values.add(new GenericStack(key, amount)));
+        }
         return values;
     }
 
@@ -371,7 +384,10 @@ public final class MEPatternAssemblyStorage implements ResourceHatch {
         StorageContext.lockAll(contexts);
         try {
             long revision = input.context().revision();
-            for (var buffer : isolated) revision = Math.addExact(revision, buffer.context().revision());
+            for (int index5 = 0; index5 < isolated.size(); index5++) {
+                var buffer = isolated.get(index5);
+                revision = Math.addExact(revision, buffer.context().revision());
+            }
             return new MEPatternAssemblyBlockEntity.BufferView(revision, inputContents());
         } finally {
             for (int index = contexts.size() - 1; index >= 0; index--) contexts.get(index).unlock();
@@ -389,7 +405,10 @@ public final class MEPatternAssemblyStorage implements ResourceHatch {
     public synchronized boolean returnInputs(MEResourceHatch.METransfer transfer) {
         if (!valid) return false;
         transfer(input, transfer);
-        for (var buffer : isolated) transfer(buffer, transfer);
+        for (int index1 = 0; index1 < isolated.size(); index1++) {
+            var buffer = isolated.get(index1);
+            transfer(buffer, transfer);
+        }
         if (inputsEmpty() && started.isEmpty()) {
             craftingLocked = false;
             lockRecipeSeen = false;
@@ -405,7 +424,8 @@ public final class MEPatternAssemblyStorage implements ResourceHatch {
 
     public synchronized void invalidate() {
         valid = false;
-        for (var context : contexts) {
+        for (int index8 = 0; index8 < contexts.size(); index8++) {
+            var context = contexts.get(index8);
             context.lock();
             try {
                 context.invalidate();
@@ -427,7 +447,8 @@ public final class MEPatternAssemblyStorage implements ResourceHatch {
                 var record = new NBTTagCompound();
                 record.setString("Process", process.toString());
                 var savedSignatures = new NBTTagList();
-                for (var signature : signatures) {
+                for (int index11 = 0; index11 < signatures.size(); index11++) {
+                    var signature = signatures.get(index11);
                     var stacks = new ObjectArrayList<GenericStack>();
                     signature.forEachEntry((key, amount) -> stacks.add(new GenericStack(key, amount)));
                     var savedSignature = new NBTTagCompound();
@@ -464,7 +485,10 @@ public final class MEPatternAssemblyStorage implements ResourceHatch {
             drops.addAll(input.removeForDrops(deferred));
             drops.addAll(catalyst.removeForDrops(deferred));
             drops.addAll(output.removeForDrops(deferred));
-            for (var buffer : isolated) drops.addAll(buffer.removeForDrops(deferred));
+            for (int index4 = 0; index4 < isolated.size(); index4++) {
+                var buffer = isolated.get(index4);
+                drops.addAll(buffer.removeForDrops(deferred));
+            }
         } finally {
             for (int index = contexts.size() - 1; index >= 0; index--) contexts.get(index).unlock();
         }

@@ -14,6 +14,7 @@ import java.util.Objects;
  * Planning an area is not a requirement that it be loaded: only the branches visited by a matcher
  * decide which recorded facts matter. Pattern bounds must be declared separately from sparse cells.
  * The completed lists are borrowed read-only; neither the builder nor consumers may modify them.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class StructureReadPlan {
     private final List<StructureBounds> areas;

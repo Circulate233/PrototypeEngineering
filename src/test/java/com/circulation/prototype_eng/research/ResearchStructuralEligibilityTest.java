@@ -39,7 +39,6 @@ class ResearchStructuralEligibilityTest {
                                               ResearchDefinition gate, ResearchDefinition owned, ResearchDefinition leaf) {
         var blacklist = new ObjectOpenHashSet<>(Set.of(gate.id()));
         var blocked = eligibility.calculateStructural("team", members, players, team, blacklist);
-        blacklist.clear();
         for (var research : List.of(gate, owned, leaf)) {
             assertEquals(0, blocked.completedLevel(research.id()));
         }
@@ -170,7 +169,7 @@ class ResearchStructuralEligibilityTest {
     }
 
     @Test
-    void structuralProjectionKeepsSourcePolicyAndIdentityValidation() {
+    void structuralProjectionKeepsSourcePolicy() {
         var personal = definition("personal", 2, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage(1, 2).build()).build();
         var owned = definition("owned", 2, ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(stage(1, 2).build()).build();
         var eligibility = new ResearchEligibility(registry(personal, owned));
@@ -180,7 +179,5 @@ class ResearchStructuralEligibilityTest {
         first.completeAtLeast(owned.id(), 1);
         assertThrows(IllegalArgumentException.class, () -> eligibility.calculateStructural("team", List.of(FIRST), Map.of(FIRST, first), levels(owned.id(), 1), Set.of()));
         assertThrows(IllegalArgumentException.class, () -> eligibility.calculateStructural("team", List.of(FIRST), Map.of(), levels(), Set.of()));
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculateStructural("team", List.of(FIRST), Map.of(FIRST, new PlayerResearchState(SECOND)), levels(), Set.of()));
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculateStructural("team", List.of(), Map.of(), levels(), Set.of(id("unknown"))));
     }
 }

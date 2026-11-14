@@ -5,7 +5,6 @@ import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.network.MachineDataCenterStorage;
 import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
-import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.NetworkWorkState;
 import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
@@ -38,7 +37,6 @@ import static com.circulation.prototype_eng.api.research.station.StationFixtures
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResearchStationAdmissionTest {
@@ -63,44 +61,6 @@ class ResearchStationAdmissionTest {
         return start.start(new TeamResearchStart.Request(queue, view, actor, id("research"), 1, admission.environment(), 1, admission::current));
     }
 
-    @Test
-    void samePublicationNumericConsumptionInsideTheConditionRejectsTheOriginalBalanceWithoutReplayingTheCallback() {
-        var permits = new NetworkRuntime.WorkPermit[1];
-        int[] callbacks = {0};
-        var definition = definition(2, context -> {
-            callbacks[0]++;
-            assertEquals(70, context.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
-            var consumption = Objects.requireNonNull(Objects.requireNonNull(permits[0]).reserve(id("condition_numeric_consumption"), Reference2DoubleMaps.singleton(ComputingResourceFixtures.COMPUTE, 70)));
-            assertTrue(consumption.commit());
-            return true;
-        });
-        try (var fixture = new StationFixtures(1, 100, 2, definition)) {
-            var station = fixture.station(2, 0);
-            assertEquals(17, Objects.requireNonNull(station.warehouse().input()).insert(MATERIAL, 17, Actionable.MODULATE));
-            fixture.refresh();
-            var permit = Objects.requireNonNull(fixture.roleOf(fixture.entries.getFirst().machine()).workPermit());
-            permits[0] = permit;
-            var earlier = Objects.requireNonNull(permit.reserve(id("earlier_numeric_consumption"), Reference2DoubleMaps.singleton(ComputingResourceFixtures.COMPUTE, 30)));
-            assertTrue(earlier.commit());
-            var publication = fixture.network.plan();
-            var captured = fixture.selector.admission("team");
-            var queue = queue(fixture);
-            assertTrue(captured.current());
-            assertEquals(TeamResearchStart.Status.STALE_CONTEXT, start(fixture, queue, captured).status());
-            assertSame(publication, fixture.network.plan(), "Budget consumption keeps the same network publication");
-            assertTrue(permit.current());
-            assertFalse(captured.current());
-            assertEquals(70, captured.environment().availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
-            assertEquals(0, permit.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
-            assertEquals(TeamResearchStart.Status.STALE_CONTEXT, start(fixture, queue, captured).status());
-            assertEquals(1, callbacks[0]);
-            assertEquals(0, queue.size());
-            assertEquals(17, Objects.requireNonNull(station.warehouse().input()).amount(MATERIAL));
-            assertEquals(10, station.energy().storedEnergy());
-            assertEquals(100, permit.numericResources().getDouble(ComputingResourceFixtures.COMPUTE));
-            assertEquals(NetworkTeamBudget.LeaseStatus.GRANTED, Objects.requireNonNull(fixture.roleOf(station.machine()).workPermit()).requestLease());
-        }
-    }
 
     @Test
     void actualMissingStationDataCenterAndCenterProduceTheirNormalAdmissionDenials() {

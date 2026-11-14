@@ -22,7 +22,9 @@ public final class StructurePatternOutput {
     @SubscribeEvent
     public static void importing(PatternRecipeTransferEvent event) {
         if (event.isCrafting() || !StructurePreviewJeiCategory.UID.equals(event.getRecipeCategoryUid())) return;
-        for (var slot : event.getOutputSlots()) {
+        var elements = event.getOutputSlots();
+        for (int index = 0; index < elements.size(); index++) {
+            var slot = elements.get(index);
             var output = slot.getStack();
             if (output == null || !(output.what() instanceof AEItemKey key)
                 || !(Block.getBlockFromItem(key.getItem()) instanceof MachineControllerBlock<?>)) continue;

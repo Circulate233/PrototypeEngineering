@@ -13,6 +13,7 @@ import java.util.List;
 
 /**
  * Server display snapshot. The producer transfers lists and resource maps read-only.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public record ResearchStationView(String teamId, boolean visible, boolean canManage,
                                   List<TeamResearchQueue.Entry> queue,

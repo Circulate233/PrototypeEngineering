@@ -52,7 +52,10 @@ public final class BuiltinStructurePredicates {
             throw parameters.error("tile_nbt requires exactly one of nbt or checks");
         if (parameters.has("nbt")) return StructurePredicates.nbt(parameters.stringMap("nbt"));
         var checks = new ObjectArrayList<StructurePredicate>();
-        for (var check : parameters.array("checks")) {
+
+        var elements = parameters.array("checks");
+        for (int index = 0; index < elements.size(); index++) {
+            var check = elements.get(index);
             check.fields("pos", "nbt", "blockId", "meta");
             check.at("pos");
             check.at("nbt");
@@ -71,6 +74,7 @@ public final class BuiltinStructurePredicates {
             } else if (check.has("meta")) throw check.at("meta").error("meta requires blockId");
             checks.add(StructurePredicates.at(check.position("pos", BlockPos.ORIGIN), predicate));
         }
+
         if (checks.isEmpty()) throw parameters.at("checks").error("tile_nbt checks must not be empty");
         return StructurePredicates.all(checks);
     }

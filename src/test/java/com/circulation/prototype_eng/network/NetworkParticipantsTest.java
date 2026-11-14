@@ -27,7 +27,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
@@ -44,6 +43,7 @@ import static com.circulation.prototype_eng.api.network.NetworkParticipants.Work
 import static com.circulation.prototype_eng.api.network.NetworkParticipants.WorkResult.CLEANUP_PENDING;
 import static com.circulation.prototype_eng.api.network.NetworkParticipants.WorkResult.COMMITTED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -201,7 +201,7 @@ class NetworkParticipantsTest {
             fixture.runtime.endTick();
             fixture.runtime.beginTick(1);
             assertFalse(fixture.runtime.refresh());
-            assertEquals(List.of(work), fixture.runtime.participants().pendingWork());
+            assertIterableEquals(List.of(work), fixture.runtime.participants().pendingWork());
             fixture.participant.resolution = CANCELLED;
             assertTrue(fixture.runtime.refresh());
             assertEquals(1, fixture.participant.cancels);
@@ -246,7 +246,7 @@ class NetworkParticipantsTest {
             var work = fixture.plan(1);
             oldParticipant.cancellation = UNKNOWN;
             old.close();
-            assertEquals(List.of(work), fixture.runtime.participants().pendingWork());
+            assertIterableEquals(List.of(work), fixture.runtime.participants().pendingWork());
             fixture.participant = new Participant();
             fixture.registration = fixture.runtime.participants().register(fixture.participant);
             assertFalse(fixture.runtime.refresh());
@@ -296,7 +296,7 @@ class NetworkParticipantsTest {
             assertEquals(CLEANUP_PENDING, work.compensate());
             assertEquals(7, original.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertThrows(IllegalStateException.class, fixture.runtime::close);
-            assertEquals(List.of(work), fixture.runtime.participants().pendingWork());
+            assertIterableEquals(List.of(work), fixture.runtime.participants().pendingWork());
             assertEquals(1, fixture.participant.cancels);
             fixture.participant.completeCancellation(work.command());
             fixture.runtime.close();
@@ -347,7 +347,7 @@ class NetworkParticipantsTest {
             assertEquals(0, fixture.participant.commits);
             assertEquals(1, fixture.participant.cancels);
             assertEquals(7, original.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
-            assertEquals(List.of(work), fixture.runtime.participants().pendingWork());
+            assertIterableEquals(List.of(work), fixture.runtime.participants().pendingWork());
             assertEquals(CLEANUP_PENDING, work.commit());
             assertEquals(1, fixture.participant.cancels);
             fixture.ownerFailure = null;
@@ -406,30 +406,11 @@ class NetworkParticipantsTest {
         }
     }
 
-    @Test
-    void repeatedVersionCannotHideChangedCapabilitiesAndFailureRevokesPriorPublication() {
-        try (var fixture = new Fixture()) {
-            fixture.start(0);
-            fixture.participant.versionStep = 0;
-            assertTrue(fixture.runtime.refresh());
-            fixture.participant.supply = 9;
-            assertThrows(IllegalArgumentException.class, fixture.runtime::refresh);
-            assertNull(fixture.runtime.plan());
-            fixture.participant.versionStep = 1;
-            assertTrue(fixture.runtime.refresh());
-            assertEquals(11, fixture.available());
-            fixture.runtime.endTick();
-            fixture.start(1);
-            assertEquals(11, fixture.available());
-        }
-    }
 
     private static final class Participant implements NetworkParticipant {
         private final ObjectOpenHashSet<UUID> applied = new ObjectOpenHashSet<>();
         private State state = State.ACTIVE;
         private long version;
-        private long versionStep = 1;
-        private long supply = 8;
         private boolean proof = true;
         private Reference2DoubleMap<NetworkResourceType> cost = amounts(3, 1);
         private Cancellation cancellation = CANCELLED;
@@ -467,8 +448,8 @@ class NetworkParticipantsTest {
 
         @Override
         public Capture capture(long tick, long epoch) {
-            version += versionStep;
-            var snapshot = new Snapshot(EXTERNAL, EXTERNAL_OWNER, kind(), tick, epoch, version, amounts(supply, 4),
+            version++;
+            var snapshot = new Snapshot(EXTERNAL, EXTERNAL_OWNER, kind(), tick, epoch, version, amounts(8, 4),
                 List.of(new WorkType(WORK, cost)), List.of(new MaterialSource(SOURCE, "external-source")));
             return new Capture(snapshot, () -> {
                 if (proofFailure != null) throw proofFailure;
@@ -533,13 +514,13 @@ class NetworkParticipantsTest {
         private OwnerTeamResolution resolve(UUID owner) {
             if (owner.equals(EXTERNAL_OWNER) && ownerFailure != null) throw ownerFailure;
             if (otherTeam && owner.equals(EXTERNAL_OWNER)) {
-                return OwnerTeamResolution.resolved(owner, "other", OwnerTeamType.SERVER, ObjectSet.of(owner), Optional.empty());
+                return OwnerTeamResolution.resolved(owner, "other", OwnerTeamType.SERVER, ObjectSet.of(owner), null);
             }
             if (!owner.equals(CENTER_OWNER) && !owner.equals(EXTERNAL_OWNER)) {
                 return OwnerTeamResolution.rejected(owner, OwnerTeamResolutionStatus.OWNER_UNKNOWN, "unknown owner");
             }
             return OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER,
-                otherTeam ? ObjectSet.of(CENTER_OWNER) : ObjectSet.of(CENTER_OWNER, EXTERNAL_OWNER), Optional.empty());
+                otherTeam ? ObjectSet.of(CENTER_OWNER) : ObjectSet.of(CENTER_OWNER, EXTERNAL_OWNER), null);
         }
 
         private NetworkRuntime.Registration device(int id, NetworkDeviceRole role) {

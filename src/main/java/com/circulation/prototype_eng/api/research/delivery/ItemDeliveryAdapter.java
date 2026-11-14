@@ -1,17 +1,14 @@
 package com.circulation.prototype_eng.api.research.delivery;
 
+import org.jetbrains.annotations.Nullable;
+
 import ae2.api.stacks.AEKey;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.nbt.NBTTagCompound;
 
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -19,6 +16,7 @@ import java.util.UUID;
  * insertion, using inventory first and world drops for the remainder. Each delivery is all-or-zero.
  * Scan must reject duplicate IDs, conflicting payloads and malformed tags. Only authoritative exact
  * targets can prove absence; a loaded-range observation cannot. Readiness and delivery share an owner.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public interface ItemDeliveryAdapter {
     ObjectList<ItemDeliveryFragment> plan(ItemDeliveryKey parent, AEKey resource, long amount);
@@ -68,18 +66,16 @@ public interface ItemDeliveryAdapter {
         }
     }
 
-    record Delivery(int acceptedCount, Optional<UUID> entityUuid) {
+    record Delivery(int acceptedCount, @Nullable UUID entityUuid) {
         public Delivery {
-            Objects.requireNonNull(entityUuid, "entityUuid");
             if (acceptedCount < 0) throw new IllegalArgumentException("Negative acceptance");
         }
     }
 
+    /**
+     * Completed scan collections are borrowed read-only until delivery and its checkpoint finish.
+     */
     record Scan(ObjectSet<UUID> observed, Object2ObjectMap<UUID, UUID> worldEntities, ObjectSet<UUID> provenAbsent) {
-        public Scan {
-            observed = ObjectSets.unmodifiable(new ObjectOpenHashSet<>(Objects.requireNonNull(observed, "observed")));
-            worldEntities = Object2ObjectMaps.unmodifiable(new Object2ObjectLinkedOpenHashMap<>(Objects.requireNonNull(worldEntities, "worldEntities")));
-            provenAbsent = ObjectSets.unmodifiable(new ObjectOpenHashSet<>(Objects.requireNonNull(provenAbsent, "provenAbsent")));
-        }
+
     }
 }

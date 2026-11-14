@@ -24,6 +24,7 @@ import java.util.Set;
  * callers must not mutate them; the framework does not copy them to enforce this contract.
  * Lookup must not execute START, mutate the machine, consume resources or publish world effects.
  * This contract does not bound arbitrary external lookup CPU work or replace scheduler budgets.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 @FunctionalInterface
 public interface RecipeCandidateIndex {

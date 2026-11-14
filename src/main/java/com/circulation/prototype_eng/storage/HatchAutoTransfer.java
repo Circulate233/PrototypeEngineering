@@ -95,7 +95,9 @@ public final class HatchAutoTransfer {
             int slot = Math.floorMod(cursor.outputSlot++, output.size());
             var stack = output.getStack(slot);
             if (stack == null) continue;
-            for (var port : peer.ports()) {
+            var elements = peer.ports();
+            for (int index5 = 0; index5 < elements.size(); index5++) {
+                var port = elements.get(index5);
                 if (port.type() != null && port.type() != stack.what().getType()) continue;
                 long offered = output.extract(slot, stack.what(), fluidLimit(stack.what(), stack.amount(), fluidRate), Actionable.SIMULATE);
                 var reservation = offered > 0 ? output.reserveTransfer(slot, stack.what(), offered, false) : null;
@@ -153,7 +155,10 @@ public final class HatchAutoTransfer {
     }
 
     private static boolean validContexts(List<StorageContext> contexts) {
-        for (var context : contexts) if (!context.isValid()) return false;
+        for (int index2 = 0; index2 < contexts.size(); index2++) {
+            var context = contexts.get(index2);
+            if (!context.isValid()) return false;
+        }
         return true;
     }
 
@@ -162,15 +167,22 @@ public final class HatchAutoTransfer {
     }
 
     private static boolean includePeer(List<StorageContext> local, List<StorageContext> peer) {
-        for (var context : peer) if (local.contains(context)) return false;
-        for (var context : peer) addContext(local, context);
+        for (int index3 = 0; index3 < peer.size(); index3++) {
+            var context = peer.get(index3);
+            if (local.contains(context)) return false;
+        }
+        for (int index = 0; index < peer.size(); index++) {
+            var context = peer.get(index);
+            addContext(local, context);
+        }
         local.sort(Comparator.comparingLong(StorageContext::order));
         return true;
     }
 
     private static boolean tryLocks(List<StorageContext> contexts) {
         int acquired = 0;
-        for (var context : contexts) {
+        for (int index4 = 0; index4 < contexts.size(); index4++) {
+            var context = contexts.get(index4);
             if (!context.tryOrdinaryLock()) {
                 for (int i = acquired - 1; i >= 0; i--) contexts.get(i).unlockDeferred();
                 return false;

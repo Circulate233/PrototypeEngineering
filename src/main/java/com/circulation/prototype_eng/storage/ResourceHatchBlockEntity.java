@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.storage;
 
-import com.circulation.prototype_eng.structure.tool.BuilderDropRecovery;
 import ae2.api.AECapabilities;
 import ae2.api.behaviors.GenericInternalInventoryAdapters;
 import ae2.api.stacks.AEItemKey;
@@ -11,7 +10,6 @@ import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.api.HatchCapabilities;
 import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.storage.FluidHatchSettings;
 import com.circulation.prototype_eng.api.storage.HatchConfiguration;
 import com.circulation.prototype_eng.api.storage.HatchMode;
@@ -22,6 +20,7 @@ import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
 import com.circulation.prototype_eng.api.storage.ResourceHatchGrouping;
 import com.circulation.prototype_eng.api.storage.ResourceHatchSettings;
 import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
+import com.circulation.prototype_eng.structure.tool.BuilderDropRecovery;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
@@ -89,8 +88,9 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     }
 
     private static void addResourceDrops(List<GenericStack> contents, List<ItemStack> drops, World world, BlockPos position) {
-        for (var stack : contents) {
-            // AEItemKey's list cap and amount+stackSize-1 estimate must not discard a large long
+        for (int index = 0; index < contents.size(); index++) {
+            var stack = contents.get(index);
+// AEItemKey's list cap and amount+stackSize-1 estimate must not discard a large long
             // balance or later keys. Use AE's native package before either limit can be exceeded.
             if (stack.what() instanceof AEItemKey item
                 && stack.amount() > (long) Math.max(1, item.getMaxStackSize()) * Math.max(0, 500 - drops.size()))
@@ -407,23 +407,21 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     public void loadTag(@NotNull NBTTagCompound tag) {
         if (hasTransferReservation())
             throw new IllegalStateException("Cannot reload resource hatch with an unresolved external transfer");
-        var nextColor = tag.hasKey("ResourceColor") ? AEColor.valueOf(StrictNbt.requireString(tag, "ResourceColor")) : AEColor.TRANSPARENT;
+        var nextColor = tag.hasKey("ResourceColor") ? AEColor.valueOf(tag.getString("ResourceColor")) : AEColor.TRANSPARENT;
         boolean modern = tag.hasKey("EffectiveProfile");
-        var nextMode = modern || tag.hasKey("Mode") ? HatchMode.valueOf(StrictNbt.requireString(tag, "Mode")) : mode;
-        var nextTier = modern || tag.hasKey("Tier") ? HatchTier.of(StrictNbt.requireInt(tag, "Tier")) : tier;
+        var nextMode = modern || tag.hasKey("Mode") ? HatchMode.valueOf(tag.getString("Mode")) : mode;
+        var nextTier = modern || tag.hasKey("Tier") ? HatchTier.of(tag.getInteger("Tier")) : tier;
         if (modern) {
             if (!nextMode.hasInput() && tag.hasKey("Input") || !nextMode.hasOutput() && tag.hasKey("Output"))
                 throw new IllegalArgumentException("Saved resource sides differ from physical hatch direction");
-            StrictNbt.requireLong(tag, "MaxFluidInRate");
-            StrictNbt.requireLong(tag, "MaxFluidOutRate");
         }
-        boolean nextAutoInput = modern ? StrictNbt.requireBoolean(tag, "AutoInput") : tag.getBoolean("AutoInput");
-        boolean nextAutoOutput = modern ? StrictNbt.requireBoolean(tag, "AutoOutput") : tag.getBoolean("AutoOutput");
+        boolean nextAutoInput = tag.getBoolean("AutoInput");
+        boolean nextAutoOutput = tag.getBoolean("AutoOutput");
         ResourceHatchConfiguration profile;
         if (tag.hasKey("EffectiveProfile")) {
-            profile = HatchConfigurationNbt.resource(StrictNbt.requireCompound(tag, "EffectiveProfile"), nextMode);
-            if (nextMode.hasInput()) StrictNbt.requireList(tag, "Input", 10);
-            if (nextMode.hasOutput()) StrictNbt.requireList(tag, "Output", 10);
+            profile = HatchConfigurationNbt.resource(tag.getCompoundTag("EffectiveProfile"), nextMode);
+            if (nextMode.hasInput()) tag.getTagList("Input", 10);
+            if (nextMode.hasOutput()) tag.getTagList("Output", 10);
         } else if (tag.hasKey("Slots") || tag.hasKey("Capacities")) {
             var side = HatchConfigurationNbt.resourceSide(tag);
             profile = new ResourceHatchConfiguration(nextMode.hasInput() ? side : null, nextMode.hasOutput() ? side : null);

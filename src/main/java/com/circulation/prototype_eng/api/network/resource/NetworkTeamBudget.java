@@ -1,12 +1,11 @@
 package com.circulation.prototype_eng.api.network.resource;
 
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
@@ -18,7 +17,7 @@ import java.util.function.Predicate;
 public final class NetworkTeamBudget implements AutoCloseable {
     private final long tick;
     private final Runnable ownerCheck;
-    private final Reference2DoubleOpenHashMap<NetworkResourceType> ceiling;
+    private final Reference2DoubleOpenHashMap<NetworkResourceType> allocated = new Reference2DoubleOpenHashMap<>();
     private Reference2DoubleMap<NetworkResourceType> numericResources;
     private final Reference2DoubleOpenHashMap<NetworkResourceType> available;
     private long concurrencyCapacity;
@@ -29,14 +28,12 @@ public final class NetworkTeamBudget implements AutoCloseable {
 
     public NetworkTeamBudget(long tick, long concurrencyCapacity,
                              Reference2DoubleMap<NetworkResourceType> capacity, Runnable ownerCheck) {
-        this.ownerCheck = Objects.requireNonNull(ownerCheck);
+        this.ownerCheck = ownerCheck;
         ownerCheck.run();
         if (tick < 0 || concurrencyCapacity < 0)
             throw new IllegalArgumentException("Negative tick or concurrency capacity");
-        NetworkResourceModifier.validateResources(capacity);
         this.tick = tick;
         this.concurrencyCapacity = concurrencyCapacity;
-        ceiling = new Reference2DoubleOpenHashMap<>(capacity);
         numericResources = capacity;
         available = new Reference2DoubleOpenHashMap<>(capacity);
     }
@@ -57,12 +54,12 @@ public final class NetworkTeamBudget implements AutoCloseable {
         return numericResources;
     }
 
+    /**
+     * Borrowed read-only until the next reservation, refund or capacity update.
+     */
     public Reference2DoubleMap<NetworkResourceType> availableResources() {
         ownerCheck.run();
-        var result = new Reference2DoubleOpenHashMap<>(available);
-        for (var entry : result.reference2DoubleEntrySet())
-            if (entry.getDoubleValue() < 0) entry.setValue(0);
-        return result;
+        return available;
     }
 
     @SuppressWarnings("unused") // Public owner-side budget API for addons.
@@ -78,7 +75,7 @@ public final class NetworkTeamBudget implements AutoCloseable {
 
     public double occupiedResource(NetworkResourceType type) {
         ownerCheck.run();
-        return Math.max(0, ceiling.getDouble(type) - available.getDouble(type));
+        return allocated.getDouble(type);
     }
 
     public boolean hasLease(UUID machineId) {
@@ -136,7 +133,6 @@ public final class NetworkTeamBudget implements AutoCloseable {
 
     public LeaseStatus requestLease(UUID machineId) {
         ownerCheck.run();
-        Objects.requireNonNull(machineId);
         if (!active) return LeaseStatus.EXPIRED;
         if (leasedMachines.contains(machineId)) return LeaseStatus.ALREADY_GRANTED;
         if (leasedMachines.size() >= concurrencyCapacity) return LeaseStatus.INSUFFICIENT_CAPACITY;
@@ -155,14 +151,9 @@ public final class NetworkTeamBudget implements AutoCloseable {
     public void refreshCapacity(long concurrency, Reference2DoubleMap<NetworkResourceType> supply) {
         ownerCheck.run();
         concurrencyCapacity = concurrency;
-        for (var type : supply.keySet()) ceiling.putIfAbsent(type, 0);
-        for (var entry : ceiling.reference2DoubleEntrySet()) {
-            double before = entry.getDoubleValue();
-            double after = supply.getDouble(entry.getKey());
-            if (before == after) continue;
-            entry.setValue(after);
-            available.addTo(entry.getKey(), after - before);
-        }
+        for (var type : supply.keySet()) available.putIfAbsent(type, 0);
+        for (var entry : available.reference2DoubleEntrySet())
+            entry.setValue(Math.max(0, supply.getDouble(entry.getKey()) - allocated.getDouble(entry.getKey())));
         numericResources = supply;
     }
 
@@ -171,27 +162,26 @@ public final class NetworkTeamBudget implements AutoCloseable {
         boolean fits = active;
         for (var entry : required.reference2DoubleEntrySet()) {
             double amount = entry.getDoubleValue();
-            if (!Double.isFinite(amount) || amount <= 0)
-                throw new IllegalArgumentException("Work demands must be finite and positive");
             fits &= available.getDouble(entry.getKey()) >= amount;
         }
         return fits;
     }
 
     /**
-     * The completed requirement map is borrowed unchanged until this receipt reaches its final state.
+     * The requirement map must contain finite positive amounts and remain unchanged until the receipt reaches its final state.
      * Admission prechecks the complete vector before any debit or operation-key consumption.
      */
     public @Nullable Reservation reserve(Operation operation, Reference2DoubleMap<NetworkResourceType> required, BooleanSupplier authorized) {
         ownerCheck.run();
-        Objects.requireNonNull(operation);
-        Objects.requireNonNull(authorized);
         if (operations.contains(operation))
             throw new IllegalStateException("Duplicate network operation at tick " + tick + ": " + operation);
-        if (!canReserve(required) || !authorized.getAsBoolean() || !active) return null;
+        if (!canReserve(required) || !authorized.getAsBoolean()) return null;
         var receipt = new Reservation(this, operation, required, authorized);
         operations.add(operation);
-        for (var entry : required.reference2DoubleEntrySet()) available.addTo(entry.getKey(), -entry.getDoubleValue());
+        for (var entry : required.reference2DoubleEntrySet()) {
+            allocated.addTo(entry.getKey(), entry.getDoubleValue());
+            available.addTo(entry.getKey(), -entry.getDoubleValue());
+        }
         return receipt;
     }
 
@@ -205,8 +195,6 @@ public final class NetworkTeamBudget implements AutoCloseable {
 
     public record Operation(UUID machineId, ResourceLocation sourceId, long sequence) {
         public Operation {
-            Objects.requireNonNull(machineId);
-            Objects.requireNonNull(sourceId);
             if (sequence < 0) throw new IllegalArgumentException("Negative work sequence");
         }
     }
@@ -242,7 +230,7 @@ public final class NetworkTeamBudget implements AutoCloseable {
             issuingBook.ownerCheck.run();
             if (state != State.RESERVED)
                 throw new IllegalStateException("Network operation cannot commit from " + state);
-            if (!issuingBook.active || !authorized.getAsBoolean() || !issuingBook.active) return false;
+            if (!issuingBook.active || !authorized.getAsBoolean()) return false;
             state = State.COMMITTED;
             return true;
         }
@@ -250,11 +238,11 @@ public final class NetworkTeamBudget implements AutoCloseable {
         public void rollback() {
             issuingBook.ownerCheck.run();
             if (state == State.ROLLED_BACK) return;
-            for (var entry : resources.reference2DoubleEntrySet())
-                if (!Double.isFinite(issuingBook.available.getDouble(entry.getKey()) + entry.getDoubleValue()))
-                    throw new ArithmeticException("Computing resource compensation overflows");
-            for (var entry : resources.reference2DoubleEntrySet())
-                issuingBook.available.addTo(entry.getKey(), entry.getDoubleValue());
+            for (var entry : resources.reference2DoubleEntrySet()) {
+                var type = entry.getKey();
+                issuingBook.allocated.addTo(type, -entry.getDoubleValue());
+                issuingBook.available.put(type, Math.max(0, issuingBook.numericResources.getDouble(type) - issuingBook.allocated.getDouble(type)));
+            }
             state = State.ROLLED_BACK;
         }
 

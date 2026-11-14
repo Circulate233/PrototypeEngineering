@@ -16,6 +16,7 @@ import java.util.List;
  * undo information. Rollback undoes acquisition AND commit effects and must never commit another
  * transaction. The stage coordinator alone applies, completes and rolls back supplied reservations;
  * business callbacks must not resolve those tokens themselves.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public interface RequirementTransaction extends ReversibleTransaction {
     RequirementTransaction SUCCESS = new RequirementTransaction() {

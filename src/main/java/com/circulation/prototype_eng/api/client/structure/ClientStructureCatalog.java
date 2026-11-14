@@ -11,6 +11,7 @@ import java.util.Objects;
 
 /**
  * Authoritative client-thread directory; local config and incomplete network data never replace it.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class ClientStructureCatalog {
     private final Thread owner = Thread.currentThread();
@@ -123,7 +124,10 @@ public final class ClientStructureCatalog {
 
     private void invalidate() {
         Throwable failure = null;
-        for (var callback : new ObjectArrayList<>(invalidations)) {
+
+        var elements = new ObjectArrayList<>(invalidations);
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var callback = elements.get(index1);
             try {
                 callback.callback.run();
             } catch (RuntimeException | Error caught) {
@@ -131,6 +135,7 @@ public final class ClientStructureCatalog {
                 else if (failure != caught) failure.addSuppressed(caught);
             }
         }
+
         if (failure instanceof RuntimeException runtime) throw runtime;
         if (failure instanceof Error error) throw error;
     }

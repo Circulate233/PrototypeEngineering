@@ -61,12 +61,16 @@ public record MEResourceHatchWindowSnapshot(long revision, long markRevision, in
         data.writeLong(revision).writeLong(markRevision).writeInt(inputFirst).writeInt(inputTotal)
             .writeInt(outputFirst).writeInt(outputTotal).writeByte(inputs.size());
         var packet = new PacketBuffer(data);
-        for (var value : inputs) {
+        for (int index2 = 0; index2 < inputs.size(); index2++) {
+            var value = inputs.get(index2);
             GenericStack.writeBuffer(value.mark, packet);
             GenericStack.writeBuffer(value.actual, packet);
         }
         data.writeByte(outputs.size());
-        for (var stack : outputs) GenericStack.writeBuffer(stack, packet);
+        for (int index = 0; index < outputs.size(); index++) {
+            var stack = outputs.get(index);
+            GenericStack.writeBuffer(stack, packet);
+        }
     }
 
     public @Nullable GenericStack mark(int cell) {

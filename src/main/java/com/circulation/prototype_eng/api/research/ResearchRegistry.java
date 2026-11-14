@@ -5,7 +5,6 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -35,7 +34,9 @@ public final class ResearchRegistry {
         while (true) {
             var otherStage = counterpart.stageForLevel(cursor);
             boolean found = false;
-            for (var other : otherStage.mutexRules()) {
+            var elements2 = otherStage.mutexRules();
+            for (int index2 = 0; index2 < elements2.size(); index2++) {
+                var other = elements2.get(index2);
                 if (other.researchId().equals(definition.id()) && other.minLevel() == rule.minLevel()) {
                     found = true;
                     break;
@@ -71,23 +72,25 @@ public final class ResearchRegistry {
             throw new IllegalStateException("Research registry already frozen");
         }
         for (var definition : registrations.values()) {
-            for (var stage : definition.stages()) {
+            var elements4 = definition.stages();
+            for (int index4 = 0; index4 < elements4.size(); index4++) {
+                var stage = elements4.get(index4);
                 for (var prerequisite : stage.prerequisites().object2IntEntrySet()) {
                     validateReference(definition, prerequisite.getKey(), prerequisite.getIntValue(), "prerequisite");
                 }
-                for (var mutex : stage.mutexRules()) {
+                var elements3 = stage.mutexRules();
+                for (int index3 = 0; index3 < elements3.size(); index3++) {
+                    var mutex = elements3.get(index3);
                     var counterpart = validateReference(definition, mutex.researchId(), mutex.minLevel(), "mutex");
                     validateSymmetricMutex(definition, stage, counterpart, mutex);
                 }
             }
         }
         validatePrerequisiteGraph();
-        var definitions = new Object2ObjectLinkedOpenHashMap<>(registrations);
+        var definitions = registrations;
         var orderedById = new ObjectArrayList<>(definitions.values());
         orderedById.sort(Comparator.comparing(ResearchDefinition::id));
-        frozen = new Frozen(definitions, ObjectLists.unmodifiable(new ObjectArrayList<>(definitions.values())),
-            ObjectLists.unmodifiable(orderedById));
-        registrations.clear();
+        frozen = new Frozen(definitions, new ObjectArrayList<>(definitions.values()), orderedById);
     }
 
     public ResearchDefinition require(ResourceLocation id) {
@@ -129,7 +132,9 @@ public final class ResearchRegistry {
         var ready = new ObjectArrayList<ResourceLocation>();
         for (var definition : registrations.values()) {
             var prerequisites = new ObjectOpenHashSet<ResourceLocation>();
-            for (var stage : definition.stages()) {
+            var elements = definition.stages();
+            for (int index1 = 0; index1 < elements.size(); index1++) {
+                var stage = elements.get(index1);
                 prerequisites.addAll(stage.prerequisites().keySet());
             }
             remaining.put(definition.id(), prerequisites.size());
@@ -147,7 +152,8 @@ public final class ResearchRegistry {
             if (following == null) {
                 continue;
             }
-            for (var dependant : following) {
+            for (int index = 0; index < following.size(); index++) {
+                var dependant = following.get(index);
                 if (remaining.addTo(dependant, -1) == 1) {
                     ready.add(dependant);
                 }

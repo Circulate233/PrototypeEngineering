@@ -81,7 +81,8 @@ public final class ComponentMap<E> {
 
     private static <E> void postAll(E owner, List<TickEntry<E, ?>> entries, @Nullable Throwable primary) {
         Throwable failure = primary;
-        for (var entry : entries) {
+        for (int index14 = 0; index14 < entries.size(); index14++) {
+            var entry = entries.get(index14);
             try {
                 entry.post(owner);
             } catch (RuntimeException | Error cleanupFailure) {
@@ -107,9 +108,13 @@ public final class ComponentMap<E> {
         var graph = new TopologicalComponentMap<ComponentType<E, ?>, C>();
         var bySystem = new Object2ObjectOpenHashMap<ResourceLocation, ObjectArrayList<ComponentType<E, ?>>>();
         var systemDefinitions = new Object2ObjectOpenHashMap<ResourceLocation, ComponentSystem<E, ?>>();
-        for (var node : components.orderedComponents()) {
+        var elements17 = components.orderedComponents();
+        for (int index17 = 0; index17 < elements17.size(); index17++) {
+            var node = elements17.get(index17);
             graph.add(node.key(), node.component(), node.dependencies());
-            for (var system : node.key().systems()) {
+            var elements16 = node.key().systems();
+            for (int index16 = 0; index16 < elements16.size(); index16++) {
+                var system = elements16.get(index16);
                 var id = Objects.requireNonNull(system.id(), "system id");
                 var previous = systemDefinitions.putIfAbsent(id, system);
                 if (previous != null && previous != system) {
@@ -122,12 +127,17 @@ public final class ComponentMap<E> {
                 owners.add(node.key());
             }
         }
-        for (var node : components.orderedComponents()) {
-            for (var system : node.key().systems()) {
+        var elements19 = components.orderedComponents();
+        for (int index19 = 0; index19 < elements19.size(); index19++) {
+            var node = elements19.get(index19);
+            var elements18 = node.key().systems();
+            for (int index18 = 0; index18 < elements18.size(); index18++) {
+                var system = elements18.get(index18);
                 for (var after : system.runAfter()) {
                     var owners = bySystem.get(after);
                     if (owners != null) {
-                        for (var other : owners) {
+                        for (int index1 = 0; index1 < owners.size(); index1++) {
+                            var other = owners.get(index1);
                             if (other != node.key()) {
                                 graph.addDependency(node.key(), other);
                             }
@@ -137,7 +147,8 @@ public final class ComponentMap<E> {
                 for (var before : system.runBefore()) {
                     var owners = bySystem.get(before);
                     if (owners != null) {
-                        for (var other : owners) {
+                        for (int index2 = 0; index2 < owners.size(); index2++) {
+                            var other = owners.get(index2);
                             if (other != node.key()) {
                                 graph.addDependency(other, node.key());
                             }
@@ -188,7 +199,8 @@ public final class ComponentMap<E> {
         var candidates = new ObjectArrayList<TopologicalComponentMap.PreparedNode<ComponentType<E, ?>, Binding<E, ?>>>();
         var unique = new ObjectLinkedOpenHashSet<ComponentType<E, ?>>(prepared.size());
         var identities = new Object2ObjectOpenHashMap<ResourceLocation, ComponentType<E, ?>>(prepared.size());
-        for (var put : prepared) {
+        for (int index15 = 0; index15 < prepared.size(); index15++) {
+            var put = prepared.get(index15);
             if (put.owner != this || !unique.add(put.type))
                 throw new IllegalArgumentException("Foreign or duplicate prepared component insertion");
             requireTypeIdentity(identities, put.type);
@@ -198,7 +210,10 @@ public final class ComponentMap<E> {
             candidates.add(put.candidate);
         }
         components.installPrepared(candidates);
-        for (var put : prepared) types.put(put.type.id(), put.type);
+        for (int index3 = 0; index3 < prepared.size(); index3++) {
+            var put = prepared.get(index3);
+            types.put(put.type.id(), put.type);
+        }
     }
 
     /**
@@ -288,7 +303,8 @@ public final class ComponentMap<E> {
         var result = new ObjectArrayList<SavedBinding<E, ?>>();
         var ordered = components.orderedComponents(work);
         if (ordered == null) return null;
-        for (var node : ordered) {
+        for (int index13 = 0; index13 < ordered.size(); index13++) {
+            var node = ordered.get(index13);
             if (!work.take()) return null;
             result.add(node.component().saved(node.dependencies()));
         }
@@ -334,13 +350,16 @@ public final class ComponentMap<E> {
      */
     public void tick(E owner) {
         var entries = orderedTickEntries();
-        for (var entry : entries) {
+        for (int index4 = 0; index4 < entries.size(); index4++) {
+            var entry = entries.get(index4);
             entry.pre(owner);
         }
-        for (var entry : entries) {
+        for (int index6 = 0; index6 < entries.size(); index6++) {
+            var entry = entries.get(index6);
             entry.tick(owner);
         }
-        for (var entry : entries) {
+        for (int index7 = 0; index7 < entries.size(); index7++) {
+            var entry = entries.get(index7);
             entry.post(owner);
         }
     }
@@ -384,10 +403,12 @@ public final class ComponentMap<E> {
     public TickSession<E> beginTick(E owner) {
         var entries = orderedTickEntries();
         var session = new TickSession<>(owner, entries);
-        for (var entry : entries) {
+        for (int index5 = 0; index5 < entries.size(); index5++) {
+            var entry = entries.get(index5);
             entry.pre(owner);
         }
-        for (var entry : entries) {
+        for (int index8 = 0; index8 < entries.size(); index8++) {
+            var entry = entries.get(index8);
             entry.tick(owner);
         }
         return session;
@@ -398,7 +419,9 @@ public final class ComponentMap<E> {
             return dispatch;
         }
         var entries = new ObjectArrayList<TickEntry<E, ?>>();
-        for (var node : orderWithSystems(components)) {
+        var elements = orderWithSystems(components);
+        for (int index11 = 0; index11 < elements.size(); index11++) {
+            var node = elements.get(index11);
             node.component().appendEntries(entries);
         }
         dispatch = entries;
@@ -457,7 +480,8 @@ public final class ComponentMap<E> {
             }
             executing = true;
             try {
-                for (var entry : entries) {
+                for (int index9 = 0; index9 < entries.size(); index9++) {
+                    var entry = entries.get(index9);
                     entry.pre(owner);
                 }
                 phase = Phase.NORMAL;
@@ -505,7 +529,8 @@ public final class ComponentMap<E> {
             phase = Phase.FINISHED;
             executing = true;
             try {
-                for (var entry : entries) {
+                for (int index10 = 0; index10 < entries.size(); index10++) {
+                    var entry = entries.get(index10);
                     entry.post(owner);
                 }
             } finally {
@@ -620,7 +645,9 @@ public final class ComponentMap<E> {
 
         void appendEntries(ObjectArrayList<TickEntry<E, ?>> entries) {
             // PM preserves the declared order of multiple systems attached to one component.
-            for (var system : type.systems()) {
+            var elements12 = type.systems();
+            for (int index12 = 0; index12 < elements12.size(); index12++) {
+                var system = elements12.get(index12);
                 entries.add(new TickEntry<>(system, component));
             }
         }

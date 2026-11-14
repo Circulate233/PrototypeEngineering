@@ -34,7 +34,10 @@ final class PreviewBlockModelCache implements AutoCloseable {
 
     static List<ChunkMesh> translucentOrder(List<ChunkMesh> selected, BlockPos anchor, double x, double y, double z) {
         var result = new ObjectArrayList<ChunkMesh>();
-        for (var mesh : selected) if (mesh.layers[3] != null) result.add(mesh);
+        for (int index1 = 0; index1 < selected.size(); index1++) {
+            var mesh = selected.get(index1);
+            if (mesh.layers[3] != null) result.add(mesh);
+        }
         result.sort((left, right) -> Double.compare(right.distanceSquared(anchor, x, y, z), left.distanceSquared(anchor, x, y, z)));
         return result;
     }
@@ -357,12 +360,14 @@ final class PreviewBlockModelCache implements AutoCloseable {
             } catch (RuntimeException | Error caught) {
                 failure = merge(failure, caught);
             }
-            for (var item : meshes)
+            for (int index = 0; index < meshes.size(); index++) {
+                var item = meshes.get(index);
                 try {
                     item.close();
                 } catch (RuntimeException | Error caught) {
                     failure = merge(failure, caught);
                 }
+            }
             meshes.clear();
             groups.clear();
             group = null;

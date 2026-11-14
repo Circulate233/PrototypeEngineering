@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.api.recipe.persistence;
 
 import ae2.api.stacks.AEKey;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.process.RequirementAttributeState;
@@ -11,9 +10,8 @@ import com.circulation.prototype_eng.api.recipe.process.ResourceInputLocks;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.selective.SelectiveState;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.util.ResourceLocation;
@@ -26,22 +24,22 @@ final class BuiltinProcessCodecs {
     }
 
     static ProcessComponentCodec<RecipeOverlays> overlays(List<RecipeOverlayNbt.Binding<?, ?>> bindings) {
-        var frozen = ObjectLists.unmodifiable(new ObjectArrayList<>(bindings));
-        var ids = new ObjectOpenHashSet<ResourceLocation>(frozen.size());
-        for (var binding : frozen) {
-            if (!ids.add(binding.type().id())) {
+        var codecs = new Object2ObjectOpenHashMap<ResourceLocation, RecipeOverlayNbt.Binding<?, ?>>(bindings.size());
+        for (int index2 = 0; index2 < bindings.size(); index2++) {
+            var binding = bindings.get(index2);
+            if (codecs.putIfAbsent(binding.type().id(), binding) != null) {
                 throw new IllegalArgumentException("Duplicate overlay codec: " + binding.type().id());
             }
         }
         return new ProcessComponentCodec<>() {
             @Override
             public NBTTagCompound encode(RecipeProcess process, RecipeOverlays component) {
-                return new RecipeOverlayNbt(new RecipeDefinitionIndex(process), frozen).encode(component.snapshot());
+                return RecipeOverlayNbt.encode(component.snapshot(), codecs);
             }
 
             @Override
             public void restore(RecipeProcess process, RecipeOverlays component, NBTTagCompound data) {
-                component.restore(new RecipeOverlayNbt(new RecipeDefinitionIndex(process), frozen).decode(data));
+                component.restore(RecipeOverlayNbt.decode(data, process.definitionIndex(), codecs));
             }
         };
     }
@@ -67,16 +65,14 @@ final class BuiltinProcessCodecs {
 
             @Override
             public void restore(RecipeProcess process, ResourceInputLocks component, NBTTagCompound data) {
-                StrictNbt.requireKeys(data, "Choices");
-                var list = StrictNbt.requireList(data, "Choices", Constants.NBT.TAG_COMPOUND);
+                var list = data.getTagList("Choices", Constants.NBT.TAG_COMPOUND);
                 var choices = new Object2ObjectLinkedOpenHashMap<ResourceInputLocks.Key, AEKey>(6);
                 for (int i = 0; i < list.tagCount(); i++) {
                     var entry = list.getCompoundTagAt(i);
-                    StrictNbt.requireKeys(entry, "Path", "Stage", "Kind", "Group", "Key");
                     var key = new ResourceInputLocks.Key(RequirementPathNbt.read(entry),
-                        RecipeStage.valueOf(StrictNbt.requireString(entry, "Stage")),
-                        ResourceInputLocks.Kind.valueOf(StrictNbt.requireString(entry, "Kind")), StrictNbt.requireInt(entry, "Group"));
-                    if (choices.putIfAbsent(key, resources.decode(StrictNbt.requireCompound(entry, "Key"))) != null) {
+                        RecipeStage.valueOf(entry.getString("Stage")),
+                        ResourceInputLocks.Kind.valueOf(entry.getString("Kind")), entry.getInteger("Group"));
+                    if (choices.putIfAbsent(key, resources.decode(entry.getCompoundTag("Key"))) != null) {
                         throw new IllegalArgumentException("Duplicate saved input choice");
                     }
                 }
@@ -98,7 +94,6 @@ final class BuiltinProcessCodecs {
 
             @Override
             public void restore(RecipeProcess process, RequirementAttributeState component, NBTTagCompound data) {
-                StrictNbt.requireKeys(data, "Owned", "Aborted");
                 component.restore(new RequirementAttributeState.Snapshot(attributeReferences(data, "Owned"), attributeReferences(data, "Aborted")));
             }
         };
@@ -106,7 +101,8 @@ final class BuiltinProcessCodecs {
 
     private static NBTTagList attributeReferences(List<RequirementAttributeState.Reference> references) {
         var list = new NBTTagList();
-        for (var reference : references) {
+        for (int index3 = 0; index3 < references.size(); index3++) {
+            var reference = references.get(index3);
             var tag = new NBTTagCompound();
             tag.setTag("Path", RequirementPathNbt.encode(reference.path()));
             tag.setString("Attribute", reference.attribute().toString());
@@ -116,12 +112,11 @@ final class BuiltinProcessCodecs {
     }
 
     private static List<RequirementAttributeState.Reference> attributeReferences(NBTTagCompound data, String name) {
-        var list = StrictNbt.requireList(data, name, Constants.NBT.TAG_COMPOUND);
+        var list = data.getTagList(name, Constants.NBT.TAG_COMPOUND);
         var result = new ObjectArrayList<RequirementAttributeState.Reference>(list.tagCount());
         for (int index = 0; index < list.tagCount(); index++) {
             var tag = list.getCompoundTagAt(index);
-            StrictNbt.requireKeys(tag, "Path", "Attribute");
-            result.add(new RequirementAttributeState.Reference(RequirementPathNbt.read(tag), StrictNbt.requireId(tag, "Attribute")));
+            result.add(new RequirementAttributeState.Reference(RequirementPathNbt.read(tag), new ResourceLocation(tag.getString("Attribute"))));
         }
         return result;
     }
@@ -130,7 +125,6 @@ final class BuiltinProcessCodecs {
         return new ProcessComponentCodec<>() {
             @Override
             public NBTTagCompound encode(RecipeProcess process, SelectiveState component) {
-                var index = new RecipeDefinitionIndex(process);
                 var list = new NBTTagList();
                 component.snapshot().forEach((path, selection) -> {
                     var entry = new NBTTagCompound();
@@ -139,7 +133,9 @@ final class BuiltinProcessCodecs {
                     entry.setBoolean("Committed", selection.committed());
                     entry.setBoolean("Completed", selection.completed());
                     var modifiers = new NBTTagList();
-                    for (var reference : selection.modifiers()) {
+                    var elements5 = selection.modifiers();
+                    for (int index5 = 0; index5 < elements5.size(); index5++) {
+                        var reference = elements5.get(index5);
                         var modifier = new NBTTagCompound();
                         modifier.setString("Attribute", reference.attribute().toString());
                         modifier.setString("Id", reference.id());
@@ -147,10 +143,9 @@ final class BuiltinProcessCodecs {
                     }
                     entry.setTag("Modifiers", modifiers);
                     var overlays = new NBTTagList();
-                    for (var reference : selection.overlays()) {
-                        if (index.require(reference.path()) != reference.target()) {
-                            throw new IllegalArgumentException("Owned overlay has a foreign canonical target");
-                        }
+                    var elements7 = selection.overlays();
+                    for (int index7 = 0; index7 < elements7.size(); index7++) {
+                        var reference = elements7.get(index7);
                         var overlay = new NBTTagCompound();
                         overlay.setTag("Path", RequirementPathNbt.encode(reference.path()));
                         overlay.setString("Layer", reference.layerId());
@@ -162,11 +157,16 @@ final class BuiltinProcessCodecs {
                 var tag = new NBTTagCompound();
                 tag.setTag("Selections", list);
                 var receipts = new NBTTagList();
-                for (var receipt : component.abortReceipts()) {
+
+                var elements = component.abortReceipts();
+                for (int index1 = 0; index1 < elements.size(); index1++) {
+                    var receipt = elements.get(index1);
                     var entry = new NBTTagCompound();
                     entry.setTag("Path", RequirementPathNbt.encode(receipt.selectionPath()));
                     var modifiers = new NBTTagList();
-                    for (var reference : receipt.modifiers()) {
+                    var elements4 = receipt.modifiers();
+                    for (int index4 = 0; index4 < elements4.size(); index4++) {
+                        var reference = elements4.get(index4);
                         var modifier = new NBTTagCompound();
                         modifier.setString("Attribute", reference.attribute().toString());
                         modifier.setString("Id", reference.id());
@@ -174,10 +174,9 @@ final class BuiltinProcessCodecs {
                     }
                     entry.setTag("Modifiers", modifiers);
                     var overlays = new NBTTagList();
-                    for (var reference : receipt.overlays()) {
-                        if (index.require(reference.path()) != reference.target()) {
-                            throw new IllegalArgumentException("Aborted overlay has a foreign canonical target");
-                        }
+                    var elements6 = receipt.overlays();
+                    for (int index6 = 0; index6 < elements6.size(); index6++) {
+                        var reference = elements6.get(index6);
                         var overlay = new NBTTagCompound();
                         overlay.setTag("Path", RequirementPathNbt.encode(reference.path()));
                         overlay.setString("Layer", reference.layerId());
@@ -186,60 +185,54 @@ final class BuiltinProcessCodecs {
                     entry.setTag("Overlays", overlays);
                     receipts.appendTag(entry);
                 }
+
                 tag.setTag("AbortReceipts", receipts);
                 return tag;
             }
 
             @Override
             public void restore(RecipeProcess process, SelectiveState component, NBTTagCompound data) {
-                var index = new RecipeDefinitionIndex(process);
-                StrictNbt.requireKeys(data, "Selections", "AbortReceipts");
-                var list = StrictNbt.requireList(data, "Selections", Constants.NBT.TAG_COMPOUND);
+                var index = process.definitionIndex();
+                var list = data.getTagList("Selections", Constants.NBT.TAG_COMPOUND);
                 var selections = new Object2ObjectLinkedOpenHashMap<RequirementPath, SelectiveState.SelectionSnapshot>(6);
                 for (int i = 0; i < list.tagCount(); i++) {
                     var entry = list.getCompoundTagAt(i);
-                    StrictNbt.requireKeys(entry, "Path", "Index", "Committed", "Completed", "Modifiers", "Overlays");
-                    var savedModifiers = StrictNbt.requireList(entry, "Modifiers", Constants.NBT.TAG_COMPOUND);
+                    var savedModifiers = entry.getTagList("Modifiers", Constants.NBT.TAG_COMPOUND);
                     var modifiers = new ObjectArrayList<SelectiveState.ModifierReference>(savedModifiers.tagCount());
                     for (int j = 0; j < savedModifiers.tagCount(); j++) {
                         var modifier = savedModifiers.getCompoundTagAt(j);
-                        StrictNbt.requireKeys(modifier, "Attribute", "Id");
-                        modifiers.add(new SelectiveState.ModifierReference(StrictNbt.requireId(modifier, "Attribute"),
-                            StrictNbt.requireString(modifier, "Id")));
+                        modifiers.add(new SelectiveState.ModifierReference(new ResourceLocation(modifier.getString("Attribute")),
+                            modifier.getString("Id")));
                     }
-                    var savedOverlays = StrictNbt.requireList(entry, "Overlays", Constants.NBT.TAG_COMPOUND);
+                    var savedOverlays = entry.getTagList("Overlays", Constants.NBT.TAG_COMPOUND);
                     var overlays = new ObjectArrayList<SelectiveState.OverlayReference>(savedOverlays.tagCount());
                     for (int j = 0; j < savedOverlays.tagCount(); j++) {
                         var overlay = savedOverlays.getCompoundTagAt(j);
-                        StrictNbt.requireKeys(overlay, "Path", "Layer");
                         var path = RequirementPathNbt.read(overlay);
-                        overlays.add(new SelectiveState.OverlayReference(path, index.require(path), StrictNbt.requireString(overlay, "Layer")));
+                        overlays.add(new SelectiveState.OverlayReference(path, index.require(path), overlay.getString("Layer")));
                     }
-                    var selection = new SelectiveState.SelectionSnapshot(StrictNbt.requireBoolean(entry, "Committed"),
-                        StrictNbt.requireInt(entry, "Index"), StrictNbt.requireBoolean(entry, "Completed"), modifiers, overlays);
+                    var selection = new SelectiveState.SelectionSnapshot(entry.getBoolean("Committed"),
+                        entry.getInteger("Index"), entry.getBoolean("Completed"), modifiers, overlays);
                     if (selections.putIfAbsent(RequirementPathNbt.read(entry), selection) != null) {
                         throw new IllegalArgumentException("Duplicate saved selection");
                     }
                 }
-                var savedReceipts = StrictNbt.requireList(data, "AbortReceipts", Constants.NBT.TAG_COMPOUND);
+                var savedReceipts = data.getTagList("AbortReceipts", Constants.NBT.TAG_COMPOUND);
                 var receipts = new ObjectArrayList<SelectiveState.AbortReceipt>(savedReceipts.tagCount());
                 for (int i = 0; i < savedReceipts.tagCount(); i++) {
                     var entry = savedReceipts.getCompoundTagAt(i);
-                    StrictNbt.requireKeys(entry, "Path", "Modifiers", "Overlays");
-                    var savedModifiers = StrictNbt.requireList(entry, "Modifiers", Constants.NBT.TAG_COMPOUND);
+                    var savedModifiers = entry.getTagList("Modifiers", Constants.NBT.TAG_COMPOUND);
                     var modifiers = new ObjectArrayList<SelectiveState.ModifierReference>(savedModifiers.tagCount());
                     for (int j = 0; j < savedModifiers.tagCount(); j++) {
                         var modifier = savedModifiers.getCompoundTagAt(j);
-                        StrictNbt.requireKeys(modifier, "Attribute", "Id");
-                        modifiers.add(new SelectiveState.ModifierReference(StrictNbt.requireId(modifier, "Attribute"), StrictNbt.requireString(modifier, "Id")));
+                        modifiers.add(new SelectiveState.ModifierReference(new ResourceLocation(modifier.getString("Attribute")), modifier.getString("Id")));
                     }
-                    var savedOverlays = StrictNbt.requireList(entry, "Overlays", Constants.NBT.TAG_COMPOUND);
+                    var savedOverlays = entry.getTagList("Overlays", Constants.NBT.TAG_COMPOUND);
                     var overlays = new ObjectArrayList<SelectiveState.OverlayReference>(savedOverlays.tagCount());
                     for (int j = 0; j < savedOverlays.tagCount(); j++) {
                         var overlay = savedOverlays.getCompoundTagAt(j);
-                        StrictNbt.requireKeys(overlay, "Path", "Layer");
                         var path = RequirementPathNbt.read(overlay);
-                        overlays.add(new SelectiveState.OverlayReference(path, index.require(path), StrictNbt.requireString(overlay, "Layer")));
+                        overlays.add(new SelectiveState.OverlayReference(path, index.require(path), overlay.getString("Layer")));
                     }
                     receipts.add(new SelectiveState.AbortReceipt(RequirementPathNbt.read(entry), modifiers, overlays));
                 }

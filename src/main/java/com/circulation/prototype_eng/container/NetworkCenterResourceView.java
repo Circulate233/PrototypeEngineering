@@ -18,9 +18,14 @@ public final class NetworkCenterResourceView {
     public void receive(NetworkCenterResourcePacket packet) {
         if (packet.full()) indexed.clear();
         for (int index = 0; index < packet.removed().size(); index++) indexed.remove(packet.removed().getInt(index));
-        for (var entry : packet.added())
+        var elements = packet.added();
+        for (int index2 = 0; index2 < elements.size(); index2++) {
+            var entry = elements.get(index2);
             indexed.put(entry.index(), new Row(entry.resource(), entry.occupied(), entry.capacity()));
-        for (var entry : packet.changed()) {
+        }
+        var elements3 = packet.changed();
+        for (int index3 = 0; index3 < elements3.size(); index3++) {
+            var entry = elements3.get(index3);
             var row = indexed.get(entry.index());
             if ((entry.fields() & NetworkCenterResourcePacket.OCCUPIED) != 0) row.occupied = entry.occupied();
             if ((entry.fields() & NetworkCenterResourcePacket.CAPACITY) != 0) row.capacity = entry.capacity();
@@ -43,7 +48,8 @@ public final class NetworkCenterResourceView {
     }
 
     public void invalidateText() {
-        for (var row : rows) {
+        for (int index1 = 0; index1 < rows.size(); index1++) {
+            var row = rows.get(index1);
             row.text = null;
             row.supplyText = null;
             row.amountsText = null;

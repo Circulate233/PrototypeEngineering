@@ -18,8 +18,11 @@ final class PreviewBlockStates {
     static boolean represented(StructurePreviewModel.Cell cell) {
         var display = cell.display();
         if (display == null) return false;
-        for (var option : display.options())
+        var elements = display.options();
+        for (int index = 0; index < elements.size(); index++) {
+            var option = elements.get(index);
             if (ForgeRegistries.BLOCKS.containsKey(option.blockId())) return true;
+        }
         return false;
     }
 
@@ -30,7 +33,9 @@ final class PreviewBlockStates {
         if (explicit != null) return selected(model, display, explicit);
         var root = model.generation().entries().get(model.structureId());
         var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
-        for (var option : display.options()) {
+        var elements2 = display.options();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var option = elements2.get(index2);
             var state = resolve(option, rotation);
             if (state != null) return state;
         }

@@ -4,7 +4,6 @@ import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.persistence.MachineComponentCodec;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
@@ -32,21 +31,24 @@ public class MachineAnimationState {
             tag.setInteger("Version", 1);
             tag.setLong("Revision", state.revision());
             var layers = new NBTTagList();
-            for (var layer : state.layers()) layers.appendTag(new NBTTagString(layer));
+            var elements = state.layers();
+            for (int index = 0; index < elements.size(); index++) {
+                var layer = elements.get(index);
+                layers.appendTag(new NBTTagString(layer));
+            }
             tag.setTag("Layers", layers);
             return tag;
         }
 
         @Override
         public MachineAnimationState restore(MachineInstance owner, MachineAnimationState component, NBTTagCompound tag) {
-            StrictNbt.requireKeys(tag, "Version", "Revision", "Layers");
-            if (StrictNbt.requireInt(tag, "Version") != 1)
+            if (tag.getInteger("Version") != 1)
                 throw new IllegalArgumentException("Unsupported machine animation state version");
-            var values = StrictNbt.requireList(tag, "Layers", Constants.NBT.TAG_STRING);
+            var values = tag.getTagList("Layers", Constants.NBT.TAG_STRING);
             if (values.tagCount() > MAX_LAYERS) throw new IllegalArgumentException("Too many animation layers");
             var layers = new ObjectArrayList<String>(values.tagCount());
             for (int i = 0; i < values.tagCount(); i++) layers.add(values.getStringTagAt(i));
-            component.state = new Snapshot(StrictNbt.requireLong(tag, "Revision"), layers);
+            component.state = new Snapshot(tag.getLong("Revision"), layers);
             return component;
         }
     };
@@ -79,7 +81,8 @@ public class MachineAnimationState {
         public Snapshot {
             if (revision < 0 || layers.size() > MAX_LAYERS)
                 throw new IllegalArgumentException("Invalid animation revision/layer count");
-            for (var name : layers) {
+            for (int index2 = 0; index2 < layers.size(); index2++) {
+                var name = layers.get(index2);
                 Objects.requireNonNull(name, "animation layer");
                 if (name.isBlank() || !name.equals(name.trim()) || name.length() > MAX_NAME_LENGTH)
                     throw new IllegalArgumentException("Animation layer must be a nonempty, trimmed bounded name");

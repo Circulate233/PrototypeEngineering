@@ -90,8 +90,10 @@ public final class ResearchProgress {
             double remaining = total - state.resources().getDouble(type);
             double maximum = Math.clamp(available.getDouble(type), 0, remaining);
             double capacity = 0;
-            for (var station : stations)
+            for (int index = 0; index < stations.size(); index++) {
+                var station = stations.get(index);
                 capacity += Math.min(maximum - capacity, Math.min(limits.getDouble(type), station.rates().getDouble(type)));
+            }
             double granted = capacity;
             if (granted > 0) grants.put(type, granted);
             fraction = Math.max(fraction, (state.resources().getDouble(type) + granted) / total);
@@ -138,7 +140,8 @@ public final class ResearchProgress {
         var used = new ObjectArrayList<UUID>();
         var capacity = new Reference2DoubleOpenHashMap<NetworkResourceType>();
         long timeLeft = timeGrant;
-        for (var station : stations) {
+        for (int index2 = 0; index2 < stations.size(); index2++) {
+            var station = stations.get(index2);
             boolean worked = timeLeft > 0;
             if (worked) timeLeft--;
             for (var entry : outstanding.reference2DoubleEntrySet()) {

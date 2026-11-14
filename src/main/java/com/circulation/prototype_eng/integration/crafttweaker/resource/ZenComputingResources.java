@@ -9,7 +9,7 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 /**
- * Parameter vector; Java APIs perform metadata and quantity validation.
+ * Build the parameter vector before passing it to a definition; do not modify it afterward.
  */
 @ZenRegister
 @ZenClass("mods.prototype_eng.resource.ComputingResources")
@@ -38,6 +38,6 @@ public final class ZenComputingResources {
     }
 
     public Reference2DoubleMap<NetworkResourceType> value() {
-        return NetworkResourceModifier.copyResources(values);
+        return values;
     }
 }

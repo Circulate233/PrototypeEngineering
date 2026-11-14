@@ -77,14 +77,18 @@ public class JeiRecipeIngredients {
                                  Collection<?> registeredTypes, @Nullable IIngredientRegistry registry,
                                  JeiQueryIdentityIndex identities, @Nullable IngredientConverter<?> fallback, Predicate<AEKey> nativeKeys) {
         nativeRegistry = registry;
-        for (var converter : converters) {
+        for (int index14 = 0; index14 < converters.size(); index14++) {
+            var converter = converters.get(index14);
             if (registeredTypes.contains(converter.getIngredientType())) {
                 buckets.add(new Bucket<>(converter));
             }
         }
-        for (var row : display.resources()) {
+        var elements17 = display.resources();
+        for (int index17 = 0; index17 < elements17.size(); index17++) {
+            var row = elements17.get(index17);
             if (!nativeKeys.test(row.stack().what())) continue;
-            for (var bucket : buckets) {
+            for (int index6 = 0; index6 < buckets.size(); index6++) {
+                var bucket = buckets.get(index6);
                 if (bucket.add(row, identities, queryConflicts)) {
                     converted.put(row, bucket);
                     break;
@@ -98,7 +102,11 @@ public class JeiRecipeIngredients {
         var key = resource.stack().what();
         var lines = new ObjectArrayList<String>();
         if (AEKeyRendering.get(key.getType()) != null) {
-            for (var line : AEKeyRendering.getTooltip(key)) lines.add(line.getFormattedText());
+            var elements11 = AEKeyRendering.getTooltip(key);
+            for (int index11 = 0; index11 < elements11.size(); index11++) {
+                var line = elements11.get(index11);
+                lines.add(line.getFormattedText());
+            }
         } else lines.add(key.getDisplayName().getFormattedText());
         appendRecipeDetails(lines, resource, key.formatAmount(resource.stack().amount(), AmountFormat.FULL));
         var mod = Platform.getModName(key.getModId());
@@ -115,11 +123,17 @@ public class JeiRecipeIngredients {
 
     private static void appendRecipeDetails(List<String> lines, JeiRecipeDisplay.Resource resource, String amount) {
         JeiRecipeDisplay.Text timing = null;
-        for (var detail : resource.details()) if (isTiming(detail)) timing = detail;
+        var elements = resource.details();
+        for (int index9 = 0; index9 < elements.size(); index9++) {
+            var detail = elements.get(index9);
+            if (isTiming(detail)) timing = detail;
+        }
         boolean input = resource.role() == JeiRecipeDisplay.Role.INPUT;
         lines.add(timing == null ? (input ? JeiText.Consume : JeiText.Produce).getLocal(amount)
             : (input ? JeiText.ConsumeAt : JeiText.ProduceAt).getLocal(timing.local(), amount));
-        for (var detail : resource.details()) {
+        var elements16 = resource.details();
+        for (int index16 = 0; index16 < elements16.size(); index16++) {
+            var detail = elements16.get(index16);
             if (isTiming(detail)) continue;
             if (detail.text() == JeiText.Chance) {
                 lines.add(new JeiRecipeDisplay.Text(input ? JeiText.ConsumeChance : JeiText.ProduceChance,
@@ -207,17 +221,21 @@ public class JeiRecipeIngredients {
     @SuppressWarnings("unchecked") // The exact IIngredientType binding also owns the native group's generic type.
     private <T> void addFallback(JeiRecipeDisplay display, IngredientConverter<T> fallback) {
         Bucket<T> target = null;
-        for (var bucket : buckets)
+        for (int index5 = 0; index5 < buckets.size(); index5++) {
+            var bucket = buckets.get(index5);
             if (bucket.converter.getIngredientType() == fallback.getIngredientType()) {
                 target = (Bucket<T>) bucket;
                 break;
             }
+        }
         if (target == null) {
             target = new Bucket<>(fallback);
             buckets.add(target);
         }
         target.fallback = fallback;
-        for (var row : display.resources())
+        var elements18 = display.resources();
+        for (int index18 = 0; index18 < elements18.size(); index18++) {
+            var row = elements18.get(index18);
             if (!converted.containsKey(row)) {
                 // Like AE2S CellViewRecipe: preserve the actual key and long amount in its wrapped ingredient.
                 var ingredient = fallback.getIngredientFromStack(row.stack());
@@ -227,6 +245,7 @@ public class JeiRecipeIngredients {
                     converted.put(row, target);
                 }
             }
+        }
     }
 
     /**
@@ -247,14 +266,16 @@ public class JeiRecipeIngredients {
         if (rows.isEmpty()) return false;
         var bucket = converted.get(rows.getFirst());
         if (bucket == null) return false;
-        for (var row : rows) {
+        for (int index13 = 0; index13 < rows.size(); index13++) {
+            var row = rows.get(index13);
             if (converted.get(row) != bucket) return false;
         }
         return true;
     }
 
     public void index(IIngredients ingredients) {
-        for (var bucket : buckets) {
+        for (int index1 = 0; index1 < buckets.size(); index1++) {
+            var bucket = buckets.get(index1);
             bucket.index(ingredients);
         }
     }
@@ -276,14 +297,18 @@ public class JeiRecipeIngredients {
     }
 
     public void initialize(IRecipeLayout layout, List<JeiSlot> inputs, List<JeiSlot> outputs, JeiRenderOptions options) {
-        for (var bucket : buckets) bucket.initialize(layout, inputs, outputs, nativeRegistry, options);
+        for (int index2 = 0; index2 < buckets.size(); index2++) {
+            var bucket = buckets.get(index2);
+            bucket.initialize(layout, inputs, outputs, nativeRegistry, options);
+        }
     }
 
     /**
      * Replaces only this page's slots, retaining its single tooltip callback per native type.
      */
     public void reposition(IRecipeLayout layout, int previousSlots, List<JeiSlot> inputs, List<JeiSlot> outputs, JeiRenderOptions options) {
-        for (var bucket : buckets) {
+        for (int index4 = 0; index4 < buckets.size(); index4++) {
+            var bucket = buckets.get(index4);
             bucket.reposition(layout, previousSlots, inputs, outputs, nativeRegistry, options);
         }
     }
@@ -295,8 +320,14 @@ public class JeiRecipeIngredients {
                      int inputSlots, int outputSlots) {
         var inputGroups = new ObjectArrayList<List<JeiRecipeDisplay.Resource>>();
         var outputGroups = new ObjectArrayList<List<JeiRecipeDisplay.Resource>>();
-        for (var row : inputs) inputGroups.add(ObjectArrayList.of(row));
-        for (var row : outputs) outputGroups.add(ObjectArrayList.of(row));
+        for (int index7 = 0; index7 < inputs.size(); index7++) {
+            var row = inputs.get(index7);
+            inputGroups.add(ObjectArrayList.of(row));
+        }
+        for (int index8 = 0; index8 < outputs.size(); index8++) {
+            var row = outputs.get(index8);
+            outputGroups.add(ObjectArrayList.of(row));
+        }
         showGroups(layout, inputGroups, outputGroups, inputSlots, outputSlots);
     }
 
@@ -308,7 +339,8 @@ public class JeiRecipeIngredients {
         if (inputs.size() > inputSlots || outputs.size() > outputSlots) {
             throw new IllegalArgumentException("JEI panel exceeds initialized slot capacity");
         }
-        for (var bucket : buckets) {
+        for (int index3 = 0; index3 < buckets.size(); index3++) {
+            var bucket = buckets.get(index3);
             bucket.show(layout, inputs, outputs, inputSlots, outputSlots);
         }
     }
@@ -422,11 +454,19 @@ public class JeiRecipeIngredients {
         @Nullable
         private JeiRecipeDisplay.Resource displayed(int slot, T ingredient) {
             if (slot < 0 || slot >= visible.size()) return null;
-            for (var row : visible.get(slot)) if (entries.get(row) == ingredient) return row;
+            var elements10 = visible.get(slot);
+            for (int index10 = 0; index10 < elements10.size(); index10++) {
+                var row = elements10.get(index10);
+                if (entries.get(row) == ingredient) return row;
+            }
             var stack = fallback == null ? null : fallback.getStackFromIngredient(ingredient);
             if (stack == null) stack = converter.getStackFromIngredient(ingredient);
             if (stack != null) {
-                for (var row : visible.get(slot)) if (row.stack().what().equals(stack.what())) return row;
+                var elements12 = visible.get(slot);
+                for (int index12 = 0; index12 < elements12.size(); index12++) {
+                    var row = elements12.get(index12);
+                    if (row.stack().what().equals(stack.what())) return row;
+                }
             }
             return null;
         }
@@ -505,7 +545,9 @@ public class JeiRecipeIngredients {
             for (int i = 0; i < rows.size(); i++) {
                 var values = new ObjectArrayList<T>(rows.get(i).size());
                 var shown = new ObjectArrayList<JeiRecipeDisplay.Resource>(rows.get(i).size());
-                for (var row : rows.get(i)) {
+                var elements15 = rows.get(i);
+                for (int index15 = 0; index15 < elements15.size(); index15++) {
+                    var row = elements15.get(index15);
                     var ingredient = entries.get(row);
                     if (ingredient != null) {
                         values.add(ingredient);

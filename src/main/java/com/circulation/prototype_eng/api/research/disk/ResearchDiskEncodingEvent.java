@@ -13,7 +13,8 @@ import java.util.Objects;
  * Adapts a registered material's item-download event to one research-bearing disk output template.
  * The research's required tier must fit the disk. The encoding data center retains the ordinary
  * item-download research-tier requirement; only importing a disk requires a database at its tier.
- * No source level, inventory or database is changed by this callback.
+ * No source level, inventory or database is changed by this callback. The output template is borrowed
+ * read-only and must remain unchanged for the event registration lifetime.
  */
 @SuppressWarnings("unused") // Addons bind this event to their own blank disk material and output item.
 public final class ResearchDiskEncodingEvent implements ResearchItemDownloadEvent {
@@ -30,7 +31,7 @@ public final class ResearchDiskEncodingEvent implements ResearchItemDownloadEven
             throw new IllegalArgumentException("Research disk tier must be non-negative");
         }
         this.diskTier = diskTier;
-        this.outputTemplate = ResearchDiskNbtCodec.copyStack(outputTemplate);
+        this.outputTemplate = outputTemplate;
     }
 
     /**
@@ -50,9 +51,6 @@ public final class ResearchDiskEncodingEvent implements ResearchItemDownloadEven
     public ItemStack createOutput(ResearchItemDownloadContext context) {
         Objects.requireNonNull(context, "Research download context");
         var definition = context.research();
-        if (registry.require(definition.id()) != definition) {
-            throw new IllegalArgumentException("Research disk event requires its canonical registered research");
-        }
         if (definition.researchTierForLevel(context.downloadLevel()) > diskTier) {
             return ItemStack.EMPTY;
         }

@@ -30,7 +30,7 @@ public final class RecipeDefinitionManifestPacket extends ConnectionClientboundP
         this.generation = generation;
         this.totalBytes = totalBytes;
         this.index = index;
-        this.bytes = bytes.clone();
+        this.bytes = bytes;
         validate();
     }
 
@@ -79,7 +79,7 @@ public final class RecipeDefinitionManifestPacket extends ConnectionClientboundP
     }
 
     public byte[] bytes() {
-        return bytes.clone();
+        return bytes;
     }
 
     private void validate() {

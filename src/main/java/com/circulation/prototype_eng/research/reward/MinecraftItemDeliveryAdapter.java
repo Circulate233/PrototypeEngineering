@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.research.reward;
 
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.AEKey;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryAdapter;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKey;
@@ -35,7 +34,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -71,14 +69,14 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
                                              int index, int count, ItemDeliveryFragment.Target target) {
         var id = ItemDeliveryKeyNbt.fragmentId(parent, index);
         return new ItemDeliveryFragment(id, parent, resource, count, ItemDeliveryTemplates.taggedLeaf(template, count, parent, id),
-            target, Optional.empty(), ItemDeliveryFragment.Status.PLANNED);
+            target, null, ItemDeliveryFragment.Status.PLANNED);
     }
 
     private static void observe(ItemStack actual, @Nullable EntityItem entity, Object2ObjectLinkedOpenHashMap<UUID, ItemDeliveryFragment> expected,
                                 ObjectOpenHashSet<UUID> observed, Object2ObjectLinkedOpenHashMap<UUID, UUID> entities) {
         if (actual.isEmpty() || !actual.hasTagCompound() || !Objects.requireNonNull(actual.getTagCompound()).hasKey(DELIVERY_TAG))
             return;
-        var tag = StrictNbt.requireCompound(Objects.requireNonNull(actual.getTagCompound()), DELIVERY_TAG);
+        var tag = Objects.requireNonNull(actual.getTagCompound()).getCompoundTag(DELIVERY_TAG);
         var parent = ItemDeliveryKeyNbt.readIdentity(tag);
         var fragmentId = ItemDeliveryKeyNbt.fragmentId(tag);
         var fragment = expected.get(fragmentId);
@@ -107,8 +105,8 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
     private static boolean releaseCandidate(ItemStack stack, ItemDeliveryFragment fragment, ItemStack expected) {
         if (stack.isEmpty() || !stack.hasTagCompound() || !Objects.requireNonNull(stack.getTagCompound()).hasKey(DELIVERY_TAG))
             return false;
-        var tag = StrictNbt.requireCompound(Objects.requireNonNull(stack.getTagCompound()), DELIVERY_TAG);
-        if (!fragment.id().toString().equals(StrictNbt.requireString(tag, "Fragment"))) return false;
+        var tag = Objects.requireNonNull(stack.getTagCompound()).getCompoundTag(DELIVERY_TAG);
+        if (!fragment.id().toString().equals(tag.getString("Fragment"))) return false;
         if (!exact(stack, expected))
             throw new IllegalStateException("Confirmed reward leaf payload changed: " + fragment.id());
         return true;
@@ -174,7 +172,8 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
     public Scan scan(ObjectList<ItemDeliveryFragment> fragments) {
         requireOwner();
         var expected = new Object2ObjectLinkedOpenHashMap<UUID, ItemDeliveryFragment>(fragments.size());
-        for (var fragment : fragments) {
+        for (int index7 = 0; index7 < fragments.size(); index7++) {
+            var fragment = fragments.get(index7);
             validate(fragment);
             if (fragment.status() != ItemDeliveryFragment.Status.DELIVERING || expected.putIfAbsent(fragment.id(), fragment) != null) {
                 throw new IllegalArgumentException("Invalid reward recovery plan");
@@ -187,14 +186,18 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         observe(player.inventory.getItemStack(), null, expected, observed, entities);
         for (var world : DimensionManager.getWorlds()) {
             if (world.getMinecraftServer() != server) continue;
-            for (var entity : world.loadedEntityList) {
+            for (int index5 = 0; index5 < world.loadedEntityList.size(); index5++) {
+                var entity = world.loadedEntityList.get(index5);
                 if (entity instanceof EntityItem item && !item.isDead) {
                     observe(deliveryStack(item), item, expected, observed, entities);
                 }
             }
         }
         var unobserved = new ObjectArrayList<ItemDeliveryFragment>();
-        for (var fragment : fragments) if (!observed.contains(fragment.id())) unobserved.add(fragment);
+        for (int index4 = 0; index4 < fragments.size(); index4++) {
+            var fragment = fragments.get(index4);
+            if (!observed.contains(fragment.id())) unobserved.add(fragment);
+        }
         var handler = requirePlayerSaveHandler();
         ObjectSet<UUID> absent;
         try {
@@ -205,7 +208,8 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         } catch (IOException failure) {
             throw new UncheckedIOException(failure);
         }
-        for (var fragment : unobserved) {
+        for (int index2 = 0; index2 < unobserved.size(); index2++) {
+            var fragment = unobserved.get(index2);
             if (!absent.contains(fragment.id()) && absenceProof.provenAbsent(player, fragment))
                 absent.add(fragment.id());
         }
@@ -260,27 +264,27 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
             case ItemDeliveryFragment.Inventory inventory -> {
                 requirePlayerSaveHandler();
                 if (inventory.slot() >= player.inventory.mainInventory.size() || !player.inventory.mainInventory.get(inventory.slot()).isEmpty())
-                    yield new Delivery(0, Optional.empty());
+                    yield new Delivery(0, null);
                 player.inventory.setInventorySlotContents(inventory.slot(), stack);
                 player.inventory.markDirty();
                 player.inventoryContainer.detectAndSendChanges();
                 requireOwner();
-                yield new Delivery(fragment.count(), Optional.empty());
+                yield new Delivery(fragment.count(), null);
             }
             case ItemDeliveryFragment.WorldDrop drop -> {
                 var world = loaded(drop);
-                if (world == null) yield new Delivery(0, Optional.empty());
+                if (world == null) yield new Delivery(0, null);
                 var entity = new RewardItemEntity(world, drop.x(), drop.y(), drop.z(), stack);
                 entity.setUniqueId(fragment.id());
                 if (world.getEntityFromUuid(fragment.id()) != null)
                     throw new IllegalStateException("Reward entity identity already exists");
                 // Forge join callbacks have already seen the tagged entity. A cancelled spawn is
                 // not proof that a callback left it untouched or did not transfer its contents.
-                if (!world.spawnEntity(entity)) yield new Delivery(0, Optional.of(entity.getUniqueID()));
+                if (!world.spawnEntity(entity)) yield new Delivery(0, entity.getUniqueID());
                 requireOwner();
                 if (!exact(deliveryStack(entity), stack))
                     throw new IllegalStateException("Reward spawn changed payload");
-                yield new Delivery(fragment.count(), Optional.of(entity.getUniqueID()));
+                yield new Delivery(fragment.count(), entity.getUniqueID());
             }
         };
     }
@@ -296,16 +300,16 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         }
         var expected = new ItemStack(fragment.taggedStackNbt());
         if (fragment.target() instanceof ItemDeliveryFragment.Inventory) {
-            if (delivery.entityUuid().isPresent())
+            if ((delivery.entityUuid() != null))
                 throw new IllegalArgumentException("Inventory reward cannot have entity identity");
             requireInventoryLeaf(expected);
             persistPlayer(fragment.taggedStackNbt());
             requireInventoryLeaf(expected);
             return;
         }
-        var entityId = delivery.entityUuid().orElseThrow();
+        var entityId = delivery.entityUuid();
         var world = loaded((ItemDeliveryFragment.WorldDrop) fragment.target());
-        if (world == null || !(world.getEntityFromUuid(entityId) instanceof EntityItem entity) || entity.isDead
+        if (entityId == null || world == null || !(world.getEntityFromUuid(entityId) instanceof EntityItem entity) || entity.isDead
             || !exact(deliveryStack(entity), expected)) {
             throw new IllegalStateException("Reward drop persistence target is unavailable");
         }
@@ -396,7 +400,8 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         }
         for (var world : DimensionManager.getWorlds()) {
             if (world.getMinecraftServer() != server) continue;
-            for (var value : world.loadedEntityList) {
+            for (int index6 = 0; index6 < world.loadedEntityList.size(); index6++) {
+                var value = world.loadedEntityList.get(index6);
                 if (value instanceof EntityItem entity && !entity.isDead && releaseCandidate(deliveryStack(entity), fragment, expected)) {
                     drops.add(entity);
                 }
@@ -404,10 +409,13 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         }
         if (slots.size() + drops.size() + (cursor ? 1 : 0) > 1)
             throw new IllegalStateException("Duplicate confirmed reward leaf " + fragment.id());
-        for (int slot : slots)
+        for (int index1 = 0; index1 < slots.size(); index1++) {
+            int slot = slots.getInt(index1);
             player.inventory.setInventorySlotContents(slot, releasedStack(player.inventory.getStackInSlot(slot)));
+        }
         if (cursor) player.inventory.setItemStack(releasedStack(player.inventory.getItemStack()));
-        for (var entity : drops) {
+        for (int index3 = 0; index3 < drops.size(); index3++) {
+            var entity = drops.get(index3);
             var released = releasedStack(deliveryStack(entity));
             if (entity instanceof RewardItemEntity reward) reward.release(released);
             else entity.setItem(released);
@@ -435,7 +443,7 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
             throw new IllegalArgumentException("Invalid reward actor/resource");
         var stack = new ItemStack(fragment.taggedStackNbt());
         var root = Objects.requireNonNull(stack.getTagCompound(), "Reward tagged payload");
-        if (stack.isEmpty() || stack.getCount() != fragment.count() || !StrictNbt.requireCompound(root, DELIVERY_TAG).equals(ItemDeliveryKeyNbt.identity(fragment.parent(), fragment.id()))) {
+        if (stack.isEmpty() || stack.getCount() != fragment.count() || !root.getCompoundTag(DELIVERY_TAG).equals(ItemDeliveryKeyNbt.identity(fragment.parent(), fragment.id()))) {
             throw new IllegalArgumentException("Reward save differs from tagged payload");
         }
         root.removeTag(DELIVERY_TAG);

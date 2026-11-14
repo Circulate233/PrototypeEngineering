@@ -1,68 +1,37 @@
 package com.circulation.prototype_eng.api.research.reward;
 
+import org.jetbrains.annotations.Nullable;
+
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.Objects;
-import java.util.Optional;
-import java.util.OptionalLong;
 import java.util.UUID;
 
 /**
  * Complete immutable save state. Eligibility and selected plans survive forgetting and source consumption.
  * The children list is borrowed immutable data: callers and consumers must leave it unchanged for
  * the lifetime of this claim and all checkpoints that retain it. Transitions create new lists.
+ * The selected group is null before selection. Timestamps use -1 until the corresponding transition occurs.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public record RewardClaim(Key key, Status status, long eligibleAtWorldTime,
-                          Optional<ResourceLocation> selectedGroupId, OptionalLong claimingAtWorldTime,
-                          ObjectList<Child> children, OptionalLong claimedAtWorldTime) {
-    public RewardClaim {
-        Objects.requireNonNull(key, "key");
-        Objects.requireNonNull(status, "status");
-        Objects.requireNonNull(selectedGroupId, "selectedGroupId");
-        Objects.requireNonNull(claimingAtWorldTime, "claimingAtWorldTime");
-        Objects.requireNonNull(claimedAtWorldTime, "claimedAtWorldTime");
-        Objects.requireNonNull(children, "children");
-        boolean selected = status != Status.UNCLAIMED;
-        if (eligibleAtWorldTime < 0 || selected != selectedGroupId.isPresent()
-            || selected != claimingAtWorldTime.isPresent() || selected == children.isEmpty()
-            || (status == Status.CLAIMED) != claimedAtWorldTime.isPresent()
-            || (selected && claimingAtWorldTime.getAsLong() < eligibleAtWorldTime)
-            || (claimedAtWorldTime.isPresent() && claimedAtWorldTime.getAsLong() < claimingAtWorldTime.getAsLong())) {
-            throw new IllegalArgumentException("Invalid reward claim state");
-        }
-        var ids = new ObjectOpenHashSet<ResourceLocation>(children.size());
-        var fragments = new ObjectOpenHashSet<UUID>(children.size());
-        for (var child : children) {
-            Objects.requireNonNull(child, "child");
-            var parent = child.key();
-            if (!ids.add(parent.childId()) || !parent.playerUuid().equals(key.playerUuid())
-                || !parent.researchId().equals(key.researchId()) || parent.level() != key.level()
-                || !parent.groupId().equals(selectedGroupId.orElseThrow())
-                || (status == Status.CLAIMED && child.status() != ChildStatus.COMPLETED)) {
-                throw new IllegalArgumentException("Invalid reward child identity/state");
-            }
-            for (var fragment : child.fragments().values()) {
-                if (!fragments.add(fragment.id())) throw new IllegalArgumentException("Duplicate reward fragment ID");
-            }
-        }
-    }
-
+                          @Nullable ResourceLocation selectedGroupId, long claimingAtWorldTime,
+                          ObjectList<Child> children, long claimedAtWorldTime) {
     public static RewardClaim unclaimed(Key key, long time) {
-        return new RewardClaim(key, Status.UNCLAIMED, time, Optional.empty(), OptionalLong.empty(),
-            ObjectLists.emptyList(), OptionalLong.empty());
+        return new RewardClaim(key, Status.UNCLAIMED, time, null, -1,
+            ObjectLists.emptyList(), -1);
     }
 
     public RewardClaim select(ResourceLocation group, long time, ObjectList<Child> plan) {
         if (status != Status.UNCLAIMED) throw new IllegalStateException("Selection already fixed");
-        return new RewardClaim(key, Status.CLAIMING, eligibleAtWorldTime, Optional.of(group),
-            OptionalLong.of(time), plan, OptionalLong.empty());
+        return new RewardClaim(key, Status.CLAIMING, eligibleAtWorldTime, group,
+            time, plan, -1);
     }
 
     /**
@@ -70,7 +39,13 @@ public record RewardClaim(Key key, Status status, long eligibleAtWorldTime,
      */
     public RewardClaim replaceChild(int index, Child replacement) {
         if (status != Status.CLAIMING) throw new IllegalStateException("Claim is not in progress");
-        var previous = children.get(index);
+        validateChildReplacement(children.get(index), replacement);
+        var updated = new ObjectArrayList<>(children);
+        updated.set(index, replacement);
+        return new RewardClaim(key, status, eligibleAtWorldTime, selectedGroupId, claimingAtWorldTime, updated, claimedAtWorldTime);
+    }
+
+    private static void validateChildReplacement(Child previous, Child replacement) {
         if (previous.status() != ChildStatus.PENDING || !previous.key().equals(replacement.key())
             || previous.kind() != replacement.kind()
             || !previous.fragments().keySet().equals(replacement.fragments().keySet())) {
@@ -81,15 +56,12 @@ public record RewardClaim(Key key, Status status, long eligibleAtWorldTime,
             var after = replacement.fragments().get(entry.getKey());
             before.requireTransitionTo(after);
         }
-        var updated = new ObjectArrayList<>(children);
-        updated.set(index, replacement);
-        return new RewardClaim(key, status, eligibleAtWorldTime, selectedGroupId, claimingAtWorldTime, updated, claimedAtWorldTime);
     }
 
     public RewardClaim completed(long time) {
         if (status != Status.CLAIMING) throw new IllegalStateException("Claim is not in progress");
         return new RewardClaim(key, Status.CLAIMED, eligibleAtWorldTime, selectedGroupId, claimingAtWorldTime,
-            children, OptionalLong.of(time));
+            children, time);
     }
 
     /**
@@ -104,8 +76,8 @@ public record RewardClaim(Key key, Status status, long eligibleAtWorldTime,
             if (next.status != Status.CLAIMING) throw new IllegalStateException("Claim must select before delivery");
             return;
         }
-        if (status == Status.CLAIMED || !selectedGroupId.equals(next.selectedGroupId)
-            || !claimingAtWorldTime.equals(next.claimingAtWorldTime) || children.size() != next.children.size()) {
+        if (status == Status.CLAIMED || !Objects.equals(selectedGroupId, next.selectedGroupId)
+            || claimingAtWorldTime != next.claimingAtWorldTime || children.size() != next.children.size()) {
             throw new IllegalStateException("Reward selection or terminal state changed");
         }
         if (next.status == Status.CLAIMED) {
@@ -114,7 +86,8 @@ public record RewardClaim(Key key, Status status, long eligibleAtWorldTime,
         }
         if (next.status != Status.CLAIMING) throw new IllegalStateException("Claim state moved backward");
         for (int index = 0; index < children.size(); index++) {
-            if (!children.get(index).equals(next.children.get(index))) replaceChild(index, next.children.get(index));
+            if (!children.get(index).equals(next.children.get(index)))
+                validateChildReplacement(children.get(index), next.children.get(index));
         }
     }
 

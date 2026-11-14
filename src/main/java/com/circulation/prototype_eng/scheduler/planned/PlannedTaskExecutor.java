@@ -117,7 +117,8 @@ public final class PlannedTaskExecutor {
     public <T> Batch<T> runPrepare(List<Job<T>> jobs, PlannedDeadline deadline,
                                    Consumer<Batch<T>> beforeDispatch) {
         var dispatches = new ObjectArrayList<Dispatch<T>>(jobs.size());
-        for (var job : jobs) {
+        for (int index2 = 0; index2 < jobs.size(); index2++) {
+            var job = jobs.get(index2);
             dispatches.add(new Dispatch<>(workers, job));
         }
         return run(dispatches, deadline, Objects.requireNonNull(beforeDispatch), mode == DispatchMode.SYNCHRONOUS);
@@ -139,7 +140,8 @@ public final class PlannedTaskExecutor {
     public <T> Batch<T> runOnSourceLanes(List<SourceJob<T>> jobs, PlannedDeadline deadline,
                                          Consumer<Batch<T>> beforeDispatch) {
         var dispatches = new ObjectArrayList<Dispatch<T>>(jobs.size());
-        for (var job : jobs) {
+        for (int index4 = 0; index4 < jobs.size(); index4++) {
+            var job = jobs.get(index4);
             dispatches.add(new Dispatch<>(mode == DispatchMode.SYNCHRONOUS ? null : sourceLanes[laneIndex(job.affinity())], job.job()));
         }
         return run(dispatches, deadline, Objects.requireNonNull(beforeDispatch), mode != DispatchMode.ASYNC);
@@ -157,13 +159,15 @@ public final class PlannedTaskExecutor {
             if (interrupted) {
                 batch.stop(Reason.INTERRUPTED);
             }
-            for (var dispatch : dispatches) {
+            for (int index6 = 0; index6 < dispatches.size(); index6++) {
+                var dispatch = dispatches.get(index6);
                 var token = dispatch.job.cancellation();
                 if (token != null && tokens.add(token)) {
                     registrations.add(token.onCancel(batch::stop));
                 }
             }
-            for (var entry : batch.entries) {
+            for (int index9 = 0; index9 < batch.entries.size(); index9++) {
+                var entry = batch.entries.get(index9);
                 if (!batch.accept(entry)) {
                     if (batch.stopReason() != null) break;
                     continue;
@@ -192,7 +196,8 @@ public final class PlannedTaskExecutor {
             batch.abort(failure);
         } finally {
             Throwable cleanup = null;
-            for (var registration : registrations) {
+            for (int index1 = 0; index1 < registrations.size(); index1++) {
+                var registration = registrations.get(index1);
                 try {
                     registration.close();
                 } catch (RuntimeException | Error failure) {
@@ -317,7 +322,8 @@ public final class PlannedTaskExecutor {
             this.synchronous = synchronous;
             this.entries = new ObjectArrayList<>(dispatches.size());
             boolean individual = false;
-            for (var dispatch : dispatches) {
+            for (int index5 = 0; index5 < dispatches.size(); index5++) {
+                var dispatch = dispatches.get(index5);
                 entries.add(new Entry<>(dispatch.executor, dispatch.job.action(), dispatch.job.deadline()));
                 individual |= dispatch.job.deadline() != null;
             }
@@ -494,7 +500,8 @@ public final class PlannedTaskExecutor {
                         stopLocked(Reason.WORKER_TIMEOUT);
                         return;
                     }
-                    for (var entry : entries) {
+                    for (int index7 = 0; index7 < entries.size(); index7++) {
+                        var entry = entries.get(index7);
                         if (entry.result != null || entry.deadline == null) continue;
                         long local = entry.deadline.remainingNanos(now);
                         if (local == 0) stopEntryLocked(entry, Reason.WORKER_TIMEOUT);
@@ -518,7 +525,8 @@ public final class PlannedTaskExecutor {
             }
             stopReason = reason;
             Throwable failure = null;
-            for (var entry : entries) {
+            for (int index8 = 0; index8 < entries.size(); index8++) {
+                var entry = entries.get(index8);
                 try {
                     stopEntryLocked(entry, reason);
                 } catch (RuntimeException | Error interrupt) {
@@ -580,7 +588,8 @@ public final class PlannedTaskExecutor {
         private void freezeResults() {
             synchronized (lock) {
                 var copy = new ObjectArrayList<Result<T>>(entries.size());
-                for (var entry : entries) {
+                for (int index3 = 0; index3 < entries.size(); index3++) {
+                    var entry = entries.get(index3);
                     copy.add(Objects.requireNonNull(entry.result));
                 }
                 results = copy;

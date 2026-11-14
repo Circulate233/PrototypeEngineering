@@ -19,11 +19,11 @@ public final class ResearchItemDownloadRegistry {
     private volatile Frozen frozen;
 
     /**
-     * Full item, metadata and NBT identity. The supplied key is copied to isolate mutable AE key views.
+     * Full item, metadata and NBT identity. Keys are immutable and retained directly.
      */
     public void register(AEItemKey material, ResearchItemDownloadEvent event) {
         requireLoading();
-        registerKey(DownloadValidation.key(Objects.requireNonNull(material, "Download material key").getReadOnlyStack()), event);
+        registerKey(material, event);
     }
 
     private void registerKey(AEItemKey key, ResearchItemDownloadEvent event) {
@@ -37,7 +37,9 @@ public final class ResearchItemDownloadRegistry {
      */
     public void register(ItemStack material, ResearchItemDownloadEvent event) {
         requireLoading();
-        registerKey(DownloadValidation.key(material), event);
+        var key = AEItemKey.of(material);
+        if (key == null) throw new IllegalArgumentException("Download material must be nonempty");
+        registerKey(key, event);
     }
 
     public boolean isFrozen() {
@@ -49,23 +51,20 @@ public final class ResearchItemDownloadRegistry {
         if (!Objects.requireNonNull(research, "Research registry").isFrozen()) {
             throw new IllegalStateException("Research must freeze before item download events");
         }
-        var events = new Object2ObjectOpenHashMap<>(registrations);
-        frozen = new Frozen(research, events);
-        registrations.clear();
+        frozen = new Frozen(registrations);
     }
 
     /**
-     * Revalidates real capabilities before invoking one matching callback; failures propagate.
+     * Invokes one matching callback on the server owner thread; failures propagate.
      */
     public ResearchItemDownloadEvaluation evaluate(ResearchItemDownloadContext context) {
         var current = requireFrozen();
-        Objects.requireNonNull(context, "Download context").validateFor(current.research);
         var event = current.events.get(context.materialKey());
         if (event == null) {
             return ResearchItemDownloadEvaluation.noEvent();
         }
         var output = Objects.requireNonNull(event.createOutput(context), "Download event output");
-        if (output == ItemStack.EMPTY) {
+        if (output.isEmpty()) {
             return ResearchItemDownloadEvaluation.rejected();
         }
         return ResearchItemDownloadEvaluation.success(output);
@@ -85,7 +84,6 @@ public final class ResearchItemDownloadRegistry {
         return current;
     }
 
-    private record Frozen(ResearchRegistry research,
-                          Object2ObjectOpenHashMap<AEItemKey, ResearchItemDownloadEvent> events) {
+    private record Frozen(Object2ObjectOpenHashMap<AEItemKey, ResearchItemDownloadEvent> events) {
     }
 }

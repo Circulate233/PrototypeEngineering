@@ -25,7 +25,9 @@ public final class ScriptClientRecipeDeclarationEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void declarations(ClientRecipeDeclarationRegistrationEvent event) {
-        for (var declaration : ClientRecipeManifestDeclarations.freeze()) {
+        var elements = ClientRecipeManifestDeclarations.freeze();
+        for (int index = 0; index < elements.size(); index++) {
+            var declaration = elements.get(index);
             var previous = RESOLVED.get(declaration.key());
             RecipeRegistry.Snapshot snapshot;
             if (previous == null) {

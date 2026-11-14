@@ -64,7 +64,8 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
     private ResourceRecipeIndex(List<MachineRecipe> recipes, Collection<Footprint> footprints) {
         canonical = ObjectLists.unmodifiable(new ObjectArrayList<>(Objects.requireNonNull(recipes)));
         var ordinals = new Reference2IntOpenHashMap<MachineRecipe>(canonical.size());
-        for (var recipe : canonical) {
+        for (int index3 = 0; index3 < canonical.size(); index3++) {
+            var recipe = canonical.get(index3);
             ordinals.put(recipe, ordinals.size());
         }
         order = Reference2IntMaps.unmodifiable(ordinals);
@@ -82,13 +83,18 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
             }
             filtered.add(recipe);
             int keys = footprint.inputs().size();
-            for (var input : footprint.inputs()) {
+            var elements5 = footprint.inputs();
+            for (int index5 = 0; index5 < elements5.size(); index5++) {
+                var input = elements5.get(index5);
                 mutable.computeIfAbsent(input.what(), _ -> new ObjectArrayList<>()).add(new Posting(recipe, input.amount(), keys));
             }
         }
         indexed = ReferenceSets.unmodifiable(filtered);
         var retained = new ObjectArrayList<MachineRecipe>(canonical.size() - filtered.size());
-        for (var recipe : canonical) if (!filtered.contains(recipe)) retained.add(recipe);
+        for (int index2 = 0; index2 < canonical.size(); index2++) {
+            var recipe = canonical.get(index2);
+            if (!filtered.contains(recipe)) retained.add(recipe);
+        }
         unfiltered = ObjectLists.unmodifiable(retained);
         var frozen = new Object2ObjectOpenHashMap<AEKey, List<Posting>>(mutable.size());
         mutable.forEach((key, values) -> frozen.put(key, ObjectLists.unmodifiable(values)));
@@ -111,7 +117,8 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         Objects.requireNonNull(recipes);
         Objects.requireNonNull(stableInputs, "stableInputs");
         var footprints = new ObjectArrayList<Footprint>(recipes.size());
-        for (var recipe : recipes) {
+        for (int index4 = 0; index4 < recipes.size(); index4++) {
+            var recipe = recipes.get(index4);
             if (stableInputs.test(recipe)) {
                 footprints.add(new Footprint(recipe, fixedInputs(recipe)));
             }
@@ -121,7 +128,9 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
 
     private static List<GenericStack> fixedInputs(MachineRecipe recipe) {
         var inputs = new ObjectArrayList<GenericStack>(6);
-        for (var requirement : recipe.orderedRequirements()) {
+        var elements7 = recipe.orderedRequirements();
+        for (int index7 = 0; index7 < elements7.size(); index7++) {
+            var requirement = elements7.get(index7);
             if (requirement.type() == RecipeRequirements.ENERGY) {
                 continue;
             }
@@ -140,8 +149,13 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         var lookup = new InventoryLookup(inventory, parallelism, Set.of());
         lookup.advance(new RecipeWorkBudget(Long.MAX_VALUE));
         var result = new ObjectArrayList<RecipeInventoryMatch>(lookup.result().size());
-        for (var recipe : lookup.result())
+
+        var elements = lookup.result();
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var recipe = elements.get(index1);
             result.add(new RecipeInventoryMatch(recipe, lookup.inputParallelismLimit(recipe)));
+        }
+
         return result;
     }
 
@@ -213,7 +227,9 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         public Footprint {
             Objects.requireNonNull(recipe, "recipe");
             var amounts = new AEKeyLinkedOpenHashMap(inputs.size());
-            for (var input : Objects.requireNonNull(inputs, "inputs")) {
+            var elements6 = Objects.requireNonNull(inputs, "inputs");
+            for (int index6 = 0; index6 < elements6.size(); index6++) {
+                var input = elements6.get(index6);
                 Objects.requireNonNull(input, "input");
                 var key = Objects.requireNonNull(input.what(), "input key");
                 long amount = input.amount();

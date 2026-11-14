@@ -18,6 +18,7 @@ import java.util.function.BooleanSupplier;
  * Explicit whole-recipe scan constraints. Bounds must exclude no feasible base amount, and checks
  * must be pure; they must aggregate shared sources/requirements rather than reuse balances per entry.
  * An accepted constraint never replaces the mandatory transactional START probe.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public interface RecipeParallelismConstraint {
     default int upperBound(MachineInstance machine, MachineRecipe recipe, int currentLimit) {

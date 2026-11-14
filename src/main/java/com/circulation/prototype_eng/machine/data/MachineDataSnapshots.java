@@ -40,7 +40,9 @@ public final class MachineDataSnapshots {
         var liveData = new ReferenceOpenHashSet<ComponentData>();
         var captured = new ObjectArrayList<MachineDataSnapshot.Host>();
         if (machine != null) {
-            for (var host : machine.recipeHosts()) {
+            var elements1 = machine.recipeHosts();
+            for (int index1 = 0; index1 < elements1.size(); index1++) {
+                var host = elements1.get(index1);
                 if (host.owner() != machine) throw new IllegalStateException("Foreign machine data host");
                 liveHosts.add(host);
                 long hostId = hosts.getLong(host);
@@ -49,7 +51,10 @@ public final class MachineDataSnapshots {
                     hosts.put(host, hostId);
                 }
                 var slots = new ObjectArrayList<MachineDataSnapshot.Slot>(host.slots().size());
-                for (var slot : host.slots()) {
+
+                var elements = host.slots();
+                for (int index = 0; index < elements.size(); index++) {
+                    var slot = elements.get(index);
                     var process = slot.process();
                     MachineDataSnapshot.Process fact = null;
                     if (process != null) {
@@ -65,6 +70,7 @@ public final class MachineDataSnapshots {
                     }
                     slots.add(new MachineDataSnapshot.Slot(slot.name(), fact));
                 }
+
                 captured.add(new MachineDataSnapshot.Host(hostId, slots));
             }
         }

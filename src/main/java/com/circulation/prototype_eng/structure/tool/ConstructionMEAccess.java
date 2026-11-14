@@ -39,8 +39,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 
 /**
- * 一个会话绑定玩家背包槽位中的原构建器，locator 必须提供玩家背包槽位。
- * 任务与延迟回收必须复用该会话，禁止另查玩家持有的终端。
+ * A session binds the original builder in a player inventory slot. The locator must identify that slot.
+ * Tasks and delayed recovery must reuse this session.
  */
 public final class ConstructionMEAccess extends ItemGuiHost<BuilderInstrumentItem>
     implements IActionHost, ISubGuiHost, InternalInventoryHost {
@@ -136,7 +136,7 @@ public final class ConstructionMEAccess extends ItemGuiHost<BuilderInstrumentIte
             status = GuiText.WirelessTerminalNoSingularity.text();
             return;
         }
-        @SuppressWarnings("DataFlowIssue") // AE 的有效纠缠奇点检查已要求存在 NBT。
+        @SuppressWarnings("DataFlowIssue") // AE's valid entangled-singularity check requires NBT.
         long frequency = paired.getTagCompound().getLong("entangled_singularity_id");
         if (frequency == 0) {
             status = GuiText.WirelessTerminalNoSingularity.text();
@@ -208,7 +208,7 @@ public final class ConstructionMEAccess extends ItemGuiHost<BuilderInstrumentIte
     }
 
     @SuppressWarnings("DataFlowIssue")
-        // connect 成功时原构建器非空，AEItemKey.of 返回有效物品键。
+        // Successful connection retains a nonempty builder, so AEItemKey.of returns its item key.
     boolean openCrafting(List<GenericStack> missing) {
         if (missing.isEmpty() || connect() == null) return false;
         var result = AEItemKey.of(tool);
@@ -217,7 +217,7 @@ public final class ConstructionMEAccess extends ItemGuiHost<BuilderInstrumentIte
             provider, getPlayer().inventoryContainer);
     }
 
-    @SuppressWarnings("DataFlowIssue") // 本宿主的 locator 按类说明提供玩家背包槽位。
+    @SuppressWarnings("DataFlowIssue") // This host's locator identifies a player inventory slot.
     public void openMain() {
         var player = getPlayer();
         player.openGui(PrototypeEngineering.instance, ContainerStructureTool.GUI_ID, player.world, getPlayerInventorySlot(), 0, 0);

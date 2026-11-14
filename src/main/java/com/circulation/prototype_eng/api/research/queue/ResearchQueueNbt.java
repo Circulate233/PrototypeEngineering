@@ -4,7 +4,6 @@ import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.persistence.NbtCodec;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
@@ -24,7 +23,7 @@ public final class ResearchQueueNbt implements NbtCodec<TeamResearchQueue.Snapsh
 
     @SuppressWarnings("unused") // Public API using the default AE resource decoder.
     public ResearchQueueNbt(ResearchRegistry registry) {
-        this(registry, new ResourceKeyNbt());
+        this(registry, ResourceKeyNbt.INSTANCE);
     }
 
     public ResearchQueueNbt(ResearchRegistry registry, ResourceKeyNbt keys) {
@@ -43,7 +42,9 @@ public final class ResearchQueueNbt implements NbtCodec<TeamResearchQueue.Snapsh
         tag.setLong("LastGrantedEntryId", value.lastGrantedEntryId());
         tag.setLong("LastGrantedAt", value.lastGrantedWorldTime());
         var queue = new NBTTagList();
-        for (var entry : value.entries()) {
+        var elements = value.entries();
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var entry = elements.get(index1);
             var saved = new NBTTagCompound();
             saved.setString("Research", entry.key().researchId().toString());
             saved.setInteger("Level", entry.key().targetLevel());
@@ -54,7 +55,9 @@ public final class ResearchQueueNbt implements NbtCodec<TeamResearchQueue.Snapsh
         }
         tag.setTag("Queue", queue);
         var progress = new NBTTagList();
-        for (var state : value.progress()) {
+        var elements2 = value.progress();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var state = elements2.get(index2);
             var saved = new NBTTagCompound();
             saved.setString("Research", state.target().researchId().toString());
             saved.setInteger("Level", state.target().level());
@@ -83,56 +86,47 @@ public final class ResearchQueueNbt implements NbtCodec<TeamResearchQueue.Snapsh
 
     @Override
     public TeamResearchQueue.Snapshot decode(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Version", "Team", "NextEntryId", "Epoch", "UpdatedAt", "LastGrantedEntryId", "LastGrantedAt", "Queue", "Progress");
-        if (StrictNbt.requireInt(tag, "Version") != 3)
+        if (tag.getInteger("Version") != 3)
             throw new IllegalArgumentException("Unsupported research queue save version");
         var entries = new ObjectArrayList<TeamResearchQueue.Entry>();
-        var queue = StrictNbt.requireList(tag, "Queue", Constants.NBT.TAG_COMPOUND);
+        var queue = tag.getTagList("Queue", Constants.NBT.TAG_COMPOUND);
         if (queue.tagCount() > TeamResearchQueue.CAPACITY)
             throw new IllegalArgumentException("Saved research queue exceeds capacity");
         for (int index = 0; index < queue.tagCount(); index++) {
             var entry = queue.getCompoundTagAt(index);
-            StrictNbt.requireKeys(entry, "Research", "Level", "EntryId", "RequestedBy", "CreatedAt");
-            var key = new TeamResearchQueue.Key(StrictNbt.requireId(entry, "Research"), StrictNbt.requireInt(entry, "Level"), StrictNbt.requireLong(entry, "EntryId"));
-            entries.add(new TeamResearchQueue.Entry(key, UUID.fromString(StrictNbt.requireString(entry, "RequestedBy")), StrictNbt.requireLong(entry, "CreatedAt")));
+            var key = new TeamResearchQueue.Key(new ResourceLocation(entry.getString("Research")), entry.getInteger("Level"), entry.getLong("EntryId"));
+            entries.add(new TeamResearchQueue.Entry(key, UUID.fromString(entry.getString("RequestedBy")), entry.getLong("CreatedAt")));
         }
         var states = new ObjectArrayList<ResearchProgress.Snapshot>();
-        var progress = StrictNbt.requireList(tag, "Progress", Constants.NBT.TAG_COMPOUND);
+        var progress = tag.getTagList("Progress", Constants.NBT.TAG_COMPOUND);
         for (int index = 0; index < progress.tagCount(); index++) {
             var saved = progress.getCompoundTagAt(index);
-            StrictNbt.requireKeys(saved, "Research", "Level", "Elapsed", "Materials", "Resources");
-            var target = new ResearchProgress.Target(StrictNbt.requireId(saved, "Research"), StrictNbt.requireInt(saved, "Level"));
+            var target = new ResearchProgress.Target(new ResourceLocation(saved.getString("Research")), saved.getInteger("Level"));
             var materials = new AEKey2LongMap.OpenHashMap();
-            var materialList = StrictNbt.requireList(saved, "Materials", Constants.NBT.TAG_COMPOUND);
+            var materialList = saved.getTagList("Materials", Constants.NBT.TAG_COMPOUND);
             for (int materialIndex = 0; materialIndex < materialList.tagCount(); materialIndex++) {
                 var material = materialList.getCompoundTagAt(materialIndex);
-                StrictNbt.requireKeys(material, "Key", "Remaining");
-                var key = keys.decode(StrictNbt.requireCompound(material, "Key"));
+                var key = keys.decode(material.getCompoundTag("Key"));
                 if (materials.containsKey(key)) throw new IllegalArgumentException("Duplicate saved research material");
-                materials.put(key, StrictNbt.requireLong(material, "Remaining"));
+                materials.put(key, material.getLong("Remaining"));
             }
             var resources = new Reference2DoubleOpenHashMap<NetworkResourceType>();
-            var resourceList = StrictNbt.requireList(saved, "Resources", Constants.NBT.TAG_COMPOUND);
+            var resourceList = saved.getTagList("Resources", Constants.NBT.TAG_COMPOUND);
             for (int resourceIndex = 0; resourceIndex < resourceList.tagCount(); resourceIndex++) {
                 var resource = resourceList.getCompoundTagAt(resourceIndex);
-                StrictNbt.requireKeys(resource, "Resource", "Amount");
-                var type = resourceType(target, StrictNbt.requireId(resource, "Resource"));
+                var type = resourceType(target, new ResourceLocation(resource.getString("Resource")));
                 if (resources.containsKey(type))
                     throw new IllegalArgumentException("Duplicate saved research resource");
-                resources.put(type, StrictNbt.requireDouble(resource, "Amount"));
+                resources.put(type, resource.getDouble("Amount"));
             }
-            states.add(new ResearchProgress.Snapshot(target, StrictNbt.requireLong(saved, "Elapsed"), materials, resources));
+            states.add(new ResearchProgress.Snapshot(target, saved.getLong("Elapsed"), materials, resources));
         }
-        var result = new TeamResearchQueue.Snapshot(StrictNbt.requireString(tag, "Team"), entries, states,
-            StrictNbt.requireLong(tag, "NextEntryId"), StrictNbt.requireLong(tag, "Epoch"), StrictNbt.requireLong(tag, "UpdatedAt"),
-            StrictNbt.requireLong(tag, "LastGrantedEntryId"), StrictNbt.requireLong(tag, "LastGrantedAt"));
-        TeamResearchQueue.restore(registry, result);
-        return result;
+        return new TeamResearchQueue.Snapshot(tag.getString("Team"), entries, states,
+            tag.getLong("NextEntryId"), tag.getLong("Epoch"), tag.getLong("UpdatedAt"),
+            tag.getLong("LastGrantedEntryId"), tag.getLong("LastGrantedAt"));
     }
 
     private NetworkResourceType resourceType(ResearchProgress.Target target, ResourceLocation id) {
-        for (var type : registry.require(target.researchId()).stageForLevel(target.level()).resourceDemandForLevel(target.level()).keySet())
-            if (type.id().equals(id)) return type;
-        throw new IllegalArgumentException("Saved resource is not a research requirement: " + id);
+        return registry.require(target.researchId()).stageForLevel(target.level()).resourceFormula().resourceType(id);
     }
 }

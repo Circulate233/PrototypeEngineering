@@ -8,8 +8,6 @@ import net.minecraft.item.ItemStack;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
-
 @ZenRegister
 @ZenClass("mods.prototype_eng.research.ResearchDownloads")
 @SuppressWarnings("unused") // Public adapters are discovered by ZenScript.
@@ -17,13 +15,15 @@ public final class ZenResearchDownloads {
     private ZenResearchDownloads() {
     }
 
+    /**
+     * Registration items and callback outputs are borrowed read-only.
+     */
     @ZenMethod
     public static void register(IItemStack material, ZenResearchDownloadCallback callback) {
-        var key = CraftTweakerMC.getItemStack(Objects.requireNonNull(material)).copy();
-        Objects.requireNonNull(callback);
+        var key = CraftTweakerMC.getItemStack(material);
         DefinitionRegistrations.downloads(event -> event.registry().register(key, context -> {
             var output = callback.createOutput(new ZenResearchDownloadContext(context));
-            return output == null ? ItemStack.EMPTY : CraftTweakerMC.getItemStack(output).copy();
+            return output == null ? ItemStack.EMPTY : CraftTweakerMC.getItemStack(output);
         }));
     }
 }

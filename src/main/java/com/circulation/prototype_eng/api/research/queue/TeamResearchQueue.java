@@ -17,8 +17,6 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -29,6 +27,7 @@ import java.util.UUID;
 public final class TeamResearchQueue {
     public static final int CAPACITY = 5;
     private final ResearchRegistry registry;
+    private final ResearchEligibility eligibility;
     private final String teamId;
     private final Thread ownerThread = Thread.currentThread();
     private final ObjectArrayList<Entry> entries = new ObjectArrayList<>(CAPACITY);
@@ -45,6 +44,7 @@ public final class TeamResearchQueue {
         if (!registry.isFrozen()) throw new IllegalStateException("Research queue requires frozen definitions");
         if (teamId.isBlank()) throw new IllegalArgumentException("Research queue requires a team");
         this.registry = registry;
+        eligibility = new ResearchEligibility(registry);
         this.teamId = teamId;
     }
 
@@ -52,22 +52,29 @@ public final class TeamResearchQueue {
         var queue = new TeamResearchQueue(registry, saved.teamId());
         var ids = new LongOpenHashSet();
         var targets = new ObjectOpenHashSet<ResearchProgress.Target>();
-        for (var entry : saved.entries()) {
+        var elements6 = saved.entries();
+        for (int index6 = 0; index6 < elements6.size(); index6++) {
+            var entry = elements6.get(index6);
             var definition = registry.require(entry.key().researchId());
             definition.stageForLevel(entry.key().targetLevel());
             if (definition.specialOnly() || !ids.add(entry.key().queueEntryId()) || !targets.add(entry.key().target())
                 || entry.key().queueEntryId() >= saved.nextEntryId() || entry.createdAtWorldTime() > saved.updatedAtWorldTime())
                 throw new IllegalArgumentException("Invalid saved research queue entry");
         }
-        for (var state : saved.progress()) {
+        var elements5 = saved.progress();
+        for (int index5 = 0; index5 < elements5.size(); index5++) {
+            var state = elements5.get(index5);
             var work = new ResearchProgress(registry, state.target());
             work.restore(state);
             if (queue.progress.putIfAbsent(state.target(), work) != null)
                 throw new IllegalArgumentException("Duplicate saved research progress");
         }
-        for (var entry : saved.entries())
+        var elements = saved.entries();
+        for (int index4 = 0; index4 < elements.size(); index4++) {
+            var entry = elements.get(index4);
             if (!queue.progress.containsKey(entry.key().target()))
                 throw new IllegalArgumentException("Queued research lost its progress");
+        }
         queue.entries.addAll(saved.entries());
         queue.nextEntryId = saved.nextEntryId();
         queue.epoch = saved.epoch();
@@ -103,8 +110,10 @@ public final class TeamResearchQueue {
 
     public boolean containsTarget(ResourceLocation id, int level) {
         requireThread();
-        for (var entry : entries)
+        for (int index1 = 0; index1 < entries.size(); index1++) {
+            var entry = entries.get(index1);
             if (entry.key().researchId().equals(id) && entry.key().targetLevel() == level) return true;
+        }
         return false;
     }
 
@@ -117,9 +126,9 @@ public final class TeamResearchQueue {
         return displayEntries;
     }
 
-    public Optional<Entry> activeHead() {
+    public @Nullable Entry activeHead() {
         requireThread();
-        return entries.isEmpty() ? Optional.empty() : Optional.of(entries.getFirst());
+        return entries.isEmpty() ? null : entries.getFirst();
     }
 
     public @Nullable ResearchProgress progress(ResourceLocation id, int level) {
@@ -185,7 +194,7 @@ public final class TeamResearchQueue {
     }
 
     public void removeUnstarted(Key key) {
-        Objects.requireNonNull(remove(key, updatedAtWorldTime));
+        remove(key, updatedAtWorldTime);
     }
 
     public void completeHead(Key key) {
@@ -201,30 +210,32 @@ public final class TeamResearchQueue {
     /**
      * Records work ticks and remaining materials with the world checkpoint after settling player receipts.
      */
+    @SuppressWarnings("DataFlowIssue")
     public void recordManualProgress(Key key, long elapsed, AEKey2LongMap remaining, long worldTime) {
         requireBoundary();
         requireHead(key);
-        var work = Objects.requireNonNull(activeProgress());
+        var work = activeProgress();
         if (work.stage().researchTier() != 0)
             throw new IllegalArgumentException("Manual progress requires tier-zero research");
-        work.restore(new ResearchProgress.Snapshot(key.target(), elapsed, remaining, Reference2DoubleMaps.emptyMap()));
+        work.apply(new ResearchProgress.Snapshot(key.target(), elapsed, remaining, Reference2DoubleMaps.emptyMap()));
         lastGrantedEntryId = key.queueEntryId();
         lastGrantedWorldTime = worldTime;
         changed(worldTime);
     }
 
-    public Optional<SegmentPlan> planSegment(Key key, List<ResearchProgress.StationRate> stations,
+    @SuppressWarnings("DataFlowIssue")
+    public @Nullable SegmentPlan planSegment(Key key, List<ResearchProgress.StationRate> stations,
                                              Reference2DoubleMap<NetworkResourceType> available,
                                              AEKey2LongMap materials, long worldTime) {
         requireBoundary();
         var head = requireHead(key);
         if (worldTime < lastGrantedWorldTime) throw new IllegalArgumentException("Research time moved backwards");
-        if (worldTime == lastGrantedWorldTime) return Optional.empty();
-        var work = Objects.requireNonNull(activeProgress());
+        if (worldTime == lastGrantedWorldTime) return null;
+        var work = activeProgress();
         if (work.stage().researchTier() == 0)
             throw new IllegalStateException("Tier-zero research requires manual execution");
         var step = work.plan(stations, available, materials);
-        return step == null ? Optional.empty() : Optional.of(new SegmentPlan(this, head, epoch, worldTime, step));
+        return step == null ? null : new SegmentPlan(this, head, epoch, worldTime, step);
     }
 
     public GrantMutation prepareGrantSegment(SegmentPlan plan) {
@@ -239,11 +250,12 @@ public final class TeamResearchQueue {
         requireBoundary();
         if (view.registry() != registry || !view.teamId().equals(teamId))
             throw new IllegalArgumentException("Research view belongs to another team");
-        var eligibility = new ResearchEligibility(registry);
         var removed = new ObjectArrayList<Entry>();
-        for (var entry : entries)
+        for (int index2 = 0; index2 < entries.size(); index2++) {
+            var entry = entries.get(index2);
             if (!eligibility.structurallyEligible(view, entry.key().researchId(), entry.key().targetLevel()))
                 removed.add(entry);
+        }
         var mutation = new PruneMutation(this, removed, queueSnapshot());
         pendingMutation = mutation;
         return mutation;
@@ -287,23 +299,21 @@ public final class TeamResearchQueue {
         if (pendingMutation != null) throw new IllegalStateException("Research queue has an unsettled transaction");
     }
 
-    public record Key(ResourceLocation researchId, int targetLevel, long queueEntryId) {
-        public Key {
-            Objects.requireNonNull(researchId);
-            if (targetLevel < 1 || queueEntryId < 1) throw new IllegalArgumentException("Invalid queued research key");
+    public record Key(ResearchProgress.Target target, long queueEntryId) {
+        public Key(ResourceLocation researchId, int targetLevel, long queueEntryId) {
+            this(new ResearchProgress.Target(researchId, targetLevel), queueEntryId);
         }
 
-        public ResearchProgress.Target target() {
-            return new ResearchProgress.Target(researchId, targetLevel);
+        public ResourceLocation researchId() {
+            return target.researchId();
+        }
+
+        public int targetLevel() {
+            return target.level();
         }
     }
 
     public record Entry(Key key, UUID requestedBy, long createdAtWorldTime) {
-        public Entry {
-            Objects.requireNonNull(key);
-            Objects.requireNonNull(requestedBy);
-            if (createdAtWorldTime < 0) throw new IllegalArgumentException("Negative research request time");
-        }
     }
 
     /**
@@ -312,11 +322,6 @@ public final class TeamResearchQueue {
     public record Snapshot(String teamId, ObjectList<Entry> entries, ObjectList<ResearchProgress.Snapshot> progress,
                            long nextEntryId, long epoch, long updatedAtWorldTime, long lastGrantedEntryId,
                            long lastGrantedWorldTime) {
-        public Snapshot {
-            if (entries.size() > CAPACITY || nextEntryId < 1 || epoch < 0 || updatedAtWorldTime < 0
-                || lastGrantedEntryId >= nextEntryId || lastGrantedWorldTime > updatedAtWorldTime || lastGrantedWorldTime < -1)
-                throw new IllegalArgumentException("Invalid saved research queue counters");
-        }
 
         public @Nullable Key activeHead() {
             return entries.isEmpty() ? null : entries.getFirst().key();
@@ -325,7 +330,10 @@ public final class TeamResearchQueue {
         public Reference2DoubleMap<NetworkResourceType> resourceProgress() {
             var head = activeHead();
             if (head != null)
-                for (var state : progress) if (state.target().equals(head.target())) return state.resources();
+                for (int index3 = 0; index3 < progress.size(); index3++) {
+                    var state = progress.get(index3);
+                    if (state.target().equals(head.target())) return state.resources();
+                }
             return Reference2DoubleMaps.emptyMap();
         }
     }
@@ -401,7 +409,7 @@ public final class TeamResearchQueue {
         private GrantMutation(TeamResearchQueue owner, SegmentPlan plan) {
             this.owner = owner;
             this.plan = plan;
-            work = Objects.requireNonNull(owner.activeProgress());
+            work = owner.activeProgress();
             previousTime = owner.updatedAtWorldTime;
             previousGrant = owner.lastGrantedEntryId;
             previousGrantTime = owner.lastGrantedWorldTime;

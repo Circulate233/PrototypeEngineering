@@ -102,11 +102,13 @@ public final class TopologicalComponentMap<K, C> {
      * All preflight precedes the caller's admitted atomic map writes.
      */
     void installPrepared(List<PreparedNode<K, C>> prepared) {
-        for (var candidate : prepared) {
+        for (int index1 = 0; index1 < prepared.size(); index1++) {
+            var candidate = prepared.get(index1);
             if (candidate.revision() != revision)
                 throw new IllegalStateException("Component graph changed after insertion preparation");
         }
-        for (var candidate : prepared) {
+        for (int index4 = 0; index4 < prepared.size(); index4++) {
+            var candidate = prepared.get(index4);
             var node = candidate.node();
             nodes.remove(node.key());
             nodes.put(node.key(), node);
@@ -170,7 +172,8 @@ public final class TopologicalComponentMap<K, C> {
             }
         }
         add(key, component);
-        for (K root : roots) {
+        for (int index = 0; index < roots.size(); index++) {
+            K root = roots.get(index);
             addDependency(root, key);
         }
     }
@@ -262,7 +265,8 @@ public final class TopologicalComponentMap<K, C> {
             if (next == null) {
                 continue;
             }
-            for (K dependent : next) {
+            for (int index3 = 0; index3 < next.size(); index3++) {
+                K dependent = next.get(index3);
                 if (!work.take()) return null;
                 if (indegrees.addTo(dependent, -1) == 1) {
                     queue.add(dependent);
@@ -275,7 +279,8 @@ public final class TopologicalComponentMap<K, C> {
                 if (!work.take()) return null;
                 remaining.add(key);
             }
-            for (var key : queue) {
+            for (int index2 = 0; index2 < queue.size(); index2++) {
+                var key = queue.get(index2);
                 if (!work.take()) return null;
                 remaining.remove(key);
             }

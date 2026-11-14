@@ -11,6 +11,7 @@ import java.util.Objects;
  * Ordered, thread-safe registrations for machine lifecycle listeners.
  * Publishers capture one {@link #snapshot()} per publication, so changes made during a callback
  * take effect on the next publication. Callbacks run outside this registry's lock.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class MachineLifecycleRegistry {
     public static final MachineLifecycleRegistry GLOBAL = new MachineLifecycleRegistry();
@@ -25,7 +26,8 @@ public final class MachineLifecycleRegistry {
      */
     public synchronized Subscription register(MachineLifecycleListener listener) {
         Objects.requireNonNull(listener, "listener");
-        for (var entry : entries) {
+        for (int index3 = 0; index3 < entries.size(); index3++) {
+            var entry = entries.get(index3);
             if (entry.listener == listener) {
                 throw new IllegalArgumentException("Machine lifecycle listener is already registered: "
                     + listener.getClass().getName());
@@ -42,7 +44,8 @@ public final class MachineLifecycleRegistry {
      */
     public synchronized boolean unregister(MachineLifecycleListener listener) {
         Objects.requireNonNull(listener, "listener");
-        for (var entry : entries) {
+        for (int index2 = 0; index2 < entries.size(); index2++) {
+            var entry = entries.get(index2);
             if (entry.listener == listener) {
                 return remove(entry);
             }
@@ -65,7 +68,8 @@ public final class MachineLifecycleRegistry {
         Objects.requireNonNull(host).requireServerThread();
         var event = new MachineLifecycleEvent.UnassembledControllerBroken(host, host.identity(), ownership);
         Throwable failure = null;
-        for (var listener : snapshot) {
+        for (int index4 = 0; index4 < snapshot.size(); index4++) {
+            var listener = snapshot.get(index4);
             try {
                 listener.onUnassembledControllerBroken(event);
             } catch (RuntimeException | Error cleanup) {
@@ -96,7 +100,8 @@ public final class MachineLifecycleRegistry {
 
     private void publishSnapshot() {
         var listeners = new ObjectArrayList<MachineLifecycleListener>(entries.size());
-        for (var entry : entries) {
+        for (int index = 0; index < entries.size(); index++) {
+            var entry = entries.get(index);
             listeners.add(entry.listener);
         }
         snapshot = List.copyOf(listeners);

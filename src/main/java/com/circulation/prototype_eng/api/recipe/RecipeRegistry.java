@@ -44,7 +44,11 @@ public final class RecipeRegistry {
 
     private static Map<ResourceLocation, MachineRecipe> canonicalRecipes(RecipeCatalog catalog) {
         var recipes = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineRecipe>();
-        for (var recipe : catalog.recipes()) recipes.put(recipe.id(), recipe);
+        var elements = catalog.recipes();
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var recipe = elements.get(index1);
+            recipes.put(recipe.id(), recipe);
+        }
         return Object2ObjectMaps.unmodifiable(recipes);
     }
 
@@ -140,12 +144,16 @@ public final class RecipeRegistry {
         }
         var users = new Object2ObjectLinkedOpenHashMap<ResourceLocation, ObjectArrayList<MachineType>>();
         var machineIds = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineType>(machines.size());
-        for (var machine : Objects.requireNonNull(machines, "machine declarations")) {
+        var elements6 = Objects.requireNonNull(machines, "machine declarations");
+        for (int index6 = 0; index6 < elements6.size(); index6++) {
+            var machine = elements6.get(index6);
             Objects.requireNonNull(machine, "machine declaration");
             if (machineIds.putIfAbsent(machine.id(), machine) != null) {
                 throw new IllegalArgumentException("Duplicate machine declaration: " + machine.id());
             }
-            for (var poolId : machine.recipePoolIds()) {
+            var elements4 = machine.recipePoolIds();
+            for (int index4 = 0; index4 < elements4.size(); index4++) {
+                var poolId = elements4.get(index4);
                 if (!registrations.containsKey(poolId)) {
                     throw new IllegalArgumentException("Unknown recipe pool " + poolId + " for machine " + machine.id());
                 }
@@ -179,7 +187,8 @@ public final class RecipeRegistry {
             }
             addRevision(revisions, history, recipe, revision);
         });
-        for (var definition : historicalDeclarations) {
+        for (int index = 0; index < historicalDeclarations.size(); index++) {
+            var definition = historicalDeclarations.get(index);
             if (!canonical.containsKey(definition.recipe().id())) {
                 throw new IllegalArgumentException("Historical recipe ID is not registered: " + definition.recipe().id());
             }
@@ -189,8 +198,11 @@ public final class RecipeRegistry {
             addRevision(revisions, history, definition.recipe(), definition.revision());
         }
         if (processCodecs != null) {
-            for (var codec : processCodecs.snapshot().codecs())
+            var elements2 = processCodecs.snapshot().codecs();
+            for (int index2 = 0; index2 < elements2.size(); index2++) {
+                var codec = elements2.get(index2);
                 addRevision(revisions, history, codec.recipe(), codec.revision());
+            }
         }
         frozen = new Snapshot(this, 0, Object2ObjectMaps.unmodifiable(pools), frozenPools, catalog, canonical, revisions, history);
         registrations.clear();
@@ -285,10 +297,13 @@ public final class RecipeRegistry {
             codecPreparation = processCodecs.prepare(currentCodecs, bindings);
         }
         var pools = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>(expected.orderedPools.size());
-        for (var old : expected.orderedPools) {
+        for (int index7 = 0; index7 < expected.orderedPools.size(); index7++) {
+            var old = expected.orderedPools.get(index7);
             boolean changed = false;
             var recipes = new ObjectArrayList<MachineRecipe>(old.recipes().size());
-            for (var recipe : old.recipes()) {
+            var elements3 = old.recipes();
+            for (int index3 = 0; index3 < elements3.size(); index3++) {
+                var recipe = elements3.get(index3);
                 var replacement = definitions.get(recipe.id());
                 recipes.add(replacement == null ? recipe : replacement.recipe());
                 changed |= replacement != null;
@@ -589,7 +604,9 @@ public final class RecipeRegistry {
             existingJeiPageId = pool.existingJeiPageId();
             if (translationKey == null || translationKey.isBlank())
                 throw new IllegalArgumentException("Pool title is required");
-            for (MachineRecipe recipe : Objects.requireNonNull(pool.recipes(), "pool recipes")) {
+            var elements5 = Objects.requireNonNull(pool.recipes(), "pool recipes");
+            for (int index5 = 0; index5 < elements5.size(); index5++) {
+                MachineRecipe recipe = elements5.get(index5);
                 Objects.requireNonNull(recipe, "pool recipe");
                 if (recipes.putIfAbsent(recipe.id(), recipe) != null)
                     throw new IllegalArgumentException("Duplicate recipe in pool " + pool.id() + ": " + recipe.id());

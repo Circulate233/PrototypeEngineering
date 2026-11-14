@@ -41,7 +41,8 @@ public final class ScriptJeiEvents {
         var bindings = ClientJeiDeclarations.freeze();
         var defaults = ClientJeiDeclarations.defaults();
         if (defaults != null) JeiRenderOptions.defaults(options(defaults));
-        for (var binding : bindings) {
+        for (int index = 0; index < bindings.size(); index++) {
+            var binding = bindings.get(index);
             if (binding.options() != null) event.pages().renderOptions(binding.pool(), options(binding.options()));
             if (binding.page() != null) {
                 var page = PAGES.get(binding.page().id());

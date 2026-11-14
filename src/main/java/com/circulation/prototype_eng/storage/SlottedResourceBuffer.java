@@ -63,7 +63,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
      * The insertion predicate is immutable, thread-safe and independent of inventory state.
      */
     public SlottedResourceBuffer(int slots, Reference2LongMap<AEKeyType> capacities, Predicate<AEKey> accepted, Runnable onChanged) {
-        this.accepted = Objects.requireNonNull(accepted);
+        this.accepted = accepted;
         if (slots <= 0 || capacities.isEmpty()) {
             throw new IllegalArgumentException("A buffer needs slots and supported resource types");
         }

@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.research.content;
 
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.content.ResearchContent;
 import com.circulation.prototype_eng.api.research.content.ResearchContentLoadResult;
 import com.google.gson.Gson;
@@ -51,7 +50,7 @@ public final class ResearchContentLoader {
         };
         if (kind == ResearchContent.Kind.ICON && icon.has("meta"))
             throw new IllegalArgumentException("Icon-map entries must not define metadata");
-        var id = checkedId(StrictNbt.requireId(string(icon, "id").trim()));
+        var id = checkedId(new ResourceLocation(string(icon, "id").trim()));
         int meta = icon.has("meta") ? meta(required(icon, "meta")) : 0;
         return new ResearchContent.Icon(kind, id, meta);
     }

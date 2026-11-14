@@ -1,23 +1,23 @@
 package com.circulation.prototype_eng.api.network;
 
-import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
-
-import com.circulation.prototype_eng.api.machine.ControllerEnergy;
 import com.circulation.prototype_eng.api.machine.ComputerController;
+import com.circulation.prototype_eng.api.machine.ControllerEnergy;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
-import com.circulation.prototype_eng.api.research.station.ResearchStation;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
+import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
+import com.circulation.prototype_eng.api.research.station.ResearchStation;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolver;
 import com.circulation.prototype_eng.api.transaction.ReservedTransaction;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.util.ResourceLocation;
@@ -30,8 +30,8 @@ import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.LongFunction;
-import java.util.function.ToDoubleFunction;
 import java.util.function.Supplier;
+import java.util.function.ToDoubleFunction;
 
 /**
  * Owner-thread network publication for one identity registry. Previous results are revoked before
@@ -142,7 +142,10 @@ public final class NetworkRuntime implements AutoCloseable {
 
     private static void rollbackSupply(List<? extends ReservedTransaction> payments) {
         var tokens = new ObjectArrayList<ResourceReservation>();
-        for (var payment : payments) tokens.addAll(payment.reservations());
+        for (int index9 = 0; index9 < payments.size(); index9++) {
+            var payment = payments.get(index9);
+            tokens.addAll(payment.reservations());
+        }
         ResourceTransactions.rollback(tokens, () -> {
             for (int i = payments.size() - 1; i >= 0; i--) payments.get(i).rollback();
         });
@@ -154,6 +157,7 @@ public final class NetworkRuntime implements AutoCloseable {
      * Exceptions propagate with the publication already revoked. Participant sources must supply only
      * current ACTIVE snapshots and validate their version until this owner boundary returns.
      */
+    @SuppressWarnings("DataFlowIssue")
     public boolean refresh(LongFunction<? extends List<NetworkContribution>> participants) {
         requireMutation();
         if (!ticking) {
@@ -226,9 +230,10 @@ public final class NetworkRuntime implements AutoCloseable {
                     && plan.workStates().get(entry.getValue().snapshot().identity().machineId()) == NetworkWorkState.ACTIVE_DEVICE)
                     supplyOrder.add(entry.getKey());
             supplyOrder.sort(Comparator.comparing(registration -> registration.identity.identity().machineId()));
-            for (var registration : supplyOrder) {
+            for (int index6 = 0; index6 < supplyOrder.size(); index6++) {
+                var registration = supplyOrder.get(index6);
                 var capture = captures.get(registration);
-                var work = Objects.requireNonNull(capture.computerWork()).apply(tick);
+                var work = capture.computerWork().apply(tick);
                 computerWork.put(registration, work);
                 var snapshot = withResources(capture.snapshot(), work.concurrency(), work.resources());
                 captures.put(registration, new Capture(snapshot, capture.current(), capture.centerPower(), capture.computerWork()));
@@ -261,15 +266,24 @@ public final class NetworkRuntime implements AutoCloseable {
             payments.addAll(upkeep);
             payments.addAll(computerWork.values());
             var tokens = new ObjectArrayList<ResourceReservation>();
-            for (var payment : payments) tokens.addAll(payment.reservations());
+            for (int index1 = 0; index1 < payments.size(); index1++) {
+                var payment = payments.get(index1);
+                tokens.addAll(payment.reservations());
+            }
             powerSettled = true; // ResourceTransactions now owns all completion/compensation paths.
             if (!ResourceTransactions.commit(tokens,
                 () -> {
-                    for (var payment : payments) if (!payment.prepareCommit()) return false;
+                    for (int index2 = 0; index2 < payments.size(); index2++) {
+                        var payment = payments.get(index2);
+                        if (!payment.prepareCommit()) return false;
+                    }
                     return true;
                 },
                 () -> {
-                    for (var payment : payments) if (!payment.validateCommit()) return false;
+                    for (int index3 = 0; index3 < payments.size(); index3++) {
+                        var payment = payments.get(index3);
+                        if (!payment.validateCommit()) return false;
+                    }
                     return true;
                 },
                 () -> payments.forEach(ReversibleTransaction::commit),
@@ -291,7 +305,9 @@ public final class NetworkRuntime implements AutoCloseable {
             budgets.putAll(additions);
             for (var entry : plan.teams().entrySet())
                 budgets.get(entry.getKey()).refreshCapacity(entry.getValue().concurrencyPerTick(), entry.getValue().resourcesPerTick());
-            for (var registration : admission.services()) {
+            var elements = admission.services();
+            for (int index11 = 0; index11 < elements.size(); index11++) {
+                var registration = elements.get(index11);
                 var id = registration.identity.identity().machineId();
                 budgets.get(plan.teamIds().get(id)).requestNetworkLease(id);
             }
@@ -327,7 +343,8 @@ public final class NetworkRuntime implements AutoCloseable {
             if (owner.accepted()) grouped.computeIfAbsent(owner.teamId(), _ -> new ObjectArrayList<>())
                                          .add(new NetworkData.Device(registration.identity.location(), entry.getValue().snapshot()));
         }
-        for (var contribution : contributions) {
+        for (int index12 = 0; index12 < contributions.size(); index12++) {
+            var contribution = contributions.get(index12);
             var owner = inputs.owner(contribution.ownerId());
             if (owner.accepted())
                 external.computeIfAbsent(owner.teamId(), _ -> new ObjectArrayList<>()).add(contribution);
@@ -377,6 +394,7 @@ public final class NetworkRuntime implements AutoCloseable {
         var databases = new ObjectArrayList<Registration>();
         var services = new ObjectArrayList<Registration>();
         var rejected = new Object2ObjectOpenHashMap<UUID, String>();
+        var rejectedDatabases = new ObjectOpenHashSet<String>();
         for (var registration : captures.keySet()) {
             var snapshot = captures.get(registration).snapshot();
             var id = snapshot.identity().machineId();
@@ -388,12 +406,14 @@ public final class NetworkRuntime implements AutoCloseable {
                 computers.add(registration);
             else if (state == NetworkWorkState.ACTIVE_DATA_CENTER) databases.add(registration);
         }
-        for (var contribution : contributions) {
+        for (int index13 = 0; index13 < contributions.size(); index13++) {
+            var contribution = contributions.get(index13);
             var owner = inputs.owner(contribution.ownerId());
             var capacity = owner.accepted() ? capacities.get(owner.teamId()) : null;
             if (capacity != null) capacity.add(contribution.concurrencyPerTick());
         }
-        for (var snapshot : devices) {
+        for (int index5 = 0; index5 < devices.size(); index5++) {
+            var snapshot = devices.get(index5);
             if (snapshot.role() != NetworkDeviceRole.COMPUTER
                 && initial.workStates().get(snapshot.identity().machineId()) == NetworkWorkState.ACTIVE_DEVICE)
                 capacities.get(initial.teamIds().get(snapshot.identity().machineId())).add(snapshot.concurrencyPerTick());
@@ -411,7 +431,8 @@ public final class NetworkRuntime implements AutoCloseable {
         computers.sort(Comparator.<Registration>comparingLong(registration ->
                                      captures.get(registration).snapshot().concurrencyPerTick()).reversed()
                                  .thenComparing(registration -> registration.identity.identity().machineId()));
-        for (var registration : computers) {
+        for (int index7 = 0; index7 < computers.size(); index7++) {
+            var registration = computers.get(index7);
             var snapshot = captures.get(registration).snapshot();
             var team = initial.teamIds().get(snapshot.identity().machineId());
             var capacity = capacities.get(team);
@@ -421,7 +442,8 @@ public final class NetworkRuntime implements AutoCloseable {
                 services.add(registration);
             } else rejected.put(snapshot.identity().machineId(), team);
         }
-        for (var registration : databases) {
+        for (int index8 = 0; index8 < databases.size(); index8++) {
+            var registration = databases.get(index8);
             var id = registration.identity.identity().machineId();
             var team = initial.teamIds().get(id);
             var capacity = capacities.get(team);
@@ -432,10 +454,14 @@ public final class NetworkRuntime implements AutoCloseable {
                 capacity.claimed++;
                 capacity.add(captures.get(registration).snapshot().concurrencyPerTick());
                 services.add(registration);
-            } else {
-                for (var snapshot : devices)
-                    if (snapshot.role() == NetworkDeviceRole.DATA_CENTER && team.equals(initial.teamIds().get(snapshot.identity().machineId())))
-                        rejected.put(snapshot.identity().machineId(), team);
+            } else rejectedDatabases.add(team);
+        }
+        if (!rejectedDatabases.isEmpty()) {
+            for (int index = 0; index < devices.size(); index++) {
+                var snapshot = devices.get(index);
+                var team = initial.teamIds().get(snapshot.identity().machineId());
+                if (snapshot.role() == NetworkDeviceRole.DATA_CENTER && rejectedDatabases.contains(team))
+                    rejected.put(snapshot.identity().machineId(), team);
             }
         }
         devices.removeIf(snapshot -> rejected.containsKey(snapshot.identity().machineId()));
@@ -446,13 +472,12 @@ public final class NetworkRuntime implements AutoCloseable {
         }
         var plan = NetworkPlanner.plan(inputs.withDevices(devices));
         if (!rejected.isEmpty()) {
-            var states = new Object2ObjectOpenHashMap<>(plan.workStates());
-            var owners = new Object2ObjectOpenHashMap<>(plan.teamIds());
+            var states = plan.workStates();
+            var owners = plan.teamIds();
             for (var entry : rejected.entrySet()) {
                 states.put(entry.getKey(), NetworkWorkState.INSUFFICIENT_THREADS);
                 owners.put(entry.getKey(), entry.getValue());
             }
-            plan = new NetworkPlan(epoch, states, owners, new Object2ObjectOpenHashMap<>(plan.teams()));
         }
         return new Admission(plan, services);
     }
@@ -482,7 +507,10 @@ public final class NetworkRuntime implements AutoCloseable {
     private static void rollbackPower(List<ControllerEnergy.Payment> payments) {
         if (payments.isEmpty()) return;
         var tokens = new ObjectArrayList<ResourceReservation>();
-        for (var payment : payments) tokens.addAll(payment.reservations());
+        for (int index10 = 0; index10 < payments.size(); index10++) {
+            var payment = payments.get(index10);
+            tokens.addAll(payment.reservations());
+        }
         payments.clear();
         ResourceTransactions.rollback(tokens);
     }
@@ -593,10 +621,6 @@ public final class NetworkRuntime implements AutoCloseable {
             this(snapshot, current, centerPower, null);
         }
 
-        public Capture {
-            Objects.requireNonNull(snapshot);
-            Objects.requireNonNull(current);
-        }
     }
 
     /**

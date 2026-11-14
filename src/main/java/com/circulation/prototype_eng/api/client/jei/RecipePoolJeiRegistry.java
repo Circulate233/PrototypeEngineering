@@ -44,7 +44,10 @@ public class RecipePoolJeiRegistry {
 
     public static List<MachineRecipe> recipesForOwnPages(List<RecipePool> pools, Set<String> existingCategoryIds) {
         var result = new ObjectArrayList<MachineRecipe>();
-        for (var pool : pools) if (externalPage(pool, existingCategoryIds) == null) result.addAll(pool.recipes());
+        for (int index2 = 0; index2 < pools.size(); index2++) {
+            var pool = pools.get(index2);
+            if (externalPage(pool, existingCategoryIds) == null) result.addAll(pool.recipes());
+        }
         return ObjectLists.unmodifiable(result);
     }
 
@@ -140,7 +143,8 @@ public class RecipePoolJeiRegistry {
         binding = true;
         try {
             var known = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>(pools.size());
-            for (var pool : pools) {
+            for (int index3 = 0; index3 < pools.size(); index3++) {
+                var pool = pools.get(index3);
                 if (known.putIfAbsent(Objects.requireNonNull(pool).id(), pool) != null) {
                     throw new IllegalArgumentException("Duplicate frozen recipe pool: " + pool.id());
                 }
@@ -161,7 +165,8 @@ public class RecipePoolJeiRegistry {
             }
             var resolved = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePoolJeiPage>();
             var external = new Object2ObjectLinkedOpenHashMap<ResourceLocation, String>();
-            for (var pool : pools) {
+            for (int index6 = 0; index6 < pools.size(); index6++) {
+                var pool = pools.get(index6);
                 var target = externalPage(pool, existingCategoryIds);
                 if (target != null) {
                     external.put(pool.id(), target);
@@ -209,7 +214,10 @@ public class RecipePoolJeiRegistry {
         requireFrozen();
         requireSamePools(pools);
         var result = new ObjectArrayList<MachineRecipe>();
-        for (var pool : pools) if (pages.containsKey(pool.id())) result.addAll(pool.recipes());
+        for (int index1 = 0; index1 < pools.size(); index1++) {
+            var pool = pools.get(index1);
+            if (pages.containsKey(pool.id())) result.addAll(pool.recipes());
+        }
         return ObjectLists.unmodifiable(result);
     }
 
@@ -220,7 +228,8 @@ public class RecipePoolJeiRegistry {
         requireFrozen();
         if (pools.size() != registeredPools.size()) return false;
         var remaining = new Object2ObjectLinkedOpenHashMap<>(registeredPools);
-        for (var pool : pools) {
+        for (int index4 = 0; index4 < pools.size(); index4++) {
+            var pool = pools.get(index4);
             var previous = remaining.remove(pool.id());
             if (previous == null || previous.hasExistingJeiPage() != pool.hasExistingJeiPage()
                 || !Objects.equals(previous.existingJeiPageId(), pool.existingJeiPageId()))
@@ -248,7 +257,8 @@ public class RecipePoolJeiRegistry {
         if (!acceptsPools(pools)) return null;
         var updates = new ObjectArrayList<RecipePoolJeiPage.PreparedUpdate>();
         var remaining = new Object2ObjectLinkedOpenHashMap<>(pages);
-        for (var pool : pools) {
+        for (int index5 = 0; index5 < pools.size(); index5++) {
+            var pool = pools.get(index5);
             if (externalPages.containsKey(pool.id())) continue;
             var page = remaining.remove(pool.id());
             if (page == null) throw new IllegalArgumentException("JEI replacement has unknown pool: " + pool.id());
@@ -269,7 +279,8 @@ public class RecipePoolJeiRegistry {
         var result = new ObjectArrayList<ItemStack>();
         var entries = catalysts.get(poolId);
         if (entries != null) {
-            for (var stack : entries) {
+            for (int index = 0; index < entries.size(); index++) {
+                var stack = entries.get(index);
                 result.add(stack.copy());
             }
         }

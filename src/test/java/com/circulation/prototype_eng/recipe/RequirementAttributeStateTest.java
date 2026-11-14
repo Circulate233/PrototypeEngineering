@@ -14,7 +14,6 @@ import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.persistence.NbtCodec;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayType;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
@@ -339,8 +338,7 @@ class RequirementAttributeStateTest {
 
         @Override
         public void restore(RecipeProcess process, Listener component, NBTTagCompound data) {
-            StrictNbt.requireKeys(data, "Calls");
-            component.calls = StrictNbt.requireInt(data, "Calls");
+            component.calls = data.getInteger("Calls");
         }
     }
 
@@ -354,8 +352,7 @@ class RequirementAttributeStateTest {
 
         @Override
         public ResourceLocation decode(NBTTagCompound tag) {
-            StrictNbt.requireKeys(tag, "Id");
-            return StrictNbt.requireId(tag, "Id");
+            return new ResourceLocation(tag.getString("Id"));
         }
     }
 

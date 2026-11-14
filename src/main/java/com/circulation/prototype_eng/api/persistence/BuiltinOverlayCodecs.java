@@ -12,6 +12,7 @@ import java.util.Objects;
 
 /**
  * Built-in patch data only; overlay type registration remains the host's responsibility.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class BuiltinOverlayCodecs {
     public static final NbtCodec<EnergyRequirementPatch> ENERGY_RATES = new NbtCodec<>() {
@@ -33,10 +34,9 @@ public final class BuiltinOverlayCodecs {
 
         @Override
         public EnergyRequirementPatch decode(NBTTagCompound tag) {
-            StrictNbt.requireKeys(tag, "InputsPerTick", "OutputsPerTick", "VoidExcessOutputs");
-            return new EnergyRequirementPatch(tag.hasKey("InputsPerTick") ? StrictNbt.requireLong(tag, "InputsPerTick") : null,
-                tag.hasKey("OutputsPerTick") ? StrictNbt.requireLong(tag, "OutputsPerTick") : null,
-                tag.hasKey("VoidExcessOutputs") ? StrictNbt.requireBoolean(tag, "VoidExcessOutputs") : null);
+            return new EnergyRequirementPatch(tag.hasKey("InputsPerTick") ? tag.getLong("InputsPerTick") : null,
+                tag.hasKey("OutputsPerTick") ? tag.getLong("OutputsPerTick") : null,
+                tag.hasKey("VoidExcessOutputs") ? tag.getBoolean("VoidExcessOutputs") : null);
         }
     };
 
@@ -62,9 +62,8 @@ public final class BuiltinOverlayCodecs {
 
             @Override
             public ResourceRequirementPatch decode(NBTTagCompound tag) {
-                StrictNbt.requireKeys(tag, "Inputs", "InputsPerTick", "OutputsPerTick", "Outputs", "VoidExcessOutputs");
                 return new ResourceRequirementPatch(read(tag, "Inputs"), read(tag, "InputsPerTick"), read(tag, "OutputsPerTick"),
-                    read(tag, "Outputs"), tag.hasKey("VoidExcessOutputs") ? StrictNbt.requireBoolean(tag, "VoidExcessOutputs") : null);
+                    read(tag, "Outputs"), tag.hasKey("VoidExcessOutputs") ? tag.getBoolean("VoidExcessOutputs") : null);
             }
 
             private void write(NBTTagCompound tag, String field, @Nullable List<GenericStack> stacks) {
@@ -74,7 +73,7 @@ public final class BuiltinOverlayCodecs {
             }
 
             private @Nullable List<GenericStack> read(NBTTagCompound tag, String field) {
-                return tag.hasKey(field) ? resources.readStacks(StrictNbt.requireList(tag, field, Constants.NBT.TAG_COMPOUND)) : null;
+                return tag.hasKey(field) ? resources.readStacks(tag.getTagList(field, Constants.NBT.TAG_COMPOUND)) : null;
             }
         };
     }

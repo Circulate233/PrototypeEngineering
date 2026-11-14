@@ -447,8 +447,11 @@ public final class StructurePreviewPanel implements AutoCloseable {
         if (constructionMaterialsToken != view.token()) {
             constructionMaterialsToken = view.token();
             var counts = new Object2LongLinkedOpenHashMap<ConstructionChoice>();
-            for (var line : model.bom())
+            var elements = model.bom();
+            for (int index5 = 0; index5 < elements.size(); index5++) {
+                var line = elements.get(index5);
                 counts.addTo(new ConstructionChoice(line.display(), view.alternative(line.display())), line.count());
+            }
             var position = new BlockPos.MutableBlockPos();
             for (var entries = view.settings().cellOptions().fastIterator(); entries.hasNext(); ) {
                 var entry = entries.next();
@@ -613,8 +616,10 @@ public final class StructurePreviewPanel implements AutoCloseable {
 
     public void dismissMaterialsOutside(int x, int y) {
         if (!view.materialsOpen || MATERIAL_PANEL.contains(x, y)) return;
-        for (var action : actions)
+        for (int index2 = 0; index2 < actions.size(); index2++) {
+            var action = actions.get(index2);
             if (action.id.equals("material_preview_ui") && action.contains(x, y)) return;
+        }
         dismissMaterials();
     }
 
@@ -659,7 +664,8 @@ public final class StructurePreviewPanel implements AutoCloseable {
             String previous = pressed;
             pressed = null;
             pressedButton = -1;
-            for (var action : actions)
+            for (int index4 = 0; index4 < actions.size(); index4++) {
+                var action = actions.get(index4);
                 if (previous.equals(action.id) && action.contains(x, y)) {
                     var run = button == 1 ? action.rightRun : action.run;
                     if (run == null) break;
@@ -667,6 +673,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
                     invalidateSlots();
                     break;
                 }
+            }
             return true;
         }
         var rect = scene.viewport();
@@ -693,7 +700,10 @@ public final class StructurePreviewPanel implements AutoCloseable {
                 view.layer = Math.clamp(view.layer + Integer.signum(delta), bounds.min().getY(), bounds.max().getY());
             return true;
         }
-        for (var action : actions) if (action.contains(x, y)) return true;
+        for (int index1 = 0; index1 < actions.size(); index1++) {
+            var action = actions.get(index1);
+            if (action.contains(x, y)) return true;
+        }
         if (view.materialsOpen && new Rect(29, 31, 134, 163).contains(x, y)) return true;
         var rect = scene.viewport();
         return scene.wheel(rect.x() + x - SCENE_X, rect.y() + y - SCENE_Y, delta);
@@ -745,12 +755,14 @@ public final class StructurePreviewPanel implements AutoCloseable {
 
     public @Nullable Slot slotAt(int x, int y, int offsetX, int offsetY) {
         if (!inputCurrent()) return null;
-        for (var item : itemSlots)
+        for (int index3 = 0; index3 < itemSlots.size(); index3++) {
+            var item = itemSlots.get(index3);
             if (item.bounds.contains(x, y) && (item.clip == null || item.clip.contains(x, y))) {
                 item.slot.xPos = (int) item.bounds.x + offsetX + 1;
                 item.slot.yPos = (int) item.bounds.y + offsetY + 1;
                 return item.slot;
             }
+        }
         return null;
     }
 

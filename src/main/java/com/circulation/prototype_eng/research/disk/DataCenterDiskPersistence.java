@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.research.disk;
 
 import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
@@ -37,10 +36,10 @@ final class DataCenterDiskPersistence {
         try {
             try (var input = region.getChunkDataInputStream(x & 31, z & 31)) {
                 if (input == null) throw new IOException("Saved database chunk is missing or unreadable");
-                var level = StrictNbt.requireCompound(CompressedStreamTools.read(input), "Level");
-                if (StrictNbt.requireInt(level, "xPos") != x || StrictNbt.requireInt(level, "zPos") != z)
+                var level = CompressedStreamTools.read(input).getCompoundTag("Level");
+                if (level.getInteger("xPos") != x || level.getInteger("zPos") != z)
                     throw new IOException("Saved database chunk coordinates differ");
-                var tiles = StrictNbt.requireList(level, "TileEntities", Constants.NBT.TAG_COMPOUND);
+                var tiles = level.getTagList("TileEntities", Constants.NBT.TAG_COMPOUND);
                 int matches = 0;
                 for (int index = 0; index < tiles.tagCount(); index++) {
                     var tile = tiles.getCompoundTagAt(index);
@@ -66,29 +65,29 @@ final class DataCenterDiskPersistence {
                            ResourceLocation storageType, ResourceLocation ownershipType, String nativeId,
                            NBTTagCompound expected) throws IOException {
         try {
-            if (nativeId.isEmpty() || !StrictNbt.requireString(tile, "id").equals(nativeId)
-                || StrictNbt.requireInt(tile, "x") != location.controllerPos().getX()
-                || StrictNbt.requireInt(tile, "y") != location.controllerPos().getY()
-                || StrictNbt.requireInt(tile, "z") != location.controllerPos().getZ())
+            if (nativeId.isEmpty() || !tile.getString("id").equals(nativeId)
+                || tile.getInteger("x") != location.controllerPos().getX()
+                || tile.getInteger("y") != location.controllerPos().getY()
+                || tile.getInteger("z") != location.controllerPos().getZ())
                 throw new IOException("Saved database tile type or coordinates differ");
-            var envelope = StrictNbt.requireCompound(tile, "Machine");
-            var runtime = StrictNbt.requireCompound(envelope, "Runtime");
-            if (StrictNbt.requireInt(envelope, "Version") != 1 || !StrictNbt.requireId(envelope, "Type").equals(location.machineType())
-                || StrictNbt.requireInt(runtime, "Version") != 2 || !StrictNbt.requireId(runtime, "Type").equals(location.machineType()))
+            var envelope = tile.getCompoundTag("Machine");
+            var runtime = envelope.getCompoundTag("Runtime");
+            if (envelope.getInteger("Version") != 1 || !new ResourceLocation(envelope.getString("Type")).equals(location.machineType())
+                || runtime.getInteger("Version") != 2 || !new ResourceLocation(runtime.getString("Type")).equals(location.machineType()))
                 throw new IOException("Saved database machine declaration differs");
-            var components = StrictNbt.requireList(runtime, "Components", Constants.NBT.TAG_COMPOUND);
+            var components = runtime.getTagList("Components", Constants.NBT.TAG_COMPOUND);
             int ownership = 0;
             int storage = 0;
             for (int index = 0; index < components.tagCount(); index++) {
                 var component = components.getCompoundTagAt(index);
-                var type = StrictNbt.requireId(component, "Type");
+                var type = new ResourceLocation(component.getString("Type"));
                 if (type.equals(ownershipType)) {
-                    if (!PersistentMachineIdentity.decode(StrictNbt.requireCompound(component, "Data")).equals(identity))
+                    if (!PersistentMachineIdentity.decode(component.getCompoundTag("Data")).equals(identity))
                         throw new IOException("Saved database physical ownership differs");
                     ownership++;
                 }
                 if (type.equals(storageType)) {
-                    if (!StrictNbt.requireCompound(component, "Data").equals(expected))
+                    if (!component.getCompoundTag("Data").equals(expected))
                         throw new IOException("Saved database contents or complete import receipts differ");
                     storage++;
                 }

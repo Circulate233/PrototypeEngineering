@@ -1,12 +1,12 @@
 package com.circulation.prototype_eng.integration.crafttweaker.research;
 
 import ae2.api.stacks.AEItemKey;
-import crafttweaker.api.item.IItemStack;
-import crafttweaker.api.minecraft.CraftTweakerMC;
 import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import crafttweaker.annotations.ZenRegister;
+import crafttweaker.api.item.IItemStack;
+import crafttweaker.api.minecraft.CraftTweakerMC;
 import net.minecraft.util.ResourceLocation;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
@@ -66,7 +66,7 @@ public final class ZenResearch {
     @ZenMethod
     public ZenResearch display(String translationKey, IItemStack icon) {
         if (value != null) throw new IllegalStateException("Research definition is already captured");
-        builder.displayName(() -> translationKey).icon(Objects.requireNonNull(AEItemKey.of(CraftTweakerMC.getItemStack(icon))));
+        builder.displayName(() -> translationKey).icon(AEItemKey.of(CraftTweakerMC.getItemStack(icon)));
         return this;
     }
 

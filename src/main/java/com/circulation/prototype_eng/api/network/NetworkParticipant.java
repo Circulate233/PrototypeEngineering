@@ -1,14 +1,11 @@
 package com.circulation.prototype_eng.api.network;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 
@@ -17,6 +14,8 @@ import java.util.function.BooleanSupplier;
  * thread and must return before work proceeds. Only Snapshot and Command may cross worker boundaries.
  * Callbacks must not mutate network registrations, publish a batch or invoke another participant work
  * operation. A host may revoke the current network publication when its captured state changes.
+ * Participant ID, owner ID and kind remain stable for the registration lifetime.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public interface NetworkParticipant {
     UUID participantId();
@@ -30,6 +29,7 @@ public interface NetworkParticipant {
     /**
      * Captures actual capabilities without changing host/world state. The proof is owner-only,
      * read-only and must detect every change affecting identity, resources, work or material sources.
+     * The snapshot must preserve the registered identity and requested tick/epoch.
      * Versions may repeat in one actual tick only for identical capabilities; later ticks advance them.
      */
     Capture capture(long tick, long epoch);
@@ -52,7 +52,6 @@ public interface NetworkParticipant {
      * another cancel of this command, never another commit. CANCELLED prevents duplicate cleanup.
      */
     default Cancellation cancellationState(Command command) {
-        Objects.requireNonNull(command);
         return Cancellation.UNKNOWN;
     }
 
@@ -66,8 +65,6 @@ public interface NetworkParticipant {
 
     record WorkType(ResourceLocation id, Reference2DoubleMap<NetworkResourceType> resources) {
         public WorkType {
-            Objects.requireNonNull(id);
-            resources = NetworkResourceModifier.copyResources(resources);
             for (var entry : resources.reference2DoubleEntrySet()) {
                 if (entry.getKey().internal() || entry.getDoubleValue() <= 0) {
                     throw new IllegalArgumentException("Participant work needs positive numeric demands");
@@ -80,46 +77,19 @@ public interface NetworkParticipant {
      * Stable source and affinity identities; no live inventory, world or transaction crosses a worker.
      */
     record MaterialSource(ResourceLocation id, String affinity) {
-        public MaterialSource {
-            Objects.requireNonNull(id);
-            Objects.requireNonNull(affinity);
-            if (affinity.isBlank() || !affinity.equals(affinity.trim())) {
-                throw new IllegalArgumentException("Participant source affinity must be non-blank and trimmed");
-            }
-        }
+
     }
 
     /**
      * Work types and material sources are borrowed immutable lists. Providers and readers must not
      * change either list while this snapshot or work derived from it is retained.
-     * Resource quantities follow the same rule and use a zero default return value.
+     * Resource quantities must be finite and nonnegative, with a zero default. Work and source IDs must be unique.
      */
     record Snapshot(UUID participantId, UUID ownerId, Kind kind, long tick, long epoch, long version,
                     long concurrencyPerTick,
                     Reference2DoubleMap<NetworkResourceType> resources,
                     List<WorkType> workTypes, List<MaterialSource> materialSources) {
-        public Snapshot {
-            Objects.requireNonNull(participantId);
-            Objects.requireNonNull(ownerId);
-            Objects.requireNonNull(kind);
-            if (tick < 0 || epoch < 0 || version < 0 || concurrencyPerTick < 0) {
-                throw new IllegalArgumentException("Negative participant snapshot generation");
-            }
-            NetworkResourceModifier.validateResources(resources);
-            var ids = new ObjectOpenHashSet<ResourceLocation>();
-            for (var work : workTypes) {
-                if (!ids.add(work.id())) throw new IllegalArgumentException("Duplicate participant work type");
-            }
-            ids.clear();
-            for (var source : materialSources) {
-                if (!ids.add(source.id())) throw new IllegalArgumentException("Duplicate participant material source");
-            }
-        }
 
-        boolean sameCapabilities(Snapshot other) {
-            return concurrencyPerTick == other.concurrencyPerTick && resources.equals(other.resources) && workTypes.equals(other.workTypes)
-                && materialSources.equals(other.materialSources);
-        }
 
         public Snapshot(UUID participantId, UUID ownerId, Kind kind, long tick, long epoch, long version,
                         Reference2DoubleMap<NetworkResourceType> resources, List<WorkType> workTypes, List<MaterialSource> materialSources) {
@@ -128,10 +98,7 @@ public interface NetworkParticipant {
     }
 
     record Capture(Snapshot snapshot, BooleanSupplier current) {
-        public Capture {
-            Objects.requireNonNull(snapshot);
-            Objects.requireNonNull(current);
-        }
+
     }
 
     /**
@@ -139,14 +106,6 @@ public interface NetworkParticipant {
      */
     record Command(UUID participantId, UUID ownerId, long tick, long epoch, long version, UUID planId,
                    WorkType workType, @Nullable MaterialSource materialSource) {
-        public Command {
-            Objects.requireNonNull(participantId);
-            Objects.requireNonNull(ownerId);
-            Objects.requireNonNull(planId);
-            Objects.requireNonNull(workType);
-            if (tick < 0 || epoch < 0 || version < 0) {
-                throw new IllegalArgumentException("Negative participant work generation");
-            }
-        }
+
     }
 }

@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.research.reward;
 
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.research.PlayerDataPersistence;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
@@ -44,9 +43,9 @@ final class RewardDeliveryPersistence {
 
     static RewardDeliveryJournal readHostJournal(Path file, UUID player) throws IOException {
         var saved = readCompressed(file);
-        var data = StrictNbt.requireCompound(saved, "Data");
+        var data = saved.getCompoundTag("Data");
         // A newly created singleplayer world can predate its first host-player save.
-        return data.hasKey("Player") ? journal(StrictNbt.requireCompound(data, "Player"), player)
+        return data.hasKey("Player") ? journal(data.getCompoundTag("Player"), player)
             : RewardDeliveryJournal.read(new NBTTagCompound(), player);
     }
 
@@ -56,7 +55,8 @@ final class RewardDeliveryPersistence {
     static ObjectSet<UUID> preparedFragments(Path playerFile, @Nullable Path hostFile, UUID player,
                                              RewardDeliveryJournal live, ObjectList<ItemDeliveryFragment> fragments) throws IOException {
         var candidates = new ObjectArrayList<ItemDeliveryFragment>();
-        for (var fragment : fragments) {
+        for (int index2 = 0; index2 < fragments.size(); index2++) {
+            var fragment = fragments.get(index2);
             if (fragment.status() != ItemDeliveryFragment.Status.DELIVERING)
                 throw new IllegalArgumentException("Only delivering fragments need absence evidence");
             if (live.contains(fragment, RewardDeliveryJournal.State.PREPARED)) candidates.add(fragment);
@@ -65,7 +65,8 @@ final class RewardDeliveryPersistence {
         if (candidates.isEmpty()) return result;
         var saved = readPlayerJournal(playerFile, player);
         var host = hostFile == null ? null : readHostJournal(hostFile, player);
-        for (var fragment : candidates) {
+        for (int index1 = 0; index1 < candidates.size(); index1++) {
+            var fragment = candidates.get(index1);
             if (saved.contains(fragment, RewardDeliveryJournal.State.PREPARED)
                 && (host == null || host.contains(fragment, RewardDeliveryJournal.State.PREPARED)))
                 result.add(fragment.id());
@@ -93,7 +94,7 @@ final class RewardDeliveryPersistence {
 
     private static RewardDeliveryJournal journal(NBTTagCompound saved, UUID player) throws IOException {
         requirePlayerIdentity(saved, player);
-        var entityData = saved.hasKey("ForgeData") ? StrictNbt.requireCompound(saved, "ForgeData") : new NBTTagCompound();
+        var entityData = saved.hasKey("ForgeData") ? saved.getCompoundTag("ForgeData") : new NBTTagCompound();
         return RewardDeliveryJournal.read(entityData, player);
     }
 
@@ -165,7 +166,7 @@ final class RewardDeliveryPersistence {
         int matches = 0;
         var slots = new IntOpenHashSet();
         for (int index = 0; index < entries.tagCount(); index++) {
-            var actual = entries.getCompoundTagAt(index).copy();
+            var actual = entries.getCompoundTagAt(index);
             int slot = actual.getByte("Slot") & 255;
             if (!actual.hasKey("Slot", Constants.NBT.TAG_BYTE) || !(slot < 36 || slot >= 100 && slot < 104 || slot == 150)
                 || !slots.add(slot)) throw new IOException("Saved reward inventory has an invalid or duplicate slot");

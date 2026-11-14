@@ -159,7 +159,8 @@ public final class TaskScheduler implements AutoCloseable {
     }
 
     private static void runGroup(Group group) {
-        for (ScheduledTask task : group.tasks) {
+        for (int index1 = 0; index1 < group.tasks.size(); index1++) {
+            ScheduledTask task = group.tasks.get(index1);
             task.onSchedule();
         }
     }
@@ -186,7 +187,10 @@ public final class TaskScheduler implements AutoCloseable {
     }
 
     private static boolean containsOwner(List<StructureBoundary> entries, Object ownerIdentity) {
-        for (var entry : entries) if (entry.ownerIdentity == ownerIdentity) return true;
+        for (int index13 = 0; index13 < entries.size(); index13++) {
+            var entry = entries.get(index13);
+            if (entry.ownerIdentity == ownerIdentity) return true;
+        }
         return false;
     }
 
@@ -386,7 +390,8 @@ public final class TaskScheduler implements AutoCloseable {
         var jobs = new ObjectArrayList<PlannedTaskExecutor.Job<Boolean>>(entries.size());
         var outcomes = new ObjectArrayList<PlannedTaskExecutor.Result<Boolean>>(entries.size());
         var failures = new Failures();
-        for (var entry : entries) {
+        for (int index16 = 0; index16 < entries.size(); index16++) {
+            var entry = entries.get(index16);
             try {
                 var work = entry.prepare.get();
                 if (work != null) prepared.add(work);
@@ -401,7 +406,8 @@ public final class TaskScheduler implements AutoCloseable {
                 jobs.clear();
                 long now = System.nanoTime();
                 long longest = 1;
-                for (var work : prepared) {
+                for (int index8 = 0; index8 < prepared.size(); index8++) {
+                    var work = prepared.get(index8);
                     longest = Math.max(longest, work.deadline.remainingNanos(now));
                     // Each action keeps its own original deadline and work allowance. The envelope
                     // only bounds dispatch/join; a shorter attempt cannot cancel another host.
@@ -437,7 +443,8 @@ public final class TaskScheduler implements AutoCloseable {
             }
             // Finish every owner transition before any continuation can borrow the next windows.
             next.clear();
-            for (var continuation : continuations) {
+            for (int index6 = 0; index6 < continuations.size(); index6++) {
+                var continuation = continuations.get(index6);
                 try {
                     var continued = continuation.get();
                     if (continued != null) next.add(continued);
@@ -449,7 +456,8 @@ public final class TaskScheduler implements AutoCloseable {
             prepared = next;
             next = completed;
         }
-        for (var entry : entries) {
+        for (int index15 = 0; index15 < entries.size(); index15++) {
+            var entry = entries.get(index15);
             try {
                 entry.completed.run();
             } catch (RuntimeException | Error failure) {
@@ -488,8 +496,10 @@ public final class TaskScheduler implements AutoCloseable {
         try {
             plannedTasks.runPrepare(jobs, deadline, batch -> borrowed.batch = batch);
             var results = Objects.requireNonNull(borrowed.batch).results();
-            for (var result : results)
+            for (int index14 = 0; index14 < results.size(); index14++) {
+                var result = results.get(index14);
                 if (result instanceof PlannedTaskExecutor.Failure<T>(var failure) && primary == null) primary = failure;
+            }
             return results;
         } catch (RuntimeException | Error failure) {
             primary = failure;
@@ -568,7 +578,8 @@ public final class TaskScheduler implements AutoCloseable {
         } finally {
             state = State.JOINING;
             long joinStart = System.nanoTime();
-            for (FutureTask<Void> future : futures) {
+            for (int index10 = 0; index10 < futures.size(); index10++) {
+                FutureTask<Void> future = futures.get(index10);
                 boolean completed = false;
                 while (!completed) {
                     try {
@@ -645,12 +656,14 @@ public final class TaskScheduler implements AutoCloseable {
             }
             var executed = new ReferenceOpenHashSet<ScheduledTask>(batch.size());
             state = State.MAIN;
-            for (Submission submission : batch) {
+            for (int index4 = 0; index4 < batch.size(); index4++) {
+                Submission submission = batch.get(index4);
                 if (submission.mode == ExecutionMode.MAIN_THREAD) {
                     runMain(submission.task, prepare, failures, true);
                 }
             }
-            for (Registration registration : main) {
+            for (int index11 = 0; index11 < main.size(); index11++) {
+                Registration registration = main.get(index11);
                 ScheduledTask task = registration.task;
                 if (registered.get(task) != registration) {
                     continue;
@@ -693,7 +706,8 @@ public final class TaskScheduler implements AutoCloseable {
             }
             ObjectArrayList<Group> groups = group(concurrent);
             int customConcurrent = 0;
-            for (Submission submission : batch) {
+            for (int index2 = 0; index2 < batch.size(); index2++) {
+                Submission submission = batch.get(index2);
                 if (submission.mode == ExecutionMode.CONCURRENT) {
                     customConcurrent++;
                 }
@@ -702,13 +716,15 @@ public final class TaskScheduler implements AutoCloseable {
             state = State.DISPATCHING;
             if (customConcurrent != 0 || !groups.isEmpty()) {
                 initializeExecutors();
-                for (Submission submission : batch) {
+                for (int index5 = 0; index5 < batch.size(); index5++) {
+                    Submission submission = batch.get(index5);
                     if (submission.mode == ExecutionMode.CONCURRENT) {
                         dispatch(workers, submission.task, futures);
                         current.customConcurrentTasks++;
                     }
                 }
-                for (Group group : groups) {
+                for (int index7 = 0; index7 < groups.size(); index7++) {
+                    Group group = groups.get(index7);
                     ExecutorService executor = group.lane < 0 ? workers : lanes[group.lane];
                     dispatch(executor, () -> runGroup(group), futures);
                     current.concurrentTasks += group.tasks.size();
@@ -795,7 +811,8 @@ public final class TaskScheduler implements AutoCloseable {
             throw new IllegalStateException("Planned candidates require owner capture");
         }
         var result = new ObjectArrayList<PlannedCandidate>();
-        for (var captured : plannedCandidates) {
+        for (int index9 = 0; index9 < plannedCandidates.size(); index9++) {
+            var captured = plannedCandidates.get(index9);
             var registration = captured.registration;
             var task = registration.task;
             var mode = captured.mode;
@@ -1112,7 +1129,8 @@ public final class TaskScheduler implements AutoCloseable {
                 }
             }
         }
-        for (ExecutorService executor : executors) {
+        for (int index3 = 0; index3 < executors.size(); index3++) {
+            ExecutorService executor = executors.get(index3);
             try {
                 executor.shutdown();
             } catch (Throwable failure) {
@@ -1120,7 +1138,8 @@ public final class TaskScheduler implements AutoCloseable {
             }
         }
         boolean quiescent = true;
-        for (ExecutorService executor : executors) {
+        for (int index12 = 0; index12 < executors.size(); index12++) {
+            ExecutorService executor = executors.get(index12);
             try {
                 if (executor.isTerminated()) {
                     continue;

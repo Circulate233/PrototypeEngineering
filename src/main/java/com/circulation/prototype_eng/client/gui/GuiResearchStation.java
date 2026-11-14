@@ -21,7 +21,6 @@ import org.lwjgl.opengl.GL11;
 import java.io.IOException;
 import java.text.DecimalFormat;
 import java.util.List;
-import java.util.Objects;
 
 public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
     private static final ResourceLocation BACKGROUND = GuiAtlas.texture("gui_research_station");
@@ -136,8 +135,9 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        text(Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 18, 12, 235);
+        text(container.getGuiTitle().getFormattedText(), 18, 12, 235);
         right(container.teamId, 366, 12, 108);
         var definition = container.view.definition;
         if (definition == null) text(ResearchStationGuiText.Empty.getLocal(), 18, 42, 250);
@@ -182,7 +182,8 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
         text(ResearchStationGuiText.Resources.getLocal(), LIST_X, top, 42);
         right(ResearchStationGuiText.AvailableRemaining.getLocal(), LIST_X + listWidth(), top, 124);
         top += 12;
-        for (var material : container.view.materials) {
+        for (int index1 = 0; index1 < container.view.materials.size(); index1++) {
+            var material = container.view.materials.get(index1);
             icon(material.key, top + 1);
             String quantity = material.amounts();
             int quantityWidth = Math.min(listWidth() / 2, fontRenderer.getStringWidth(quantity));
@@ -198,7 +199,8 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
         text(ResearchStationGuiText.NetworkResources.getLocal(), LIST_X, top, 60);
         right(ResearchStationGuiText.OccupiedLimit.getLocal(), LIST_X + listWidth(), top, 106);
         top += 12;
-        for (var resource : container.view.resources) {
+        for (int index2 = 0; index2 < container.view.resources.size(); index2++) {
+            var resource = container.view.resources.get(index2);
             int valueWidth = Math.min(listWidth() / 2, fontRenderer.getStringWidth(resource.amounts()));
             text(resource.name(), LIST_X, top + 2, listWidth() - valueWidth - 6);
             right(resource.amounts(), LIST_X + listWidth(), top + 2, valueWidth);

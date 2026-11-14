@@ -49,7 +49,9 @@ public final class StructureBuildPlan {
             var step = rotation.apply(node.sliceOffset());
             for (int slice = 0; slice < count && !node.cells().isEmpty(); slice++) {
                 var anchor = stepAt(origin, step, slice);
-                for (var relative : node.cells()) {
+                var elements = node.cells();
+                for (int index1 = 0; index1 < elements.size(); index1++) {
+                    var relative = elements.get(index1);
                     if (++visits > 1000000) throw new IllegalArgumentException("Too many construction cells");
                     var position = rotation.applyAt(anchor, relative);
                     if (!position.equals(BlockPos.ORIGIN))

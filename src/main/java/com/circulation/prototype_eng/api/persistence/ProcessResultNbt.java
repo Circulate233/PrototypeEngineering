@@ -23,7 +23,8 @@ public final class ProcessResultNbt implements NbtCodec<ProcessResult> {
         tag.setString("Kind", kind);
         tag.setString("Reason", reason);
         var list = new NBTTagList();
-        for (var argument : arguments) {
+        for (int index1 = 0; index1 < arguments.size(); index1++) {
+            var argument = arguments.get(index1);
             list.appendTag(new NBTTagString(Objects.requireNonNull(argument)));
         }
         tag.setTag("Arguments", list);
@@ -42,18 +43,16 @@ public final class ProcessResultNbt implements NbtCodec<ProcessResult> {
 
     @Override
     public ProcessResult decode(NBTTagCompound tag) {
-        var kind = StrictNbt.requireString(tag, "Kind");
+        var kind = tag.getString("Kind");
         if (kind.equals("SUCCESS")) {
-            StrictNbt.requireKeys(tag, "Kind");
             return ProcessResult.SUCCESS;
         }
-        StrictNbt.requireKeys(tag, "Kind", "Reason", "Arguments");
-        var list = StrictNbt.requireList(tag, "Arguments", Constants.NBT.TAG_STRING);
+        var list = tag.getTagList("Arguments", Constants.NBT.TAG_STRING);
         var arguments = new ObjectArrayList<String>(list.tagCount());
         for (int index = 0; index < list.tagCount(); index++) {
             arguments.add(list.getStringTagAt(index));
         }
-        var reason = StrictNbt.requireString(tag, "Reason");
+        var reason = tag.getString("Reason");
         return switch (kind) {
             case "BLOCKED" -> new ProcessResult.Blocked(reason, arguments);
             case "FAILURE" -> new ProcessResult.Failure(reason, arguments);

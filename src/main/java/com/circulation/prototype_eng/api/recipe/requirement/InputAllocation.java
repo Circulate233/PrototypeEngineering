@@ -13,6 +13,7 @@ import java.util.Objects;
  * Source allocation for each independent input projection, after quantity scaling. Outputs keep
  * their ordinary routing. Source indices refer to the captured, identity-distinct input order;
  * they are not inventory slots, JVM lanes, or identities that may be saved for later execution.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class InputAllocation {
     public static final InputAllocation SPLITTABLE = new InputAllocation(Kind.SPLITTABLE,

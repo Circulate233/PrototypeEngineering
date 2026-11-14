@@ -27,7 +27,6 @@ import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -513,7 +512,7 @@ class ResearchWorldRewardTest {
         assertEquals(0, alice.completedLevel(RESEARCH));
         assertEquals(before, reward(saves.durable));
         var membership = OwnerTeamResolution.resolved(ALICE, "new_team", OwnerTeamType.PLAYER,
-            new ObjectOpenHashSet<>(ObjectList.of(ALICE)), Optional.of(ALICE));
+            new ObjectOpenHashSet<>(ObjectList.of(ALICE)), ALICE);
         var permission = new ResearchPermissionContext(ALICE, "new_team", null, "new_team", true, false, false);
         assertEquals(TeamResearchStart.Status.STARTED, world.start(membership, permission, WORK, 1,
             new TeamResearchStart.Environment(2, 1, 1, Reference2DoubleMaps.emptyMap()), 13, Set.of(ALICE), () -> true).status());
@@ -771,7 +770,7 @@ class ResearchWorldRewardTest {
         private static ItemDeliveryFragment fragment(ItemDeliveryKey parent, ItemDeliveryFragment.Target target, int count) {
             var tag = new NBTTagCompound();
             tag.setString("payload", "business");
-            return new ItemDeliveryFragment(UUID.randomUUID(), parent, ITEM, count, tag, target, Optional.empty(), ItemDeliveryFragment.Status.PLANNED);
+            return new ItemDeliveryFragment(UUID.randomUUID(), parent, ITEM, count, tag, target, null, ItemDeliveryFragment.Status.PLANNED);
         }
 
         @Override
@@ -835,14 +834,14 @@ class ResearchWorldRewardTest {
             assertEquals(ItemDeliveryFragment.Status.DELIVERING, durable.status());
             beforeDelivery.accept(fragment);
             deliveries++;
-            if (zeroEffect) return new Delivery(0, Optional.empty());
+            if (zeroEffect) return new Delivery(0, null);
             assertNull(physical.putIfAbsent(fragment.id(), fragment), "A real item fragment must never be issued twice");
             UUID entity = null;
             if (fragment.target() instanceof ItemDeliveryFragment.WorldDrop) {
                 entity = UUID.randomUUID();
                 entities.put(fragment.id(), entity);
             }
-            return new Delivery(fragment.count(), Optional.ofNullable(entity));
+            return new Delivery(fragment.count(), entity);
         }
 
         @Override
@@ -850,7 +849,7 @@ class ResearchWorldRewardTest {
             commits++;
             assertEquals(fragment, physical.get(fragment.id()));
             assertEquals(fragment.count(), delivery.acceptedCount());
-            assertEquals(Optional.ofNullable(entities.get(fragment.id())), delivery.entityUuid());
+            assertEquals(entities.get(fragment.id()), delivery.entityUuid());
             afterCommit.accept(fragment);
         }
 

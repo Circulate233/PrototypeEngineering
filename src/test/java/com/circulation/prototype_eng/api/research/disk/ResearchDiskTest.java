@@ -14,7 +14,6 @@ import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -43,7 +42,7 @@ class ResearchDiskTest {
     }
 
     private static TeamResearchView cloud(ResearchRegistry registry) {
-        return new TeamResearchView(registry, "team", List.of(new UUID(0, 1)), Object2IntMaps.emptyMap(),
+        return new TeamResearchView(registry, "team", Set.of(new UUID(0, 1)), Object2IntMaps.emptyMap(),
             Object2IntMaps.emptyMap(), Set.of());
     }
 

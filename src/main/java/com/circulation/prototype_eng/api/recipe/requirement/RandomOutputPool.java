@@ -10,6 +10,7 @@ import java.util.Objects;
 
 /**
  * PM's weighted output entries: select up to pickCount distinct entries on each execution.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public record RandomOutputPool(List<WeightedSampling.Weighted<GenericStack>> candidates, int pickCount) {
     public RandomOutputPool {
@@ -17,7 +18,8 @@ public record RandomOutputPool(List<WeightedSampling.Weighted<GenericStack>> can
             throw new IllegalArgumentException("Negative random output pick count");
         }
         var copy = new ObjectArrayList<WeightedSampling.Weighted<GenericStack>>(candidates.size());
-        for (var candidate : candidates) {
+        for (int index = 0; index < candidates.size(); index++) {
+            var candidate = candidates.get(index);
             Objects.requireNonNull(candidate);
             var stack = Objects.requireNonNull(candidate.value());
             Objects.requireNonNull(stack.what());

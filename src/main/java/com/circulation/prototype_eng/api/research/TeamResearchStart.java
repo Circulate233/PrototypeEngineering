@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.api.research;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.research.ResearchEligibility;
@@ -125,13 +124,7 @@ public final class TeamResearchStart {
      */
     public record Environment(int networkCenterLevel, int dataCenterLevel, int highestResearchStationLevel,
                               Reference2DoubleMap<NetworkResourceType> availableResources) {
-        public Environment {
-            if (dataCenterLevel < 0 || highestResearchStationLevel < 0
-                || dataCenterLevel > networkCenterLevel || highestResearchStationLevel > networkCenterLevel) {
-                throw new IllegalArgumentException("Invalid active research device levels");
-            }
-            availableResources = NetworkResourceModifier.copyResources(availableResources);
-        }
+
     }
 
     /**

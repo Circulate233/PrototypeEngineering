@@ -41,10 +41,14 @@ public final class RecipeDefinitionManifestCodec {
             string(output, manifest.declaration().id().toString());
             string(output, manifest.declaration().revision());
             count(output, manifest.pools().size());
-            for (var pool : manifest.pools()) {
+            var elements2 = manifest.pools();
+            for (int index2 = 0; index2 < elements2.size(); index2++) {
+                var pool = elements2.get(index2);
                 string(output, pool.id().toString());
                 count(output, pool.members().size());
-                for (var member : pool.members()) {
+                var elements = pool.members();
+                for (int index = 0; index < elements.size(); index++) {
+                    var member = elements.get(index);
                     string(output, member.recipeId().toString());
                     string(output, member.revision());
                 }
@@ -82,9 +86,7 @@ public final class RecipeDefinitionManifestCodec {
 
     private static ResourceLocation id(DataInputStream input) throws IOException {
         String value = string(input);
-        var id = new ResourceLocation(value);
-        if (!id.toString().equals(value)) throw new IllegalArgumentException("Noncanonical recipe manifest ID");
-        return id;
+        return new ResourceLocation(value);
     }
 
     private static int count(DataInputStream input) throws IOException {

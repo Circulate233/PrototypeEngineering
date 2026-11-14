@@ -60,7 +60,9 @@ final class MachineRecipeExecutionFactory implements TaskScheduler.PlannedFactor
     public PlannedExecution capture(PlannedTaskExecutor tasks, PlannedDeadline forwardDeadline) {
         var captured = new ObjectArrayList<MachineRecipeExecution.Candidate>();
         var unique = new ReferenceOpenHashSet<MachineInstance>();
-        for (var candidate : candidates.get()) {
+        var elements = candidates.get();
+        for (int index = 0; index < elements.size(); index++) {
+            var candidate = elements.get(index);
             if (!candidate.current().getAsBoolean()) {
                 continue;
             }

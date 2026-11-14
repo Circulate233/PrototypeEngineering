@@ -38,7 +38,8 @@ public final class DefaultRecipePool implements RecipePool {
         this.translationKey = translationKey;
         var ids = new ObjectOpenHashSet<ResourceLocation>(recipes.size());
         var copy = new ObjectArrayList<MachineRecipe>(recipes.size());
-        for (var recipe : recipes) {
+        for (int index1 = 0; index1 < recipes.size(); index1++) {
+            var recipe = recipes.get(index1);
             Objects.requireNonNull(recipe);
             if (!ids.add(recipe.id()))
                 throw new IllegalArgumentException("Duplicate recipe in pool " + id + ": " + recipe.id());

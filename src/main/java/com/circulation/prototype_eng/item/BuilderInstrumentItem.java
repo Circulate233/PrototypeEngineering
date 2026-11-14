@@ -38,9 +38,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 
 /**
- * 自身保存 AE 绑定与升级卡，结构绑定独立保存在原构建数据中。
+ * Stores its own AE binding and upgrades. Structure binding remains in the builder data.
  */
-@SuppressWarnings("NonExtendableApiUsage") // AE 的物品升级槽与卡片合成通过 IUpgradeableItem 识别物品。
+@SuppressWarnings("NonExtendableApiUsage") // AE upgrade slots and card recipes identify items through IUpgradeableItem.
 public final class BuilderInstrumentItem extends AEBaseItem implements IGuiItem, IUpgradeableItem, IGridLinkableHandler {
     public static final String NETWORK = "BuilderNetwork";
     public static final int UPGRADE_SLOTS = 1;

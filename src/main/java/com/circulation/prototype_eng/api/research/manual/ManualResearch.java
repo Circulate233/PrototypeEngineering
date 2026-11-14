@@ -4,25 +4,21 @@ import com.circulation.prototype_eng.api.research.PlayerResearchState;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.TeamOwnedResearch;
 import com.circulation.prototype_eng.api.research.TeamResearchCompletion;
-import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.research.queue.ResearchProgress;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
-
-import java.util.List;
-
+import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.research.manual.ManualMaterials;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -45,6 +41,7 @@ public final class ManualResearch {
     private final TeamResearchCompletion completion;
     private final Object2ObjectOpenHashMap<TeamResearchQueue.Key, ManualMaterials> compiledMaterials = new Object2ObjectOpenHashMap<>();
     private final Long2ObjectLinkedOpenHashMap<ManualResearchSession> sessions = new Long2ObjectLinkedOpenHashMap<>();
+    private @Nullable ObjectList<ManualResearchSession> sessionSnapshot;
     private final Long2ObjectLinkedOpenHashMap<Status> terminalAwaitingResult = new Long2ObjectLinkedOpenHashMap<>();
     // Tracks operations whose consume call has not begun in this process. Restart recovery requires player receipts.
     private final ObjectOpenHashSet<UUID> unpreparedOperations = new ObjectOpenHashSet<>();
@@ -64,11 +61,12 @@ public final class ManualResearch {
         completion = new TeamResearchCompletion(queue.registry());
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void validateMaterialPlan(ManualResearchSession session, ManualMaterials materials) {
         var intent = session.materialIntent();
         if (intent == null) return;
         materials.validateWork(intent.expectedWork());
-        var work = Objects.requireNonNull(queue.progress(session.queueKey().researchId(), session.queueKey().targetLevel()));
+        var work = queue.progress(session.queueKey().researchId(), session.queueKey().targetLevel());
         long elapsed = work.snapshot().elapsedTicks();
         if (intent.elapsedTicks() < elapsed || intent.elapsedTicks() - elapsed > 1 || intent.elapsedTicks() > work.stage().durationTicks())
             throw new IllegalArgumentException("Manual material time differs from saved progress");
@@ -102,9 +100,13 @@ public final class ManualResearch {
         }
     }
 
+    /**
+     * Returns a stable session list borrowed read-only until the next session change.
+     */
     public ObjectList<ManualResearchSession> sessions() {
         requireOwner();
-        return ObjectLists.unmodifiable(new ObjectArrayList<>(sessions.values()));
+        if (sessionSnapshot == null) sessionSnapshot = new ObjectArrayList<>(sessions.values());
+        return sessionSnapshot;
     }
 
     /**
@@ -148,6 +150,7 @@ public final class ManualResearch {
                 }
             }
             sessions.putAll(restored);
+            sessionSnapshot = null;
             return null;
         });
     }
@@ -155,6 +158,7 @@ public final class ManualResearch {
     /**
      * Binds the actual admission result; callers must not save an unbound tier-zero admission.
      */
+    @SuppressWarnings("DataFlowIssue")
     public Status begin(TeamResearchQueue.Entry entry, UUID actor, Context context) {
         return guarded(() -> {
             Objects.requireNonNull(entry);
@@ -179,7 +183,7 @@ public final class ManualResearch {
                 return Status.ALREADY_PRESENT;
             }
             var materials = materials(entry.key());
-            var progress = Objects.requireNonNull(queue.progress(entry.key().researchId(), entry.key().targetLevel()));
+            var progress = queue.progress(entry.key().researchId(), entry.key().targetLevel());
             var session = ManualResearchSession.newActive(UUID.randomUUID(), queue.teamId(), entry.key(), actor, context.serverTime())
                                                .withWork(materials.workForRemaining(progress.snapshot().remainingMaterials()));
             put(session);
@@ -302,6 +306,7 @@ public final class ManualResearch {
         guarded(() -> null);
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private Status advance(ManualResearchSession session, Context context, @Nullable ManualResearchInventory inventory) {
         validateTime(session, context);
         if (queue.busy() || team.busy()) {
@@ -344,7 +349,7 @@ public final class ManualResearch {
             throw new IllegalStateException("Active session has an outstanding material receipt");
         }
         if (queue.advancedAt(context.serverTime())) return Status.WAITING_FOR_TURN;
-        var progress = Objects.requireNonNull(queue.activeProgress());
+        var progress = queue.activeProgress();
         var step = progress.plan(List.of(new ResearchProgress.StationRate(contributor, Reference2DoubleMaps.emptyMap())),
             Reference2DoubleMaps.emptyMap(), inventory.availableMaterials(progress.snapshot().remainingMaterials()));
         if (step == null) return Status.NO_MATERIALS;
@@ -517,6 +522,7 @@ public final class ManualResearch {
         queue.removeUnstarted(session.queueKey());
         long entryId = session.queueKey().queueEntryId();
         sessions.remove(entryId);
+        sessionSnapshot = null;
         compiledMaterials.remove(session.queueKey());
         terminalAwaitingResult.put(entryId, Status.CANCELLED);
         persist(ObjectList.of());
@@ -578,6 +584,7 @@ public final class ManualResearch {
             throw new IllegalStateException("Completed queue entry reappeared");
         }
         sessions.remove(session.queueKey().queueEntryId());
+        sessionSnapshot = null;
         compiledMaterials.remove(session.queueKey());
         terminalAwaitingResult.put(session.queueKey().queueEntryId(), Status.COMPLETED);
         persist(members);
@@ -643,6 +650,7 @@ public final class ManualResearch {
 
     private void put(ManualResearchSession session) {
         sessions.put(session.queueKey().queueEntryId(), session);
+        sessionSnapshot = null;
     }
 
     private ManualResearchSession requireSession(long entryId) {
@@ -662,7 +670,9 @@ public final class ManualResearch {
     }
 
     private boolean queued(TeamResearchQueue.Key key) {
-        for (var entry : queue.queueSnapshot()) {
+        var elements = queue.queueSnapshot();
+        for (int index = 0; index < elements.size(); index++) {
+            var entry = elements.get(index);
             if (entry.key().equals(key)) {
                 return true;
             }
@@ -671,7 +681,9 @@ public final class ManualResearch {
     }
 
     private TeamResearchQueue.Entry requireQueued(TeamResearchQueue.Key key) {
-        for (var entry : queue.queueSnapshot()) {
+        var elements2 = queue.queueSnapshot();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var entry = elements2.get(index2);
             if (entry.key().equals(key)) {
                 return entry;
             }
@@ -680,7 +692,8 @@ public final class ManualResearch {
     }
 
     private boolean isHead(TeamResearchQueue.Key key) {
-        return queue.activeHead().map(entry -> entry.key().equals(key)).orElse(false);
+        var head = queue.activeHead();
+        return head != null && head.key().equals(key);
     }
 
     private void requireHead(TeamResearchQueue.Key key) {
@@ -716,7 +729,9 @@ public final class ManualResearch {
             || !expected.queue().equals(queue.snapshot()) || !expected.team().equals(team.snapshot())) {
             throw new IllegalStateException("Pending manual checkpoint lost exclusive ownership of its world state");
         }
-        for (var player : expected.players()) {
+        var elements3 = expected.players();
+        for (int index3 = 0; index3 < elements3.size(); index3++) {
+            var player = elements3.get(index3);
             var current = requirePlayer(player.playerUuid());
             if (current.busy() || !current.snapshot().equals(player)) {
                 throw new IllegalStateException("Pending manual checkpoint lost exclusive ownership of a player source");
@@ -757,18 +772,10 @@ public final class ManualResearch {
         void persist(CheckpointState state);
     }
 
+    /**
+     * Membership sets are borrowed read-only for the lifetime of this operation.
+     */
     public record Context(long serverTime, Set<UUID> members, Set<UUID> onlinePlayers, BooleanSupplier current) {
-        public Context {
-            if (serverTime < 0) {
-                throw new IllegalArgumentException("Negative server time");
-            }
-            members = ObjectSets.unmodifiable(new ObjectOpenHashSet<>(members));
-            onlinePlayers = ObjectSets.unmodifiable(new ObjectOpenHashSet<>(onlinePlayers));
-            if (members.contains(null) || onlinePlayers.contains(null)) {
-                throw new IllegalArgumentException("Null player identity");
-            }
-            Objects.requireNonNull(current);
-        }
     }
 
     /**

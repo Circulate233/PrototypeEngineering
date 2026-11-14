@@ -14,6 +14,7 @@ import java.util.Objects;
 
 /**
  * Structural parallelism is sampled with the machine allowance and revalidated at admission.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class ParallelControllers {
     public static final ComponentType<MachineInstance, ParallelController> TYPE = new ComponentType<>(

@@ -18,7 +18,6 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
 import com.circulation.prototype_eng.api.machine.render.MachineAnimationState;
 import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructureConfiguration;
 import com.circulation.prototype_eng.api.structure.StructureMatch;
@@ -211,7 +210,9 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         requireServer();
         var current = machine();
         if (current != null && !replacementData) {
-            for (var binding : current.components().assemblyBindings()) {
+            var elements4 = current.components().assemblyBindings();
+            for (int index4 = 0; index4 < elements4.size(); index4++) {
+                var binding = elements4.get(index4);
                 if (binding.component() instanceof MachineOwnership ownership) {
                     return ownership.identity();
                 }
@@ -563,7 +564,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
 
     @Override
     public void loadTag(@NotNull NBTTagCompound tag) {
-        var decoded = ControllerData.decode(StrictNbt.requireCompound(tag, "Machine"));
+        var decoded = ControllerData.decode(tag.getCompoundTag("Machine"));
         var restoredType = type != null && type.id().equals(decoded.type()) ? type
             : Objects.requireNonNull(MachineTypeRegistry.INSTANCE.get(decoded.type()), "Unknown saved controller type");
         if (controller != null) {
@@ -627,7 +628,11 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
             MachineAnimationState.Snapshot animation = null;
             if (loaded) {
                 original.requirePersistenceBoundary();
-                for (var binding : original.components().assemblyBindings()) ids.add(binding.type().id());
+                var elements2 = original.components().assemblyBindings();
+                for (int index2 = 0; index2 < elements2.size(); index2++) {
+                    var binding = elements2.get(index2);
+                    ids.add(binding.type().id());
+                }
                 var state = original.components().get(MachineAnimationState.TYPE);
                 if (state != null) animation = state.snapshot();
             }
@@ -643,8 +648,13 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         var ordinaryParts = dataChanged ? ControllerRenderChunks.split(ordinary, metadata, dataSession) : dataParts;
         var componentIds = new ObjectArrayList<ResourceLocation>();
         var animationState = loaded ? original.components().get(MachineAnimationState.TYPE) : null;
-        if (loaded)
-            for (var binding : original.components().assemblyBindings()) componentIds.add(binding.type().id());
+        if (loaded) {
+            var elements3 = original.components().assemblyBindings();
+            for (int index3 = 0; index3 < elements3.size(); index3++) {
+                var binding = elements3.get(index3);
+                componentIds.add(binding.type().id());
+            }
+        }
         if (epoch != attachmentEpoch || !isAttached() || machine() != original || displaySequence != previousSequence)
             return;
         displaySequence = nextSequence;
@@ -678,7 +688,11 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         var animation = current.components().get(MachineAnimationState.TYPE);
         var state = animation == null ? null : animation.snapshot();
         var ids = new ObjectArrayList<ResourceLocation>();
-        for (var binding : current.components().assemblyBindings()) ids.add(binding.type().id());
+        var elements = current.components().assemblyBindings();
+        for (int index = 0; index < elements.size(); index++) {
+            var binding = elements.get(index);
+            ids.add(binding.type().id());
+        }
         if (displayGeneration == 0) displayGeneration = ControllerDisplayData.newGeneration();
         var ordinary = dataSnapshots.observe(current, displayGeneration);
         var catalog = configuration == null ? MachineTypeRegistry.INSTANCE.structureCatalog() : configuration.catalog();
@@ -794,26 +808,25 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     private void acceptClientTag(NBTTagCompound tag, @Nullable NetworkManager manager) {
         if (world == null || !world.isRemote) throw new IllegalStateException("Display data requires the client world");
         if (!isAttached() || !PrototypeEngineering.proxy.controllerDisplayConnectionCurrent(this, manager)) return;
-        if (StrictNbt.requireInt(tag, "x") != pos.getX() || StrictNbt.requireInt(tag, "y") != pos.getY() || StrictNbt.requireInt(tag, "z") != pos.getZ())
+        if (tag.getInteger("x") != pos.getX() || tag.getInteger("y") != pos.getY() || tag.getInteger("z") != pos.getZ())
             return;
-        var payload = StrictNbt.requireCompound(tag, "Display");
-        if (!type.id().equals(StrictNbt.requireId(payload, "Type"))) return;
+        var payload = tag.getCompoundTag("Display");
+        if (!type.id().equals(new ResourceLocation(payload.getString("Type")))) return;
         var incoming = ControllerDisplayData.decode(payload);
         observeClientDataGeneration(incoming.generation());
         if (tag.hasKey("Data")) {
-            var ordinary = StrictNbt.requireCompound(tag, "Data");
-            StrictNbt.requireKeys(ordinary, "Display", "Payload");
-            var metadata = ControllerDisplayData.decode(StrictNbt.requireCompound(ordinary, "Display"));
+            var ordinary = tag.getCompoundTag("Data");
+            var metadata = ControllerDisplayData.decode(ordinary.getCompoundTag("Display"));
             if (type.id().equals(metadata.type())) {
                 observeClientDataGeneration(metadata.generation());
-                acceptClientData(metadata, StrictNbt.requireCompound(ordinary, "Payload"), manager);
+                acceptClientData(metadata, ordinary.getCompoundTag("Payload"), manager);
             }
         }
-        if (tag.hasKey("DataOnly") && StrictNbt.requireBoolean(tag, "DataOnly")) return;
+        if (tag.hasKey("DataOnly") && tag.getBoolean("DataOnly")) return;
         // Includes the same-tile unload/reload ABA case: an old complete Display cannot seed a fresh assembler.
         if (!incoming.follows(display)) return;
         if (tag.hasKey("Render")) {
-            var part = ControllerRenderChunks.Part.decode(incoming, StrictNbt.requireCompound(tag, "Render"));
+            var part = ControllerRenderChunks.Part.decode(incoming, tag.getCompoundTag("Render"));
             PrototypeEngineering.proxy.receiveControllerRender(this, manager, part, this::installClientRender);
         } else if (!incoming.formed() && incoming.follows(display)) {
             PrototypeEngineering.proxy.receiveControllerDisplay(this, manager, incoming, this::installClientRender);

@@ -7,16 +7,22 @@ import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
-import com.circulation.prototype_eng.api.recipe.requirement.*;
+import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
+import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
+import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * 普通时长及输入阶段的计算机配方，资源效果完全由事件定义。
+ * Computer recipe with ordinary duration and input stages; events define all resource effects.
  */
 public final class ComputerInputRecipe {
     public static final RecipeRequirementType<RecipeRequirement<?>> END_INPUT = new RecipeRequirementType<>(
@@ -72,7 +78,8 @@ public final class ComputerInputRecipe {
                                Consumer<ComputerRecipeEvent> callback, Consumer<RecipeProcessNbt.Builder> codecs) {
         var requirements = new ObjectArrayList<RecipeRequirement<?>>(inputs.size() + 1);
         inputDefinition = new MachineRecipe(id, duration, inputs);
-        for (var input : inputs) {
+        for (int index1 = 0; index1 < inputs.size(); index1++) {
+            var input = inputs.get(index1);
             validateInput(input);
             requirements.add(input);
         }
@@ -96,7 +103,7 @@ public final class ComputerInputRecipe {
     }
 
     /**
-     * 将输入的 START 支付移至 END，支持普通材料匹配和 FE 输入；子需求不得声明 TICK 或 END 行为。
+     * Moves START inputs to END for ordinary material and FE requirements. Child requirements must not declare TICK or END behavior.
      */
     public static RecipeRequirement<RecipeRequirement<?>> endInput(RecipeRequirement<?> input) {
         validateInput(input);
@@ -112,17 +119,23 @@ public final class ComputerInputRecipe {
             throw new IllegalArgumentException("Computer input recipes cannot declare material outputs");
         if (input.type() == RecipeRequirements.ENERGY && input.payload() instanceof EnergyRequirement energy && (energy.output() != 0 || energy.outputPerTick() != 0))
             throw new IllegalArgumentException("Computer input recipes cannot declare energy outputs");
-        for (var child : input.type().system().children(input.payload())) validateInput(child);
+
+        var elements = input.type().system().children(input.payload());
+        for (int index = 0; index < elements.size(); index++) {
+            var child = elements.get(index);
+            validateInput(child);
+        }
+
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private static RequirementTransaction event(RecipeProcess process, RecipeRequirement<Consumer<ComputerRecipeEvent>> requirement, RecipeStage stage) {
         var computer = (ComputerController) process.owner();
-        var work = Objects.requireNonNull(computer.components().get(ComputerInputWork.TYPE));
+        var work = computer.components().get(ComputerInputWork.TYPE);
         var before = work.effects();
         var changed = before.copy();
         requirement.payload().accept(new ComputerRecipeEvent(computer, process, stage,
-            Objects.requireNonNull(computer.networkDevice()).networkData(), changed));
-        changed.validate();
+            computer.networkDevice().networkData(), changed));
         return new RequirementTransaction() {
             @Override
             public ProcessResult result() {

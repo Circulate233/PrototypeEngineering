@@ -36,7 +36,10 @@ public final class MEAssemblyBlocks {
 
     @SubscribeEvent
     public static void registerBlocks(RegistryEvent.Register<Block> event) {
-        for (var block : RESOURCES) event.getRegistry().register(block);
+        for (int index = 0; index < RESOURCES.size(); index++) {
+            var block = RESOURCES.get(index);
+            event.getRegistry().register(block);
+        }
         event.getRegistry().register(PATTERN);
         GameRegistry.registerTileEntity(MEResourceHatchBlockEntity.class, new ResourceLocation(Tags.MOD_ID, "me_resource_assembly"));
         GameRegistry.registerTileEntity(MEPatternAssemblyBlockEntity.class, new ResourceLocation(Tags.MOD_ID, "me_pattern_assembly"));
@@ -44,8 +47,10 @@ public final class MEAssemblyBlocks {
 
     @SubscribeEvent
     public static void registerItems(RegistryEvent.Register<Item> event) {
-        for (var block : RESOURCES)
+        for (int index2 = 0; index2 < RESOURCES.size(); index2++) {
+            var block = RESOURCES.get(index2);
             event.getRegistry().register(block.createItem().setRegistryName(Objects.requireNonNull(block.getRegistryName())));
+        }
         event.getRegistry().register(PATTERN.createItem().setRegistryName(Objects.requireNonNull(PATTERN.getRegistryName())));
     }
 }

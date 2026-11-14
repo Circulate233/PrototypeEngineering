@@ -12,6 +12,7 @@ import java.util.Objects;
 
 /**
  * Visual projection of a declaration. Incomplete projections must never imply matching success.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public record StructureDisplay(String key, List<BlockOption> options, @Nullable String tileNbt, boolean complete) {
     public StructureDisplay(String key, List<BlockOption> options, @Nullable String tileNbt) {

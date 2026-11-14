@@ -43,8 +43,16 @@ public final class RecipeDefinitionUpdates implements AutoCloseable {
                     throw new IllegalStateException("Recipe and network definitions cannot be adopted by this owner");
                 }
                 var catalog = registry.snapshot();
-                for (var recipe : catalog.catalog().recipes()) extensions.require(recipe);
-                for (var definition : catalog.historicalDefinitions()) extensions.require(definition.recipe());
+                var elements = catalog.catalog().recipes();
+                for (int index = 0; index < elements.size(); index++) {
+                    var recipe = elements.get(index);
+                    extensions.require(recipe);
+                }
+                var elements3 = catalog.historicalDefinitions();
+                for (int index3 = 0; index3 < elements3.size(); index3++) {
+                    var definition = elements3.get(index3);
+                    extensions.require(definition.recipe());
+                }
                 publication = registry.bindPublication(scheduler, sessionId);
                 networkPublication = extensions.bindPublication(publication);
             }
@@ -123,7 +131,11 @@ public final class RecipeDefinitionUpdates implements AutoCloseable {
                 return;
             }
             var recipes = new ObjectArrayList<MachineRecipe>(prepared.replacements().size());
-            for (var definition : prepared.replacements()) recipes.add(definition.recipe());
+            var elements2 = prepared.replacements();
+            for (int index2 = 0; index2 < elements2.size(); index2++) {
+                var definition = elements2.get(index2);
+                recipes.add(definition.recipe());
+            }
             network = extensions.prepare(extensions.snapshot(), recipes);
             notice = new Published(sessionId(), prepared.expected(), prepared.next());
         } catch (RuntimeException | Error failure) {

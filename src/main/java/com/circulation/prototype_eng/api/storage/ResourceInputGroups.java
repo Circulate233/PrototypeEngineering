@@ -23,11 +23,14 @@ public final class ResourceInputGroups {
     public static Capture capture(MachineHatches root) {
         var bindings = new ObjectArrayList<Binding>();
         var expanded = new ObjectArrayList<Binding>();
-        for (var hatch : root.resources()) {
+        var elements = root.resources();
+        for (int index5 = 0; index5 < elements.size(); index5++) {
+            var hatch = elements.get(index5);
             var partitions = hatch.inputPartitions();
             var provider = new Binding(hatch, hatch.inputGroup(), hatch.sharedInput(), partitions);
             bindings.add(provider);
-            for (var partition : partitions) {
+            for (int index = 0; index < partitions.size(); index++) {
+                var partition = partitions.get(index);
                 var binding = partition == hatch ? provider
                     : new Binding(partition, partition.inputGroup(), partition.sharedInput(), null);
                 expanded.add(binding);
@@ -35,7 +38,8 @@ public final class ResourceInputGroups {
             }
         }
         var groups = new Object2ObjectLinkedOpenHashMap<ResourceInputGroup, ObjectArrayList<ResourceHatch>>();
-        for (var binding : expanded) {
+        for (int index2 = 0; index2 < expanded.size(); index2++) {
+            var binding = expanded.get(index2);
             if (binding.shared()) continue;
             // Empty/temporarily absent input views must remain observed by the quantity capture.
             // Their later appearance is a binding change, not evidence that the whole group is empty.
@@ -48,7 +52,8 @@ public final class ResourceInputGroups {
         });
         // Distribute in source order. Only shared prefixes visit multiple groups; distinct pattern
         // slots reach their exact group directly instead of rescanning all slots for every group.
-        for (var binding : expanded) {
+        for (int index3 = 0; index3 < expanded.size(); index3++) {
+            var binding = expanded.get(index3);
             var other = binding.group();
             var view = new GroupView(binding.hatch(), other);
             if (other.partition().isEmpty() && other.color() == AEColor.TRANSPARENT) {
@@ -75,12 +80,18 @@ public final class ResourceInputGroups {
     public record Capture(MachineHatches root, List<Binding> bindings, List<Group> groups) {
         public boolean current(MachineHatches actual) {
             if (actual != root) return false;
-            for (var binding : bindings) if (!binding.current()) return false;
+            for (int index4 = 0; index4 < bindings.size(); index4++) {
+                var binding = bindings.get(index4);
+                if (!binding.current()) return false;
+            }
             return true;
         }
 
         public @Nullable Group find(ResourceInputGroup id) {
-            for (var group : groups) if (group.id.equals(id)) return group;
+            for (int index1 = 0; index1 < groups.size(); index1++) {
+                var group = groups.get(index1);
+                if (group.id.equals(id)) return group;
+            }
             return null;
         }
     }

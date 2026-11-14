@@ -18,12 +18,12 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 
 /**
  * Runs after ordinary devices. Materials, station FE, network resources and progress commit or roll back together.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class ResearchStationWork {
     private final TeamResearchQueue queue;
@@ -47,18 +47,19 @@ public final class ResearchStationWork {
         result = Result.waiting(time);
     }
 
+    @SuppressWarnings("DataFlowIssue")
     public Result advance(ResearchStations.Capture sources, Context context) {
         waiting(context.time());
         if (!queue.teamId().equals(sources.teamId()))
             throw new IllegalArgumentException("Research capture belongs to another team");
-        var head = queue.activeHead().orElse(null);
+        var head = queue.activeHead();
         if (head == null || context.members().isEmpty() || !context.current().getAsBoolean() || !sources.current()) {
             sources.releaseUnused(List.of());
             return result;
         }
-        var work = Objects.requireNonNull(queue.activeProgress());
+        var work = queue.activeProgress();
         var plan = queue.planSegment(head.key(), sources.rates(), sources.availableResources(),
-            sources.availableMaterials(work.snapshot().remainingMaterials()), context.time()).orElse(null);
+            sources.availableMaterials(work.snapshot().remainingMaterials()), context.time());
         if (plan == null) {
             sources.releaseUnused(List.of());
             return result;

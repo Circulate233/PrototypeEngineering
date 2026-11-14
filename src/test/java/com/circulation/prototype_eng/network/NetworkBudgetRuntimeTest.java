@@ -25,7 +25,6 @@ import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;
 
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -203,7 +202,7 @@ class NetworkBudgetRuntimeTest {
 
         private Fixture() {
             runtime = new NetworkRuntime(identities, ownerId -> accepted
-                ? OwnerTeamResolution.resolved(ownerId, "team", OwnerTeamType.SERVER, ObjectSet.of(ownerId), Optional.empty())
+                ? OwnerTeamResolution.resolved(ownerId, "team", OwnerTeamType.SERVER, ObjectSet.of(ownerId), null)
                 : OwnerTeamResolution.rejected(ownerId, OwnerTeamResolutionStatus.NO_TEAM, "owner left"), this::requireOwner);
             center = register(identity(1), NetworkDeviceRole.NETWORK_CENTER);
             firstIdentity = identity(2);

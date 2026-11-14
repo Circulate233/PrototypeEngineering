@@ -126,7 +126,9 @@ public final class TeamResearchCompletion {
                 int baseline = baselines != null ? baselines.getInt(member)
                     : teamOwned ? teamBaseline : player.completedLevel(id);
                 var rewardLevels = new IntArrayList();
-                for (var stage : definition.stages()) {
+                var elements = definition.stages();
+                for (int index3 = 0; index3 < elements.size(); index3++) {
+                    var stage = elements.get(index3);
                     for (int level : stage.rewardGroupsByLevel().keySet()) {
                         if (level <= targetLevel && (level > baseline || baselines == null && baseline == targetLevel)) {
                             rewardLevels.add(level);
@@ -198,7 +200,8 @@ public final class TeamResearchCompletion {
                 throw new IllegalStateException("Completion commit cannot be replayed");
             }
             commitAttempted = true;
-            for (var transaction : transactions) {
+            for (int index1 = 0; index1 < transactions.size(); index1++) {
+                var transaction = transactions.get(index1);
                 transaction.commit();
             }
             committed = true;
@@ -213,7 +216,8 @@ public final class TeamResearchCompletion {
             if (terminal != null || !committed) {
                 throw new IllegalStateException("Completion has not committed");
             }
-            for (var transaction : transactions) {
+            for (int index2 = 0; index2 < transactions.size(); index2++) {
+                var transaction = transactions.get(index2);
                 transaction.complete();
             }
             terminal = Resolution.COMPLETED;

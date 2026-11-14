@@ -20,8 +20,8 @@ public record FormattedNetworkResource(ResourceLocation id, boolean internal, St
      * AE-compatible packet constructor for the fixed presentation data.
      */
     public FormattedNetworkResource(ByteBuf data) {
-        this(new PacketBuffer(data).readResourceLocation(), data.readBoolean(), new PacketBuffer(data).readString(32767),
-            new PacketBuffer(data).readString(32767));
+        var packet = new PacketBuffer(data);
+        this(packet.readResourceLocation(), packet.readBoolean(), packet.readString(32767), packet.readString(32767));
     }
 
     @Override

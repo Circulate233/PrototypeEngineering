@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.api.machine.workslot;
 
 import com.circulation.prototype_eng.api.persistence.ProcessResultNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessCodecs;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -18,6 +17,7 @@ import java.util.Objects;
 /**
  * All-or-nothing work-slot loading using the host's live layout and executor. Explicit layout revision
  * also covers compatible executor/host behavior. No saved field grants scheduler, world or PN authority.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class MachineWorkSlotsNbt {
     private final String revision;
@@ -49,15 +49,15 @@ public final class MachineWorkSlotsNbt {
     }
 
     private static WorkSlotDefinition readDefinition(NBTTagCompound entry) {
-        var savedGroups = StrictNbt.requireList(entry, "Groups", Constants.NBT.TAG_STRING);
+        var savedGroups = entry.getTagList("Groups", Constants.NBT.TAG_STRING);
         var groups = new ObjectLinkedOpenHashSet<ResourceLocation>(savedGroups.tagCount());
         for (int i = 0; i < savedGroups.tagCount(); i++) {
-            if (!groups.add(StrictNbt.requireId(savedGroups.getStringTagAt(i)))) {
+            if (!groups.add(new ResourceLocation(savedGroups.getStringTagAt(i)))) {
                 throw new IllegalArgumentException("Duplicate work-slot recipe group");
             }
         }
-        return new WorkSlotDefinition(StrictNbt.requireString(entry, "Name"), groups, StrictNbt.requireBoolean(entry, "Core"),
-            WorkSlotRestartPolicy.valueOf(StrictNbt.requireString(entry, "RestartPolicy")));
+        return new WorkSlotDefinition(entry.getString("Name"), groups, entry.getBoolean("Core"),
+            WorkSlotRestartPolicy.valueOf(entry.getString("RestartPolicy")));
     }
 
     public RecipeProcessCodecs processCodecs() {
@@ -68,16 +68,16 @@ public final class MachineWorkSlotsNbt {
         host.owner().requirePersistenceBoundary();
         var codecs = recipes.snapshot();
         var snapshot = host.snapshot();
-        long runtimeCounter = host.nextRuntimeSlot();
         var tag = new NBTTagCompound();
         tag.setInteger("Version", host.dynamicRoster() ? 2 : 1);
         if (host.dynamicRoster()) {
             tag.setBoolean("Dynamic", true);
-            tag.setLong("NextSlot", runtimeCounter);
+            tag.setLong("NextSlot", host.nextRuntimeSlot());
         }
         tag.setString("Revision", revision);
         var slots = new NBTTagList();
-        for (var slot : snapshot) {
+        for (int index = 0; index < snapshot.size(); index++) {
+            var slot = snapshot.get(index);
             var entry = writeDefinition(slot.definition());
             entry.setTag("Result", ProcessResultNbt.INSTANCE.encode(slot.result()));
             if (slot.process() != null) {
@@ -86,30 +86,23 @@ public final class MachineWorkSlotsNbt {
             slots.appendTag(entry);
         }
         tag.setTag("Slots", slots);
-        if (!host.snapshot().equals(snapshot) || host.nextRuntimeSlot() != runtimeCounter) {
-            throw new IllegalStateException("Codec changed work slots during serialization");
-        }
-        host.owner().requirePersistenceBoundary();
         return tag;
     }
 
     /**
      * Parse every entry into new processes before the host changes any old attachment or slot.
      */
-    public void restore(MachineWorkSlots host, NBTTagCompound saved) {
+    public void restore(MachineWorkSlots host, NBTTagCompound tag) {
         host.owner().requirePersistenceBoundary();
         var codecs = recipes.snapshot();
         var old = host.snapshot();
-        long runtimeCounter = host.nextRuntimeSlot();
-        var tag = Objects.requireNonNull(saved).copy();
-        StrictNbt.requireKeys(tag, "Version", "Revision", "Slots", "Dynamic", "NextSlot");
-        int version = StrictNbt.requireInt(tag, "Version");
-        if (version != (host.dynamicRoster() ? 2 : 1) || !StrictNbt.requireString(tag, "Revision").equals(revision)
-            || host.dynamicRoster() && !StrictNbt.requireBoolean(tag, "Dynamic")
+        int version = tag.getInteger("Version");
+        if (version != (host.dynamicRoster() ? 2 : 1) || !tag.getString("Revision").equals(revision)
+            || host.dynamicRoster() && !tag.getBoolean("Dynamic")
             || !host.dynamicRoster() && (tag.hasKey("Dynamic") || tag.hasKey("NextSlot"))) {
             throw new IllegalArgumentException("Unsupported work-slot save or incompatible layout revision");
         }
-        var slots = StrictNbt.requireList(tag, "Slots", Constants.NBT.TAG_COMPOUND);
+        var slots = tag.getTagList("Slots", Constants.NBT.TAG_COMPOUND);
         if (!host.dynamicRoster() && slots.tagCount() != old.size()) {
             throw new IllegalArgumentException("Work slot layout size changed");
         }
@@ -117,22 +110,17 @@ public final class MachineWorkSlotsNbt {
         var names = new ObjectLinkedOpenHashSet<String>(slots.tagCount());
         for (int i = 0; i < slots.tagCount(); i++) {
             var entry = slots.getCompoundTagAt(i);
-            StrictNbt.requireKeys(entry, "Name", "Groups", "Core", "RestartPolicy", "Result", "Process");
             var definition = readDefinition(entry);
             if (!names.add(definition.name()) || !host.acceptsRestoredDefinition(i, definition)) {
                 throw new IllegalArgumentException("Unknown, duplicate or changed work slot: " + definition.name());
             }
-            var result = ProcessResultNbt.INSTANCE.decode(StrictNbt.requireCompound(entry, "Result"));
-            var processTag = entry.hasKey("Process") ? StrictNbt.requireCompound(entry, "Process") : null;
-            var process = processTag == null ? null : codecs.require(StrictNbt.requireId(processTag, "Recipe"),
-                StrictNbt.requireString(processTag, "Revision")).decode(host.owner(), processTag);
+            var result = ProcessResultNbt.INSTANCE.decode(entry.getCompoundTag("Result"));
+            var processTag = entry.hasKey("Process") ? entry.getCompoundTag("Process") : null;
+            var process = processTag == null ? null : codecs.require(new ResourceLocation(processTag.getString("Recipe")),
+                processTag.getString("Revision")).decode(host.owner(), processTag);
             decoded.add(new MachineWorkSlots.SlotSnapshot(definition, process, result));
         }
-        if (!host.snapshot().equals(old) || host.nextRuntimeSlot() != runtimeCounter) {
-            throw new IllegalStateException("Codec changed live work slots during restoration");
-        }
-        host.owner().requirePersistenceBoundary();
-        if (host.dynamicRoster()) host.restore(decoded, StrictNbt.requireLong(tag, "NextSlot"));
+        if (host.dynamicRoster()) host.restore(decoded, tag.getLong("NextSlot"));
         else host.restore(decoded);
     }
 

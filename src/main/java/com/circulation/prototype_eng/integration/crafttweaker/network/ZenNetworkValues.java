@@ -7,20 +7,36 @@ import stanhebben.zenscript.annotations.*;
 @ZenRegister
 @ZenClass("mods.prototype_eng.network.Values")
 @SuppressWarnings("unused")
-public record ZenNetworkValues(NetworkResourceState value) {
+public final class ZenNetworkValues {
+    private final NetworkResourceState value;
+    private final ZenResourceMap resources;
+    private final ZenResourceMap required;
+    private final ZenResourceMap researchRates;
+
+    public ZenNetworkValues(NetworkResourceState value) {
+        this.value = value;
+        resources = new ZenResourceMap(value.resources);
+        required = new ZenResourceMap(value.required);
+        researchRates = new ZenResourceMap(value.researchRates);
+    }
+
+    public NetworkResourceState value() {
+        return value;
+    }
+
     @ZenGetter("resources")
     public ZenResourceMap resources() {
-        return new ZenResourceMap(value.resources);
+        return resources;
     }
 
     @ZenGetter("required")
     public ZenResourceMap required() {
-        return new ZenResourceMap(value.required);
+        return required;
     }
 
     @ZenGetter("researchRates")
     public ZenResourceMap researchRates() {
-        return new ZenResourceMap(value.researchRates);
+        return researchRates;
     }
 
     @ZenGetter("concurrency")

@@ -138,7 +138,8 @@ public final class RecipeOverlays {
         try {
             var replacement = new Object2ObjectOpenHashMap<RequirementPath, Binding<?>>(snapshot.size());
             var orders = new Object2ObjectOpenHashMap<RequirementPath, LongOpenHashSet>(snapshot.size());
-            for (var layer : snapshot) {
+            for (int index2 = 0; index2 < snapshot.size(); index2++) {
+                var layer = snapshot.get(index2);
                 restoreLayer(replacement, orders, Objects.requireNonNull(layer));
             }
             for (var binding : replacement.values()) {
@@ -367,7 +368,8 @@ public final class RecipeOverlays {
             ordered.sort(Comparator.comparingLong(Layer::order));
             C payload = base.payload();
             var children = base.type().system().children(payload);
-            for (var layer : ordered) {
+            for (int index1 = 0; index1 < ordered.size(); index1++) {
+                var layer = ordered.get(index1);
                 payload = layer.apply(payload);
                 var effectiveChildren = base.type().system().children(payload);
                 if (children.size() != effectiveChildren.size()) {

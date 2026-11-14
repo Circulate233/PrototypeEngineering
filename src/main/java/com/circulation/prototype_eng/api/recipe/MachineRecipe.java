@@ -25,6 +25,7 @@ import java.util.Set;
  * Recipe definition migrated from PM: extensible requirements grouped by execution responsibility.
  * Resource identities belong in requirement payloads (AE2 keys); FE is a separate requirement.
  * Neither the definition nor the phase executor assumes a fixed set of resource kinds.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class MachineRecipe {
     private final ResourceLocation id;
@@ -84,7 +85,8 @@ public final class MachineRecipe {
         sorted.sort(Comparator.comparing(requirement -> requirement.type().id()));
         orderedRequirements = ObjectLists.unmodifiable(sorted);
         var grouped = new Object2ObjectLinkedOpenHashMap<RecipeRequirementType<?>, ObjectList<RecipeRequirement<?>>>(typesById.size());
-        for (var requirement : sorted) {
+        for (int index = 0; index < sorted.size(); index++) {
+            var requirement = sorted.get(index);
             grouped.computeIfAbsent(requirement.type(), ignored -> new ObjectArrayList<>(6)).add(requirement);
         }
         grouped.replaceAll((_, list) -> ObjectLists.unmodifiable(list));

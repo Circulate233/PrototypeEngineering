@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.api.research;
 
 import com.circulation.prototype_eng.api.persistence.NbtCodec;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
@@ -223,22 +222,20 @@ public final class TeamOwnedResearch {
 
         @Override
         public Snapshot decode(NBTTagCompound tag) {
-            StrictNbt.requireKeys(tag, "Version", "Team", "Levels");
-            if (StrictNbt.requireInt(tag, "Version") != 1) {
+            if (tag.getInteger("Version") != 1) {
                 throw new IllegalArgumentException("Unsupported team research version");
             }
-            var list = StrictNbt.requireList(tag, "Levels", Constants.NBT.TAG_COMPOUND);
+            var list = tag.getTagList("Levels", Constants.NBT.TAG_COMPOUND);
             var levels = new Object2IntOpenHashMap<ResourceLocation>();
             for (int index = 0; index < list.tagCount(); index++) {
                 var entry = list.getCompoundTagAt(index);
-                StrictNbt.requireKeys(entry, "Id", "Level");
-                var id = StrictNbt.requireId(entry, "Id");
-                int level = StrictNbt.requireInt(entry, "Level");
+                var id = new ResourceLocation(entry.getString("Id"));
+                int level = entry.getInteger("Level");
                 if (level < 1 || levels.putIfAbsent(id, level) != 0) {
                     throw new IllegalArgumentException("Invalid or duplicate team research level");
                 }
             }
-            return new Snapshot(StrictNbt.requireString(tag, "Team"), levels);
+            return new Snapshot(tag.getString("Team"), levels);
         }
     }
 

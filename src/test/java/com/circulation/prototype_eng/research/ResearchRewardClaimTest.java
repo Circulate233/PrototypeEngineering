@@ -30,7 +30,6 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -50,7 +49,6 @@ class ResearchRewardClaimTest {
     private static final ResourceLocation GROUP = id("group");
     private static final TestResources.KeyType TYPE = new TestResources.KeyType("reward");
     private static final TestResources.Key ITEM = new TestResources.Key(TYPE, "item");
-    private final ResearchRewardClaimer executor = new ResearchRewardClaimer();
 
     private static PlayerResearchState eligible() {
         var player = new PlayerResearchState(UUID.randomUUID());
@@ -255,10 +253,6 @@ class ResearchRewardClaimTest {
         var saved = codec.encode(player.snapshot());
         var loaded = codec.decode(saved);
         assertEquals(player.snapshot(), loaded);
-        var fragment = loaded.rewardClaims().getFirst().children().getFirst().fragments().values().iterator().next();
-        var independent = fragment.taggedStackNbt();
-        independent.setString("payload", "changed");
-        assertEquals("business", fragment.taggedStackNbt().getString("payload"));
         var corrupt = saved.copy();
         corrupt.getTagList("Claims", 10).getCompoundTagAt(0).setString("Group", id("unknown").toString());
         assertThrows(IllegalArgumentException.class, () -> codec.decode(corrupt));
@@ -319,9 +313,9 @@ class ResearchRewardClaimTest {
     void ambiguousDeliveryRepliesNeverRecordNoEffectAndObservedRecoveryDoesNotRedeliver() {
         var replies = ObjectList.<Function<ItemDeliveryFragment, ItemDeliveryAdapter.Delivery>>of(
             _ -> null,
-            fragment -> new ItemDeliveryAdapter.Delivery(fragment.count() - 1, Optional.empty()),
-            _ -> new ItemDeliveryAdapter.Delivery(0, Optional.of(UUID.randomUUID())),
-            fragment -> new ItemDeliveryAdapter.Delivery(fragment.count(), Optional.of(UUID.randomUUID())));
+            fragment -> new ItemDeliveryAdapter.Delivery(fragment.count() - 1, null),
+            _ -> new ItemDeliveryAdapter.Delivery(0, UUID.randomUUID()),
+            fragment -> new ItemDeliveryAdapter.Delivery(fragment.count(), UUID.randomUUID()));
         var definition = definition(group(new RewardChild.Item(id("items"), ITEM, 5)));
         for (var reply : replies) {
             var player = eligible();
@@ -333,7 +327,7 @@ class ResearchRewardClaimTest {
             assertEquals(ItemDeliveryFragment.Status.DELIVERING, first.status());
             assertEquals(1, adapter.deliveries);
             assertEquals(1, adapter.physical.size());
-            adapter.reply = fragment -> new ItemDeliveryAdapter.Delivery(fragment.count(), Optional.empty());
+            adapter.reply = fragment -> new ItemDeliveryAdapter.Delivery(fragment.count(), null);
             assertEquals(ResearchRewardClaimer.Status.CLAIMED, claim(player, definition, GROUP, durable::set, adapter).status());
             assertEquals(2, adapter.deliveries);
             assertEquals(2, adapter.physical.size());
@@ -352,7 +346,7 @@ class ResearchRewardClaimTest {
         var current = new AtomicBoolean(true);
         adapter.afterScan = () -> current.set(false);
         adapter.failCommit = false;
-        assertEquals(ResearchRewardClaimer.Status.STALE_CONTEXT, executor.claim(new ResearchRewardClaimer.Request(
+        assertEquals(ResearchRewardClaimer.Status.STALE_CONTEXT, ResearchRewardClaimer.claim(new ResearchRewardClaimer.Request(
             player, definition, 1, GROUP, 20, durable::set, adapter, current::get)).status());
         assertEquals(first, durable.get().children().getFirst().fragments().get(first.id()));
         assertEquals(ItemDeliveryFragment.Status.DELIVERING, first.status());
@@ -385,7 +379,7 @@ class ResearchRewardClaimTest {
         assertThrows(IllegalStateException.class, planned::retryPlanned);
         assertThrows(IllegalStateException.class, () -> delivering.confirmed(null).retryPlanned());
         var entityBearing = new ItemDeliveryFragment(UUID.randomUUID(), parent, ITEM, 2, planned.taggedStackNbt(),
-            new ItemDeliveryFragment.WorldDrop(0, 0, 0, 1, 64, 1), Optional.of(UUID.randomUUID()), ItemDeliveryFragment.Status.DELIVERING);
+            new ItemDeliveryFragment.WorldDrop(0, 0, 0, 1, 64, 1), UUID.randomUUID(), ItemDeliveryFragment.Status.DELIVERING);
         assertThrows(IllegalStateException.class, entityBearing::retryPlanned);
         var terminal = claim.replaceChild(0, child.replaceFragment(delivering.confirmed(null)));
         assertThrows(IllegalStateException.class, () -> terminal.replaceChild(0, child.replaceFragment(retry)));
@@ -424,7 +418,7 @@ class ResearchRewardClaimTest {
     }
 
     private ResearchRewardClaimer.Result claim(PlayerResearchState player, ResearchDefinition definition, ResourceLocation choice, RewardClaimCheckpoint checkpoint, Adapter adapter) {
-        return executor.claim(new ResearchRewardClaimer.Request(player, definition, 1, choice, 20, checkpoint, adapter));
+        return ResearchRewardClaimer.claim(new ResearchRewardClaimer.Request(player, definition, 1, choice, 20, checkpoint, adapter));
     }
 
     private static final class Adapter implements ItemDeliveryAdapter {
@@ -436,7 +430,7 @@ class ResearchRewardClaimTest {
         };
         private Runnable afterScan = () -> {
         };
-        private Function<ItemDeliveryFragment, Delivery> reply = fragment -> new Delivery(fragment.count(), Optional.empty());
+        private Function<ItemDeliveryFragment, Delivery> reply = fragment -> new Delivery(fragment.count(), null);
         private int deliveries;
         private boolean failBeforeEffect;
         private boolean failCommit;
@@ -447,7 +441,7 @@ class ResearchRewardClaimTest {
         private static ItemDeliveryFragment fragment(ItemDeliveryKey key, int slot, int count) {
             var tag = new NBTTagCompound();
             tag.setString("payload", "business");
-            return new ItemDeliveryFragment(UUID.randomUUID(), key, ITEM, count, tag, new ItemDeliveryFragment.Inventory(slot), Optional.empty(), ItemDeliveryFragment.Status.PLANNED);
+            return new ItemDeliveryFragment(UUID.randomUUID(), key, ITEM, count, tag, new ItemDeliveryFragment.Inventory(slot), null, ItemDeliveryFragment.Status.PLANNED);
         }
 
         @Override

@@ -33,7 +33,8 @@ public final class ManualMaterials {
     private ManualMaterials(ObjectList<Material> materials) {
 
         this.materials = materials;
-        for (var material : materials) {
+        for (int index2 = 0; index2 < materials.size(); index2++) {
+            var material = materials.get(index2);
             byId.put(material.id(), material);
         }
     }
@@ -45,7 +46,8 @@ public final class ManualMaterials {
         Objects.requireNonNull(requirements);
         var materials = new ObjectArrayList<Material>(requirements.size());
         var requirementIds = new ObjectOpenHashSet<ResourceLocation>(requirements.size());
-        for (var requirement : requirements) {
+        for (int index7 = 0; index7 < requirements.size(); index7++) {
+            var requirement = requirements.get(index7);
             Objects.requireNonNull(requirement);
             if (!requirementIds.add(requirement.id())) {
                 throw new IllegalArgumentException("Duplicate manual material requirement " + requirement.id());
@@ -74,7 +76,8 @@ public final class ManualMaterials {
         var expected = new Object2LongLinkedOpenHashMap<>(currentWork);
         var remaining = new AEKey2LongMap.OpenHashMap();
         remaining.putAll(payments);
-        for (var material : materials) {
+        for (int index6 = 0; index6 < materials.size(); index6++) {
+            var material = materials.get(index6);
             long amount = Math.min(material.amount() - currentWork.getLong(material.id()), remaining.getLong(material.key()));
             if (amount == 0) continue;
             increments.addTo(material.id(), amount);
@@ -93,16 +96,23 @@ public final class ManualMaterials {
 
     public AEKey2LongMap remaining(Object2LongMap<ManualMaterialKey> work) {
         var result = new AEKey2LongMap.OpenHashMap();
-        for (var material : materials) result.addTo(material.key(), material.amount() - work.getLong(material.id()));
+        for (int index3 = 0; index3 < materials.size(); index3++) {
+            var material = materials.get(index3);
+            result.addTo(material.key(), material.amount() - work.getLong(material.id()));
+        }
         return result;
     }
 
     public Object2LongMap<ManualMaterialKey> workForRemaining(AEKey2LongMap remaining) {
         var paid = new AEKey2LongMap.OpenHashMap();
-        for (var material : materials) paid.addTo(material.key(), material.amount());
+        for (int index = 0; index < materials.size(); index++) {
+            var material = materials.get(index);
+            paid.addTo(material.key(), material.amount());
+        }
         for (var entry : remaining.object2LongEntrySet()) paid.addTo(entry.getKey(), -entry.getLongValue());
         var work = new Object2LongLinkedOpenHashMap<ManualMaterialKey>();
-        for (var material : materials) {
+        for (int index5 = 0; index5 < materials.size(); index5++) {
+            var material = materials.get(index5);
             long amount = Math.min(material.amount(), paid.getLong(material.key()));
             if (amount > 0) work.addTo(material.id(), amount);
             paid.addTo(material.key(), -amount);
@@ -116,7 +126,8 @@ public final class ManualMaterials {
 
     public boolean complete(Object2LongMap<ManualMaterialKey> work) {
         validateWork(work);
-        for (var material : materials) {
+        for (int index4 = 0; index4 < materials.size(); index4++) {
+            var material = materials.get(index4);
             if (work.getOrDefault(material.id(), 0L) != material.amount()) {
                 return false;
             }

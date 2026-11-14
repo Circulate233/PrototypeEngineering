@@ -411,7 +411,7 @@ class MachineControllerTest {
     }
 
     @Test
-    void queuedRestoredLoadRetainsIsolatedRawDataAndAStopBeforeTheBoundarySkipsEveryFactory() {
+    void queuedRestoredLoadRetainsRawDataAndAStopBeforeTheBoundarySkipsEveryFactory() {
         int[] factories = {0};
         var action = new Action();
         var component = counterType(action, () -> factories[0]++);
@@ -426,9 +426,6 @@ class MachineControllerTest {
                 assertNull(controller.machine());
                 var pending = Objects.requireNonNull(controller.save());
                 assertEquals(expected, pending);
-                pending.setString("Revision", "returned-copy-mutation");
-                saved.setString("Revision", "caller-mutation");
-                assertEquals(expected, controller.save());
                 controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
             }, ExecutionMode.MAIN_THREAD);
             scheduler.tick();

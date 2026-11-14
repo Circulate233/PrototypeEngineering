@@ -50,7 +50,10 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
 
     private static WorkSlotStatus overall(List<Entry> entries) {
         var status = WorkSlotStatus.IDLE;
-        for (var entry : entries) status = combine(status, entry.status());
+        for (int index1 = 0; index1 < entries.size(); index1++) {
+            var entry = entries.get(index1);
+            status = combine(status, entry.status());
+        }
         return status;
     }
 
@@ -71,7 +74,9 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
         int threads = 0;
         long usedParallelism = 0;
         var overall = WorkSlotStatus.IDLE;
-        for (var binding : machine.components().orderedBindings()) {
+        var elements6 = machine.components().orderedBindings();
+        for (int index6 = 0; index6 < elements6.size(); index6++) {
+            var binding = elements6.get(index6);
             if (binding.component() instanceof MachineWorkSlots slots) {
                 slots.requireQuiescent();
                 if (slots.owner() != machine) {
@@ -79,7 +84,10 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
                 }
                 hosts.add(slots);
                 if (!crossRecipe) threads = Math.addExact(threads, slots.capacity());
-                for (var slot : slots.slots()) {
+
+                var elements = slots.slots();
+                for (int index = 0; index < elements.size(); index++) {
+                    var slot = elements.get(index);
                     overall = combine(overall, slot.status());
                     if (!crossRecipe || slot.process() != null) total = Math.incrementExact(total);
                     if (slot.process() != null) {
@@ -87,13 +95,18 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
                         usedParallelism = Math.addExact(usedParallelism, RecipeParallelism.effective(slot.process()));
                     }
                 }
+
             }
         }
         int start = Math.clamp(requestedOffset, 0, Math.max(0, total - rows));
         var result = new ObjectArrayList<Entry>(Math.min(rows, total - start));
         int visibleIndex = 0;
-        for (var host : hosts) {
-            for (var slot : host.slots()) {
+        for (int index3 = 0; index3 < hosts.size(); index3++) {
+            var host = hosts.get(index3);
+
+            var elements2 = host.slots();
+            for (int index2 = 0; index2 < elements2.size(); index2++) {
+                var slot = elements2.get(index2);
                 var process = slot.process();
                 if (crossRecipe && process == null) continue;
                 if (visibleIndex++ < start) continue;
@@ -113,6 +126,7 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
                 result.add(new Entry(slot.name(), process == null ? "" : process.recipe().id().toString(), slot.status(), percent, reason, arguments,
                     process == null ? 0 : RecipeParallelism.effective(process)));
             }
+
             if (result.size() == rows) {
                 break;
             }
@@ -185,11 +199,13 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
     public void writeToPacket(ByteBuf data) {
         data.writeBoolean(formed).writeBoolean(active).writeInt(totalSlots).writeInt(offset).writeByte(entries.size());
         var packet = new PacketBuffer(data);
-        for (var entry : entries) {
+        for (int index5 = 0; index5 < entries.size(); index5++) {
+            var entry = entries.get(index5);
             packet.writeString(entry.name).writeString(entry.recipe);
             packet.writeByte(entry.status.ordinal()).writeByte(entry.percent);
             packet.writeString(entry.reason).writeByte(entry.arguments.size());
-            for (var argument : entry.arguments) {
+            for (int index4 = 0; index4 < entry.arguments.size(); index4++) {
+                var argument = entry.arguments.get(index4);
                 packet.writeString(argument);
             }
             packet.writeInt(entry.parallelism);

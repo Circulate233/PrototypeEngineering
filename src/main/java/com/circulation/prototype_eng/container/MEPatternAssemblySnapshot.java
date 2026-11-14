@@ -47,7 +47,10 @@ public record MEPatternAssemblySnapshot(long revision, long patternRevision, int
 
     private static void writeEntries(PacketBuffer data, List<Entry> entries) {
         data.writeByte(entries.size());
-        for (var entry : entries) GenericStack.writeBuffer(entry.stack, data);
+        for (int index = 0; index < entries.size(); index++) {
+            var entry = entries.get(index);
+            GenericStack.writeBuffer(entry.stack, data);
+        }
     }
 
     private static void writeSide(PacketBuffer data, Side side) {

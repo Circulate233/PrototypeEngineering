@@ -62,7 +62,7 @@ class TeamResearchQueueTest {
         var head = queue.enqueue(ID, 1, PLAYER, 0);
         var stations = List.of(new ResearchProgress.StationRate(STATION, resources(100, 10)));
         for (int tick = 1; tick <= 30; tick++) {
-            var plan = queue.planSegment(head.key(), stations, resources(100, 2), ImmutableResourceAmounts.empty(), tick).orElseThrow();
+            var plan = queue.planSegment(head.key(), stations, resources(100, 2), ImmutableResourceAmounts.empty(), tick);
             if (tick > 6) assertEquals(0, plan.grantedResources().getDouble(COMPUTE));
             assertEquals(tick == 30, plan.completesResearch());
             commit(queue, plan);
@@ -82,18 +82,18 @@ class TeamResearchQueueTest {
         var queue = new TeamResearchQueue(registry, "team");
         var head = queue.enqueue(ID, 1, PLAYER, 0);
         var stations = List.of(new ResearchProgress.StationRate(STATION, resources(10, 10)));
-        var first = queue.planSegment(head.key(), stations, resources(10, 2), ImmutableResourceAmounts.single(A, 1), 1).orElseThrow();
+        var first = queue.planSegment(head.key(), stations, resources(10, 2), ImmutableResourceAmounts.single(A, 1), 1);
         assertEquals(1, first.payments().getLong(A));
         assertEquals(0, first.payments().getLong(B));
         commit(queue, first);
         assertEquals(10, queue.activeProgress().snapshot().resources().getDouble(COMPUTE));
-        var second = queue.planSegment(head.key(), stations, resources(10, 2), ImmutableResourceAmounts.single(B, 5), 2).orElseThrow();
+        var second = queue.planSegment(head.key(), stations, resources(10, 2), ImmutableResourceAmounts.single(B, 5), 2);
         assertEquals(5, second.payments().getLong(B));
         commit(queue, second);
         assertEquals(1, queue.activeProgress().snapshot().remainingMaterials().getLong(A));
         assertEquals(5, queue.activeProgress().snapshot().remainingMaterials().getLong(B));
         assertEquals(100, queue.activeProgress().snapshot().remainingMaterials().getLong(C));
-        var catchUp = queue.planSegment(head.key(), stations, resources(10, 2), ImmutableResourceAmounts.empty(), 3).orElseThrow();
+        var catchUp = queue.planSegment(head.key(), stations, resources(10, 2), ImmutableResourceAmounts.empty(), 3);
         assertTrue(catchUp.payments().isEmpty());
         assertEquals(0, catchUp.grantedResources().getDouble(COMPUTE));
         assertEquals(2, catchUp.grantedResources().getDouble(QUBIT));
@@ -106,12 +106,12 @@ class TeamResearchQueueTest {
         var queue = new TeamResearchQueue(registry, "team");
         var head = queue.enqueue(ID, 1, PLAYER, 0);
         var stations = List.of(new ResearchProgress.StationRate(STATION, resources(100, 0)), new ResearchProgress.StationRate(SECOND, resources(100, 0)));
-        var first = queue.planSegment(head.key(), stations, resources(100, 0), ImmutableResourceAmounts.empty(), 1).orElseThrow();
+        var first = queue.planSegment(head.key(), stations, resources(100, 0), ImmutableResourceAmounts.empty(), 1);
         assertEquals(20, first.grantedResources().getDouble(COMPUTE));
         commit(queue, first);
         assertEquals(2, queue.activeProgress().snapshot().elapsedTicks());
-        assertTrue(queue.planSegment(head.key(), stations, resources(100, 0), ImmutableResourceAmounts.empty(), 1).isEmpty());
-        var second = queue.planSegment(head.key(), stations, resources(100, 0), ImmutableResourceAmounts.empty(), 2).orElseThrow();
+        assertNull(queue.planSegment(head.key(), stations, resources(100, 0), ImmutableResourceAmounts.empty(), 1));
+        var second = queue.planSegment(head.key(), stations, resources(100, 0), ImmutableResourceAmounts.empty(), 2);
         assertTrue(second.completesResearch());
     }
 
@@ -122,7 +122,7 @@ class TeamResearchQueueTest {
         var queue = new TeamResearchQueue(registry, "team");
         var head = queue.enqueue(ID, 1, PLAYER, 0);
         commit(queue, queue.planSegment(head.key(), List.of(new ResearchProgress.StationRate(STATION, resources(10, 0))),
-            resources(10, 0), ImmutableResourceAmounts.single(A, 1), 1).orElseThrow());
+            resources(10, 0), ImmutableResourceAmounts.single(A, 1), 1));
         queue.remove(head.key(), 2);
         var codec = new ResearchQueueNbt(registry, new ResourceKeyNbt(_ -> TYPE));
         var restored = TeamResearchQueue.restore(registry, codec.decode(codec.encode(queue.snapshot())));
@@ -131,7 +131,7 @@ class TeamResearchQueueTest {
         assertEquals(1, restored.activeProgress().snapshot().elapsedTicks());
         assertEquals(3, restored.activeProgress().snapshot().remainingMaterials().getLong(A));
         var plan = restored.planSegment(resumed.key(), List.of(new ResearchProgress.StationRate(STATION, resources(10, 0))),
-            resources(10, 0), ImmutableResourceAmounts.single(A, 1), 4).orElseThrow();
+            resources(10, 0), ImmutableResourceAmounts.single(A, 1), 4);
         var mutation = restored.prepareGrantSegment(plan);
         mutation.commit();
         mutation.rollback();

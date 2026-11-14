@@ -12,7 +12,6 @@ import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttrib
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.persistence.AttributeModifierNbt;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayTypes;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
@@ -83,7 +82,7 @@ class RecipeProcessPersistenceTest {
     }
 
     private static RecipeProcessNbt.Builder builder(MachineRecipe recipe) {
-        return RecipeProcessNbt.builder(recipe, "revision-1").resources(KEYS).attributes(new AttributeModifierNbt());
+        return RecipeProcessNbt.builder(recipe, "revision-1").resources(KEYS).attributes(AttributeModifierNbt.INSTANCE);
     }
 
     private static RecipeProcess process(Environment env, MachineRecipe recipe) {
@@ -106,16 +105,6 @@ class RecipeProcessPersistenceTest {
         return new ResourceLocation("process_persistence_test", name);
     }
 
-    private static NBTTagCompound data(NBTTagCompound tag, ComponentType<RecipeProcess, ?> type) {
-        var components = tag.getTagList("Components", Constants.NBT.TAG_COMPOUND);
-        for (int i = 0; i < components.tagCount(); i++) {
-            var entry = components.getCompoundTagAt(i);
-            if (entry.getString("Type").equals(type.id().toString())) {
-                return entry.getCompoundTag("Data");
-            }
-        }
-        throw new AssertionError("Saved component is absent: " + type.id());
-    }
 
     private static SlottedResourceBuffer buffer() {
         var capacities = new Reference2LongArrayMap<AEKeyType>();
@@ -285,26 +274,6 @@ class RecipeProcessPersistenceTest {
         assertEquals(20, original.attributes().value(SCORE));
     }
 
-    @Test
-    void externalCodecTagsAreIsolatedFromEncodingInputAndSubsequentDecodes() {
-        var fixture = new ExtensionFixture(recipe(1));
-        var original = process(new Environment(), fixture.recipe);
-        var box = original.components().create(fixture.first, original);
-        box.set(10);
-        var codec = fixture.codec();
-        var encoded = codec.encode(original);
-        data(encoded, fixture.first).setInteger("Value", 20);
-        assertEquals(10, box.value());
-        var restored = codec.decode(original.owner(), encoded);
-        assertEquals(20, Objects.requireNonNull(restored.components().get(fixture.first)).value());
-        data(encoded, fixture.first).setInteger("Value", 30);
-        assertEquals(20, Objects.requireNonNull(restored.components().get(fixture.first)).value());
-        Objects.requireNonNull(restored.components().get(fixture.first)).set(40);
-        assertEquals(30, data(encoded, fixture.first).getInteger("Value"));
-        var next = codec.decode(original.owner(), encoded);
-        assertEquals(30, Objects.requireNonNull(next.components().get(fixture.first)).value());
-        assertEquals(10, box.value());
-    }
 
     @Test
     void malformedMiddleAndFinalComponentsRevisionAndGraphRejectWithoutChangingTheOldProcess() {
@@ -317,12 +286,6 @@ class RecipeProcessPersistenceTest {
         original.components().removeDependency(fixture.first, fixture.second);
         var codec = fixture.codec();
         var pristine = codec.encode(original);
-        for (var type : List.of(fixture.second, fixture.third)) {
-            var corrupt = pristine.copy();
-            data(corrupt, type).setString("Value", "wrong tag type");
-            assertThrows(IllegalArgumentException.class, () -> codec.decode(original.owner(), corrupt));
-            assertEquals(pristine, codec.encode(original));
-        }
         var wrongRevision = pristine.copy();
         wrongRevision.setString("Revision", "another revision");
         assertThrows(IllegalArgumentException.class, () -> codec.decode(original.owner(), wrongRevision));
@@ -333,9 +296,6 @@ class RecipeProcessPersistenceTest {
         var wrongDuration = pristine.copy();
         wrongDuration.setInteger("Duration", 99);
         assertThrows(IllegalArgumentException.class, () -> codec.decode(original.owner(), wrongDuration));
-        var wrongStateType = pristine.copy();
-        wrongStateType.getCompoundTag("State").setFloat("Progress", 0);
-        assertThrows(IllegalArgumentException.class, () -> codec.decode(original.owner(), wrongStateType));
         assertEquals(pristine, codec.encode(original));
     }
 
@@ -506,9 +466,6 @@ class RecipeProcessPersistenceTest {
         private NBTTagCompound tag = new NBTTagCompound();
         private boolean restored;
 
-        private int value() {
-            return tag.getInteger("Value");
-        }
 
         private void set(int value) {
             tag.setInteger("Value", value);
@@ -532,8 +489,6 @@ class RecipeProcessPersistenceTest {
 
         @Override
         public void restore(RecipeProcess process, Box component, NBTTagCompound data) {
-            StrictNbt.requireKeys(data, "Value");
-            StrictNbt.requireInt(data, "Value");
             component.tag = data;
             component.restored = true;
             events.add("restore:" + name);

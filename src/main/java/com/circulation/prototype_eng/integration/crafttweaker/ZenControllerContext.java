@@ -56,8 +56,11 @@ public final class ZenControllerContext {
         for (int slot = 0; slot < count; slot++) visitor.visit(slot, inventoryStack(slot));
     }
 
+    /**
+     * Borrowed read-only for the current callback; do not retain or mutate the native stack.
+     */
     @ZenMethod
     public IItemStack inventoryStack(int slot) {
-        return CraftTweakerMC.getIItemStack(machine.controllerInventory().getStackInSlot(slot).copy());
+        return CraftTweakerMC.getIItemStack(machine.controllerInventory().getStackInSlot(slot));
     }
 }

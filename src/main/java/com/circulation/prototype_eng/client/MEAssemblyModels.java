@@ -19,9 +19,14 @@ public final class MEAssemblyModels {
 
     @SubscribeEvent
     public static void registerModels(ModelRegistryEvent event) {
-        for (var block : MEAssemblyBlocks.resources())
+
+        var elements = MEAssemblyBlocks.resources();
+        for (int index = 0; index < elements.size(); index++) {
+            var block = elements.get(index);
             ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(block), 0,
                 new ModelResourceLocation(Objects.requireNonNull(block.getRegistryName()), "inventory"));
+        }
+
         var pattern = MEAssemblyBlocks.pattern();
         ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(pattern), 0,
             new ModelResourceLocation(Objects.requireNonNull(pattern.getRegistryName()), "inventory"));

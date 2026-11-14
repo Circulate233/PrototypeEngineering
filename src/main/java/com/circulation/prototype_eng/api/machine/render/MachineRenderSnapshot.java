@@ -20,6 +20,7 @@ import java.util.UUID;
  * Producers provide a valid tree, distinct ordered positions, and immutable BlockPos values.
  * Lists and their elements are borrowed read-only and must stay unchanged for the snapshot lifetime.
  * Network payload validation belongs to ControllerRenderSnapshotCodec.decode.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public record MachineRenderSnapshot(ControllerDisplayData display, CatalogToken catalog, BlockPos controller,
                                     @Nullable ResourceLocation structure, List<Occurrence> occurrences,
@@ -39,7 +40,8 @@ public record MachineRenderSnapshot(ControllerDisplayData display, CatalogToken 
     public StructureBounds bounds() {
         int minX = controller.getX(), minY = controller.getY(), minZ = controller.getZ();
         int maxX = minX, maxY = minY, maxZ = minZ;
-        for (var position : positions) {
+        for (int index1 = 0; index1 < positions.size(); index1++) {
+            var position = positions.get(index1);
             minX = Math.min(minX, position.getX());
             minY = Math.min(minY, position.getY());
             minZ = Math.min(minZ, position.getZ());

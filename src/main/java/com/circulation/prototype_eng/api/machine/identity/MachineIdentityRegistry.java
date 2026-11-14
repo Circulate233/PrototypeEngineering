@@ -16,6 +16,7 @@ import java.util.UUID;
  * Server owner-thread registrations of persistent identity for loaded runtime generations.
  * The host checks actual world and tile validity before registration. This registry does not inspect a world,
  * resolve teams, discover network centers, or publish work permission or budgets.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class MachineIdentityRegistry implements AutoCloseable {
     private final Runnable ownerCheck;

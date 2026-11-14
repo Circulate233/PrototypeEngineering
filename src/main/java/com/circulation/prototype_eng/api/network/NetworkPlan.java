@@ -1,14 +1,12 @@
 package com.circulation.prototype_eng.api.network;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -52,16 +50,7 @@ public final class NetworkPlan {
                        long concurrencyPerTick,
                        Reference2DoubleMap<NetworkResourceType> resourcesPerTick,
                        @Nullable DataCenterResearchSnapshot dataCenterResearch) {
-        public Team {
-            Objects.requireNonNull(centerId);
-            if (centerLevel < 1 || concurrencyPerTick < 0) {
-                throw new IllegalArgumentException("Invalid selected center level");
-            }
-            if (dataCenterResearch != null && !dataCenterResearch.dataCenterId().equals(dataCenterId)) {
-                throw new IllegalArgumentException("Selected data-center contents have another identity");
-            }
-            NetworkResourceModifier.validateResources(resourcesPerTick);
-        }
+
 
         public Team(UUID centerId, int centerLevel, @Nullable UUID dataCenterId, Reference2DoubleMap<NetworkResourceType> resourcesPerTick) {
             this(centerId, centerLevel, dataCenterId, 0, resourcesPerTick, null);

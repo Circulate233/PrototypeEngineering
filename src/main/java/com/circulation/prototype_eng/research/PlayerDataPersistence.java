@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.research;
 
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
@@ -59,7 +58,7 @@ public final class PlayerDataPersistence {
             channel.force(true);
             saved = CompressedStreamTools.readCompressed(Channels.newInputStream(channel));
         }
-        if (host) saved = StrictNbt.requireCompound(StrictNbt.requireCompound(saved, "Data"), "Player");
+        if (host) saved = saved.getCompoundTag("Data").getCompoundTag("Player");
         if (!saved.hasUniqueId("UUID") || !Objects.requireNonNull(player).equals(saved.getUniqueId("UUID"))) {
             throw new IOException("Saved research player identity differs");
         }

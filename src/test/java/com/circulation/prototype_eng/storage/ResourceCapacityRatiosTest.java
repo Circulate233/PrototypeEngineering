@@ -38,7 +38,7 @@ class ResourceCapacityRatiosTest {
         var contents = new NBTTagList();
         var entry = new NBTTagCompound();
         entry.setInteger("Slot", 0);
-        entry.setTag("Key", new ResourceKeyNbt().encode(key));
+        entry.setTag("Key", ResourceKeyNbt.INSTANCE.encode(key));
         entry.setLong("Quantity", 8500);
         contents.appendTag(entry);
         legacy.setTag("Input", contents);

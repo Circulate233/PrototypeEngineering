@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.api.HatchCapabilities;
 import com.circulation.prototype_eng.api.energy.EnergyHatchConfiguration;
 import com.circulation.prototype_eng.api.gui.EnergyHatchGuiHost;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.storage.HatchConfiguration;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.HatchReconfigurationStatus;
@@ -337,27 +336,18 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
         if (hasTransferReservation())
             throw new IllegalStateException("Cannot reload energy hatch with an unresolved external transfer");
         boolean modern = tag.hasKey("EffectiveProfile");
-        var nextTier = modern || tag.hasKey("Tier") ? HatchTier.of(StrictNbt.requireInt(tag, "Tier")) : tier;
-        var nextMode = modern || tag.hasKey("Mode") ? HatchMode.valueOf(StrictNbt.requireString(tag, "Mode")) : mode;
-        if (modern) {
-            StrictNbt.requireLong(tag, "MaxInRate");
-            StrictNbt.requireLong(tag, "MaxOutRate");
-        }
-        boolean nextAutoInput = modern ? StrictNbt.requireBoolean(tag, "AutoInput") : tag.getBoolean("AutoInput");
-        boolean nextAutoOutput = modern ? StrictNbt.requireBoolean(tag, "AutoOutput") : tag.getBoolean("AutoOutput");
+        var nextTier = modern || tag.hasKey("Tier") ? HatchTier.of(tag.getInteger("Tier")) : tier;
+        var nextMode = modern || tag.hasKey("Mode") ? HatchMode.valueOf(tag.getString("Mode")) : mode;
+        boolean nextAutoInput = tag.getBoolean("AutoInput");
+        boolean nextAutoOutput = tag.getBoolean("AutoOutput");
         long nextInputRate = HatchConfigurationNbt.energyRate(tag, "MaxInRate");
         long nextOutputRate = HatchConfigurationNbt.energyRate(tag, "MaxOutRate");
         if (nextMode == HatchMode.MIXED) {
             if (tag.hasKey("InputEnergy") && tag.hasKey("Energy"))
                 throw new IllegalArgumentException("Ambiguous mixed hatch input balance");
-            if (tag.hasKey("EffectiveProfile")) {
-                StrictNbt.requireLong(tag, "InputEnergy");
-                StrictNbt.requireLong(tag, "OutputEnergy");
-            }
         } else {
             if (tag.hasKey("InputEnergy") || tag.hasKey("OutputEnergy"))
                 throw new IllegalArgumentException("Saved FE sides differ from physical hatch direction");
-            if (tag.hasKey("EffectiveProfile")) StrictNbt.requireLong(tag, "Energy");
         }
         // Legacy mixed Energy belongs only to input; a missing output balance is zero.
         long primary = HatchConfigurationNbt.nonnegative(tag,
@@ -367,7 +357,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
             : nextMode.hasOutput() ? primary : 0;
         EnergyHatchConfiguration profile;
         if (tag.hasKey("EffectiveProfile")) {
-            profile = HatchConfigurationNbt.energy(StrictNbt.requireCompound(tag, "EffectiveProfile"), nextMode);
+            profile = HatchConfigurationNbt.energy(tag.getCompoundTag("EffectiveProfile"), nextMode);
         } else {
             var defaults = HatchConfig.energyConfiguration(nextTier, nextMode);
             var in = defaults.input();

@@ -89,20 +89,27 @@ public final class BuiltinProcessValidation {
         }
         var walker = new Walker(process, index, locks, selections, stableResourceGroups);
         var ongoing = new Execution(true, process.state().lifecycle() == RecipeProcess.Lifecycle.COMPLETED, Window.NONE);
-        for (var root : process.orderedRequirements()) {
+        var elements2 = process.orderedRequirements();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var root = elements2.get(index2);
             walker.require(root, root.path(null), ongoing);
         }
     }
 
     private static void validateAttributeReferences(RecipeDefinitionIndex index, RequirementAttributeState.Snapshot snapshot) {
         var seen = new ObjectOpenHashSet<RequirementAttributeState.Reference>();
-        for (var references : List.of(snapshot.owned(), snapshot.aborted())) {
-            for (var reference : references) {
+
+        var elements = List.of(snapshot.owned(), snapshot.aborted());
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var references = elements.get(index1);
+            for (int index3 = 0; index3 < references.size(); index3++) {
+                var reference = references.get(index3);
                 if (index.require(reference.path()).type() != RecipeRequirements.ATTRIBUTES || !seen.add(reference)) {
                     throw invalid("Unknown or duplicate requirement attribute ownership: " + reference);
                 }
             }
         }
+
         // The component binds exact installed identities and checks receipt absence. Historical
         // attribute overlays may change the attribute ID; external historical validators still apply.
     }
@@ -113,20 +120,25 @@ public final class BuiltinProcessValidation {
         var layers = new ObjectOpenHashSet<SelectiveState.OverlayReference>();
         var attributes = process.attributes().localSnapshot();
         var overlays = process.components().get(RecipeOverlays.TYPE);
-        for (var receipt : receipts) {
+        for (int index8 = 0; index8 < receipts.size(); index8++) {
+            var receipt = receipts.get(index8);
             var path = receipt.selectionPath();
             if (index.require(path).type() != RecipeRequirements.SELECTIVE || !paths.add(path)) {
                 throw invalid("Unknown or duplicate selector abort receipt: " + path);
             }
             String framed = path.toString().length() + ":" + path;
-            for (var reference : receipt.modifiers()) {
+            var elements4 = receipt.modifiers();
+            for (int index4 = 0; index4 < elements4.size(); index4++) {
+                var reference = elements4.get(index4);
                 var local = attributes.get(reference.attribute());
                 if (!reference.id().startsWith("selective/" + framed + "/") || !modifiers.add(reference)
                     || local != null && local.modifiers().containsKey(reference.id())) {
                     throw invalid("Invalid or still installed aborted selector modifier: " + reference.id());
                 }
             }
-            for (var reference : receipt.overlays()) {
+            var elements5 = receipt.overlays();
+            for (int index5 = 0; index5 < elements5.size(); index5++) {
+                var reference = elements5.get(index5);
                 if (!reference.layerId().startsWith("selective_overlay/" + framed) || !layers.add(reference)
                     || index.require(reference.path()) != reference.target()
                     || overlays != null && overlays.hasLayer(reference.target(), reference.path(), reference.layerId())) {
@@ -186,7 +198,9 @@ public final class BuiltinProcessValidation {
             if (stableStructure && !selection.completed() && hasKnownCheckpointAncestor(path, index)) {
                 throw invalid("A recorded checkpoint selection has not completed its full lifecycle: " + path);
             }
-            for (var reference : selection.modifiers()) {
+            var elements6 = selection.modifiers();
+            for (int index6 = 0; index6 < elements6.size(); index6++) {
+                var reference = elements6.get(index6);
                 if (!modifiersClaimed.add(reference)) {
                     throw invalid("Local modifier is owned by multiple selections");
                 }
@@ -195,7 +209,9 @@ public final class BuiltinProcessValidation {
                     throw invalid("Selection-owned local modifier is absent: " + reference.id());
                 }
             }
-            for (var reference : selection.overlays()) {
+            var elements7 = selection.overlays();
+            for (int index7 = 0; index7 < elements7.size(); index7++) {
+                var reference = elements7.get(index7);
                 if (!overlaysClaimed.add(reference)) {
                     throw invalid("Overlay layer is owned by multiple selections");
                 }

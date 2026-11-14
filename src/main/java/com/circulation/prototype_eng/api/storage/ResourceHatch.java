@@ -8,6 +8,7 @@ import java.util.List;
  * Machine-side resource access. Sides may own independent contents or share one bidirectional balance.
  * Storage is independently synchronized; host discovery still belongs to the server thread.
  * Implementations share the physical balance's StorageContext across all adapter aliases.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public interface ResourceHatch {
     /**

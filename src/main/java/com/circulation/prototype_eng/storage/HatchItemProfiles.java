@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.storage;
 
 import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.api.energy.EnergyHatchConfiguration;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.HatchTier;
 import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
@@ -27,7 +26,7 @@ public final class HatchItemProfiles {
         requireIdentity(saved, tier, mode);
         if (saved.hasKey("EffectiveProfile")) {
             try {
-                return HatchConfigurationNbt.resource(StrictNbt.requireCompound(saved, "EffectiveProfile"), mode);
+                return HatchConfigurationNbt.resource(saved.getCompoundTag("EffectiveProfile"), mode);
             } catch (ArithmeticException invalid) {
                 throw new IllegalArgumentException("Saved EffectiveProfile side slot sum overflows", invalid);
             }
@@ -53,7 +52,7 @@ public final class HatchItemProfiles {
             return authoritative == null ? HatchConfig.energyConfiguration(tier, mode) : authoritative.energy(tier, mode);
         requireIdentity(saved, tier, mode);
         if (saved.hasKey("EffectiveProfile"))
-            return HatchConfigurationNbt.energy(StrictNbt.requireCompound(saved, "EffectiveProfile"), mode);
+            return HatchConfigurationNbt.energy(saved.getCompoundTag("EffectiveProfile"), mode);
         var defaults = authoritative == null ? HatchConfig.energyConfiguration(tier, mode) : authoritative.energy(tier, mode);
         if (mode == HatchMode.MIXED && saved.hasKey("InputEnergy") && saved.hasKey("Energy")
             || mode != HatchMode.MIXED && (saved.hasKey("InputEnergy") || saved.hasKey("OutputEnergy")))
@@ -79,14 +78,14 @@ public final class HatchItemProfiles {
 
     private static long energyRate(@Nullable NBTTagCompound saved, String key) {
         if (saved == null) return -1;
-        if (saved.hasKey("EffectiveProfile")) StrictNbt.requireLong(saved, key);
+        if (saved.hasKey("EffectiveProfile")) saved.getLong(key);
         return HatchConfigurationNbt.energyRate(saved, key);
     }
 
     private static void requireIdentity(NBTTagCompound saved, HatchTier tier, HatchMode mode) {
         boolean modern = saved.hasKey("EffectiveProfile");
-        if ((modern || saved.hasKey("Tier")) && StrictNbt.requireInt(saved, "Tier") != tier.level()
-            || (modern || saved.hasKey("Mode")) && !StrictNbt.requireString(saved, "Mode").equals(mode.name()))
+        if ((modern || saved.hasKey("Tier")) && saved.getInteger("Tier") != tier.level()
+            || (modern || saved.hasKey("Mode")) && !saved.getString("Mode").equals(mode.name()))
             throw new IllegalArgumentException("Saved hatch profile differs from its physical item");
     }
 

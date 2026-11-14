@@ -41,7 +41,10 @@ final class PreviewRayIndex {
             int x = BlockPos2ObjectMap.unpackX(packed), y = BlockPos2ObjectMap.unpackY(packed), z = BlockPos2ObjectMap.unpackZ(packed);
             double near = StructurePreviewCamera.intersect(ray, x << 4, y << 4, z << 4, 16);
             if (!Double.isFinite(near) || near > best) continue;
-            for (var cell : section.getValue()) {
+
+            var elements = section.getValue();
+            for (int index = 0; index < elements.size(); index++) {
+                var cell = elements.get(index);
                 if (!view.visible(cell)) continue;
                 double distance = distanceTo.applyAsDouble(cell);
                 if (distance >= 0 && distance < best) {
@@ -49,6 +52,7 @@ final class PreviewRayIndex {
                     hit = cell;
                 }
             }
+
         }
         return hit == null ? null : new StructurePreviewView.Click(view.token(), hit);
     }

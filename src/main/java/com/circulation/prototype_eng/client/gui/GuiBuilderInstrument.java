@@ -174,7 +174,9 @@ public final class GuiBuilderInstrument extends AEBaseGui<ContainerStructureTool
         if (unchanged && !view.settings().sliceCounts().equals(slices)) return;
         boolean rebuild = !view.settings().sliceCounts().equals(slices);
         var globals = new Object2IntOpenHashMap<StructureDisplay>();
-        for (var line : model.bom()) {
+        var elements3 = model.bom();
+        for (int index3 = 0; index3 < elements3.size(); index3++) {
+            var line = elements3.get(index3);
             var display = line.display();
             if (display == null) continue;
             int selected = display.options().indexOf(BuilderState.choice(tag, display));
@@ -182,7 +184,11 @@ public final class GuiBuilderInstrument extends AEBaseGui<ContainerStructureTool
                 globals.put(display, selected);
         }
         var displays = new BlockPos2ObjectMap<StructureDisplay>();
-        for (var cell : model.cells()) if (cell.display() != null) displays.put(cell.position(), cell.display());
+        var elements = model.cells();
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var cell = elements.get(index1);
+            if (cell.display() != null) displays.put(cell.position(), cell.display());
+        }
         if (view.replaceSelections(view.token(), globals, BuilderState.cellChoices(tag, displays, view.settings().orientation()), slices)) {
             appliedSelections = tag;
             appliedGeneration = model.generation();
@@ -243,7 +249,8 @@ public final class GuiBuilderInstrument extends AEBaseGui<ContainerStructureTool
             boolean enabled = settingAvailable(index);
             var label = fontRenderer.listFormattedStringToWidth(settingLabel(index).getLocal(), 54);
             int textY = top + Math.max(0, (SETTINGS_ROW - label.size() * fontRenderer.FONT_HEIGHT) / 2);
-            for (var line : label) {
+            for (int index2 = 0; index2 < label.size(); index2++) {
+                var line = label.get(index2);
                 fontRenderer.drawString(line, left, textY, enabled ? 0xffffff : 0xff969696);
                 textY += fontRenderer.FONT_HEIGHT;
             }

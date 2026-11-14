@@ -62,7 +62,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -348,7 +347,7 @@ class ComputerControllerTest {
                         Consumer<NetworkDeviceEvent> callback) {
             this.centerThreads = centerThreads;
             network = new NetworkRuntime(identities, owner -> OwnerTeamResolution.resolved(owner, "team",
-                OwnerTeamType.SERVER, ObjectSet.of(owner), Optional.empty()), () -> {
+                OwnerTeamType.SERVER, ObjectSet.of(owner), null), () -> {
             });
             network.beginTick(0);
             var components = new NetworkComputerComponentRegistry();

@@ -75,7 +75,7 @@ class StructurePredicateTest {
     }
 
     @Test
-    void rootNbtUsesBareStringsAndTypedSnbtAndFreezesExternalConstraints() {
+    void rootNbtUsesBareStringsAndTypedSnbt() {
         BlockPos position = new BlockPos(3, 4, 5);
         var tag = new NBTTagCompound();
         tag.setString("name", "plain text");
@@ -91,8 +91,6 @@ class StructurePredicateTest {
         expected.put("amount", "7");
         expected.put("enabled", "1b");
         StructurePredicate frozen = StructurePredicates.nbt(expected);
-        expected.clear();
-        expected.put("missing", "changed after construction");
 
         assertTrue(matches(frozen, source, position));
         assertFalse(matches(StructurePredicates.nbt(Map.of("name", "\"plain text\"")), source, position));

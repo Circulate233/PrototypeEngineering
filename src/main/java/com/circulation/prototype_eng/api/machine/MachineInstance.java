@@ -110,7 +110,13 @@ public class MachineInstance implements PlannedMachineTask {
     }
 
     public void onNetworkEvent(NetworkDeviceEvent event) {
-        if (type != null) for (var callback : type.networkEvents()) callback.accept(event);
+        if (type != null) {
+            var elements = type.networkEvents();
+            for (int index1 = 0; index1 < elements.size(); index1++) {
+                var callback = elements.get(index1);
+                callback.accept(event);
+            }
+        }
     }
 
     public long networkEnergy(long amount) {
@@ -269,7 +275,8 @@ public class MachineInstance implements PlannedMachineTask {
     public boolean recipeWorkAllowed() {
         if (requiresNetwork() && (networkDevice == null || !networkDevice.allowsNetworkWork())) return false;
         if (recipeWorkGates != null) {
-            for (var permission : recipeWorkGates) {
+            for (int index = 0; index < recipeWorkGates.size(); index++) {
+                var permission = recipeWorkGates.get(index);
                 if (!permission.getAsBoolean()) {
                     return false;
                 }
@@ -355,7 +362,9 @@ public class MachineInstance implements PlannedMachineTask {
     public Set<?> affinityKeys() {
         var keys = new ObjectLinkedOpenHashSet<>();
         var hatches = MachineHatches.get(this);
-        for (var hatch : hatches.resources()) {
+        var elements5 = hatches.resources();
+        for (int index5 = 0; index5 < elements5.size(); index5++) {
+            var hatch = elements5.get(index5);
             var input = hatch.inputStorageIdentity();
             var output = hatch.outputStorageIdentity();
             if (input != null) {
@@ -365,13 +374,19 @@ public class MachineInstance implements PlannedMachineTask {
                 keys.add(output);
             }
         }
-        for (var input : hatches.energyInputs()) {
+        var elements2 = hatches.energyInputs();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var input = elements2.get(index2);
             keys.add(Objects.requireNonNull(input.storageIdentity()));
         }
-        for (var output : hatches.energyOutputs()) {
+        var elements3 = hatches.energyOutputs();
+        for (int index3 = 0; index3 < elements3.size(); index3++) {
+            var output = elements3.get(index3);
             keys.add(Objects.requireNonNull(output.storageIdentity()));
         }
-        for (var binding : components.assemblyBindings()) {
+        var elements4 = components.assemblyBindings();
+        for (int index4 = 0; index4 < elements4.size(); index4++) {
+            var binding = elements4.get(index4);
             if (binding.component() instanceof AffinityKeyProvider provider) {
                 for (var key : Objects.requireNonNull(provider.affinityKeys())) {
                     keys.add(Objects.requireNonNull(key));

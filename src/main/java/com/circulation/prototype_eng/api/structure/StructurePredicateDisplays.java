@@ -38,12 +38,18 @@ final class StructurePredicateDisplays {
             if (facts.containsKey(predicate)) continue;
             var fact = StructurePredicates.displayFact(predicate);
             facts.put(predicate, fact);
-            if (fact instanceof Branch branch) for (var child : branch.children) queue.enqueue(child);
+            if (fact instanceof Branch branch) for (int index = 0; index < branch.children.size(); index++) {
+                var child = branch.children.get(index);
+                queue.enqueue(child);
+            }
             if (fact instanceof Material(var exact, var membership, var authored)) {
                 if (exact != null) exactSeeds.add(new Seed(StructureDisplay.BlockOption.of(exact, Map.of()), exact));
                 if (authored != null) {
-                    for (var option : authored.options())
+                    var elements3 = authored.options();
+                    for (int index3 = 0; index3 < elements3.size(); index3++) {
+                        var option = elements3.get(index3);
                         exactSeeds.add(new Seed(new StructureDisplay.BlockOption(option.blockId(), option.meta(), Map.of(), option.properties()), null));
+                    }
                 }
                 if (membership != null) {
                     // Collect all membership seeds before AND filtering; only final representatives are bounded.
@@ -127,7 +133,9 @@ final class StructurePredicateDisplays {
                                 break search;
                             }
                             steps += authored.options().size();
-                            for (var option : authored.options()) {
+                            var elements5 = authored.options();
+                            for (int index5 = 0; index5 < elements5.size(); index5++) {
+                                var option = elements5.get(index5);
                                 if (!compatibleAuthor(seed.option, option)) continue;
                                 var merged = merge(attempt.nbt, option.nbt());
                                 if (merged == null) continue;
@@ -181,7 +189,8 @@ final class StructurePredicateDisplays {
                     continue;
                 }
                 boolean pass = all, local = false;
-                for (var child : children) {
+                for (int index4 = 0; index4 < children.size(); index4++) {
+                    var child = children.get(index4);
                     var result = support.get(child);
                     pass = all ? pass && result.pass : pass || result.pass;
                     local |= result.pass && result.localMaterial;
@@ -211,7 +220,11 @@ final class StructurePredicateDisplays {
     }
 
     private static boolean compatibleAuthor(StructureDisplay.BlockOption seed, StructureDisplay authored) {
-        for (var option : authored.options()) if (compatibleAuthor(seed, option)) return true;
+        var elements = authored.options();
+        for (int index2 = 0; index2 < elements.size(); index2++) {
+            var option = elements.get(index2);
+            if (compatibleAuthor(seed, option)) return true;
+        }
         return false;
     }
 

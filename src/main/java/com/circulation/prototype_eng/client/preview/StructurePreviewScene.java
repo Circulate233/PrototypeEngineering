@@ -225,21 +225,21 @@ public final class StructurePreviewScene implements AutoCloseable {
         int[] rect = screenViewport.scissor(scale, mc.displayHeight);
         int oldMatrix = GL11.glGetInteger(GL11.GL_MATRIX_MODE);
         int oldDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
-        int[] clipped = rect.clone();
+        int clippedX = rect[0], clippedY = rect[1], clippedWidth = rect[2], clippedHeight = rect[3];
         if (GL11.glIsEnabled(GL11.GL_SCISSOR_TEST)) {
             oldScissor.clear();
             GL11.glGetInteger(GL11.GL_SCISSOR_BOX, oldScissor);
             int right = Math.min(rect[0] + rect[2], oldScissor.get(0) + oldScissor.get(2));
             int top = Math.min(rect[1] + rect[3], oldScissor.get(1) + oldScissor.get(3));
-            clipped[0] = Math.max(rect[0], oldScissor.get(0));
-            clipped[1] = Math.max(rect[1], oldScissor.get(1));
-            clipped[2] = Math.max(0, right - clipped[0]);
-            clipped[3] = Math.max(0, top - clipped[1]);
+            clippedX = Math.max(rect[0], oldScissor.get(0));
+            clippedY = Math.max(rect[1], oldScissor.get(1));
+            clippedWidth = Math.max(0, right - clippedX);
+            clippedHeight = Math.max(0, top - clippedY);
         }
         GL11.glPushAttrib(GL11.GL_SCISSOR_BIT);
         try {
             GL11.glEnable(GL11.GL_SCISSOR_TEST);
-            GL11.glScissor(clipped[0], clipped[1], clipped[2], clipped[3]);
+            GL11.glScissor(clippedX, clippedY, clippedWidth, clippedHeight);
             GL11.glViewport(rect[0], rect[1], rect[2], rect[3]);
             GlStateManager.depthMask(true);
             GlStateManager.enableDepth();
@@ -371,7 +371,8 @@ public final class StructurePreviewScene implements AutoCloseable {
         tessellator.draw();
         var picked = view.picked();
         var indices = view.threeDimensional ? boundaryCells : layerCells.get(view.layer);
-        if (indices != null) for (int index : indices) {
+        if (indices != null) for (int index1 = 0; index1 < indices.size(); index1++) {
+            int index = indices.getInt(index1);
             var cell = model.cells().get(index);
             if (independentController && cell.position().equals(BlockPos.ORIGIN)) continue;
             boolean selected = picked != null && picked.position().equals(cell.position());
@@ -463,7 +464,7 @@ public final class StructurePreviewScene implements AutoCloseable {
     }
 
     /**
-     * The actual creative middle-pick item, cached only for this represented generation.
+     * The actual creative middle-pick item, cached for this generation and borrowed read-only.
      */
     public ItemStack item(StructureDisplay display, int option) {
         var mc = Minecraft.getMinecraft();
@@ -476,14 +477,14 @@ public final class StructurePreviewScene implements AutoCloseable {
         if (position == null) return ItemStack.EMPTY;
         var key = new ItemChoice(display, option, position);
         var cached = itemChoices.get(key);
-        if (cached != null) return cached.copy();
+        if (cached != null) return cached;
         var root = model.generation().entries().get(model.structureId());
         var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
         var state = PreviewBlockStates.resolve(display.options().get(option), rotation);
         var result = state == null ? ItemStack.EMPTY : pickWorld.pick(state, position, mc.player, display.tileNbt());
         // Some native pick hooks become ready later; an empty first observation is not a stable icon.
         if (!result.isEmpty()) itemChoices.put(key, result);
-        return result.copy();
+        return result;
     }
 
     /**
@@ -500,7 +501,9 @@ public final class StructurePreviewScene implements AutoCloseable {
         materialsPrepared = true;
         var quantities = new Object2LongLinkedOpenHashMap<MaterialChoice>();
         var positions = new Object2ObjectOpenHashMap<MaterialChoice, BlockPos>();
-        for (var cell : model.cells()) {
+        var elements = model.cells();
+        for (int index2 = 0; index2 < elements.size(); index2++) {
+            var cell = elements.get(index2);
             if (cell.position().equals(BlockPos.ORIGIN)) continue;
             var display = cell.display();
             if (display == null || !display.complete()) return null;

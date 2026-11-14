@@ -74,7 +74,8 @@ public final class ResourceTransactions {
         var participants = new ObjectArrayList<ResourceReservation>(reservations);
         var tokens = new ReferenceOpenHashSet<ResourceReservation>(participants.size());
         var domains = new ReferenceOpenHashSet<StorageContext>(participants.size());
-        for (var reservation : participants) {
+        for (int index3 = 0; index3 < participants.size(); index3++) {
+            var reservation = participants.get(index3);
             Objects.requireNonNull(reservation);
             if (!tokens.add(reservation)) {
                 throw new IllegalArgumentException("Repeated reservation token");
@@ -92,14 +93,16 @@ public final class ResourceTransactions {
             }
             boolean accepted = true;
             try {
-                for (var reservation : participants) {
+                for (int index2 = 0; index2 < participants.size(); index2++) {
+                    var reservation = participants.get(index2);
                     if (!reservation.canApply()) {
                         accepted = false;
                         break;
                     }
                 }
                 if (accepted) {
-                    for (var reservation : participants) {
+                    for (int index = 0; index < participants.size(); index++) {
+                        var reservation = participants.get(index);
                         reservation.apply();
                     }
                     accepted = prepareCommit.getAsBoolean();
@@ -137,7 +140,8 @@ public final class ResourceTransactions {
         } catch (RuntimeException | Error completion) {
             failure = completion;
         }
-        for (var reservation : reservations) {
+        for (int index4 = 0; index4 < reservations.size(); index4++) {
+            var reservation = reservations.get(index4);
             try {
                 reservation.complete();
             } catch (RuntimeException | Error completion) {
@@ -149,7 +153,8 @@ public final class ResourceTransactions {
 
     private static void publishAll(List<StorageContext> contexts, Throwable primary) {
         Throwable failure = primary;
-        for (var context : contexts) {
+        for (int index1 = 0; index1 < contexts.size(); index1++) {
+            var context = contexts.get(index1);
             try {
                 context.publishChanges();
             } catch (RuntimeException | Error notification) {

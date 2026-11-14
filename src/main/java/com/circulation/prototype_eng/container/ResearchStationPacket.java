@@ -115,9 +115,13 @@ public final class ResearchStationPacket implements PacketWritable {
                 data.writeBoolean(definition.icon != null);
                 if (definition.icon != null) AEKey.writeKey(data, definition.icon);
                 data.writeVarInt(definition.materials.size());
-                for (var key : definition.materials) AEKey.writeKey(data, key);
+                for (int index1 = 0; index1 < definition.materials.size(); index1++) {
+                    var key = definition.materials.get(index1);
+                    AEKey.writeKey(data, key);
+                }
                 data.writeVarInt(definition.resources.size());
-                for (var resource : definition.resources) {
+                for (int index3 = 0; index3 < definition.resources.size(); index3++) {
+                    var resource = definition.resources.get(index3);
                     NetworkResourcePackets.write(data, resource.type);
                     data.writeDouble(resource.total);
                 }
@@ -126,21 +130,24 @@ public final class ResearchStationPacket implements PacketWritable {
         data.writeBoolean(queue != null);
         if (queue != null) {
             data.writeVarInt(queue.size());
-            for (var entry : queue) {
+            for (int index2 = 0; index2 < queue.size(); index2++) {
+                var entry = queue.get(index2);
                 data.writeVarLong(entry.entryId);
                 data.writeString(entry.name);
                 data.writeVarInt(entry.level);
             }
         }
         data.writeVarInt(materials.size());
-        for (var change : materials) {
+        for (int index4 = 0; index4 < materials.size(); index4++) {
+            var change = materials.get(index4);
             data.writeVarInt(change.index);
             data.writeByte(change.fields);
             if ((change.fields & FIRST) != 0) data.writeVarLong(change.available);
             if ((change.fields & SECOND) != 0) data.writeVarLong(change.remaining);
         }
         data.writeVarInt(resources.size());
-        for (var change : resources) {
+        for (int index5 = 0; index5 < resources.size(); index5++) {
+            var change = resources.get(index5);
             data.writeVarInt(change.index);
             data.writeByte(change.fields);
             if ((change.fields & FIRST) != 0) data.writeDouble(change.occupied);

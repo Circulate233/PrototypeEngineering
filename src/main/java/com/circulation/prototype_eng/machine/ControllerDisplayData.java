@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.machine;
 
 import ae2.api.orientation.BlockOrientation;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -44,12 +43,11 @@ public record ControllerDisplayData(ResourceLocation type, BlockOrientation orie
     }
 
     public static ControllerDisplayData decode(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Version", "Type", "Orientation", "Formed", "Generation", "Sequence");
-        if (StrictNbt.requireInt(tag, "Version") != 1) {
+        if (tag.getInteger("Version") != 1) {
             throw new IllegalArgumentException("Unsupported controller display version");
         }
-        return new ControllerDisplayData(StrictNbt.requireId(tag, "Type"), BlockOrientation.valueOf(StrictNbt.requireString(tag, "Orientation")),
-            StrictNbt.requireBoolean(tag, "Formed"), StrictNbt.requireLong(tag, "Generation"), StrictNbt.requireLong(tag, "Sequence"));
+        return new ControllerDisplayData(new ResourceLocation(tag.getString("Type")), BlockOrientation.valueOf(tag.getString("Orientation")),
+            tag.getBoolean("Formed"), tag.getLong("Generation"), tag.getLong("Sequence"));
     }
 
     public boolean follows(@Nullable ControllerDisplayData previous) {

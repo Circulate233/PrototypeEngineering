@@ -115,7 +115,7 @@ class ResearchDownloadInventoryEvidenceTest {
     @Test
     void cleanupVerifiesCurrentInventoryAndReceiptRemovalWithoutRequiringOldAfterForever() throws IOException {
         var committed = prepared().committed();
-        var currentInventory = committed.inventoryAfter();
+        var currentInventory = committed.inventoryAfter().copy();
         currentInventory.getTagList("inventory", 10).getCompoundTagAt(0).getCompoundTag("ForgeCaps").setInteger("stored", 9);
         var file = directory.resolve("player.dat");
         write(file, player(currentInventory, new NBTTagCompound()));
@@ -157,11 +157,11 @@ class ResearchDownloadInventoryEvidenceTest {
         foreign.setUniqueId("UUID", new UUID(0, 99));
         write(file, foreign);
         assertThrows(IOException.class, () -> verify(file, false, committed.inventoryAfter(), store(committed)));
-        var differentSlot = committed.inventoryAfter();
+        var differentSlot = committed.inventoryAfter().copy();
         differentSlot.getTagList("inventory", 10).getCompoundTagAt(0).setByte("Slot", (byte) 8);
         write(file, player(differentSlot, store(committed)));
         assertThrows(IllegalStateException.class, () -> verify(file, false, committed.inventoryAfter(), store(committed)));
-        var differentCaps = committed.inventoryAfter();
+        var differentCaps = committed.inventoryAfter().copy();
         differentCaps.getTagList("inventory", 10).getCompoundTagAt(0).getCompoundTag("ForgeCaps").setInteger("stored", 0);
         write(file, player(differentCaps, store(committed)));
         assertThrows(IllegalStateException.class, () -> verify(file, false, committed.inventoryAfter(), store(committed)));

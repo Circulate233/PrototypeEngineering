@@ -5,9 +5,10 @@ import ae2.container.guisync.GuiSync;
 import com.circulation.prototype_eng.api.machine.ComputerController;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
-import com.circulation.prototype_eng.api.network.NetworkWorkState;
 import com.circulation.prototype_eng.api.network.MachineComputerComponents;
+import com.circulation.prototype_eng.api.network.NetworkWorkState;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentInventory;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
@@ -18,10 +19,7 @@ import net.minecraft.inventory.IContainerListener;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.function.ToDoubleFunction;
-
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 
 public final class ContainerComputer extends AEBaseContainer {
     private final MachineControllerHost host;
@@ -75,9 +73,10 @@ public final class ContainerComputer extends AEBaseContainer {
         super.broadcastChanges();
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private double available(NetworkResourceType resource) {
         return supplyState == ComputerController.SupplyState.WAITING ? 0
-            : ((ComputerController) Objects.requireNonNull(host.machine())).availableForComponents(resource);
+            : ((ComputerController) host.machine()).availableForComponents(resource);
     }
 
     private void capture() {
@@ -96,7 +95,9 @@ public final class ContainerComputer extends AEBaseContainer {
             energyPaid = active ? computer.energyPaid() : 0;
             energyAvailable = 0;
             energySources.clear();
-            for (var input : MachineHatches.get(computer).energyInputs()) {
+            var elements = MachineHatches.get(computer).energyInputs();
+            for (int index = 0; index < elements.size(); index++) {
+                var input = elements.get(index);
                 var context = input.context();
                 if (!energySources.add(context)) continue;
                 context.lock();
@@ -109,7 +110,9 @@ public final class ContainerComputer extends AEBaseContainer {
             if (installed != inventory && (installed == null || !MachineComputerComponents.sameComposition(installed, inventory))) {
                 var rows = new ObjectArrayList<ComputerDetailsPacket.Component>(inventory.components().size());
                 installedCount = 0;
-                for (var item : inventory.components()) {
+                var elements2 = inventory.components();
+                for (int index2 = 0; index2 < elements2.size(); index2++) {
+                    var item = elements2.get(index2);
                     var definition = item.definition();
                     installedCount = Math.addExact(installedCount, item.count());
                     rows.add(new ComputerDetailsPacket.Component(item.item(), item.count(), definition.concurrencyPerItem(),

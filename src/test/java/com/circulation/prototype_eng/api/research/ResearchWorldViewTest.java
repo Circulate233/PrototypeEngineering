@@ -31,7 +31,6 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -110,7 +109,7 @@ class ResearchWorldViewTest {
     }
 
     private static OwnerTeamResolution membership(UUID actor, String team, UUID... currentMembers) {
-        return OwnerTeamResolution.resolved(actor, team, OwnerTeamType.PLAYER, members(currentMembers), Optional.of(actor));
+        return OwnerTeamResolution.resolved(actor, team, OwnerTeamType.PLAYER, members(currentMembers), actor);
     }
 
     private static ObjectSet<UUID> members(UUID... values) {
@@ -162,7 +161,7 @@ class ResearchWorldViewTest {
         assertEquals(REWARD, claim.researchId());
         assertEquals(1, claim.level());
         assertEquals(RewardClaim.Status.CLAIMING, claim.status());
-        assertEquals(Optional.of(GROUP), claim.selectedGroupId());
+        assertEquals(GROUP, claim.selectedGroupId());
         assertEquals(ObjectList.of(GROUP, OTHER_GROUP), claim.choiceGroupIds());
         assertEquals(before, world.snapshot());
     }

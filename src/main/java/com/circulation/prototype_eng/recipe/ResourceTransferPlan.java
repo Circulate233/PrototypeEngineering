@@ -26,7 +26,8 @@ public record ResourceTransferPlan(ResourceLocation id, List<GenericStack> input
 
     private static List<GenericStack> normalize(List<GenericStack> stacks) {
         var amounts = new AEKeyLinkedOpenHashMap(stacks.size());
-        for (GenericStack stack : stacks) {
+        for (int index = 0; index < stacks.size(); index++) {
+            GenericStack stack = stacks.get(index);
             Objects.requireNonNull(stack, "resource stack");
             Objects.requireNonNull(stack.what(), "resource key");
             if (stack.amount() <= 0) {

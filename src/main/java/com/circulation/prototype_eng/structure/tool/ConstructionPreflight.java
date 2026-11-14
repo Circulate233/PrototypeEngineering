@@ -21,7 +21,8 @@ public final class ConstructionPreflight {
      */
     public static Result allocate(List<GenericStack> positions, ToLongFunction<GenericStack> available) {
         AEKey2LongMap totals = new AEKeyLinkedOpenHashMap(positions.size());
-        for (var resource : positions) {
+        for (int index1 = 0; index1 < positions.size(); index1++) {
+            var resource = positions.get(index1);
             if (resource.amount() <= 0 || totals.getLong(resource.what()) > Long.MAX_VALUE - resource.amount())
                 throw new IllegalArgumentException("Construction material amount overflow");
             totals.addTo(resource.what(), resource.amount());

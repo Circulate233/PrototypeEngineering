@@ -66,7 +66,8 @@ public final class HatchCasingModels {
 
     private static boolean containsCasing(IBakedModel baked, List<BakedQuad> quads, EnumFacing face) {
         if (!(baked instanceof AbstractCTMBakedModel model)) return false;
-        for (var quad : quads) {
+        for (int index = 0; index < quads.size(); index++) {
+            var quad = quads.get(index);
             if (quad.getFace() != face) continue;
             var texture = model.getModel().getTexture(quad.getSprite().getIconName());
             if (texture != null && texture.getType() instanceof CasingTextureType) return true;

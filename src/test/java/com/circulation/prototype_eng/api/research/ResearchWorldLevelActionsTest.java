@@ -18,7 +18,6 @@ import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -42,7 +41,7 @@ class ResearchWorldLevelActionsTest {
     }
 
     private static OwnerTeamResolution member(UUID owner, String team, UUID... members) {
-        return OwnerTeamResolution.resolved(owner, team, OwnerTeamType.PLAYER, new ObjectOpenHashSet<>(ObjectList.of(members)), Optional.of(owner));
+        return OwnerTeamResolution.resolved(owner, team, OwnerTeamType.PLAYER, new ObjectOpenHashSet<>(ObjectList.of(members)), owner);
     }
 
     private static ResearchPermissionContext permission(String actorTeam, UUID target, String targetTeam, boolean operator) {

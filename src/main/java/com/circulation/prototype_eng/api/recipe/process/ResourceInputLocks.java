@@ -9,7 +9,6 @@ import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
 
@@ -19,7 +18,7 @@ import java.util.Objects;
 public final class ResourceInputLocks implements ProcessAbortListener {
     public static final ComponentType<RecipeProcess, ResourceInputLocks> TYPE = new ComponentType<>(
         new ResourceLocation(Tags.MOD_ID, "resource_input_locks"), _ -> new ResourceInputLocks(), ObjectLists.emptyList());
-    private Object2ObjectLinkedOpenHashMap<Key, AEKey> choices = new Object2ObjectLinkedOpenHashMap<>();
+    private Map<Key, AEKey> choices = new Object2ObjectLinkedOpenHashMap<>();
 
     public static ResourceInputLocks getOrCreate(RecipeProcess process) {
         var existing = process.components().get(TYPE);
@@ -54,21 +53,17 @@ public final class ResourceInputLocks implements ProcessAbortListener {
     }
 
     /**
-     * Immutable local state for host persistence; AEKey follows AE2's immutable identity contract.
+     * Local state borrowed at an exclusive process boundary. Readers must not modify this map.
      */
     public Map<Key, AEKey> snapshot() {
-        return Collections.unmodifiableMap(new Object2ObjectLinkedOpenHashMap<>(choices));
+        return choices;
     }
 
     /**
-     * Restore only at an exclusive lifecycle boundary with no acquired requirement transactions.
+     * Restore transfers the completed mutable map at an exclusive lifecycle boundary.
      */
     public void restore(Map<Key, AEKey> snapshot) {
-        var restored = new Object2ObjectLinkedOpenHashMap<Key, AEKey>(snapshot.size());
-        for (var entry : snapshot.entrySet()) {
-            restored.put(Objects.requireNonNull(entry.getKey()), Objects.requireNonNull(entry.getValue()));
-        }
-        choices = restored;
+        choices = snapshot;
     }
 
     /**

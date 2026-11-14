@@ -16,7 +16,11 @@ public record ResearchContent(String title, String summary, ObjectList<String> d
         Objects.requireNonNull(summary);
         Objects.requireNonNull(icon);
         var lines = new ObjectArrayList<String>();
-        for (var line : Objects.requireNonNull(description)) lines.add(requiredText(line));
+        var elements = Objects.requireNonNull(description);
+        for (int index = 0; index < elements.size(); index++) {
+            var line = elements.get(index);
+            lines.add(requiredText(line));
+        }
         if (lines.isEmpty()) throw new IllegalArgumentException("Research content requires description lines");
         description = ObjectLists.unmodifiable(lines);
     }

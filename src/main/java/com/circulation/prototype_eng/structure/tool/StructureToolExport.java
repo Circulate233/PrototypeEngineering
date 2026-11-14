@@ -34,6 +34,7 @@ import java.util.Objects;
  */
 public final class StructureToolExport {
     public static final int MAX_VOLUME = 64 * 64 * 64;
+    private static final Gson JSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
     private StructureToolExport() {
     }
@@ -89,7 +90,8 @@ public final class StructureToolExport {
         if (!title.isBlank()) root.addProperty("translationKey", title);
         root.addProperty("type", "template");
         var pattern = new JsonArray();
-        for (var cell : cells) {
+        for (int index = 0; index < cells.size(); index++) {
+            var cell = cells.get(index);
             var element = new JsonObject();
             var pos = new JsonObject();
             pos.addProperty("x", cell.position().getX());
@@ -106,18 +108,18 @@ public final class StructureToolExport {
             pattern.add(element);
         }
         root.add("pattern", pattern);
-        return new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create().toJson(root);
+        return JSON.toJson(root);
     }
 
     public static Path save(Path directory, String id, String content) throws IOException {
         Files.createDirectories(directory);
         String base = ScannerState.sanitize(id);
+        var json = JSON.fromJson(content, JsonObject.class);
         for (int suffix = 1; ; suffix++) {
             Path file = directory.resolve(base + (suffix == 1 ? "" : "_" + suffix) + ".json");
             try {
-                var json = new Gson().fromJson(content, JsonObject.class);
                 json.addProperty("id", new ResourceLocation(Tags.MOD_ID, base + (suffix == 1 ? "" : "_" + suffix)).toString());
-                Files.writeString(file, new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create().toJson(json), StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
+                Files.writeString(file, JSON.toJson(json), StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
                 return file;
             } catch (FileAlreadyExistsException occupied) {
                 // A concurrent export cannot replace an existing structure file.

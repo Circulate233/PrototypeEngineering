@@ -39,7 +39,8 @@ final class ResourceInputResolver {
         var selected = new Selection(inputs, locks, pending);
         var seen = new ReferenceOpenHashSet<StorageContext>(hatches.size());
         var available = new AEKeyLinkedOpenHashMap(6);
-        for (var hatch : hatches) {
+        for (int index2 = 0; index2 < hatches.size(); index2++) {
+            var hatch = hatches.get(index2);
             if (!hatch.isValid()) {
                 continue;
             }
@@ -114,7 +115,8 @@ final class ResourceInputResolver {
     @Nullable
     private static AEKey first(List<AEKey> candidates, long needed, AEKey2LongMap available,
                                AEKey2LongMap planned) {
-        for (var candidate : candidates) {
+        for (int index1 = 0; index1 < candidates.size(); index1++) {
+            var candidate = candidates.get(index1);
             if (available.getLong(candidate) - planned.getLong(candidate) >= needed) {
                 return candidate;
             }

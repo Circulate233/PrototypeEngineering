@@ -28,7 +28,8 @@ final class HeiRecipeGeneration {
      */
     static <R> boolean install(Access<R> access, List<R> previous, List<R> next) {
         try {
-            for (var recipe : next) {
+            for (int index4 = 0; index4 < next.size(); index4++) {
+                var recipe = next.get(index4);
                 access.add(recipe);
                 // Equal material hashes legitimately overwrite the tail. Confirm each insertion immediately.
                 if (!access.confirmed(recipe, true)) {
@@ -36,12 +37,17 @@ final class HeiRecipeGeneration {
                     return false;
                 }
             }
-            for (var recipe : previous) access.hide(recipe);
-            for (var recipe : next)
+            for (int index1 = 0; index1 < previous.size(); index1++) {
+                var recipe = previous.get(index1);
+                access.hide(recipe);
+            }
+            for (int index2 = 0; index2 < next.size(); index2++) {
+                var recipe = next.get(index2);
                 if (!access.confirmed(recipe, false)) {
                     hideAll(access, previous, next);
                     return false;
                 }
+            }
             return true;
         } catch (RuntimeException | Error failure) {
             try {
@@ -57,7 +63,8 @@ final class HeiRecipeGeneration {
         Throwable failure = null;
         var all = new ObjectArrayList<>(previous);
         all.addAll(next);
-        for (var recipe : all) {
+        for (int index = 0; index < all.size(); index++) {
+            var recipe = all.get(index);
             try {
                 access.hide(recipe);
             } catch (RuntimeException | Error problem) {
@@ -122,7 +129,8 @@ final class HeiRecipeGeneration {
         @SuppressWarnings("rawtypes") // HEI's Ingredients exposes flattened maps with erased ingredient types.
         private boolean focuses(RecipePoolJeiRecipe recipe, Map<IIngredientType, List> entries, IFocus.Mode mode) {
             for (var ingredients : entries.values())
-                for (Object ingredient : ingredients) {
+                for (int index3 = 0; index3 < ingredients.size(); index3++) {
+                    Object ingredient = ingredients.get(index3);
                     if (ingredient != null && !containsRecipe(registry.getRecipeWrappers(recipe.page(), registry.createFocus(mode, ingredient)), recipe))
                         return false;
                 }

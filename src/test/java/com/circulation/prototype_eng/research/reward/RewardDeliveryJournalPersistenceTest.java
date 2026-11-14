@@ -14,7 +14,6 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -54,7 +53,7 @@ class RewardDeliveryJournalPersistenceTest {
         stack.setByte("Count", (byte) 2);
         stack.setShort("Damage", (short) 0);
         stack.setTag("tag", tag);
-        return new ItemDeliveryFragment(id, parent, KEY, 2, stack, target, Optional.empty(), ItemDeliveryFragment.Status.PLANNED);
+        return new ItemDeliveryFragment(id, parent, KEY, 2, stack, target, null, ItemDeliveryFragment.Status.PLANNED);
     }
 
     @Test
@@ -137,10 +136,10 @@ class RewardDeliveryJournalPersistenceTest {
         assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayerState(file, new UUID(0, 72), issuing.snapshot(), null));
         save("player.dat", prepared, false, null);
         var moved = new ItemDeliveryFragment(fragment.id(), fragment.parent(), KEY, fragment.count(), fragment.taggedStackNbt(),
-            new ItemDeliveryFragment.Inventory(6), Optional.empty(), ItemDeliveryFragment.Status.DELIVERING);
+            new ItemDeliveryFragment.Inventory(6), null, ItemDeliveryFragment.Status.DELIVERING);
         var changedLive = empty();
         changedLive.prepare(new ItemDeliveryFragment(moved.id(), moved.parent(), KEY, moved.count(), moved.taggedStackNbt(), moved.target(),
-            Optional.empty(), ItemDeliveryFragment.Status.PLANNED));
+            null, ItemDeliveryFragment.Status.PLANNED));
         assertThrows(IllegalStateException.class, () -> RewardDeliveryPersistence.preparedFragments(file, null, PLAYER, changedLive, ObjectList.of(moved)));
     }
 

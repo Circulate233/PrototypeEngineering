@@ -84,8 +84,10 @@ public final class HatchConfig {
         ServerHatchConfigurations.requireConfigurationOwner();
         var before = state;
         var next = new Object2ObjectOpenHashMap<>(before.overrides);
-        for (var target : targets)
+        for (int index = 0; index < targets.size(); index++) {
+            var target = targets.get(index);
             next.put(Key.of(target.tier(), target.configuration()), target.configuration());
+        }
         long revision = Math.incrementExact(before.revision);
         state = new State(revision, before.defaults, Map.copyOf(next));
         ServerHatchConfigurations.changed();

@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.client.gui;
 
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.energy.EnergyHatchConfiguration;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.HatchTier;
 import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
@@ -111,6 +110,6 @@ public final class HatchItemTooltip {
 
     private static @Nullable NBTTagCompound saved(ItemStack stack) {
         var tag = stack.getTagCompound();
-        return tag == null || !tag.hasKey("BlockEntityTag") ? null : StrictNbt.requireCompound(tag, "BlockEntityTag");
+        return tag == null || !tag.hasKey("BlockEntityTag") ? null : tag.getCompoundTag("BlockEntityTag");
     }
 }

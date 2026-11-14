@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.storage;
 
-import com.circulation.prototype_eng.structure.tool.BuilderDropRecovery;
 import ae2.api.AECapabilities;
 import ae2.api.behaviors.GenericInternalInventoryAdapters;
 import ae2.tile.AEBaseTile;
@@ -8,11 +7,11 @@ import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.HatchCapabilities;
 import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
 import com.circulation.prototype_eng.api.gui.ResourceHatchLayout;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.HatchTier;
 import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
 import com.circulation.prototype_eng.localization.HatchGuiTitle;
+import com.circulation.prototype_eng.structure.tool.BuilderDropRecovery;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.item.ItemStack;
@@ -32,7 +31,6 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Shared inventory with external IO only; this tile never initiates automatic transfers.
@@ -116,7 +114,7 @@ public class ComputationHatchBlockEntity extends AEBaseTile implements ResourceH
     }
 
     private void flushChanges() {
-        if (world != null && !world.isRemote && (boolean) STORAGE_DIRTY.getAndSet(this, false)) markDirty();
+        if (!world.isRemote && (boolean) STORAGE_DIRTY.getAndSet(this, false)) markDirty();
     }
 
     @Override
@@ -157,7 +155,7 @@ public class ComputationHatchBlockEntity extends AEBaseTile implements ResourceH
             throw new IllegalStateException("Cannot reload a computation hatch while an external transfer is unsettled");
         super.loadTag(tag);
         if (hatch != null) hatch.invalidate();
-        level = StrictNbt.requireInt(tag, "Tier");
+        level = tag.getInteger("Tier");
         hatch = null;
         adapters.clear();
         computationHatch().load(tag);
@@ -171,23 +169,30 @@ public class ComputationHatchBlockEntity extends AEBaseTile implements ResourceH
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public void addAdditionalDrops(List<ItemStack> drops) {
         super.addAdditionalDrops(drops);
         if (world.isRemote) return;
         var removalWorld = world;
         var position = pos.toImmutable();
-        var server = Objects.requireNonNull(world.getMinecraftServer());
+        var server = world.getMinecraftServer();
         var destination = BuilderDropRecovery.destination(removalWorld, position);
         var contents = computationHatch().removeForDrops(deferred -> {
             Runnable deliver = () -> {
                 var delayed = new ObjectArrayList<ItemStack>();
-                for (var stack : deferred) stack.what().addDrops(stack.amount(), delayed, removalWorld, position);
+                for (int index1 = 0; index1 < deferred.size(); index1++) {
+                    var stack = deferred.get(index1);
+                    stack.what().addDrops(stack.amount(), delayed, removalWorld, position);
+                }
                 destination.accept(delayed);
             };
             if (server.isCallingFromMinecraftThread()) deliver.run();
             else server.addScheduledTask(deliver);
         });
-        for (var stack : contents) stack.what().addDrops(stack.amount(), drops, removalWorld, position);
+        for (int index = 0; index < contents.size(); index++) {
+            var stack = contents.get(index);
+            stack.what().addDrops(stack.amount(), drops, removalWorld, position);
+        }
     }
 
     @Override

@@ -62,13 +62,16 @@ public final class ResearchStationDisplay {
         if (queueChanged) {
             previousQueue = view.queue();
             var rows = new ObjectArrayList<ResearchStationPacket.QueueEntry>();
-            for (var entry : view.queue())
+            var elements = view.queue();
+            for (int index1 = 0; index1 < elements.size(); index1++) {
+                var entry = elements.get(index1);
                 rows.add(new ResearchStationPacket.QueueEntry(entry.key().queueEntryId(),
                     registry.require(entry.key().researchId()).displayName().getTranslationKey(), entry.key().targetLevel()));
+            }
             queue = rows;
         }
-        var materials = new ObjectArrayList<ResearchStationPacket.MaterialChange>();
-        var resources = new ObjectArrayList<ResearchStationPacket.ResourceChange>();
+        ObjectArrayList<ResearchStationPacket.MaterialChange> materials = null;
+        ObjectArrayList<ResearchStationPacket.ResourceChange> resources = null;
         if (definition != null) {
             for (int index = 0; index < available.length; index++) {
                 var key = definition.materials().get(index);
@@ -76,8 +79,10 @@ public final class ResearchStationDisplay {
                 long nextAvailable = Math.min(nextRemaining, view.availableMaterials().getLong(key));
                 int fields = (reset || available[index] != nextAvailable ? ResearchStationPacket.FIRST : 0)
                     | (reset || remaining[index] != nextRemaining ? ResearchStationPacket.SECOND : 0);
-                if (fields != 0)
+                if (fields != 0) {
+                    if (materials == null) materials = new ObjectArrayList<>();
                     materials.add(new ResearchStationPacket.MaterialChange(index, fields, nextAvailable, nextRemaining));
+                }
                 available[index] = nextAvailable;
                 remaining[index] = nextRemaining;
             }
@@ -87,16 +92,18 @@ public final class ResearchStationDisplay {
                 int fields = (reset || occupied[index] != nextOccupied ? ResearchStationPacket.FIRST : 0)
                     | (reset || capacity[index] != nextCapacity ? ResearchStationPacket.SECOND : 0)
                     | (reset || accumulated[index] != nextAccumulated ? ResearchStationPacket.THIRD : 0);
-                if (fields != 0)
+                if (fields != 0) {
+                    if (resources == null) resources = new ObjectArrayList<>();
                     resources.add(new ResearchStationPacket.ResourceChange(index, fields, nextOccupied, nextCapacity, nextAccumulated));
+                }
                 occupied[index] = nextOccupied;
                 capacity[index] = nextCapacity;
                 accumulated[index] = nextAccumulated;
             }
         }
         initialized = true;
-        return reset || queueChanged || !materials.isEmpty() || !resources.isEmpty()
-            ? new ResearchStationPacket(reset, definition, queueChanged ? queue : null, materials, resources) : null;
+        return reset || queueChanged || materials != null || resources != null
+            ? new ResearchStationPacket(reset, definition, queueChanged ? queue : null, materials == null ? List.of() : materials, resources == null ? List.of() : resources) : null;
     }
 
     public ResearchStationPacket fullPacket() {

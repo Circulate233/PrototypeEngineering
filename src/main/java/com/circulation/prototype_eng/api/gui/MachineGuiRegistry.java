@@ -35,14 +35,10 @@ public final class MachineGuiRegistry {
 
     public static AEBaseContainer create(InventoryPlayer player, MachineControllerHost tile) {
         var factory = FACTORIES.get(tile.type().id());
-        var container = factory == null ? (tile.type().componentTypes().contains(NetworkCenter.DEVICE)
+        return factory == null ? (tile.type().componentTypes().contains(NetworkCenter.DEVICE)
             ? new ContainerNetworkCenter(player, tile) : tile.type().componentTypes().contains(ComputerController.DEVICE)
             ? new ContainerComputer(player, tile) : tile.type().componentTypes().contains(ResearchStation.DEVICE)
             ? new ContainerResearchStation(player, tile) : new ContainerMachine(player, tile))
-            : Objects.requireNonNull(factory.apply(player, tile), "Machine container factory returned null");
-        if (container.getTarget() != tile.blockEntity()) {
-            throw new IllegalArgumentException("Machine container must target its controller tile");
-        }
-        return container;
+            : factory.apply(player, tile);
     }
 }

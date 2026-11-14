@@ -48,7 +48,13 @@ public final class ResearchDiskImport {
         if (!result.accepted()) return new Preparation(result, null);
         if (!Objects.requireNonNull(teamId).equals(cloud.teamId()))
             throw new IllegalArgumentException("Disk import belongs to another team");
-        return new Preparation(result, new ResearchDiskCommit(operationId, actor, teamId, data.tier(), data.entries(), target, candidate.contents()));
+        return new Preparation(result, new ResearchDiskCommit(operationId, actor, teamId, data.tier(), data.entries(),
+            savedContents(target), savedContents(candidate.contents())));
+    }
+
+    private static DataCenterResearchSnapshot savedContents(DataCenterResearchSnapshot contents) {
+        return contents.revision() == 0 ? contents : new DataCenterResearchSnapshot(contents.dataCenterId(),
+            contents.level(), contents.capacity(), 0, contents.storedResearch());
     }
 
     public enum Status {ACCEPTED, DISK_TIER_TOO_HIGH, DATA_CENTER_REJECTED}

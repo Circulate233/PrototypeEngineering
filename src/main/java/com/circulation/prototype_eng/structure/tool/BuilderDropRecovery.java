@@ -18,11 +18,10 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * 只捕获当前挖掘调用产生的物品，结束捕获后按 AE、背包、玩家脚下的顺序交付。
+ * Captures drops from the current mining call and delivers them to AE, player inventory, then the player's feet.
  */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class BuilderDropRecovery implements AutoCloseable {
@@ -57,7 +56,7 @@ public final class BuilderDropRecovery implements AutoCloseable {
     }
 
     /**
-     * 在仓室开始移除时取得交付函数，延迟归还的库存继续交给此次挖掘的玩家。
+     * Captures the recipient when hatch removal begins so delayed inventory returns reach the mining player.
      */
     public static Consumer<List<ItemStack>> destination(World world, BlockPos position) {
         var capture = ACTIVE.get();
@@ -83,19 +82,23 @@ public final class BuilderDropRecovery implements AutoCloseable {
             Platform.spawnDrops(world, feet, stacks);
             return;
         }
-        for (var stack : stacks) give(player, insert(ae, stack));
+        for (int index1 = 0; index1 < stacks.size(); index1++) {
+            var stack = stacks.get(index1);
+            give(player, insert(ae, stack));
+        }
         player.inventory.markDirty();
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private static ItemStack insert(@Nullable ConstructionMEAccess ae, ItemStack stack) {
         if (ae == null || stack.isEmpty()) return stack;
         if (GenericResourcePackageItem.isPackage(stack)) {
-            var resource = Objects.requireNonNull(GenericResourcePackageItem.unwrap(stack), "Invalid harvested resource package");
+            var resource = GenericResourcePackageItem.unwrap(stack);
             long inserted = ae.insert(resource.what(), resource.amount());
             return inserted == 0 ? stack : inserted == resource.amount() ? ItemStack.EMPTY
                 : GenericResourcePackageItem.wrap(resource.what(), resource.amount() - inserted);
         }
-        stack.shrink((int) ae.insert(Objects.requireNonNull(AEItemKey.of(stack)), stack.getCount()));
+        stack.shrink((int) ae.insert(AEItemKey.of(stack), stack.getCount()));
         return stack;
     }
 
@@ -115,7 +118,8 @@ public final class BuilderDropRecovery implements AutoCloseable {
         try {
             boolean available = playerAvailable();
             var destination = available ? ae : null;
-            for (var entity : drops) {
+            for (int index = 0; index < drops.size(); index++) {
+                var entity = drops.get(index);
                 var remaining = insert(destination, entity.getItem());
                 if (available) {
                     player.inventory.addItemStackToInventory(remaining);

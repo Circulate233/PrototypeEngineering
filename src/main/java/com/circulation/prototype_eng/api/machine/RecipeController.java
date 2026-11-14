@@ -37,9 +37,15 @@ public abstract class RecipeController extends MachineInstance {
     public boolean supportsStableFixedInputLowerBounds() {
         var scanners = recipeScanners();
         if (scanners.isEmpty()) return false;
-        for (var scanner : scanners) if (!scanner.supportsStableFixedInputLowerBounds()) return false;
-        for (var binding : components().assemblyBindings())
+        for (int index = 0; index < scanners.size(); index++) {
+            var scanner = scanners.get(index);
+            if (!scanner.supportsStableFixedInputLowerBounds()) return false;
+        }
+        var elements = components().assemblyBindings();
+        for (int index2 = 0; index2 < elements.size(); index2++) {
+            var binding = elements.get(index2);
             if (binding.component() instanceof MachineRecipeRequirements) return false;
+        }
         return true;
     }
 }

@@ -26,7 +26,6 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.List;
 import java.util.UUID;
@@ -44,7 +43,7 @@ class ResearchWorldStationTest {
         registry.freeze();
         var world = new ResearchWorld(registry, ResearchPermissionPolicy.DEFAULT, _ -> {
         });
-        var member = OwnerTeamResolution.resolved(OWNER, "team", OwnerTeamType.SERVER, ObjectSets.singleton(OWNER), Optional.empty());
+        var member = OwnerTeamResolution.resolved(OWNER, "team", OwnerTeamType.SERVER, ObjectSets.singleton(OWNER), null);
         var permission = new ResearchPermissionContext(OWNER, "team", null, "team", true, false, false);
         var environment = new TeamResearchStart.Environment(1, 1, 1, Reference2DoubleMaps.emptyMap());
         for (var name : List.of("a", "b", "c"))
@@ -56,7 +55,7 @@ class ResearchWorldStationTest {
         assertTrue(world.manageQueue(member, permission, selected, ResearchStationView.Action.DOWN, 2, Set.of(OWNER), _ -> null, () -> true));
         assertEquals(id("a"), world.snapshot().teams().getFirst().queue().activeHead().researchId());
         var outsider = new UUID(0, 10);
-        var other = OwnerTeamResolution.resolved(outsider, "other", OwnerTeamType.SERVER, ObjectSets.singleton(outsider), Optional.empty());
+        var other = OwnerTeamResolution.resolved(outsider, "other", OwnerTeamType.SERVER, ObjectSets.singleton(outsider), null);
         var denied = new ResearchPermissionContext(outsider, "other", null, "team", false, false, false);
         assertFalse(world.manageQueue(other, denied, selected, ResearchStationView.Action.REMOVE, 3, Set.of(outsider), _ -> null, () -> true));
         assertEquals(3, world.snapshot().teams().getFirst().queue().entries().size());
@@ -67,7 +66,7 @@ class ResearchWorldStationTest {
         try (var fixture = new StationFixtures(1, 100, 2, ResearchStationWorkTest.definition(4, 40, 0))) {
             fixture.poweredStation(0);
             fixture.refresh();
-            var membership = OwnerTeamResolution.resolved(OWNER, "team", OwnerTeamType.SERVER, ObjectSets.singleton(OWNER), Optional.empty());
+            var membership = OwnerTeamResolution.resolved(OWNER, "team", OwnerTeamType.SERVER, ObjectSets.singleton(OWNER), null);
             var permission = new ResearchPermissionContext(OWNER, "team", null, "team", true, false, false);
             var world = new ResearchWorld(fixture.research, ResearchPermissionPolicy.DEFAULT, _ -> {
             });

@@ -25,7 +25,9 @@ public record RecipeDefinitionManifest(UUID serverSession, long generation, Reci
             var id = pool.id();
             if (p > 0 && pools.get(p - 1).id().compareTo(id) >= 0)
                 throw new IllegalArgumentException("Recipe manifest pools must be uniquely sorted");
-            for (var member : pool.members()) {
+            var elements3 = pool.members();
+            for (int index3 = 0; index3 < elements3.size(); index3++) {
+                var member = elements3.get(index3);
                 var revision = revisions.putIfAbsent(member.recipeId(), member.revision());
                 if (revision != null && !revision.equals(member.revision()))
                     throw new IllegalArgumentException("Inconsistent recipe manifest revision across pools: " + member.recipeId());
@@ -42,9 +44,13 @@ public record RecipeDefinitionManifest(UUID serverSession, long generation, Reci
      */
     public static List<Pool> describe(RecipeRegistry.Snapshot snapshot) {
         var pools = new ObjectArrayList<Pool>(snapshot.orderedPools().size());
-        for (var pool : Objects.requireNonNull(snapshot).orderedPools()) {
+        var elements4 = Objects.requireNonNull(snapshot).orderedPools();
+        for (int index4 = 0; index4 < elements4.size(); index4++) {
+            var pool = elements4.get(index4);
             var members = new ObjectArrayList<RecipeDefinitionRevision>(pool.recipes().size());
-            for (var recipe : pool.recipes()) {
+            var elements = pool.recipes();
+            for (int index2 = 0; index2 < elements.size(); index2++) {
+                var recipe = elements.get(index2);
                 var revision = snapshot.revision(recipe);
                 if (revision == null)
                     throw new IllegalArgumentException("Missing explicit recipe revision: " + recipe.id());
@@ -82,9 +88,11 @@ public record RecipeDefinitionManifest(UUID serverSession, long generation, Reci
         public Pool {
             Objects.requireNonNull(id);
             var ids = new ObjectOpenHashSet<ResourceLocation>(members.size());
-            for (var member : members)
+            for (int index = 0; index < members.size(); index++) {
+                var member = members.get(index);
                 if (!ids.add(member.recipeId()))
                     throw new IllegalArgumentException("Duplicate recipe manifest member: " + member.recipeId());
+            }
         }
     }
 }

@@ -25,7 +25,7 @@ import java.math.BigInteger;
 import java.util.List;
 
 /**
- * 范围结构选择工具。
+ * Selects a structure region.
  */
 public final class StructureToolItem extends AEBaseItem {
     StructureToolItem() {

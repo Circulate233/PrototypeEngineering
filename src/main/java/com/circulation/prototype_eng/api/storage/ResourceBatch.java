@@ -1,8 +1,8 @@
 package com.circulation.prototype_eng.api.storage;
 
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import com.circulation.prototype_eng.api.transaction.ReservedTransaction;
+import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
@@ -22,6 +22,7 @@ import java.util.function.Function;
  * Original reversible batch and source lanes, with owner-local resumable preparation/settlement.
  * A budget pause retains the exact participants and cursor, never a lock or scope. A source action
  * is counted until its finally has actually exited; state alone is not a worker-exit proof.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class ResourceBatch {
     private final Thread owner = Thread.currentThread();
@@ -957,7 +958,7 @@ public final class ResourceBatch {
                 if (participantTokens != null) {
                     while (participantTokens.hasNext()) {
                         if (!budget.take()) return false;
-                        addReservation(Objects.requireNonNull(participantTokens.next()));
+                        addReservation(participantTokens.next());
                     }
                     participantTokens = null;
                 }
@@ -984,7 +985,7 @@ public final class ResourceBatch {
                 if (!budget.take()) {
                     return false;
                 }
-                addReservation(Objects.requireNonNull(reservations.next()));
+                addReservation(reservations.next());
             }
             if (claim == null) {
                 claim = StorageFence.beginAcquire(batch.contextList);
@@ -1001,7 +1002,7 @@ public final class ResourceBatch {
             if (!batch.tokenIdentities.add(token)) throw new IllegalArgumentException("Repeated reservation token");
             if (batch.sequential && !token.supportsSequentialUse())
                 throw new IllegalArgumentException("Reservation does not support sequential use");
-            var context = Objects.requireNonNull(token.context());
+            var context = token.context();
             batch.addContext(context);
             batch.addToken(context, token);
         }
@@ -1103,7 +1104,7 @@ public final class ResourceBatch {
                 if (participantTokens != null) {
                     while (participantTokens.hasNext()) {
                         if (!budget.take()) return false;
-                        captureToken(Objects.requireNonNull(participantTokens.next()));
+                        captureToken(participantTokens.next());
                     }
                     participantTokens = null;
                 }
@@ -1117,7 +1118,7 @@ public final class ResourceBatch {
                     return false;
                 }
                 if (phase == 0) {
-                    captureToken(Objects.requireNonNull(inputTokens.get(index)));
+                    captureToken(inputTokens.get(index));
                 } else if (phase == 1) {
                     var transaction = Objects.requireNonNull(inputBusiness.get(index));
                     if (businessIdentities.contains(transaction) || !businessSet.add(transaction)) {
@@ -1145,7 +1146,7 @@ public final class ResourceBatch {
                 throw new IllegalArgumentException("Repeated reservation token");
             if (!rollbackOnly && !token.supportsSequentialUse())
                 throw new IllegalArgumentException("Reservation does not support sequential use");
-            var context = Objects.requireNonNull(token.context());
+            var context = token.context();
             if (!contexts.contains(context)) throw new IllegalArgumentException("Reservation domain was not declared");
             tokens.add(token);
             domains.add(context);

@@ -96,7 +96,11 @@ public final class ServerRecipeManifests {
             sendTo(captured, recipient, manifest, payload);
             return;
         }
-        for (var player : captured.server.getPlayerList().getPlayers()) sendTo(captured, player, manifest, payload);
+        var elements = captured.server.getPlayerList().getPlayers();
+        for (int index = 0; index < elements.size(); index++) {
+            var player = elements.get(index);
+            sendTo(captured, player, manifest, payload);
+        }
     }
 
     private static void sendTo(Current captured, EntityPlayerMP player,

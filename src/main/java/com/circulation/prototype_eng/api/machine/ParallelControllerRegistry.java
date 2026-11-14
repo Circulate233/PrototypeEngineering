@@ -9,6 +9,7 @@ import java.util.Objects;
 
 /**
  * Startup-only definitions. Register from preinit scripts or ParallelControllerRegistrationEvent.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class ParallelControllerRegistry {
     public static final ParallelControllerRegistry INSTANCE = new ParallelControllerRegistry();

@@ -91,11 +91,17 @@ public final class MachineModelPasses {
                 GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
                 GL11.glDepthMask(false);
                 GL11.glDepthFunc(GL11.GL_LEQUAL);
-                for (var entry : selected(entries, camera, pass))
+
+                var elements = selected(entries, camera, pass);
+                for (int index = 0; index < elements.size(); index++) {
+                    var entry = elements.get(index);
                     drawSingle(cache, entry, pass, fullbright ? 0xF000F0 : entry.combinedLight);
+                }
+
             } else {
                 Map<Bucket, List<Entry>> groups = new Object2ObjectLinkedOpenHashMap<>();
-                for (var entry : entries) {
+                for (int index3 = 0; index3 < entries.size(); index3++) {
+                    var entry = entries.get(index3);
                     if (!entry.current.getAsBoolean()) continue;
                     var buffers = entry.lease.buffers();
                     var key = new Bucket(buffers.origin(), buffers.textureIdentity(), fullbright ? 0xF000F0 : entry.combinedLight);
@@ -121,7 +127,10 @@ public final class MachineModelPasses {
 
     static List<Entry> selected(List<Entry> entries, Vec3d camera, MachineRenderPass pass) {
         var selected = new ObjectArrayList<Entry>();
-        for (var entry : entries) if (entry.current.getAsBoolean()) selected.add(entry);
+        for (int index1 = 0; index1 < entries.size(); index1++) {
+            var entry = entries.get(index1);
+            if (entry.current.getAsBoolean()) selected.add(entry);
+        }
         if (pass == MachineRenderPass.TRANSPARENT || pass == MachineRenderPass.BLOOM_TRANSPARENT)
             selected.sort(Comparator.comparingDouble((Entry entry) -> entry.center.squareDistanceTo(camera)).reversed());
         return selected;
@@ -129,7 +138,10 @@ public final class MachineModelPasses {
 
     private static void drawGroup(ModelBuildCache cache, List<Entry> entries, MachineRenderPass pass, int light) {
         var leases = new ObjectArrayList<BuiltModelBuffers.Lease>();
-        for (var entry : entries) if (entry.current.getAsBoolean()) leases.add(entry.lease);
+        for (int index2 = 0; index2 < entries.size(); index2++) {
+            var entry = entries.get(index2);
+            if (entry.current.getAsBoolean()) leases.add(entry.lease);
+        }
         if (leases.isEmpty()) return;
         var origin = leases.getFirst().buffers().origin();
         OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, light & 65535, light >>> 16);

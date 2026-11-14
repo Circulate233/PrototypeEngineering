@@ -10,6 +10,7 @@ import java.util.List;
 
 /**
  * Public construction of the existing budgeted shapes shared by Java and scripting declarations.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class StructureDefinitions {
     private StructureDefinitions() {

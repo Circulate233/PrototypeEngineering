@@ -306,7 +306,10 @@ public final class ZenMachineType {
         var type = builder.build();
         var assembly = MachineAssembly.builder(type, revision).computerRecipes(computerRecipes);
         if (factory != null) assembly.instanceFactory(factory.value());
-        for (var component : components) component.bind(assembly);
+        for (int index = 0; index < components.size(); index++) {
+            var component = components.get(index);
+            component.bind(assembly);
+        }
         if (network != null) network.configure(assembly);
         if (data) assembly.component(DataComponents.MACHINE, DataComponents.MACHINE_CODEC);
         if (controllerContext) assembly.recreated(ZenControllerContext.TYPE);

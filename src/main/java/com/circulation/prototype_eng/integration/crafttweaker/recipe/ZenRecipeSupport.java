@@ -4,7 +4,6 @@ import ae2.api.stacks.AEKey;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.attribute.AttributeModifier;
 import com.circulation.prototype_eng.api.machine.attribute.NumericAttributeModifier;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.selective.SelectiveModifierDescriptor;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -19,7 +18,7 @@ final class ZenRecipeSupport {
     }
 
     static ResourceLocation id(String value) {
-        return StrictNbt.requireId(Objects.requireNonNull(value));
+        return new ResourceLocation(Objects.requireNonNull(value));
     }
 
     static List<GenericStack> stacks(ZenResource[] values) {

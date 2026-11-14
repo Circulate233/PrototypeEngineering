@@ -15,6 +15,7 @@ import java.util.Objects;
  * structures participate in discovery/projection without concrete Template/Slice type checks.
  * The origin, block positions, and both lists are borrowed immutable values for this occurrence
  * tree's lifetime. Producers finish populating them before construction; consumers never mutate them.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public record StructureMatch(MachineStructure structure, BlockPos origin, int repetitions,
                              List<BlockPos> blocks, List<StructureMatch> children) {

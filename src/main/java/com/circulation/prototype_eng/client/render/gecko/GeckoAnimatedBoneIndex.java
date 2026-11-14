@@ -54,7 +54,8 @@ public final class GeckoAnimatedBoneIndex {
 
     public List<String> pickAnimationNames(List<String> preferred) {
         var selected = new ObjectArrayList<String>();
-        for (var value : preferred) {
+        for (int index2 = 0; index2 < preferred.size(); index2++) {
+            var value = preferred.get(index2);
             var name = value.trim();
             if (bones.containsKey(name)) selected.add(name);
         }
@@ -63,7 +64,11 @@ public final class GeckoAnimatedBoneIndex {
 
     public Set<String> animatedBonesFor(List<String> preferred) {
         var out = new ObjectLinkedOpenHashSet<String>();
-        for (var name : pickAnimationNames(preferred)) out.addAll(bones.get(name));
+        var elements = pickAnimationNames(preferred);
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var name = elements.get(index1);
+            out.addAll(bones.get(name));
+        }
         return Collections.unmodifiableSet(out);
     }
 }

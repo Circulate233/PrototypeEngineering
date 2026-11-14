@@ -20,7 +20,6 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -71,7 +70,7 @@ class ResearchWorldTest {
     }
 
     private static OwnerTeamResolution membership(UUID player, String team, UUID... members) {
-        return OwnerTeamResolution.resolved(player, team, OwnerTeamType.PLAYER, new ObjectOpenHashSet<>(ObjectList.of(members)), Optional.of(player));
+        return OwnerTeamResolution.resolved(player, team, OwnerTeamType.PLAYER, new ObjectOpenHashSet<>(ObjectList.of(members)), player);
     }
 
     private static OwnerTeamResolution aliceRejected(OwnerTeamResolutionStatus status) {

@@ -20,7 +20,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -44,7 +43,7 @@ class ItemDeliveryTest {
     private static ItemDeliveryFragment fragment(NBTTagCompound template) {
         var id = ItemDeliveryKeyNbt.fragmentId(KEY, 0);
         return new ItemDeliveryFragment(id, KEY, ITEM, 1, ItemDeliveryTemplates.taggedLeaf(template, 1, KEY, id),
-            new ItemDeliveryFragment.Inventory(2), Optional.empty(), ItemDeliveryFragment.Status.PLANNED);
+            new ItemDeliveryFragment.Inventory(2), null, ItemDeliveryFragment.Status.PLANNED);
     }
 
     private static NBTTagCompound template() {
@@ -78,7 +77,6 @@ class ItemDeliveryTest {
         assertFalse(identity.hasKey("Research"));
         assertFalse(identity.hasKey("Group"));
         template.getCompoundTag("ForgeCaps").setInteger("energy", 0);
-        fragment.taggedStackNbt().getCompoundTag("ForgeCaps").setInteger("energy", 1);
         assertEquals(123, fragment.taggedStackNbt().getCompoundTag("ForgeCaps").getInteger("energy"));
     }
 
@@ -143,16 +141,10 @@ class ItemDeliveryTest {
     }
 
     @Test
-    void mixedOrMalformedIdentitiesAndReservedTemplatesAreRejected() {
-        var identity = ItemDeliveryKeyNbt.identity(KEY, new UUID(0, 4));
-        identity.setString("Group", "delivery:fake_reward");
-        assertThrows(IllegalArgumentException.class, () -> ItemDeliveryKeyNbt.readIdentity(identity));
+    void reservedDeliveryTemplatesAreRejected() {
         var reserved = template();
         reserved.getCompoundTag("tag").setTag(ItemDeliveryTemplates.DELIVERY_TAG, new NBTTagCompound());
         assertThrows(IllegalArgumentException.class, () -> ItemDeliveryTemplates.copy(reserved));
-        var malformed = template();
-        malformed.setString("ForgeCaps", "lost");
-        assertThrows(IllegalArgumentException.class, () -> ItemDeliveryTemplates.copy(malformed));
     }
 
     @Test
@@ -213,7 +205,7 @@ class ItemDeliveryTest {
         var codec = new ItemDeliveryFragmentNbt(new ResourceKeyNbt(id -> ITEM.getType().getId().equals(id) ? ITEM.getType() : null));
         var inventory = fragment(template());
         var drop = new ItemDeliveryFragment(inventory.id(), KEY, ITEM, 1, inventory.taggedStackNbt(),
-            new ItemDeliveryFragment.WorldDrop(-1, -1, 2, -1.25, 80.5, 33.5), Optional.empty(), ItemDeliveryFragment.Status.PLANNED);
+            new ItemDeliveryFragment.WorldDrop(-1, -1, 2, -1.25, 80.5, 33.5), null, ItemDeliveryFragment.Status.PLANNED);
         assertEquals(drop, codec.decode(codec.encode(drop)));
         var invalidParent = codec.encode(drop);
         invalidParent.getCompoundTag("Parent").setString("Fragment", new UUID(0, 9).toString());
@@ -280,9 +272,9 @@ class ItemDeliveryTest {
         public Delivery deliver(ItemDeliveryFragment fragment) {
             assertEquals(fragment, owner.durable);
             deliveries++;
-            if (zero) return new Delivery(0, Optional.empty());
+            if (zero) return new Delivery(0, null);
             physical = true;
-            return new Delivery(fragment.count(), Optional.empty());
+            return new Delivery(fragment.count(), null);
         }
 
         @Override

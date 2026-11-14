@@ -162,7 +162,8 @@ public final class StructurePickWorld extends World implements AutoCloseable {
         tiles.clear();
         chunks.clear();
         Throwable failure = null;
-        for (var tile : owned) {
+        for (int index = 0; index < owned.size(); index++) {
+            var tile = owned.get(index);
             try {
                 tile.invalidate();
             } catch (RuntimeException | Error caught) {

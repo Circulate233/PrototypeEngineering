@@ -34,8 +34,13 @@ public final class ZenConstruction {
         DefinitionRegistrations.runtime(_ -> {
             if (!Block.REGISTRY.containsKey(blockId))
                 throw new IllegalArgumentException("Unknown construction anchor: " + blockId);
-            for (var state : Block.REGISTRY.getObject(blockId).getBlockState().getValidStates())
+
+            var elements = Block.REGISTRY.getObject(blockId).getBlockState().getValidStates();
+            for (int index = 0; index < elements.size(); index++) {
+                var state = elements.get(index);
                 StructureConstructionRegistry.INSTANCE.register(state, id, () -> translationKey);
+            }
+
         });
     }
 }

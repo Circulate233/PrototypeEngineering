@@ -16,6 +16,7 @@ import java.util.Objects;
 
 /**
  * Exact local attribute ownership for built-in requirements, including nested canonical paths.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class RequirementAttributeState implements ProcessAbortListener {
     public static final ComponentType<RecipeProcess, RequirementAttributeState> TYPE = new ComponentType<>(
@@ -142,13 +143,17 @@ public final class RequirementAttributeState implements ProcessAbortListener {
         }
         var restored = new Object2ObjectLinkedOpenHashMap<Reference, AttributeModifier>(snapshot.owned().size());
         var receipts = new ObjectLinkedOpenHashSet<Reference>(snapshot.aborted().size());
-        for (var reference : snapshot.owned()) {
+        var elements2 = snapshot.owned();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var reference = elements2.get(index2);
             var modifier = process.attributes().localModifier(reference.attribute(), reference.modifierId());
             if (!(modifier instanceof RenamedAttributeModifier) || restored.putIfAbsent(reference, modifier) != null) {
                 throw new IllegalArgumentException("Absent, invalid or duplicate restored requirement attribute: " + reference);
             }
         }
-        for (var reference : snapshot.aborted()) {
+        var elements = snapshot.aborted();
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var reference = elements.get(index1);
             requireAbsent(reference);
             if (restored.containsKey(reference) || !receipts.add(reference)) {
                 throw new IllegalArgumentException("Duplicate or live requirement attribute abort receipt: " + reference);

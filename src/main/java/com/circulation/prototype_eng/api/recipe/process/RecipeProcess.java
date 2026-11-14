@@ -11,6 +11,7 @@ import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttrib
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.persistence.RecipeDefinitionIndex;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
 import com.circulation.prototype_eng.api.recipe.requirement.MachineRecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
@@ -65,6 +66,7 @@ public final class RecipeProcess {
     private final MachineInstance owner;
     private final MachineRecipe recipe;
     private final List<RecipeRequirement<?>> orderedRequirements;
+    private @Nullable RecipeDefinitionIndex definitionIndex;
     private final long seed;
     private final ProbabilityTuning probabilityTuning;
     @Nullable
@@ -166,7 +168,9 @@ public final class RecipeProcess {
     private static List<RecipeRequirement<?>> captureRequirements(MachineInstance owner, MachineRecipe recipe) {
         var declared = recipe.orderedRequirements();
         ObjectArrayList<RecipeRequirement<?>> supplied = null;
-        for (var binding : owner.components().assemblyBindings()) {
+        var elements13 = owner.components().assemblyBindings();
+        for (int index13 = 0; index13 < elements13.size(); index13++) {
+            var binding = elements13.get(index13);
             if (binding.component() instanceof MachineRecipeRequirements provider) {
                 if (supplied == null) {
                     supplied = new ObjectArrayList<>(declared);
@@ -185,7 +189,8 @@ public final class RecipeProcess {
     private static List<RecipeRequirement<?>> canonicalRequirements(List<RecipeRequirement<?>> roots) {
         var types = new Object2ObjectOpenHashMap<ResourceLocation, RecipeRequirementType<?>>(roots.size());
         var ids = new ObjectOpenHashSet<ResourceLocation>(roots.size());
-        for (var root : roots) {
+        for (int index15 = 0; index15 < roots.size(); index15++) {
+            var root = roots.get(index15);
             Objects.requireNonNull(root, "Machine recipe requirement root");
             if (root != root.definition()) {
                 throw new IllegalArgumentException("Machine recipe requirements contain an effective view");
@@ -425,12 +430,15 @@ public final class RecipeProcess {
     }
 
     private void notifyResourceObservers(Consumer<ResourceRecipeObserver> callback) {
-        for (var hatch : hatches().resources()) {
+        var elements11 = hatches().resources();
+        for (int index11 = 0; index11 < elements11.size(); index11++) {
+            var hatch = elements11.get(index11);
             if (hatch instanceof ResourceRecipeObserver observer && resourceObserverIdentities.add(observer.observerIdentity()))
                 resourceObservers.add(observer);
         }
         Throwable failure = null;
-        for (var observer : resourceObservers) {
+        for (int index2 = 0; index2 < resourceObservers.size(); index2++) {
+            var observer = resourceObservers.get(index2);
             try {
                 callback.accept(observer);
             } catch (RuntimeException | Error observed) {
@@ -482,6 +490,15 @@ public final class RecipeProcess {
      */
     public List<RecipeRequirement<?>> orderedRequirements() {
         return orderedRequirements;
+    }
+
+    /**
+     * Reuses the index of this process's fixed roots, including machine-supplied requirements.
+     * Call only while holding exclusive process ownership.
+     */
+    public RecipeDefinitionIndex definitionIndex() {
+        if (definitionIndex == null) definitionIndex = new RecipeDefinitionIndex(this);
+        return definitionIndex;
     }
 
     /**
@@ -824,7 +841,9 @@ public final class RecipeProcess {
     public List<StorageContext> declaredStorageContexts() {
         var contexts = new ObjectArrayList<StorageContext>();
         var bindings = hatches();
-        for (var hatch : bindings.resources()) {
+        var elements12 = bindings.resources();
+        for (int index12 = 0; index12 < elements12.size(); index12++) {
+            var hatch = elements12.get(index12);
             var input = hatch.input();
             var output = hatch.output();
             if (input != null) {
@@ -834,13 +853,19 @@ public final class RecipeProcess {
                 contexts.add(output.context());
             }
         }
-        for (var input : bindings.energyInputs()) {
+        var elements4 = bindings.energyInputs();
+        for (int index4 = 0; index4 < elements4.size(); index4++) {
+            var input = elements4.get(index4);
             contexts.add(input.context());
         }
-        for (var output : bindings.energyOutputs()) {
+        var elements6 = bindings.energyOutputs();
+        for (int index6 = 0; index6 < elements6.size(); index6++) {
+            var output = elements6.get(index6);
             contexts.add(output.context());
         }
-        for (var requirement : orderedRequirements()) {
+        var elements7 = orderedRequirements();
+        for (int index7 = 0; index7 < elements7.size(); index7++) {
+            var requirement = elements7.get(index7);
             collectStorageContexts(requirement, contexts);
         }
         return contexts;
@@ -866,9 +891,13 @@ public final class RecipeProcess {
     private <C> void collectStorageContexts(RecipeRequirement<C> requirement, List<StorageContext> contexts) {
         withRequirementPath(requirement.path(activeRequirement), () -> {
             contexts.addAll(Objects.requireNonNull(requirement.type().system().storageContexts(this, requirement)));
-            for (var child : requirement.type().system().children(requirement.payload())) {
+
+            var elements = requirement.type().system().children(requirement.payload());
+            for (int index1 = 0; index1 < elements.size(); index1++) {
+                var child = elements.get(index1);
                 collectStorageContexts(child, contexts);
             }
+
             return null;
         });
     }
@@ -1906,7 +1935,8 @@ public final class RecipeProcess {
             var unique = new ReferenceOpenHashSet<Stage>();
             var reservations = new ObjectArrayList<ResourceReservation>(6);
             var transactions = new ObjectArrayList<ReversibleTransaction>();
-            for (var stage : stages) {
+            for (int index14 = 0; index14 < stages.size(); index14++) {
+                var stage = stages.get(index14);
                 stage.requireAcquired();
                 if (!unique.add(stage) || stage.synchronous || stage.batch != null || !stage.acquisition.inventoryComplete()) {
                     throw new IllegalStateException("Recipe stage cannot transfer its acquisition");
@@ -1916,32 +1946,38 @@ public final class RecipeProcess {
             }
             transactions.addAll(Objects.requireNonNull(participants));
             boolean sequential = false;
-            for (var stage : stages)
+            for (int index10 = 0; index10 < stages.size(); index10++) {
+                var stage = stages.get(index10);
                 if (stage.acquisition.sequential()) {
                     sequential = true;
                     break;
                 }
+            }
             var contexts = new ObjectArrayList<StorageContext>();
             if (sequential) {
-                for (var stage : stages) {
+                for (int index8 = 0; index8 < stages.size(); index8++) {
+                    var stage = stages.get(index8);
                     contexts.addAll(stage.session.process.declaredStorageContexts());
                 }
             }
-            for (var stage : stages) {
+            for (int index3 = 0; index3 < stages.size(); index3++) {
+                var stage = stages.get(index3);
                 stage.session.executing = true;
             }
             try {
                 var bound = sequential ? ResourceBatch.tryAcquireSequential(contexts, reservations, transactions)
                     : ResourceBatch.tryAcquire(reservations, transactions);
                 if (bound != null) {
-                    for (var stage : stages) {
+                    for (int index9 = 0; index9 < stages.size(); index9++) {
+                        var stage = stages.get(index9);
                         stage.batch = bound;
                         stage.acquisition.attachFlatParent(bound);
                     }
                 }
                 return bound;
             } finally {
-                for (var stage : stages) {
+                for (int index5 = 0; index5 < stages.size(); index5++) {
+                    var stage = stages.get(index5);
                     stage.session.executing = false;
                 }
             }

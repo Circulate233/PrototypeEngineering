@@ -51,8 +51,11 @@ public final class ServerHatchConfigurations {
             if (!current.current()) return;
             var snapshot = HatchConfig.snapshot(current.id);
             byte[] payload = snapshot.encode();
-            for (var player : current.server.getPlayerList().getPlayers())
+            var elements = current.server.getPlayerList().getPlayers();
+            for (int index = 0; index < elements.size(); index++) {
+                var player = elements.get(index);
                 InitNetwork.sendHatchConfiguration(snapshot, payload, player);
+            }
         });
     }
 

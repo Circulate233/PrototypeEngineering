@@ -329,7 +329,10 @@ class ControllerStructureUpdatesTest {
             assertEquals(StructureCheckPolicy.Status.UNAVAILABLE, fixture.updates.checkStatus());
             assertEquals(1, fixture.changes);
             fixture.host.available = true;
-            fixture.tick(nextTick);
+            do {
+                fixture.tick(nextTick++);
+            } while (fixture.updates.checkStatus() == StructureCheckPolicy.Status.YIELD && nextTick < 91);
+            assertEquals(StructureCheckPolicy.Status.MATCHED, fixture.updates.checkStatus());
             assertTrue(fixture.machine().canProcessRecipes());
             assertEquals(2, calls.get());
             assertEquals(before.successfulTicks() + 1, process.state().successfulTicks());

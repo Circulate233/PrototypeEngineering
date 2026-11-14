@@ -135,23 +135,37 @@ public final class ZenRecipeBindings {
             declarations.add(Objects.requireNonNull(pool));
             current.addAll(pool.recipes());
         }
-        for (var recipe : current) codecs.add(recipe.codec());
+        for (int index2 = 0; index2 < current.size(); index2++) {
+            var recipe = current.get(index2);
+            codecs.add(recipe.codec());
+        }
         for (var recipe : historical) {
             history.add(Objects.requireNonNull(recipe));
             codecs.add(recipe.codec());
         }
         // Validate all version/identity conflicts before registering a callback or mutating names.
         var prepared = resolver.prepare(resolver.snapshot(), codecs);
-        for (var pool : declarations) pool.declareClient();
+        for (int index = 0; index < declarations.size(); index++) {
+            var pool = declarations.get(index);
+            pool.declareClient();
+        }
         var frozenPools = ObjectLists.unmodifiable(declarations);
         var frozenCurrent = ObjectLists.unmodifiable(current);
         var frozenHistory = ObjectLists.unmodifiable(history);
         resolver.install(prepared);
         DefinitionRegistrations.recipes(event -> {
-            for (var pool : frozenPools) event.registry().register(pool.value());
-            for (var recipe : frozenCurrent) event.registry().declareRevision(recipe.recipe(), recipe.revision());
-            for (var recipe : frozenHistory)
+            for (int index3 = 0; index3 < frozenPools.size(); index3++) {
+                var pool = frozenPools.get(index3);
+                event.registry().register(pool.value());
+            }
+            for (int index4 = 0; index4 < frozenCurrent.size(); index4++) {
+                var recipe = frozenCurrent.get(index4);
+                event.registry().declareRevision(recipe.recipe(), recipe.revision());
+            }
+            for (int index5 = 0; index5 < frozenHistory.size(); index5++) {
+                var recipe = frozenHistory.get(index5);
                 event.registry().declareHistoricalRevision(recipe.recipe(), recipe.revision());
+            }
             event.registry().bindProcessCodecs(resolver);
         });
         frozen = true;

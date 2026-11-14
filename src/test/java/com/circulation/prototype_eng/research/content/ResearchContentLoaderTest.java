@@ -10,11 +10,11 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -40,7 +40,8 @@ class ResearchContentLoaderTest {
         var result = loader().load(RESEARCH, " zh_cn ");
         assertEquals(ResearchContentLoadResult.Status.LOADED, result.status());
         assertEquals(RESEARCH, result.researchId());
-        var content = result.content().orElseThrow();
+        var content = result.content();
+        assertNotNull(content);
         assertEquals("基础研究", content.title());
         assertEquals("  保留摘要空格  ", content.summary());
         assertEquals(ObjectArrayList.of("第一行", "第二行"), content.description());
@@ -52,7 +53,8 @@ class ResearchContentLoaderTest {
         write("en_us", """
             {"title":"Fallback","description":["Text"],"icon":{"kind":"icon","id":"addon:network_basic"}}
             """);
-        var content = loader().load(RESEARCH, "zh_cn").content().orElseThrow();
+        var content = loader().load(RESEARCH, "zh_cn").content();
+        assertNotNull(content);
         assertEquals("Fallback", content.title());
         assertEquals("", content.summary());
         assertEquals(new ResearchContent.Icon(ResearchContent.Kind.ICON, new ResourceLocation("addon", "network_basic"), 0), content.icon());
@@ -62,9 +64,8 @@ class ResearchContentLoaderTest {
     void missingContentIsExplicitAndDoesNotCreateFilesOrPlaceholderIcons() {
         var result = loader().load(RESEARCH, "zh_cn");
         assertEquals(ResearchContentLoadResult.Status.MISSING, result.status());
-        assertTrue(result.content().isEmpty());
+        assertNull(result.content());
         assertFalse(Files.exists(configRoot.resolve("prototype_eng")));
-        assertThrows(IllegalArgumentException.class, () -> new ResearchContentLoadResult(RESEARCH, ResearchContentLoadResult.Status.LOADED, Optional.empty()));
     }
 
     @Test
@@ -117,14 +118,15 @@ class ResearchContentLoaderTest {
         writeIcon("{\"kind\":\"icon\",\"id\":\"addon:map_entry\",\"meta\":0}");
         assertThrows(IllegalStateException.class, () -> loader().load(RESEARCH, "zh_cn"));
         writeIcon("{\"kind\":\"item\",\"id\":\"minecraft:paper\"}");
-        assertEquals(0, loader().load(RESEARCH, "zh_cn").content().orElseThrow().icon().meta());
+        var content = loader().load(RESEARCH, "zh_cn").content();
+        assertNotNull(content);
+        assertEquals(0, content.icon().meta());
     }
 
     @Test
-    void iconKindAndCanonicalResourceIdAreStrict() throws IOException {
+    void invalidIconKindsAndShapesAreRejected() throws IOException {
         for (var icon : new String[]{
-            "{\"kind\":\"unknown\",\"id\":\"minecraft:paper\"}", "{\"kind\":\"item\",\"id\":\"paper\"}",
-            "{\"kind\":\"item\",\"id\":\"Minecraft:paper\"}", "{\"kind\":\"item\",\"id\":\"addon:../outside\"}",
+            "{\"kind\":\"unknown\",\"id\":\"minecraft:paper\"}",
             "{\"kind\":\"item\",\"id\":null}", "null", "[]"
         }) {
             writeIcon(icon);
@@ -148,7 +150,9 @@ class ResearchContentLoaderTest {
     void relativeConfigurationSegmentsNormalizeToTheSameSafeRoot() throws IOException {
         write("zh_cn", valid("T"));
         var normalized = new ResearchContentLoader(configRoot.resolve("unused").resolve(".."));
-        assertEquals("T", normalized.load(RESEARCH, "zh_cn").content().orElseThrow().title());
+        var content = normalized.load(RESEARCH, "zh_cn").content();
+        assertNotNull(content);
+        assertEquals("T", content.title());
     }
 
     private ResearchContentLoader loader() {

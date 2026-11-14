@@ -33,7 +33,9 @@ import java.util.function.BooleanSupplier;
 public final class FixedIoScanConstraint implements RecipeParallelismConstraint {
     private static boolean sharedResourceContext(MachineHatches hatches) {
         var sources = new ReferenceOpenHashSet<StorageContext>();
-        for (var hatch : hatches.resources()) {
+        var elements4 = hatches.resources();
+        for (int index4 = 0; index4 < elements4.size(); index4++) {
+            var hatch = elements4.get(index4);
             if (!hatch.isValid()) {
                 continue;
             }
@@ -42,7 +44,9 @@ public final class FixedIoScanConstraint implements RecipeParallelismConstraint 
                 sources.add(input.context());
             }
         }
-        for (var hatch : hatches.resources()) {
+        var elements5 = hatches.resources();
+        for (int index5 = 0; index5 < elements5.size(); index5++) {
+            var hatch = elements5.get(index5);
             if (!hatch.isValid()) {
                 continue;
             }
@@ -57,12 +61,16 @@ public final class FixedIoScanConstraint implements RecipeParallelismConstraint 
 
     private static boolean sharedEnergyContext(MachineHatches hatches) {
         var sources = new ReferenceOpenHashSet<StorageContext>();
-        for (var input : hatches.energyInputs()) {
+        var elements = hatches.energyInputs();
+        for (int index = 0; index < elements.size(); index++) {
+            var input = elements.get(index);
             if (input.isValid()) {
                 sources.add(input.context());
             }
         }
-        for (var output : hatches.energyOutputs()) {
+        var elements2 = hatches.energyOutputs();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var output = elements2.get(index2);
             if (output.isValid() && sources.contains(output.context())) {
                 return true;
             }
@@ -78,7 +86,9 @@ public final class FixedIoScanConstraint implements RecipeParallelismConstraint 
     @Override
     public ProcessResult test(RecipeProcess process) {
         process.requirePersistenceBoundary();
-        for (var binding : process.components().snapshotBindings()) {
+        var elements3 = process.components().snapshotBindings();
+        for (int index3 = 0; index3 < elements3.size(); index3++) {
+            var binding = elements3.get(index3);
             if (!binding.type().systems().isEmpty()) {
                 return ProcessResult.SUCCESS;
             }
@@ -86,7 +96,9 @@ public final class FixedIoScanConstraint implements RecipeParallelismConstraint 
         var resources = Io.EMPTY;
         var energy = Io.EMPTY;
         var overlays = process.components().get(RecipeOverlays.TYPE);
-        for (var requirement : process.orderedRequirements()) {
+        var elements6 = process.orderedRequirements();
+        for (int index6 = 0; index6 < elements6.size(); index6++) {
+            var requirement = elements6.get(index6);
             var effective = overlays == null ? requirement : overlays.resolve(requirement);
             if (requirement.type() == RecipeRequirements.RESOURCES) {
                 var payload = (ResourceRequirement) effective.payload();

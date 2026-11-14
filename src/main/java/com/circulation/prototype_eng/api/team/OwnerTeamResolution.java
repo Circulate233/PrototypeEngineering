@@ -1,12 +1,9 @@
 package com.circulation.prototype_eng.api.team;
 
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -34,29 +31,13 @@ public final class OwnerTeamResolution {
     }
 
     /**
-     * Copies and validates current membership; server teams may have no team owner.
+     * Membership is completed read-only data, retained unchanged for the snapshot lifetime.
+     * Server teams may have a null team owner.
      */
-    @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
-    // The public snapshot factory explicitly admits no server-team owner.
     public static OwnerTeamResolution resolved(UUID ownerId, String teamId, OwnerTeamType teamType,
-                                               ObjectSet<UUID> members, Optional<UUID> teamOwnerId) {
-        Objects.requireNonNull(ownerId, "ownerId");
-        Objects.requireNonNull(teamId, "teamId");
-        Objects.requireNonNull(teamType, "teamType");
-        Objects.requireNonNull(members, "members");
-        Objects.requireNonNull(teamOwnerId, "teamOwnerId");
-        if (teamId.isBlank() || !teamId.equals(teamId.trim())) {
-            throw new IllegalArgumentException("Resolved team id must be non-blank and trimmed");
-        }
-        var snapshot = new ObjectOpenHashSet<>(members);
-        if (snapshot.contains(null) || !snapshot.contains(ownerId)) {
-            throw new IllegalArgumentException("Resolved members must contain the queried owner and no null UUIDs");
-        }
-        if (teamOwnerId.isPresent() && !snapshot.contains(teamOwnerId.orElseThrow())) {
-            throw new IllegalArgumentException("Resolved team owner must be a current member");
-        }
+                                               ObjectSet<UUID> members, @Nullable UUID teamOwnerId) {
         return new OwnerTeamResolution(ownerId, OwnerTeamResolutionStatus.RESOLVED, teamId, teamType,
-            ObjectSets.unmodifiable(snapshot), teamOwnerId.orElse(null), "");
+            members, teamOwnerId, "");
     }
 
     /**
@@ -104,9 +85,9 @@ public final class OwnerTeamResolution {
         return members;
     }
 
-    public Optional<UUID> teamOwnerId() {
+    public @Nullable UUID teamOwnerId() {
         requireAccepted();
-        return Optional.ofNullable(teamOwnerId);
+        return teamOwnerId;
     }
 
     private void requireAccepted() {

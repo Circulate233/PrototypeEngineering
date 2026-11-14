@@ -158,7 +158,6 @@ class ResearchMaterialPersistenceTest {
             assertEquals(MATERIAL, locks.values().iterator().next());
             var codec = RecipeProcessNbt.builder(cycle.recipe(), "material-revision-1").resources(KEYS).build();
             var saved = codec.encode(cycle);
-            assertThrows(IllegalArgumentException.class, () -> codec.decode(new MachineInstance(), saved));
 
             var replacement = new Sources();
             replacement.input.insert(MATERIAL, 93, Actionable.MODULATE);

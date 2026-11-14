@@ -14,6 +14,7 @@ import java.util.function.Supplier;
 
 /**
  * One retained descriptor; pending/draining links also block ordinary access. No scope crosses yield.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class StorageFence {
     private static final ThreadLocal<Access> CURRENT_ACCESS = new ThreadLocal<>();
@@ -282,7 +283,8 @@ public final class StorageFence {
         try {
             if (!access.budgetOwner) {
                 if (access.context == null) {
-                    for (var context : contexts) {
+                    for (int index1 = 0; index1 < contexts.size(); index1++) {
+                        var context = contexts.get(index1);
                         context.lock();
                         locked++;
                     }

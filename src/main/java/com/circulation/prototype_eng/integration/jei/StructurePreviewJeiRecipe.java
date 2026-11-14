@@ -51,7 +51,10 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
 
     private static List<ItemStack> copyControllers(List<ItemStack> controllers) {
         var result = new ObjectArrayList<ItemStack>(controllers.size());
-        for (var controller : controllers) result.add(controller.copy());
+        for (int index2 = 0; index2 < controllers.size(); index2++) {
+            var controller = controllers.get(index2);
+            result.add(controller.copy());
+        }
         return ObjectLists.unmodifiable(result);
     }
 
@@ -142,17 +145,22 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
         var materials = scene.materials();
         if (materials == null) return null;
         var output = ItemStack.EMPTY;
-        for (var controller : controllers)
+        for (int index3 = 0; index3 < controllers.size(); index3++) {
+            var controller = controllers.get(index3);
             if (!controller.isEmpty()) {
                 output = controller.copy();
                 break;
             }
+        }
         if (output.isEmpty()) return null;
         output.setCount(1);
         var key = AEItemKey.of(output);
         if (key == null) return null;
         var inputs = new ObjectArrayList<List<GenericStack>>(materials.size());
-        for (var material : materials) inputs.add(List.of(material));
+        for (int index1 = 0; index1 < materials.size(); index1++) {
+            var material = materials.get(index1);
+            inputs.add(List.of(material));
+        }
         var recipe = new JeiPatternRecipe(inputs, List.of(List.of(new GenericStack(key, 1))));
         return new Pattern(recipe, () -> panel != null && !panel.closed() && panel.scene() == scene && scene.materialsCurrent(materials));
     }

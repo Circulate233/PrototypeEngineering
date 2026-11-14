@@ -49,7 +49,8 @@ public final class DynamicInputCandidates {
         }
         var matches = matching(availableKeys, group);
         var ordered = new ObjectArrayList<StableKey>(matches.size());
-        for (var key : matches) {
+        for (int index1 = 0; index1 < matches.size(); index1++) {
+            var key = matches.get(index1);
             var resourceId = key.getId();
             ordered.add(new StableKey(key, key.getType().getId(),
                 resourceId, canonical(key.toTag())));
@@ -129,7 +130,8 @@ public final class DynamicInputCandidates {
                 var names = new ObjectArrayList<>(compound.getKeySet());
                 names.sort(Comparator.naturalOrder());
                 output.writeInt(names.size());
-                for (var name : names) {
+                for (int index2 = 0; index2 < names.size(); index2++) {
+                    var name = names.get(index2);
                     writeString(name, output);
                     writeCanonical(Objects.requireNonNull(compound.getTag(name), "compound value"), output);
                 }

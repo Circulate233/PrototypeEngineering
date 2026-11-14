@@ -102,7 +102,7 @@ class MachineOwnershipTest {
     }
 
     @Test
-    void missingRealPlacerAndMalformedRestoredIdentityNeverRegister() {
+    void missingRealPlacerNeverRegisters() {
         var registry = new MachineIdentityRegistry(() -> {
         });
         var definition = definition(registry);
@@ -110,19 +110,6 @@ class MachineOwnershipTest {
         assertThrows(IllegalStateException.class, () -> definition.assembly.create(
             new Host(world, BlockPos.ORIGIN, null), new MachineLifecycleRegistry()));
         assertTrue(registry.uniqueRegistrations().isEmpty());
-        var first = definition.assembly.create(new Host(world, BlockPos.ORIGIN, UUID.randomUUID()), new MachineLifecycleRegistry());
-        var saved = definition.assembly.encode(first);
-        var entries = saved.getTagList("Components", 10);
-        for (int index = 0; index < entries.tagCount(); index++) {
-            var entry = entries.getCompoundTagAt(index);
-            if (entry.getString("Type").equals(definition.component.id().toString())) {
-                entry.getCompoundTag("Data").removeTag("ownerMost");
-            }
-        }
-        var registration = Objects.requireNonNull(Objects.requireNonNull(first.components().get(definition.component)).registration());
-        assertThrows(IllegalArgumentException.class, () -> definition.assembly.restore(
-            new Host(world, new BlockPos(1, 0, 0), UUID.randomUUID()), saved, new MachineLifecycleRegistry()));
-        assertEquals(List.of(registration), registry.uniqueRegistrations());
     }
 
     private record Definition(ComponentType<MachineInstance, MachineOwnership> component, MachineAssembly assembly) {

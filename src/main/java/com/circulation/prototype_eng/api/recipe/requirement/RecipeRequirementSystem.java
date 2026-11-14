@@ -13,6 +13,7 @@ import java.util.List;
  * until the stage coordinator completes ALL requirements; a requirement must not complete its own
  * resource/FE tokens. Immutable definitions/systems can be shared; process state cannot be shared
  * between concurrent owners without an explicit reservation/ownership protocol.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public interface RecipeRequirementSystem<C> {
     /**

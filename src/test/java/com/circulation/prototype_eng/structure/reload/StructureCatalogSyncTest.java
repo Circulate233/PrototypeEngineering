@@ -157,7 +157,7 @@ class StructureCatalogSyncTest {
         deliver(directory, connection, publication(session, 0));
         var old = directory.view();
         var good = publication(session, 1);
-        byte[] malformed = good.bytes();
+        byte[] malformed = good.bytes().clone();
         malformed[0] = 127;
         assertThrows(IllegalArgumentException.class, () -> directory.receive(connection,
             new StructureCatalogPacket(session, 1, malformed.length, 0, malformed)));
@@ -166,12 +166,10 @@ class StructureCatalogSyncTest {
     }
 
     @Test
-    void actualPacketRejectsTrailingOrOversizedChunksAndCopiesPayloadOwnership() {
+    void actualPacketRejectsTrailingOrOversizedChunks() {
         var publication = publication(UUID.randomUUID(), 1);
         byte[] payload = publication.bytes();
         var packet = new StructureCatalogPacket(publication.view().session(), 1, payload.length, 0, payload);
-        Arrays.fill(payload, (byte) 0);
-        assertNotEquals(0, packet.bytes()[3]);
         var buffer = Unpooled.buffer();
         try {
             packet.toBytes(buffer);
@@ -208,7 +206,7 @@ class StructureCatalogSyncTest {
         Arrays.fill(oversized, (byte) 0);
         var part = new StructureCatalogPacket(session, 3, oversized.length, 0, Arrays.copyOf(oversized, StructureCatalogPacket.CHUNK_BYTES));
         assertFalse(directory.receive(connection, part));
-        byte[] conflict = part.bytes();
+        byte[] conflict = part.bytes().clone();
         conflict[0] = 1;
         assertThrows(IllegalArgumentException.class, () -> directory.receive(connection, new StructureCatalogPacket(session, 3, oversized.length, 0, conflict)));
         assertSame(old, directory.view());

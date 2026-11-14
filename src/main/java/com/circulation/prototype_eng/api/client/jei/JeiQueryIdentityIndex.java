@@ -19,6 +19,7 @@ import java.util.List;
  * Collision snapshot over every declared pool and currently registered ingredient, captured before
  * publishing wrappers. Queries retain HEI helper semantics; unknown later variants cannot be proven
  * globally injective by this snapshot. No subtype interpreter or execution identity is overwritten.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 @SideOnly(Side.CLIENT)
 public class JeiQueryIdentityIndex {
@@ -32,7 +33,8 @@ public class JeiQueryIdentityIndex {
     public static JeiQueryIdentityIndex capture(List<IngredientConverter<?>> converters, IIngredientRegistry registry,
                                                 Collection<JeiRecipeDisplay> allPoolDisplays) {
         var index = new JeiQueryIdentityIndex();
-        for (var converter : converters) {
+        for (int index1 = 0; index1 < converters.size(); index1++) {
+            var converter = converters.get(index1);
             if (registry.getRegisteredIngredientTypes().contains(converter.getIngredientType())) {
                 index.captureConverter(converter, registry, allPoolDisplays);
             }
@@ -72,7 +74,9 @@ public class JeiQueryIdentityIndex {
             }
         }
         for (var display : displays) {
-            for (var row : display.resources()) {
+            var elements = display.resources();
+            for (int index2 = 0; index2 < elements.size(); index2++) {
+                var row = elements.get(index2);
                 var ingredient = converter.getIngredientFromStack(new GenericStack(row.stack().what(), 1));
                 if (ingredient != null) {
                     var roundTrip = converter.getStackFromIngredient(ingredient);

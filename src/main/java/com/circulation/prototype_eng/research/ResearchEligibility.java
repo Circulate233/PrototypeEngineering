@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.research;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
@@ -10,8 +9,8 @@ import com.circulation.prototype_eng.api.research.ResearchStartContext;
 import com.circulation.prototype_eng.api.research.TeamResearchView;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.Collection;
@@ -45,6 +44,7 @@ public final class ResearchEligibility {
      * source exclusively. Blacklist and staged prerequisites affect the resulting view across both
      * sources without erasing stored levels. Conditions run for each structurally eligible target.
      * Resources and membership must be captured by the server owner before calling this method.
+     * The supplied blacklist must remain immutable while any returned view retains it.
      */
     public TeamResearchView calculate(String teamId, Collection<UUID> currentMembers,
                                       Map<UUID, PlayerResearchState> playerStates,
@@ -55,10 +55,11 @@ public final class ResearchEligibility {
         if (networkCenterLevel < 0) {
             throw new IllegalArgumentException("Negative network center level");
         }
-        var resources = NetworkResourceModifier.copyResources(availableResources);
         var structuralView = calculateStructural(teamId, currentMembers, playerStates, teamOwnedResearch, blacklistedResearchIds);
         var startable = new Object2IntOpenHashMap<ResourceLocation>();
-        for (var definition : registry.all()) {
+        var elements3 = registry.all();
+        for (int index3 = 0; index3 < elements3.size(); index3++) {
+            var definition = elements3.get(index3);
             int completed = structuralView.completedLevel(definition.id());
             if (completed >= definition.maxLevel()) {
                 continue;
@@ -66,7 +67,7 @@ public final class ResearchEligibility {
             int target = completed + 1;
             if (structurallyEligible(structuralView, definition.id(), target)
                 && definition.startCondition().canStart(new ResearchStartContext(definition.id(), target, null,
-                teamId, structuralView.sharedLevels(), resources, networkCenterLevel))) {
+                teamId, structuralView.sharedLevels(), availableResources, networkCenterLevel))) {
                 startable.put(definition.id(), target);
             }
         }
@@ -87,18 +88,6 @@ public final class ResearchEligibility {
             if (!members.add(Objects.requireNonNull(member))) {
                 throw new IllegalArgumentException("Duplicate research team member " + member);
             }
-        }
-        for (var entry : Objects.requireNonNull(playerStates).entrySet()) {
-            var player = Objects.requireNonNull(entry.getKey());
-            var state = Objects.requireNonNull(entry.getValue());
-            if (!player.equals(state.playerUuid())) {
-                throw new IllegalArgumentException("Research state identity differs from player table key " + player);
-            }
-        }
-        var blacklist = new ObjectOpenHashSet<ResourceLocation>(blacklistedResearchIds.size());
-        for (var id : Objects.requireNonNull(blacklistedResearchIds)) {
-            registry.require(Objects.requireNonNull(id));
-            blacklist.add(id);
         }
         var raw = new Object2IntOpenHashMap<ResourceLocation>(members.size());
         for (var member : members) {
@@ -125,12 +114,14 @@ public final class ResearchEligibility {
             }
         }
         var effective = new Object2IntOpenHashMap<ResourceLocation>();
-        var resolving = new ObjectOpenHashSet<ResourceLocation>();
-        for (var definition : registry.all()) {
-            resolveEffective(definition.id(), raw, blacklist, effective, resolving);
+        var elements = registry.all();
+        for (int index = 0; index < elements.size(); index++) {
+            var definition = elements.get(index);
+            resolveEffective(definition.id(), raw, blacklistedResearchIds, effective);
         }
+        effective.object2IntEntrySet().removeIf(entry -> entry.getIntValue() == 0);
         var emptyTargets = new Object2IntOpenHashMap<ResourceLocation>();
-        return new TeamResearchView(registry, teamId, members, effective, emptyTargets, blacklist);
+        return new TeamResearchView(registry, teamId, members, effective, emptyTargets, blacklistedResearchIds);
     }
 
     /**
@@ -147,13 +138,12 @@ public final class ResearchEligibility {
         if (networkCenterLevel < 0) {
             throw new IllegalArgumentException("Negative network center level");
         }
-        var resources = NetworkResourceModifier.copyResources(availableResources);
         if (!structurallyEligible(view, researchId, targetLevel)) {
             return false;
         }
         var definition = registry.require(researchId);
         return definition.startCondition().canStart(new ResearchStartContext(researchId, targetLevel, requestedBy,
-            view.teamId(), view.sharedLevels(), resources, networkCenterLevel));
+            view.teamId(), view.sharedLevels(), availableResources, networkCenterLevel));
     }
 
     /**
@@ -173,7 +163,9 @@ public final class ResearchEligibility {
                 return false;
             }
         }
-        for (var rule : stage.mutexRules()) {
+        var elements2 = stage.mutexRules();
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var rule = elements2.get(index2);
             if (view.completedLevel(rule.researchId()) >= rule.minLevel()) {
                 return false;
             }
@@ -182,38 +174,30 @@ public final class ResearchEligibility {
     }
 
     private int resolveEffective(ResourceLocation id, Object2IntMap<ResourceLocation> raw,
-                                 Set<ResourceLocation> blacklist, Object2IntOpenHashMap<ResourceLocation> cache,
-                                 Set<ResourceLocation> resolving) {
+                                 Set<ResourceLocation> blacklist, Object2IntOpenHashMap<ResourceLocation> cache) {
         if (cache.containsKey(id)) {
             return cache.getInt(id);
         }
-        if (!resolving.add(id)) {
-            throw new IllegalStateException("Research prerequisite cycle at " + id);
-        }
-        try {
-            var definition = registry.require(id);
-            int candidate = definition.specialOnly() || blacklist.contains(id) ? 0 : raw.getInt(id);
-            while (candidate > 0) {
-                var stage = definition.stageForLevel(candidate);
-                boolean satisfied = true;
-                for (var prerequisite : stage.prerequisites().object2IntEntrySet()) {
-                    if (resolveEffective(prerequisite.getKey(), raw, blacklist, cache, resolving) < prerequisite.getIntValue()) {
-                        satisfied = false;
-                        break;
-                    }
+        var definition = registry.require(id);
+        int candidate = definition.specialOnly() || blacklist.contains(id) ? 0 : raw.getInt(id);
+        while (candidate > 0) {
+            var stage = definition.stageForLevel(candidate);
+            boolean satisfied = true;
+            for (var prerequisite : stage.prerequisites().object2IntEntrySet()) {
+                if (resolveEffective(prerequisite.getKey(), raw, blacklist, cache) < prerequisite.getIntValue()) {
+                    satisfied = false;
+                    break;
                 }
-                if (satisfied) {
-                    cache.put(id, candidate);
-                    return candidate;
-                }
-                // Prerequisites are constant throughout this stage; skip its entire failed range.
-                candidate = stage.firstLevel() - 1;
             }
-            cache.put(id, 0);
-            return 0;
-        } finally {
-            resolving.remove(id);
+            if (satisfied) {
+                cache.put(id, candidate);
+                return candidate;
+            }
+            // Prerequisites are constant throughout this stage; skip its entire failed range.
+            candidate = stage.firstLevel() - 1;
         }
+        cache.put(id, 0);
+        return 0;
     }
 
     private ResearchDefinition requireSource(ResourceLocation id, int level, ResearchDownloadDeliveryPolicy expected) {

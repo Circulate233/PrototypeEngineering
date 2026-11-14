@@ -94,9 +94,14 @@ public final class ServerTaskSchedulers {
             throw new IllegalStateException("Controller data save marking requires its server owner");
         for (var world : current.server.worlds) {
             if (world == null || world.getMinecraftServer() != current.server) continue;
-            for (var tile : new ObjectArrayList<>(world.loadedTileEntityList))
+
+            var elements = new ObjectArrayList<>(world.loadedTileEntityList);
+            for (int index2 = 0; index2 < elements.size(); index2++) {
+                var tile = elements.get(index2);
                 if (tile instanceof MachineControllerBlockEntity controller && controller.getWorld() == world)
                     controller.markControllerDataDirty(false);
+            }
+
         }
     }
 
@@ -118,7 +123,8 @@ public final class ServerTaskSchedulers {
         var batch = current.dirtyControllers;
         current.dirtyControllers = new ObjectArrayList<>();
         // Comparator callbacks may enqueue another tile. They must not append to this frozen pass.
-        for (var controller : batch) {
+        for (int index = 0; index < batch.size(); index++) {
+            var controller = batch.get(index);
             var world = controller.getWorld();
             if (world != null && world.getMinecraftServer() == current.server) controller.markControllerDataDirty(true);
         }
@@ -174,7 +180,9 @@ public final class ServerTaskSchedulers {
         }
 
         private static boolean networkMachine(MachineInstance machine) {
-            for (var binding : machine.components().assemblyBindings()) {
+            var elements1 = machine.components().assemblyBindings();
+            for (int index1 = 0; index1 < elements1.size(); index1++) {
+                var binding = elements1.get(index1);
                 if (binding.component() instanceof NetworkRecipeWork) {
                     return true;
                 }

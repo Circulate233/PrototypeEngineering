@@ -32,7 +32,7 @@ import static com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay.Role
 import static com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay.Text.of;
 
 /**
- * 从装配声明生成计算机供给页面，复用普通材料布局及文字区，不调用运行实例或条件回调。
+ * Builds computer conversion pages from assembly declarations using the ordinary ingredient layout, without invoking machines or conditions.
  */
 @SideOnly(Side.CLIENT)
 final class ComputerRecipeJeiRegistration {
@@ -42,15 +42,20 @@ final class ComputerRecipeJeiRegistration {
     ComputerRecipeJeiRegistration(IRecipeCategoryRegistration registration, RecipeJeiDisplays displayProviders) {
         var helper = registration.getJeiHelpers().getGuiHelper();
         var registry = MachineTypeRegistry.INSTANCE;
-        for (var machine : registry.types()) {
+        var elements7 = registry.types();
+        for (int index7 = 0; index7 < elements7.size(); index7++) {
+            var machine = elements7.get(index7);
             var recipes = registry.assembly(machine).computerRecipes();
             if (recipes.isEmpty() && machine.computerInputRecipes().isEmpty()) continue;
             var materials = new ObjectArrayList<MachineRecipe>(recipes.size() + machine.computerInputRecipes().size());
-            for (var recipe : recipes) {
+            for (int index4 = 0; index4 < recipes.size(); index4++) {
+                var recipe = recipes.get(index4);
                 materials.add(recipe.materialRecipe());
                 descriptions.computeIfAbsent(recipe.materialRecipe(), _ -> describe(recipe));
             }
-            for (var recipe : machine.computerInputRecipes()) {
+            var elements5 = machine.computerInputRecipes();
+            for (int index5 = 0; index5 < elements5.size(); index5++) {
+                var recipe = elements5.get(index5);
                 materials.add(recipe.inputDefinition());
                 descriptions.put(recipe.inputDefinition(), displayProviders.describe(recipe.inputDefinition()));
             }
@@ -65,7 +70,11 @@ final class ComputerRecipeJeiRegistration {
 
     private static JeiRecipeDisplay describe(ComputerRecipe recipe) {
         var display = new JeiRecipeDisplay.Builder();
-        for (var stack : recipe.unitInputs()) display.resource(stack, INPUT, of(JeiText.ComputerUnit));
+        var elements1 = recipe.unitInputs();
+        for (int index1 = 0; index1 < elements1.size(); index1++) {
+            var stack = elements1.get(index1);
+            display.resource(stack, INPUT, of(JeiText.ComputerUnit));
+        }
         for (var entry : recipe.unitResources().reference2DoubleEntrySet()) {
             if (entry.getDoubleValue() == 0) continue;
             var resource = entry.getKey();
@@ -82,7 +91,8 @@ final class ComputerRecipeJeiRegistration {
     List<RecipePoolJeiRecipe> createWrappers(List<IngredientConverter<?>> converters, IIngredientRegistry registry,
                                              JeiQueryIdentityIndex identities, RecipePoolJeiRecipe.DisplayToken token) {
         var result = new ObjectArrayList<RecipePoolJeiRecipe>();
-        for (var entry : pages) {
+        for (int index2 = 0; index2 < pages.size(); index2++) {
+            var entry = pages.get(index2);
             var page = entry.category();
             if (!HeiRecipeGeneration.categoryDisabled(page.getUid()))
                 appendWrappers(page, converters, registry, identities, token, result);
@@ -93,7 +103,9 @@ final class ComputerRecipeJeiRegistration {
     private void appendWrappers(AutoLayoutRecipePage page, List<IngredientConverter<?>> converters,
                                 IIngredientRegistry registry, JeiQueryIdentityIndex identities,
                                 RecipePoolJeiRecipe.DisplayToken token, List<RecipePoolJeiRecipe> result) {
-        for (var recipe : page.pool().recipes()) {
+        var elements6 = page.pool().recipes();
+        for (int index6 = 0; index6 < elements6.size(); index6++) {
+            var recipe = elements6.get(index6);
             var display = descriptions.get(recipe);
             var ingredients = new JeiRecipeIngredients(display, converters, registry, identities);
             var wrapper = page.createRecipe(recipe, display, ingredients);
@@ -105,17 +117,22 @@ final class ComputerRecipeJeiRegistration {
     List<RecipePoolJeiRecipe> registerRecipes(IModRegistry registration, List<IngredientConverter<?>> converters,
                                               JeiQueryIdentityIndex identities, RecipePoolJeiRecipe.DisplayToken token) {
         var result = new ObjectArrayList<RecipePoolJeiRecipe>();
-        for (var entry : pages) {
+        for (int index3 = 0; index3 < pages.size(); index3++) {
+            var entry = pages.get(index3);
             var page = entry.category();
             if (HeiRecipeGeneration.categoryDisabled(page.getUid())) continue;
             var wrappers = new ObjectArrayList<RecipePoolJeiRecipe>();
             appendWrappers(page, converters, registration.getIngredientRegistry(), identities, token, wrappers);
             registration.addRecipes(wrappers, page.getUid());
             result.addAll(wrappers);
-            for (var block : MachineControllerBlocks.all()) {
+
+            var elements = MachineControllerBlocks.all();
+            for (int index = 0; index < elements.size(); index++) {
+                var block = elements.get(index);
                 if (block.type() == entry.machine())
                     registration.addRecipeCatalyst(new ItemStack(block), page.getUid());
             }
+
         }
         return result;
     }

@@ -142,9 +142,10 @@ public final class StructurePredicates {
 
     /**
      * PM's shallow root fields: strings use their value, other tags use their SNBT representation.
+     * The supplied map must remain immutable while the predicate is in use.
      */
     public static StructurePredicate nbt(Map<String, String> expected) {
-        return new Nbt(Map.copyOf(expected));
+        return new Nbt(expected);
     }
 
     @SuppressWarnings("unchecked") // Minecraft's property valueClass validates each typed access.
@@ -465,14 +466,16 @@ public final class StructurePredicates {
 
         @Override
         public void collectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
-            for (var child : children) {
+            for (int index1 = 0; index1 < children.size(); index1++) {
+                var child = children.get(index1);
                 child.collectReads(plan, position, controller);
             }
         }
 
         @Override
         public boolean matches(StructureSnapshot snapshot, BlockPos position, BlockPos controller) {
-            for (var child : children) {
+            for (int index2 = 0; index2 < children.size(); index2++) {
+                var child = children.get(index2);
                 if (child.matches(snapshot, position, controller) != all) {
                     return !all;
                 }
@@ -484,7 +487,8 @@ public final class StructurePredicates {
         public StructurePredicate transform(StructureTransform rotation) {
             var transformed = new ObjectArrayList<StructurePredicate>(children.size());
             boolean reusable = planReusable;
-            for (var child : children) {
+            for (int index3 = 0; index3 < children.size(); index3++) {
+                var child = children.get(index3);
                 var result = Objects.requireNonNull(child.transform(rotation));
                 transformed.add(result);
                 reusable = reusable && result.planReusable();

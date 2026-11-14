@@ -7,6 +7,7 @@ import java.util.List;
 
 /**
  * A detached match and its actual read proof; neither contains permission to publish a machine.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class StructureEvaluation {
     private final StructurePlan plan;

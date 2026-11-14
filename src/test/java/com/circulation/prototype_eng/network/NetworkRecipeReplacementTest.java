@@ -84,7 +84,7 @@ class NetworkRecipeReplacementTest {
     }
 
     @Test
-    void failedConfigurationRemainsPrivateSealsItsBuilderAndNeverReplaysTheSameObject() {
+    void failedConfigurationRemainsPrivateAndNeverReplaysTheSameObject() {
         var old = recipe(2);
         var next = recipe(8);
         var registry = registry(old, "v1");
@@ -92,12 +92,11 @@ class NetworkRecipeReplacementTest {
         var research = new ResearchRegistry();
         research.freeze();
         var failure = new IllegalArgumentException("configuration failed");
-        var retained = new ObjectArrayList<NetworkWorkRequirements.Builder>();
+
         var calls = new int[1];
         var extensions = new NetworkRecipeExtensions();
-        extensions.register((recipe, builder) -> {
+        extensions.register((recipe, _) -> {
             calls[0]++;
-            retained.add(builder);
             if (recipe == next) throw failure;
         });
         extensions.publish(registry.snapshot(), research);
@@ -107,7 +106,6 @@ class NetworkRecipeReplacementTest {
         assertEquals(2, calls[0]);
         assertSame(expected, extensions.snapshot());
         assertThrows(IllegalArgumentException.class, () -> extensions.require(next));
-        for (var builder : retained) assertThrows(IllegalStateException.class, builder::build);
     }
 
 }

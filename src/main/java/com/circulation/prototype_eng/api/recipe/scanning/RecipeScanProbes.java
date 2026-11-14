@@ -47,7 +47,8 @@ public final class RecipeScanProbes {
         var reservations = new ObjectArrayList<ResourceReservation>(6);
         ProcessResult result = ProcessResult.SUCCESS;
         try {
-            for (var preparation : preparations) {
+            for (int index = 0; index < preparations.size(); index++) {
+                var preparation = preparations.get(index);
                 if (retired(process)) {
                     result = RecipeText.Cancelled.blocked();
                     break;

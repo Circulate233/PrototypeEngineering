@@ -27,7 +27,8 @@ public record DynamicInputGroup(NamedResourceMatcher matcher, AEKey pattern, lon
             throw new IllegalArgumentException("Dynamic input amount and candidate limit must be positive");
         }
         var copy = new ObjectArrayList<AEKey>(displayedCandidates.size());
-        for (var candidate : displayedCandidates) {
+        for (int index = 0; index < displayedCandidates.size(); index++) {
+            var candidate = displayedCandidates.get(index);
             copy.add(Objects.requireNonNull(candidate, "displayed candidate"));
         }
         displayedCandidates = ObjectLists.unmodifiable(copy);

@@ -97,7 +97,9 @@ public final class StructureComponents implements AffinityKeyProvider {
     public <C> C find(ComponentType<MachineInstance, C> type, BlockPos providerPos, String portId) {
         Objects.requireNonNull(providerPos);
         Objects.requireNonNull(portId);
-        for (var binding : get(type)) {
+        var elements = get(type);
+        for (int index = 0; index < elements.size(); index++) {
+            var binding = elements.get(index);
             if (binding.context().providerPos().equals(providerPos) && binding.entry().portId().equals(portId)) {
                 return binding.entry().component();
             }
@@ -108,7 +110,8 @@ public final class StructureComponents implements AffinityKeyProvider {
     @Override
     public Set<?> affinityKeys() {
         var keys = new ObjectLinkedOpenHashSet<>(bindings.size());
-        for (var binding : bindings) {
+        for (int index2 = 0; index2 < bindings.size(); index2++) {
+            var binding = bindings.get(index2);
             if (binding.entry().component() instanceof AffinityKeyProvider provider) {
                 for (var key : Objects.requireNonNull(provider.affinityKeys())) {
                     keys.add(Objects.requireNonNull(key));

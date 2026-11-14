@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.research;
 
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskCommit;
@@ -39,7 +38,8 @@ public final class DataCenterStorageNbt {
         var list = new NBTTagList();
         var ids = new ObjectArrayList<>(snapshot.storedResearch().keySet());
         ids.sort(Comparator.naturalOrder());
-        for (var id : ids) {
+        for (int index2 = 0; index2 < ids.size(); index2++) {
+            var id = ids.get(index2);
             var entry = new NBTTagCompound();
             entry.setString("Id", id.toString());
             entry.setInteger("Level", snapshot.storedResearch().getInt(id));
@@ -49,8 +49,10 @@ public final class DataCenterStorageNbt {
         var receipts = new NBTTagList();
         var operations = new ObjectArrayList<>(state.receipts().keySet());
         operations.sort(Comparator.naturalOrder());
-        for (var operation : operations)
+        for (int index1 = 0; index1 < operations.size(); index1++) {
+            var operation = operations.get(index1);
             receipts.appendTag(ResearchDiskCommitNbt.encode(state.receipts().get(operation)));
+        }
         tag.setTag("DiskReceipts", receipts);
         return tag;
     }
@@ -60,29 +62,27 @@ public final class DataCenterStorageNbt {
     }
 
     public static ResearchDataCenter.State decodeState(NBTTagCompound tag, ResearchRegistry registry) {
-        StrictNbt.requireKeys(tag, "Schema", "IdMost", "IdLeast", "Level", "Capacity", "Research", "DiskReceipts");
-        if (StrictNbt.requireInt(tag, "Schema") != 2) {
+        if (tag.getInteger("Schema") != 2) {
             throw new IllegalArgumentException("Unsupported data-center storage schema");
         }
-        var id = new UUID(StrictNbt.requireLong(tag, "IdMost"), StrictNbt.requireLong(tag, "IdLeast"));
-        int level = StrictNbt.requireInt(tag, "Level");
-        int capacity = StrictNbt.requireInt(tag, "Capacity");
-        var list = StrictNbt.requireList(tag, "Research", Constants.NBT.TAG_COMPOUND);
+        var id = new UUID(tag.getLong("IdMost"), tag.getLong("IdLeast"));
+        int level = tag.getInteger("Level");
+        int capacity = tag.getInteger("Capacity");
+        var list = tag.getTagList("Research", Constants.NBT.TAG_COMPOUND);
         var levels = new Object2IntOpenHashMap<ResourceLocation>(list.tagCount());
         for (int index = 0; index < list.tagCount(); index++) {
             var entry = list.getCompoundTagAt(index);
-            StrictNbt.requireKeys(entry, "Id", "Level");
-            var researchId = StrictNbt.requireId(entry, "Id");
+            var researchId = new ResourceLocation(entry.getString("Id"));
             if (levels.containsKey(researchId)) {
                 throw new IllegalArgumentException("Duplicate saved data-center research: " + researchId);
             }
-            levels.put(researchId, StrictNbt.requireInt(entry, "Level"));
+            levels.put(researchId, entry.getInteger("Level"));
         }
         var snapshot = new DataCenterResearchSnapshot(id, level, capacity, 0, levels);
-        var savedReceipts = StrictNbt.requireList(tag, "DiskReceipts", Constants.NBT.TAG_COMPOUND);
+        var savedReceipts = tag.getTagList("DiskReceipts", Constants.NBT.TAG_COMPOUND);
         var receipts = new Object2ObjectOpenHashMap<UUID, ResearchDiskCommit>(savedReceipts.tagCount());
         for (int index = 0; index < savedReceipts.tagCount(); index++) {
-            var receipt = ResearchDiskCommitNbt.decode(savedReceipts.getCompoundTagAt(index), registry);
+            var receipt = ResearchDiskCommitNbt.decode(savedReceipts.getCompoundTagAt(index));
             if (receipts.putIfAbsent(receipt.operationId(), receipt) != null)
                 throw new IllegalArgumentException("Duplicate saved database import receipt");
         }

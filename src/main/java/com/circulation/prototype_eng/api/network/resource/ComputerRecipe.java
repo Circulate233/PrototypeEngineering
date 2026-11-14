@@ -21,11 +21,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Predicate;
 
 /**
- * 单位材料换算定义。列表和资源 Map 必须在构造前完成，后续保持不变。
+ * Material conversion unit. Complete input lists and resource maps before construction and retain them unchanged.
  */
 public final class ComputerRecipe {
     private final MachineRecipe materialRecipe;
@@ -47,7 +46,8 @@ public final class ComputerRecipe {
         var inputs = new ResourceRequirement(unitInputs, List.of(), List.of(), List.of(), false);
         materialRecipe = new MachineRecipe(id, 1, List.of(RecipeRequirements.RESOURCES.requirement(id, inputs)));
         amounts = new AEKeyLinkedOpenHashMap(unitInputs.size());
-        for (var stack : unitInputs) {
+        for (int index4 = 0; index4 < unitInputs.size(); index4++) {
+            var stack = unitInputs.get(index4);
             if (amounts.addTo(stack.what(), stack.amount()) > Long.MAX_VALUE - stack.amount())
                 throw new ArithmeticException("Computer conversion input sum overflow");
         }
@@ -70,7 +70,7 @@ public final class ComputerRecipe {
     }
 
     /**
-     * 多种产出按尚未满足需求的最大倍数换算，零需求不执行。
+     * For multiple outputs, use the largest unit count required by unmet demand. Zero demand requires no conversion.
      */
     public long unitsFor(Reference2DoubleMap<NetworkResourceType> required, Reference2DoubleMap<NetworkResourceType> available) {
         long units = 0;
@@ -89,20 +89,25 @@ public final class ComputerRecipe {
     }
 
     /**
-     * 按整单位尽量预留材料，不满一份的余料不参与。调用方必须结算全部预留。null 表示资格条件未满足。
+     * Reserves as many complete units as available. The caller must settle every reservation. Null means eligibility was denied.
      */
     public @Nullable Conversion prepare(MachineInstance computer, long requestedUnits) {
         if (!condition.test(computer)) return null;
         var storages = new ObjectArrayList<ResourceStorage>();
         var seen = new ReferenceOpenHashSet<StorageContext>();
-        for (var hatch : MachineHatches.get(computer).resources()) {
+        var elements = MachineHatches.get(computer).resources();
+        for (int index5 = 0; index5 < elements.size(); index5++) {
+            var hatch = elements.get(index5);
             var storage = hatch.input();
             if (storage != null && hatch.isValid() && storage.isValid() && seen.add(storage.context()))
                 storages.add(storage);
         }
         storages.sort(Comparator.comparingLong(value -> value.context().order()));
         var contexts = new ObjectArrayList<StorageContext>(storages.size());
-        for (var storage : storages) contexts.add(storage.context());
+        for (int index1 = 0; index1 < storages.size(); index1++) {
+            var storage = storages.get(index1);
+            contexts.add(storage.context());
+        }
         var tokens = new ObjectArrayList<ResourceReservation>();
         try {
             long units = requestedUnits;
@@ -111,7 +116,8 @@ public final class ComputerRecipe {
             try {
                 for (var input : amounts.object2LongEntrySet()) {
                     long maximum = Math.multiplyExact(units, input.getLongValue()), found = 0;
-                    for (var storage : storages) {
+                    for (int index2 = 0; index2 < storages.size(); index2++) {
+                        var storage = storages.get(index2);
                         found += Math.min(maximum - found, storage.snapshotFor(input.getKey()).available().getLong(input.getKey()));
                         if (found == maximum) break;
                     }
@@ -120,7 +126,8 @@ public final class ComputerRecipe {
                 inputs:
                 for (var input : amounts.object2LongEntrySet()) {
                     long remaining = Math.multiplyExact(units, input.getLongValue());
-                    for (var storage : storages) {
+                    for (int index3 = 0; index3 < storages.size(); index3++) {
+                        var storage = storages.get(index3);
                         if (remaining == 0) break;
                         var snapshot = storage.snapshotFor(input.getKey());
                         long portion = Math.min(remaining, snapshot.available().getLong(input.getKey()));
@@ -130,7 +137,7 @@ public final class ComputerRecipe {
                             accepted = false;
                             break inputs;
                         }
-                        tokens.add(Objects.requireNonNull(reserved.reservation()));
+                        tokens.add(reserved.reservation());
                         remaining -= portion;
                     }
                     if (remaining != 0) {

@@ -12,6 +12,7 @@ import java.util.Objects;
 
 /**
  * Resource declarations only; each later render owner creates its own mutable Gecko instance.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public record GeckoModelBinding(ResourceLocation geo, ResourceLocation texture, @Nullable ResourceLocation animation,
                                 @Nullable String defaultAnimationName, List<String> layers,

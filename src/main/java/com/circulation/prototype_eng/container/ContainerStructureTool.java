@@ -222,7 +222,9 @@ public final class ContainerStructureTool extends AEBaseContainer {
             var plan = StructureBuildPlan.expand(catalog, host.structure(), host.orientation(), BuilderState.sliceCounts(current));
             if (kind.equals("slice")) {
                 int count = Integer.parseInt(selectedOption);
-                for (var occurrence : plan.nodes()) {
+                var elements3 = plan.nodes();
+                for (int index3 = 0; index3 < elements3.size(); index3++) {
+                    var occurrence = elements3.get(index3);
                     var node = catalog.nodes().get(occurrence.index());
                     if (occurrence.path().equals(selectedMaterial) && node.kind() == StructurePreviewProvider.Kind.SLICE
                         && count >= node.minCount() && count <= node.maxCount()) {
@@ -234,30 +236,40 @@ public final class ContainerStructureTool extends AEBaseContainer {
                 return;
             }
             if (position != null) {
-                for (var cell : plan.cells()) {
+                var elements5 = plan.cells();
+                for (int index5 = 0; index5 < elements5.size(); index5++) {
+                    var cell = elements5.get(index5);
                     if (!cell.position().equals(position)) continue;
                     var display = cell.display();
                     if (display == null || !display.key().equals(selectedMaterial)) return;
-                    for (var candidate : display.options())
+                    var elements2 = display.options();
+                    for (int index2 = 0; index2 < elements2.size(); index2++) {
+                        var candidate = elements2.get(index2);
                         if (BuilderState.optionKey(candidate).equals(selectedOption)) {
                             BuilderState.chooseCell(current, position, selectedMaterial, selectedOption, host.orientation());
                             synchronize();
                             return;
                         }
+                    }
                     return;
                 }
                 return;
             }
             boolean found = false;
-            for (var cell : plan.cells()) {
+            var elements4 = plan.cells();
+            for (int index4 = 0; index4 < elements4.size(); index4++) {
+                var cell = elements4.get(index4);
                 var display = cell.display();
                 if (display == null || !display.key().equals(selectedMaterial)) continue;
                 boolean valid = false;
-                for (var option : display.options())
+                var elements = display.options();
+                for (int index1 = 0; index1 < elements.size(); index1++) {
+                    var option = elements.get(index1);
                     if (BuilderState.optionKey(option).equals(selectedOption)) {
                         valid = true;
                         break;
                     }
+                }
                 if (!valid) return;
                 found = true;
             }

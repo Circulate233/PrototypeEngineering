@@ -5,7 +5,6 @@ import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import net.minecraft.item.ItemStack;
 
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -21,8 +20,7 @@ public interface NetworkComputerComponent {
     }
 
     static NetworkComputerComponent fixed(long concurrency, Reference2DoubleMap<NetworkResourceType> resources) {
-        var frozen = NetworkResourceModifier.copyResources(resources);
-        var captured = new Capture(concurrency, frozen, Reference2DoubleMaps.emptyMap(), 0, () -> true);
+        var captured = new Capture(concurrency, resources, Reference2DoubleMaps.emptyMap(), 0, () -> true);
         return (_, _) -> captured;
     }
 
@@ -33,7 +31,7 @@ public interface NetworkComputerComponent {
 
     /**
      * Version proof must be read-only and acquire no additional storage/domain locks, including inside a recipe fence.
-     * The completed zero-default resource map is borrowed unchanged while this capture is retained.
+     * Resource quantities and costs must be finite and nonnegative. Completed zero-default maps are borrowed read-only.
      */
     record Capture(long concurrencyPerItem, Reference2DoubleMap<NetworkResourceType> resourcesPerItem,
                    Reference2DoubleMap<NetworkResourceType> requiredResources, long energyPerTick,
@@ -47,12 +45,6 @@ public interface NetworkComputerComponent {
             this(0, resourcesPerItem, requiredResources, energyPerTick, current);
         }
 
-        public Capture {
-            NetworkResourceModifier.validateResources(resourcesPerItem);
-            NetworkResourceModifier.validateResources(requiredResources);
-            if (energyPerTick < 0 || concurrencyPerItem < 0)
-                throw new IllegalArgumentException("Negative component concurrency or FE cost");
-            Objects.requireNonNull(current);
-        }
+
     }
 }

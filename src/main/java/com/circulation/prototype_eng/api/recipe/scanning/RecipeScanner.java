@@ -23,7 +23,6 @@ import com.circulation.prototype_eng.api.storage.ResourceInputGroups;
 import com.circulation.prototype_eng.localization.RecipeText;
 import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
@@ -151,14 +150,17 @@ public final class RecipeScanner {
         this.host = Objects.requireNonNull(host);
         this.catalog = Objects.requireNonNull(catalog);
         this.factory = Objects.requireNonNull(factory);
-        this.constraints = immutable(constraints);
-        this.indexes = immutable(indexes);
-        this.preparations = immutable(preparations);
+        this.constraints = constraints;
+        this.indexes = indexes;
+        this.preparations = preparations;
         this.monotonicStart = Objects.requireNonNull(monotonicStart);
         this.seeds = Objects.requireNonNull(seeds);
         var scope = new ObjectLinkedOpenHashSet<ResourceLocation>();
         boolean unrestricted = false;
-        for (var slot : host.slots()) {
+
+        var elements3 = host.slots();
+        for (int index3 = 0; index3 < elements3.size(); index3++) {
+            var slot = elements3.get(index3);
             if (slot.allowedRecipeGroups().isEmpty()) {
                 scope.clear();
                 unrestricted = true;
@@ -166,6 +168,7 @@ public final class RecipeScanner {
             }
             scope.addAll(slot.allowedRecipeGroups());
         }
+
         if (host.dynamicRoster() && !unrestricted) {
             if (host.dynamicRecipeGroups().isEmpty()) scope.clear();
             else scope.addAll(host.dynamicRecipeGroups());
@@ -203,14 +206,6 @@ public final class RecipeScanner {
 
     private static Result result(Status status, int examined, int probes) {
         return new Result(status, null, examined, probes);
-    }
-
-    private static <T> List<T> immutable(List<T> values) {
-        var result = new ObjectArrayList<T>(values.size());
-        for (var value : values) {
-            result.add(Objects.requireNonNull(value));
-        }
-        return ObjectLists.unmodifiable(result);
     }
 
     /**
@@ -310,7 +305,7 @@ public final class RecipeScanner {
         boolean previous = scanning;
         scanning = true;
         try {
-            return immutable(rebuild.apply(target));
+            return rebuild.apply(target);
         } catch (RuntimeException | Error failure) {
             faulted = true;
             throw failure;
@@ -420,7 +415,8 @@ public final class RecipeScanner {
         ensureInputGroups();
         var active = host.activeProcesses();
         var running = new ObjectOpenHashSet<ResourceLocation>(active.size());
-        for (var process : active) {
+        for (int index1 = 0; index1 < active.size(); index1++) {
+            var process = active.get(index1);
             running.add(process.recipe().id());
         }
         int capacity = host.capacity();
@@ -570,7 +566,8 @@ public final class RecipeScanner {
 
     private Search begin(MachineRecipe recipe, int parentLimit) {
         int limit = inputBound(recipe, parentLimit);
-        for (var constraint : constraints) {
+        for (int index5 = 0; index5 < constraints.size(); index5++) {
+            var constraint = constraints.get(index5);
             int bound = constraint.upperBound(host.owner(), recipe, limit);
             if (bound < 0 || bound > limit) {
                 throw new IllegalArgumentException("Invalid recipe parallelism bound");
@@ -625,7 +622,8 @@ public final class RecipeScanner {
     }
 
     private ProcessResult checkPrepared(RecipeProcess process) {
-        for (var constraint : constraints) {
+        for (int index6 = 0; index6 < constraints.size(); index6++) {
+            var constraint = constraints.get(index6);
             if (workPaused()) {
                 return RecipeText.Cancelled.blocked();
             }
@@ -683,11 +681,15 @@ public final class RecipeScanner {
             var slot = host.slots().get(selectedThreadIndex);
             return slot.process() == null && slot.definition().accepts(recipe) ? slot : null;
         }
-        for (var slot : host.slots()) {
+
+        var elements = host.slots();
+        for (int index2 = 0; index2 < elements.size(); index2++) {
+            var slot = elements.get(index2);
             if (slot.process() == null && slot.definition().accepts(recipe)) {
                 return slot;
             }
         }
+
         return mode == ControllerMode.CROSS_RECIPE ? host.dynamicScanSlot(recipe) : null;
     }
 

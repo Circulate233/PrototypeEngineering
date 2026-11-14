@@ -110,7 +110,8 @@ final class TransactionGroup implements ReversibleTransaction {
         preparationAttempted = true;
         executing = true;
         try {
-            for (var transaction : transactions) {
+            for (int index2 = 0; index2 < transactions.size(); index2++) {
+                var transaction = transactions.get(index2);
                 if (!transaction.prepareCommit()) {
                     return false;
                 }
@@ -131,7 +132,8 @@ final class TransactionGroup implements ReversibleTransaction {
         commitAttempted = true;
         executing = true;
         try {
-            for (var transaction : transactions) {
+            for (int index1 = 0; index1 < transactions.size(); index1++) {
+                var transaction = transactions.get(index1);
                 transaction.commit();
             }
         } finally {
@@ -158,7 +160,8 @@ final class TransactionGroup implements ReversibleTransaction {
         validationAttempted = true;
         executing = true;
         try {
-            for (var transaction : transactions) {
+            for (int index3 = 0; index3 < transactions.size(); index3++) {
+                var transaction = transactions.get(index3);
                 if (!transaction.validateCommit()) {
                     return false;
                 }

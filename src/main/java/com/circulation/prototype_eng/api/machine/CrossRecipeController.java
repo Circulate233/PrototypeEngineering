@@ -12,6 +12,7 @@ import java.util.function.LongSupplier;
 
 /**
  * One search continues across different recipes, lazily creating process slots until the shared allowance is spent.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public class CrossRecipeController extends RecipeController {
     private boolean batchTickClaimed;

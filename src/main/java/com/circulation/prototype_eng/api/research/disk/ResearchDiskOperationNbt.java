@@ -1,11 +1,10 @@
 package com.circulation.prototype_eng.api.research.disk;
 
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.ResearchDataCenters;
-import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadMaterial;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.Objects;
@@ -39,24 +38,20 @@ public final class ResearchDiskOperationNbt {
         return tag;
     }
 
-    public static ResearchDiskOperation decode(NBTTagCompound tag, ResearchRegistry registry) {
-        StrictNbt.requireKeys(tag, "nonce", "owner", "location", "commit", "material", "createdAt", "status", "databaseArmed");
-        var commit = ResearchDiskCommitNbt.decode(StrictNbt.requireCompound(tag, "commit"), registry);
-        var material = ResearchDownloadMaterial.CODEC.decode(StrictNbt.requireCompound(tag, "material"));
-        var location = StrictNbt.requireCompound(tag, "location");
-        StrictNbt.requireKeys(location, "type", "dimension", "x", "y", "z");
+    public static ResearchDiskOperation decode(NBTTagCompound tag) {
+        var commit = ResearchDiskCommitNbt.decode(tag.getCompoundTag("commit"));
+        var material = ResearchDownloadMaterial.CODEC.decode(tag.getCompoundTag("material"));
+        var location = tag.getCompoundTag("location");
         var target = new ResearchDataCenters.Target(commit.before().dataCenterId(), uuid(tag, "owner"),
-            new MachineIdentity(StrictNbt.requireId(location, "type"), StrictNbt.requireInt(location, "dimension"),
-                new BlockPos(StrictNbt.requireInt(location, "x"), StrictNbt.requireInt(location, "y"), StrictNbt.requireInt(location, "z"))));
+            new MachineIdentity(new ResourceLocation(location.getString("type")), location.getInteger("dimension"),
+                new BlockPos(location.getInteger("x"), location.getInteger("y"), location.getInteger("z"))));
         return new ResearchDiskOperation(new ResearchDiskOperation.Intent(commit.actor(), uuid(tag, "nonce"), commit.before().dataCenterId(),
-            commit.teamId(), material.slot()), target, commit, material, StrictNbt.requireLong(tag, "createdAt"),
-            ResearchDiskOperation.Status.valueOf(StrictNbt.requireString(tag, "status")), StrictNbt.requireBoolean(tag, "databaseArmed"));
+            commit.teamId(), material.slot()), target, commit, material, tag.getLong("createdAt"),
+            ResearchDiskOperation.Status.valueOf(tag.getString("status")), tag.getBoolean("databaseArmed"));
     }
 
     private static UUID uuid(NBTTagCompound tag, String field) {
-        var value = StrictNbt.requireString(tag, field);
-        var result = UUID.fromString(value);
-        if (!result.toString().equals(value)) throw new IllegalArgumentException("Non-canonical disk operation UUID");
-        return result;
+        var value = tag.getString(field);
+        return UUID.fromString(value);
     }
 }

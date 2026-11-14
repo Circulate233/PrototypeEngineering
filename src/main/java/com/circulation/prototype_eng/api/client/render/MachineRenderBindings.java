@@ -10,6 +10,7 @@ import java.util.Objects;
 
 /**
  * Client-owner exact registrations. Closing a replaced handle cannot remove its successor.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class MachineRenderBindings {
     private final Thread owner = Thread.currentThread();
@@ -93,7 +94,10 @@ public final class MachineRenderBindings {
         revision = next;
         view = new View(revision, values(machines), values(components), values(structures));
         Throwable failure = null;
-        for (var entry : new ObjectArrayList<>(listeners)) {
+
+        var elements = new ObjectArrayList<>(listeners);
+        for (int index = 0; index < elements.size(); index++) {
+            var entry = elements.get(index);
             try {
                 entry.callback.run();
             } catch (RuntimeException | Error caught) {
@@ -101,6 +105,7 @@ public final class MachineRenderBindings {
                 else if (failure != caught) failure.addSuppressed(caught);
             }
         }
+
         if (failure instanceof RuntimeException runtime) throw runtime;
         if (failure instanceof Error error) throw error;
     }

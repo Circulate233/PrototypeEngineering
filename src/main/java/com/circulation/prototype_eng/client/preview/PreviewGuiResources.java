@@ -31,12 +31,17 @@ public final class PreviewGuiResources implements ISelectiveResourceReloadListen
 
     private static void invalidate() {
         Throwable failure = null;
-        for (var scene : new ObjectArrayList<>(SCENES))
+
+        var elements = new ObjectArrayList<>(SCENES);
+        for (int index = 0; index < elements.size(); index++) {
+            var scene = elements.get(index);
             try {
                 scene.invalidate();
             } catch (RuntimeException | Error caught) {
                 failure = PreviewBlockModelCache.merge(failure, caught);
             }
+        }
+
         PreviewBlockModelCache.rethrow(failure);
     }
 

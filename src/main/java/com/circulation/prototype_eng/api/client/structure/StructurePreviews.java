@@ -14,6 +14,7 @@ import java.util.Objects;
 
 /**
  * Java library entry for read-only previews and native world projections; client-thread owned.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class StructurePreviews implements AutoCloseable {
     private final ClientStructureCatalog catalog;

@@ -7,6 +7,7 @@ import java.util.function.Consumer;
 
 /**
  * Resource-only startup declarations may be queued on either side; only the client delivers them.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class ClientRenderDeclarations {
     private static final ObjectArrayList<Consumer<MachineRenderRegistrationEvent>> DECLARATIONS = new ObjectArrayList<>();
@@ -32,6 +33,9 @@ public final class ClientRenderDeclarations {
             callbacks = new ObjectArrayList<>(DECLARATIONS);
             DECLARATIONS.clear();
         }
-        for (var callback : callbacks) callback.accept(event);
+        for (int index = 0; index < callbacks.size(); index++) {
+            var callback = callbacks.get(index);
+            callback.accept(event);
+        }
     }
 }

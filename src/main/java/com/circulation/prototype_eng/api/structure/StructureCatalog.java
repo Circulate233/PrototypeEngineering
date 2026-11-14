@@ -15,6 +15,7 @@ import java.util.Objects;
 
 /**
  * Immutable complete candidate generation, including shapes not directly referenced by machines.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class StructureCatalog {
     private final Map<ResourceLocation, StructureDefinition> definitions;

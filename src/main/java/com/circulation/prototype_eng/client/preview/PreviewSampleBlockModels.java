@@ -97,10 +97,12 @@ final class PreviewSampleBlockModels {
             if (before != visits) workCursor = index + 1 == samples.size() ? 0 : index + 1;
         }
         // Work rotates for fairness, but selected quads retain the caller's far-to-near sample order.
-        for (var sample : samples) {
+        for (int index2 = 0; index2 < samples.size(); index2++) {
+            var sample = samples.get(index2);
             var chosen = selected.get(sample.cell());
             if (chosen == null) continue;
-            for (var data : chosen) {
+            for (int index1 = 0; index1 < chosen.size(); index1++) {
+                var data = chosen.get(index1);
                 if (!valid.getAsBoolean()) return List.of();
                 output.accept(data);
                 if (!valid.getAsBoolean()) return List.of();

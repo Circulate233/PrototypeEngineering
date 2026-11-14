@@ -37,7 +37,9 @@ public final class StructureSnapshot {
         reads = new Object2ObjectOpenHashMap<>();
         trace = null;
         var problems = new ObjectArrayList<Failure>();
-        for (var area : plan.areas()) {
+        var elements5 = plan.areas();
+        for (int index5 = 0; index5 < elements5.size(); index5++) {
+            var area = elements5.get(index5);
             source.requireServerThread();
             try {
                 areas.put(area, new Fact<>(source.isAreaLoaded(area), null));
@@ -46,7 +48,9 @@ public final class StructureSnapshot {
                 problems.add(new Failure(area, null, failure));
             }
         }
-        for (var read : plan.reads()) {
+        var elements4 = plan.reads();
+        for (int index4 = 0; index4 < elements4.size(); index4++) {
+            var read = elements4.get(index4);
             var area = areas.get(StructureBounds.at(read.position()));
             if (area.failure() != null || !Boolean.TRUE.equals(area.value())) {
                 continue;
@@ -109,7 +113,8 @@ public final class StructureSnapshot {
 
     private static void closeReads(ObjectArrayList<PendingRead<?>> batch, RecipeWorkBudget work, @Nullable Throwable primary) {
         Throwable failure = primary;
-        for (var read : batch) {
+        for (int index2 = 0; index2 < batch.size(); index2++) {
+            var read = batch.get(index2);
             if (work instanceof StructureCheckPolicy.Work actual) actual.recordCleanup();
             try {
                 read.close();
@@ -211,7 +216,9 @@ public final class StructureSnapshot {
      */
     @Nullable
     Boolean equivalent(StructureSnapshot other, StructureReadPlan used, RecipeWorkBudget work) {
-        for (var bounds : used.areas()) {
+        var elements6 = used.areas();
+        for (int index6 = 0; index6 < elements6.size(); index6++) {
+            var bounds = elements6.get(index6);
             if (!work.take()) return null;
             var first = areas.get(bounds);
             var second = other.areas.get(bounds);
@@ -220,7 +227,9 @@ public final class StructureSnapshot {
                 return false;
             }
         }
-        for (var read : used.reads()) {
+        var elements = used.reads();
+        for (int index3 = 0; index3 < elements.size(); index3++) {
+            var read = elements.get(index3);
             if (!work.take()) return null;
             if (!equivalentRead(other, read)) {
                 return false;
@@ -369,7 +378,8 @@ public final class StructureSnapshot {
 
         private void readPending() {
             var work = Objects.requireNonNull(borrowedWork);
-            for (var read : pending) {
+            for (int index1 = 0; index1 < pending.size(); index1++) {
+                var read = pending.get(index1);
                 if (!work.take(0)) return;
                 read.capture(reads, failures, work);
                 completedReads++;

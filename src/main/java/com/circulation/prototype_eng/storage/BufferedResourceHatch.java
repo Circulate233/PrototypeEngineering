@@ -9,7 +9,6 @@ import ae2.api.stacks.GenericStack;
 import ae2.api.stacks.KeyCounter;
 import ae2.api.storage.MEStorage;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.HatchReconfigurationStatus;
 import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
@@ -37,7 +36,7 @@ import java.util.function.Function;
  * Owns buffers independently of their block entity or GUI.
  */
 public final class BufferedResourceHatch implements SlottedResourceHatch {
-    private static final ResourceKeyNbt KEYS = new ResourceKeyNbt();
+    private static final ResourceKeyNbt KEYS = ResourceKeyNbt.INSTANCE;
     private final SlottedResourceBuffer input;
     private final SlottedResourceBuffer output;
     private final MEStorage automation = new AutomationPort();
@@ -65,7 +64,8 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
     private static @Nullable List<GenericStack> pack(List<GenericStack> contents, @Nullable ResourceHatchConfiguration.Side side) {
         if (side == null) return List.of();
         var totals = new AEKeyLinkedOpenHashMap(contents.size());
-        for (var stack : contents) {
+        for (int index = 0; index < contents.size(); index++) {
+            var stack = contents.get(index);
             if (stack == null) continue;
             if (Long.MAX_VALUE - totals.getLong(stack.what()) < stack.amount())
                 throw new IllegalArgumentException("Committed resource total exceeds long capacity");
@@ -150,7 +150,7 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
     private static List<GenericStack> readSide(NBTTagCompound tag, String name, @Nullable SlottedResourceStorage storage) {
         var result = new ObjectArrayList<GenericStack>(6);
         if (storage == null) {
-            if (tag.hasKey(name) && StrictNbt.requireList(tag, name, 10).tagCount() != 0)
+            if (tag.hasKey(name) && tag.getTagList(name, 10).tagCount() != 0)
                 throw new IllegalArgumentException("Saved contents on absent hatch side " + name);
             return result;
         }
@@ -173,17 +173,17 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
             int slot = Objects.checkIndex(entry.getInteger("Slot"), result.size());
             GenericStack stack;
             if (entry.hasKey("Key")) {
-                stack = new GenericStack(KEYS.decode(StrictNbt.requireCompound(entry, "Key")), StrictNbt.requireLong(entry, "Quantity"));
+                stack = new GenericStack(KEYS.decode(entry.getCompoundTag("Key")), entry.getLong("Quantity"));
             } else {
                 // Decode the former GenericStack shape strictly; AE's missing-content fallback changes identity.
                 var key = new NBTTagCompound();
-                key.setString("Type", StrictNbt.requireString(entry, AEKey.TYPE_FIELD));
+                key.setString("Type", entry.getString(AEKey.TYPE_FIELD));
                 var data = entry.copy();
                 data.removeTag(AEKey.TYPE_FIELD);
                 data.removeTag("#");
                 data.removeTag("Slot");
                 key.setTag("Data", data);
-                stack = new GenericStack(KEYS.decode(key), StrictNbt.requireLong(entry, "#"));
+                stack = new GenericStack(KEYS.decode(key), entry.getLong("#"));
             }
             if (result.get(slot) != null || stack.amount() <= 0 || !storage.isAllowedIn(slot, stack.what())
                 || stack.amount() > storage.getMaxAmount(stack.what())) {

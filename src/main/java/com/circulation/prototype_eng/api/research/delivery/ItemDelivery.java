@@ -6,7 +6,6 @@ import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -24,9 +23,9 @@ public final class ItemDelivery {
      * synchronously persists the owner's complete state; throwing retains that pending checkpoint.
      * After an effect, its commit and confirmation remain owed even if current becomes false.
      * Each fragments result is a borrowed immutable snapshot. Checkpoint callbacks must replace the
-     * owner's list rather than mutate a previously returned list while this call is iterating it.
+     * owner's collection rather than mutate a previously returned collection during iteration.
      */
-    public static Status advance(Supplier<ObjectList<ItemDeliveryFragment>> fragments,
+    public static Status advance(Supplier<? extends Iterable<ItemDeliveryFragment>> fragments,
                                  Consumer<ItemDeliveryFragment> checkpoint,
                                  ItemDeliveryAdapter adapter, BooleanSupplier current) {
         Objects.requireNonNull(fragments);
@@ -46,15 +45,17 @@ public final class ItemDelivery {
         if (!delivering.isEmpty()) {
             var scan = adapter.scan(delivering);
             if (!validScan(scan, delivering)) return Status.RECOVERY_ERROR;
-            for (var fragment : delivering) {
+            for (int index2 = 0; index2 < delivering.size(); index2++) {
+                var fragment = delivering.get(index2);
                 if (!scan.observed().contains(fragment.id())) continue;
                 if (!current.getAsBoolean()) return Status.STALE_CONTEXT;
                 var entity = scan.worldEntities().get(fragment.id());
                 if (!validEntity(fragment, entity)) return Status.RECOVERY_ERROR;
-                adapter.commit(fragment, new ItemDeliveryAdapter.Delivery(fragment.count(), Optional.ofNullable(entity)));
+                adapter.commit(fragment, new ItemDeliveryAdapter.Delivery(fragment.count(), entity));
                 confirm(checkpoint, adapter, fragment, entity);
             }
-            for (var fragment : delivering) {
+            for (int index = 0; index < delivering.size(); index++) {
+                var fragment = delivering.get(index);
                 if (!scan.provenAbsent().contains(fragment.id())) continue;
                 if (!current.getAsBoolean()) return Status.STALE_CONTEXT;
                 checkpoint.accept(fragment.retryPlanned());
@@ -75,18 +76,18 @@ public final class ItemDelivery {
             var started = fragment.started();
             checkpoint.accept(started);
             if (!current.getAsBoolean()) {
-                if (started.entityUuid().isEmpty()) checkpoint.accept(started.retryPlanned());
+                if ((started.entityUuid() == null)) checkpoint.accept(started.retryPlanned());
                 return Status.STALE_CONTEXT;
             }
             var delivery = adapter.deliver(started);
-            if (delivery != null && delivery.acceptedCount() == 0 && delivery.entityUuid().isEmpty() && started.entityUuid().isEmpty()) {
+            if (delivery != null && delivery.acceptedCount() == 0 && (delivery.entityUuid() == null) && (started.entityUuid() == null)) {
                 checkpoint.accept(started.retryPlanned());
                 return Status.RETRY_LATER;
             }
             if (delivery == null || delivery.acceptedCount() != started.count()
-                || !validEntity(started, delivery.entityUuid().orElse(null))) return Status.RETRY_LATER;
+                || !validEntity(started, delivery.entityUuid())) return Status.RETRY_LATER;
             adapter.commit(started, delivery);
-            confirm(checkpoint, adapter, started, delivery.entityUuid().orElse(null));
+            confirm(checkpoint, adapter, started, delivery.entityUuid());
         }
         return Status.COMPLETED;
     }
@@ -100,13 +101,16 @@ public final class ItemDelivery {
 
     private static boolean validEntity(ItemDeliveryFragment fragment, @Nullable UUID entity) {
         return (fragment.target() instanceof ItemDeliveryFragment.WorldDrop) == (entity != null)
-            && (fragment.entityUuid().isEmpty() || fragment.entityUuid().orElseThrow().equals(entity));
+            && ((fragment.entityUuid() == null) || fragment.entityUuid().equals(entity));
     }
 
     private static boolean validScan(@Nullable ItemDeliveryAdapter.Scan scan, ObjectList<ItemDeliveryFragment> delivering) {
         if (scan == null) return false;
         var ids = new ObjectOpenHashSet<UUID>();
-        for (var fragment : delivering) ids.add(fragment.id());
+        for (int index1 = 0; index1 < delivering.size(); index1++) {
+            var fragment = delivering.get(index1);
+            ids.add(fragment.id());
+        }
         if (!ids.containsAll(scan.observed()) || !ids.containsAll(scan.provenAbsent())
             || !scan.observed().containsAll(scan.worldEntities().keySet())) return false;
         for (var id : scan.observed()) if (scan.provenAbsent().contains(id)) return false;

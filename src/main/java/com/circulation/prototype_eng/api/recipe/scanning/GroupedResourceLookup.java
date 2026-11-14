@@ -19,6 +19,7 @@ import java.util.function.ToIntFunction;
 
 /**
  * Each inventory group receives a separate lookup; only recipe identities and maxima are merged.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class GroupedResourceLookup implements RecipeCandidateIndex.Cursor {
     private final MachineInstance machine;
@@ -82,7 +83,10 @@ public final class GroupedResourceLookup implements RecipeCandidateIndex.Cursor 
     @Override
     public boolean current() {
         if (capture != null && !capture.current(MachineHatches.get(machine))) return false;
-        for (var lookup : observed) if (!lookup.current()) return false;
+        for (int index = 0; index < observed.size(); index++) {
+            var lookup = observed.get(index);
+            if (!lookup.current()) return false;
+        }
         return true;
     }
 

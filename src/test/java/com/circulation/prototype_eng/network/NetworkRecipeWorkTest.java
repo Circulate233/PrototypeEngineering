@@ -24,11 +24,11 @@ import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeWork;
 import com.circulation.prototype_eng.api.network.recipe.NetworkWorkRequirements;
 import com.circulation.prototype_eng.api.network.resource.ComputerSupplyFixtures;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponent;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
@@ -63,10 +63,10 @@ import com.circulation.prototype_eng.research.ResearchEligibility;
 import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -76,7 +76,6 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -374,7 +373,7 @@ class NetworkRecipeWorkTest {
         private final PlayerResearchState player = new PlayerResearchState(new UUID(0, 1));
         private final MachineIdentityRegistry identities = new MachineIdentityRegistry(this::requireOwner);
         private final NetworkRuntime network = new NetworkRuntime(identities,
-            owner -> OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER, ObjectSets.singleton(owner), Optional.empty()), this::requireOwner);
+            owner -> OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER, ObjectSets.singleton(owner), null), this::requireOwner);
         private final ComponentType<MachineInstance, MachineOwnership> ownership = new ComponentType<>(id("ownership"),
             owner -> new MachineOwnership(owner, _ -> identities), List.of());
         private final Reference2DoubleOpenHashMap<NetworkResourceType> supply = new Reference2DoubleOpenHashMap<>();
@@ -431,7 +430,7 @@ class NetworkRecipeWorkTest {
             var card = ComputerSupplyFixtures.key("compute_card");
             var components = new NetworkComputerComponentRegistry();
             ComputerSupplyFixtures.register(components, card, _ -> {
-                var captured = NetworkResourceModifier.copyResources(supply);
+                var captured = new Reference2DoubleOpenHashMap<>(supply);
                 return new NetworkComputerComponent.Capture(threads, captured, Reference2DoubleMaps.emptyMap(), 0, () -> captured.equals(supply));
             });
             components.freeze();

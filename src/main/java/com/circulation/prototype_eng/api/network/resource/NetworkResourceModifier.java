@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.network.resource;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 
 /**
  * Double adjustments use resource singleton identity. Completed maps are borrowed read-only.
@@ -15,8 +14,8 @@ public final class NetworkResourceModifier {
     private final Reference2DoubleMap<NetworkResourceType> multiplierPpm;
 
     private NetworkResourceModifier(Builder builder) {
-        flat = new Reference2DoubleOpenHashMap<>(builder.flat);
-        multiplierPpm = new Reference2DoubleOpenHashMap<>(builder.multiplierPpm);
+        flat = builder.flat;
+        multiplierPpm = builder.multiplierPpm;
         for (double ppm : multiplierPpm.values())
             if (ONE_MILLION + ppm < 0) throw new IllegalArgumentException("Negative computing multiplier factor");
     }
@@ -35,14 +34,6 @@ public final class NetworkResourceModifier {
         double value = first * second;
         if (!Double.isFinite(value)) throw new ArithmeticException("Computing resource product overflows");
         return value;
-    }
-
-    /**
-     * Capture only an actually mutable source; completed vectors are borrowed instead.
-     */
-    public static Reference2DoubleMap<NetworkResourceType> copyResources(Reference2DoubleMap<NetworkResourceType> resources) {
-        validateResources(resources);
-        return new Reference2DoubleOpenHashMap<>(resources);
     }
 
     public static void validateResources(Reference2DoubleMap<NetworkResourceType> resources) {
@@ -67,12 +58,11 @@ public final class NetworkResourceModifier {
      * Apply (base + flat) * (1 + ppm / 1_000_000), preserving fractional quantities.
      */
     public Reference2DoubleMap<NetworkResourceType> apply(Reference2DoubleMap<NetworkResourceType> base) {
-        var types = new ReferenceOpenHashSet<NetworkResourceType>();
-        types.addAll(base.keySet());
-        types.addAll(flat.keySet());
-        types.addAll(multiplierPpm.keySet());
-        var result = new Reference2DoubleOpenHashMap<NetworkResourceType>(types.size());
-        for (var type : types) result.put(type, apply(type, base.getDouble(type)));
+        var result = new Reference2DoubleOpenHashMap<>(base);
+        for (var type : flat.keySet()) result.putIfAbsent(type, 0);
+        for (var type : multiplierPpm.keySet()) result.putIfAbsent(type, 0);
+        for (var entry : result.reference2DoubleEntrySet())
+            entry.setValue(apply(entry.getKey(), entry.getDoubleValue()));
         return result;
     }
 
@@ -100,6 +90,9 @@ public final class NetworkResourceModifier {
             return this;
         }
 
+        /**
+         * Transfers these completed maps to the modifier; do not reuse the builder afterward.
+         */
         public NetworkResourceModifier build() {
             return new NetworkResourceModifier(this);
         }

@@ -38,7 +38,8 @@ public record ResourceHatchWindowSnapshot(long revision, Side input, Side output
     private static void writeSide(PacketBuffer data, Side side) {
         data.writeVarInt(side.firstSlot).writeVarInt(side.totalSlots).writeVarInt(side.usedSlots).writeVarInt(side.usedTypes);
         data.writeByte(side.entries.size());
-        for (var entry : side.entries) {
+        for (int index = 0; index < side.entries.size(); index++) {
+            var entry = side.entries.get(index);
             GenericStack.writeBuffer(entry.stack, data);
             data.writeVarLong(entry.capacity);
         }

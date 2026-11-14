@@ -1,48 +1,34 @@
 package com.circulation.prototype_eng.api.recipe.persistence;
 
 import com.circulation.prototype_eng.api.persistence.NbtCodec;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayType;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
+import com.circulation.prototype_eng.api.recipe.process.RequirementPath;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 
-import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
+import java.util.Map;
 
-final class RecipeOverlayNbt implements NbtCodec<List<RecipeOverlays.LayerSnapshot<?, ?>>> {
-    private final RecipeDefinitionIndex index;
-    private final Object2ObjectOpenHashMap<ResourceLocation, Binding<?, ?>> bindings = new Object2ObjectOpenHashMap<>();
-
-    RecipeOverlayNbt(RecipeDefinitionIndex index, Collection<Binding<?, ?>> bindings) {
-        this.index = index;
-        for (var binding : bindings) {
-            if (this.bindings.putIfAbsent(binding.type().id(), binding) != null) {
-                throw new IllegalArgumentException("Duplicate overlay codec: " + binding.type().id());
-            }
-        }
+final class RecipeOverlayNbt {
+    private RecipeOverlayNbt() {
     }
 
-    @Override
-    public NBTTagCompound encode(List<RecipeOverlays.LayerSnapshot<?, ?>> value) {
+    static NBTTagCompound encode(List<RecipeOverlays.LayerSnapshot<?, ?>> value,
+                                 Map<ResourceLocation, Binding<?, ?>> bindings) {
         var layers = new NBTTagList();
-        for (var layer : value) {
-            if (index.require(layer.path()) != layer.target()) {
-                throw new IllegalArgumentException("Overlay target differs from the canonical recipe definition");
-            }
+        for (int index1 = 0; index1 < value.size(); index1++) {
+            var layer = value.get(index1);
             var entry = new NBTTagCompound();
             entry.setTag("Path", RequirementPathNbt.encode(layer.path()));
             entry.setString("Layer", layer.layerId());
             entry.setLong("Order", layer.order());
             entry.setString("Type", layer.type().id().toString());
-            entry.setTag("Data", require(layer.type().id()).encode(layer).copy());
+            entry.setTag("Data", require(bindings, layer.type().id()).encode(layer));
             layers.appendTag(entry);
         }
         var tag = new NBTTagCompound();
@@ -50,21 +36,20 @@ final class RecipeOverlayNbt implements NbtCodec<List<RecipeOverlays.LayerSnapsh
         return tag;
     }
 
-    @Override
-    public List<RecipeOverlays.LayerSnapshot<?, ?>> decode(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Layers");
-        var list = StrictNbt.requireList(tag, "Layers", Constants.NBT.TAG_COMPOUND);
+    static List<RecipeOverlays.LayerSnapshot<?, ?>> decode(NBTTagCompound tag, RecipeDefinitionIndex index,
+                                                           Map<ResourceLocation, Binding<?, ?>> bindings) {
+        var list = tag.getTagList("Layers", Constants.NBT.TAG_COMPOUND);
         var layers = new ObjectArrayList<RecipeOverlays.LayerSnapshot<?, ?>>(list.tagCount());
         for (int i = 0; i < list.tagCount(); i++) {
             var entry = list.getCompoundTagAt(i);
-            StrictNbt.requireKeys(entry, "Path", "Layer", "Order", "Type", "Data");
             var path = RequirementPathNbt.read(entry);
-            layers.add(require(StrictNbt.requireId(entry, "Type")).decode(entry, index.require(path)));
+            layers.add(require(bindings, new ResourceLocation(entry.getString("Type")))
+                .decode(entry, path, index.require(path)));
         }
-        return ObjectLists.unmodifiable(layers);
+        return layers;
     }
 
-    private Binding<?, ?> require(ResourceLocation id) {
+    private static Binding<?, ?> require(Map<ResourceLocation, Binding<?, ?>> bindings, ResourceLocation id) {
         var binding = bindings.get(id);
         if (binding == null) {
             throw new IllegalArgumentException("Unknown overlay codec: " + id);
@@ -73,29 +58,16 @@ final class RecipeOverlayNbt implements NbtCodec<List<RecipeOverlays.LayerSnapsh
     }
 
     record Binding<C, D>(RecipeOverlayType<C, D> type, NbtCodec<D> codec) {
-        Binding {
-            Objects.requireNonNull(type);
-            Objects.requireNonNull(codec);
-        }
-
         @SuppressWarnings("unchecked")
-            // Descriptor identity establishes both payload and patch types.
         NBTTagCompound encode(RecipeOverlays.LayerSnapshot<?, ?> layer) {
-            if (layer.type() != type) {
-                throw new IllegalArgumentException("Different overlay descriptors share " + type.id());
-            }
-            return Objects.requireNonNull(codec.encode((D) layer.data()));
+            return codec.encode((D) layer.data());
         }
 
         @SuppressWarnings("unchecked")
-            // Checked immutable requirement-type identity before the payload cast.
-        RecipeOverlays.LayerSnapshot<C, D> decode(NBTTagCompound entry, RecipeRequirement<?> target) {
-            if (target.type() != type.requirementType()) {
-                throw new IllegalArgumentException("Overlay requirement type mismatch");
-            }
-            return new RecipeOverlays.LayerSnapshot<>(RequirementPathNbt.read(entry), (RecipeRequirement<C>) target,
-                StrictNbt.requireString(entry, "Layer"), StrictNbt.requireLong(entry, "Order"), type,
-                Objects.requireNonNull(codec.decode(StrictNbt.requireCompound(entry, "Data").copy())));
+        RecipeOverlays.LayerSnapshot<C, D> decode(NBTTagCompound entry, RequirementPath path, RecipeRequirement<?> target) {
+            return new RecipeOverlays.LayerSnapshot<>(path, (RecipeRequirement<C>) target,
+                entry.getString("Layer"), entry.getLong("Order"), type,
+                codec.decode(entry.getCompoundTag("Data")));
         }
     }
 }

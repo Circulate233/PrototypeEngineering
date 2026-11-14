@@ -10,12 +10,11 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Function;
 
 /**
  * PN selection and contribution rules, with owner capture separated from detached planning.
@@ -29,53 +28,20 @@ public final class NetworkPlanner {
      * Each owner is resolved once. A provider failure aborts the whole batch; never reuse an older permit.
      * Both lists are borrowed immutable inputs: keep their contents unchanged while the returned Inputs
      * is retained or used by a planner, including across worker execution.
+     * Device and participant IDs must be unique; contributions must belong to this epoch.
+     * The resolver must return consistent owner/team membership for the batch.
      */
     public static Inputs capture(long epoch, List<NetworkDeviceSnapshot> devices,
                                  List<NetworkContribution> contributions, OwnerTeamResolver resolver) {
-        if (epoch < 0) {
-            throw new IllegalArgumentException("Negative discovery epoch");
+        var resolved = new Object2ObjectOpenHashMap<UUID, OwnerTeamResolution>();
+        Function<UUID, OwnerTeamResolution> resolve = resolver::resolve;
+        for (int index1 = 0; index1 < devices.size(); index1++) {
+            var device = devices.get(index1);
+            resolved.computeIfAbsent(device.identity().ownerId(), resolve);
         }
-        Objects.requireNonNull(resolver);
-        var owners = new ObjectLinkedOpenHashSet<UUID>();
-        var deviceIds = new ObjectOpenHashSet<UUID>(devices.size());
-        var participantIds = new ObjectOpenHashSet<UUID>(contributions.size());
-        for (var device : devices) {
-            Objects.requireNonNull(device);
-            if (!deviceIds.add(device.identity().machineId())) {
-                throw new IllegalArgumentException("Duplicate device UUID in discovery");
-            }
-            owners.add(device.identity().ownerId());
-        }
-        for (var contribution : contributions) {
-            Objects.requireNonNull(contribution);
-            if (contribution.epoch() != epoch || !participantIds.add(contribution.participantId())) {
-                throw new IllegalArgumentException("Stale or duplicate participant contribution");
-            }
-            owners.add(contribution.ownerId());
-        }
-        var resolved = new Object2ObjectOpenHashMap<UUID, OwnerTeamResolution>(owners.size());
-        var teams = new Object2ObjectOpenHashMap<String, OwnerTeamResolution>();
-        for (var owner : owners) {
-            var result = Objects.requireNonNull(resolver.resolve(owner), "Owner resolver result");
-            if (!owner.equals(result.ownerId())) {
-                throw new IllegalArgumentException("Owner resolver returned another owner's result");
-            }
-            if (result.accepted()) {
-                var previous = teams.putIfAbsent(result.teamId(), result);
-                if (previous != null && (previous.teamType() != result.teamType() || !previous.members().equals(result.members())
-                    || !previous.teamOwnerId().equals(result.teamOwnerId()))) {
-                    throw new IllegalArgumentException("Owner resolver returned inconsistent team membership in one batch");
-                }
-            }
-            resolved.put(owner, result);
-        }
-        for (var team : teams.values()) {
-            for (var member : team.members()) {
-                var queriedMember = resolved.get(member);
-                if (queriedMember != null && (!queriedMember.accepted() || !queriedMember.teamId().equals(team.teamId()))) {
-                    throw new IllegalArgumentException("Queried owner disagrees with captured team membership");
-                }
-            }
+        for (int index6 = 0; index6 < contributions.size(); index6++) {
+            var contribution = contributions.get(index6);
+            resolved.computeIfAbsent(contribution.ownerId(), resolve);
         }
         return new Inputs(epoch, devices, contributions, resolved);
     }
@@ -88,7 +54,8 @@ public final class NetworkPlanner {
         var states = new Object2ObjectLinkedOpenHashMap<UUID, NetworkWorkState>();
         var teamIds = new Object2ObjectLinkedOpenHashMap<UUID, String>();
         var groups = new Object2ObjectLinkedOpenHashMap<String, ObjectArrayList<NetworkDeviceSnapshot>>();
-        for (var device : inputs.devices) {
+        for (int index8 = 0; index8 < inputs.devices.size(); index8++) {
+            var device = inputs.devices.get(index8);
             var owner = inputs.owners.get(device.identity().ownerId());
             if (!owner.accepted()) {
                 states.put(device.identity().machineId(), NetworkWorkState.OWNER_TEAM_REJECTED);
@@ -98,7 +65,8 @@ public final class NetworkPlanner {
             }
         }
         var contributions = new Object2ObjectOpenHashMap<String, ObjectArrayList<NetworkContribution>>();
-        for (var contribution : inputs.contributions) {
+        for (int index7 = 0; index7 < inputs.contributions.size(); index7++) {
+            var contribution = inputs.contributions.get(index7);
             var owner = inputs.owners.get(contribution.ownerId());
             if (owner.accepted()) {
                 contributions.computeIfAbsent(owner.teamId(), _ -> new ObjectArrayList<>()).add(contribution);
@@ -108,7 +76,8 @@ public final class NetworkPlanner {
         for (var entry : groups.object2ObjectEntrySet()) {
             var devices = entry.getValue();
             NetworkDeviceSnapshot center = null;
-            for (var device : devices) {
+            for (int index4 = 0; index4 < devices.size(); index4++) {
+                var device = devices.get(index4);
                 if (device.formed() && device.role() == NetworkDeviceRole.NETWORK_CENTER && (center == null
                     || device.level() > center.level() || device.level() == center.level()
                     && device.identity().machineId().compareTo(center.identity().machineId()) < 0)) {
@@ -116,13 +85,15 @@ public final class NetworkPlanner {
                 }
             }
             if (center == null) {
-                for (var device : devices) {
+                for (int index = 0; index < devices.size(); index++) {
+                    var device = devices.get(index);
                     states.put(device.identity().machineId(), device.formed() ? NetworkWorkState.NO_ACTIVE_CENTER : NetworkWorkState.UNFORMED);
                 }
                 continue;
             }
             NetworkDeviceSnapshot dataCenter = null;
-            for (var device : devices) {
+            for (int index3 = 0; index3 < devices.size(); index3++) {
+                var device = devices.get(index3);
                 if (device.formed() && device.role() == NetworkDeviceRole.DATA_CENTER && device.level() <= center.level()
                     && (dataCenter == null || outranksDataCenter(device, dataCenter))) {
                     dataCenter = device;
@@ -131,7 +102,8 @@ public final class NetworkPlanner {
             var totals = new Reference2DoubleOpenHashMap<NetworkResourceType>();
             accumulate(totals, center.resourcesPerTick());
             long concurrency = center.concurrencyPerTick();
-            for (var device : devices) {
+            for (int index5 = 0; index5 < devices.size(); index5++) {
+                var device = devices.get(index5);
                 NetworkWorkState state;
                 if (!device.formed()) {
                     state = NetworkWorkState.UNFORMED;
@@ -152,7 +124,8 @@ public final class NetworkPlanner {
             }
             var participantResources = contributions.get(entry.getKey());
             if (participantResources != null) {
-                for (var contribution : participantResources) {
+                for (int index2 = 0; index2 < participantResources.size(); index2++) {
+                    var contribution = participantResources.get(index2);
                     accumulate(totals, contribution.resourcesPerTick());
                     concurrency = Math.addExact(concurrency, contribution.concurrencyPerTick());
                 }

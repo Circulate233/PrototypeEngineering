@@ -8,15 +8,15 @@
 
 内置 ServerTaskSchedulers 每个真实 server END 事件只递增一次会话内 long 序号；begin/end 包住完整 scheduler.tick。每次 MAIN action 前与 CONCURRENT 捕获前仍分别 refresh。序号不使用世界时间，不受改时间或多次捕获影响；新服务器会话创建新 runtime。
 
-每队伍首次成功发布时，以该次完整供给创建 NetworkTeamBudget。同 tick 后续成功发布按当前供给与上一容量的差值调整账本，保留已经消费或预留的数量和操作键。新增供给立即可用；供给下降到已消费量以下时，可用量显示为0，随后恢复供给也不会抹去消费记录。捕获失败或 revoke 本身不刷新额度。新出现的队伍首次成功发布时建立自己的账本，下一真实 tick 才重置消费记录。
+每队伍首次成功发布时，以该次完整供给创建 NetworkTeamBudget。同 tick 后续成功发布按当前供给减去已分配数量计算可用余额，保留已经消费或预留的数量和操作键。新增供给立即可用；供给下降到已消费量以下时，可用量显示为0，随后恢复供给也不会抹去消费记录。捕获失败或 revoke 本身不刷新额度。新出现的队伍首次成功发布时建立自己的账本，下一真实 tick 才重置消费记录。
 
 ## lease、数值与操作身份
 
 - 数值资源用double并随配方并行量缩放；固定并发是独立long额度，每台机器占1，不随工位或Java线程重复占用。START/扫描只检查，TICK占用，零时长START占用一次。
 - `requestLease(machineId)` 申请固定并发；同一机器同tick幂等，其他工位ALREADY_GRANTED，工位结束不单独释放。
 - 活动中心免并发。计算机与活动数据库发布时各占 1，优先普通机器，可收回普通租约；研究站在普通工作之后申请剩余并发，实际工作各占 1。计算机须由中心或其他已获准设备先提供启动额度，不能自启动，见[计算机](computers.md)。
-- `numericResources()` 提供当前发布的供给总量，`availableResources()` 提供扣除当前消费和预留后的余额。研究与普通配方使用同一份余额和整机并发，研究最后结算。
-- `reserve(Operation, required, authorized)` 先校验完整 numeric 向量和全部余额，再整组 addTo 扣减。不足返回 null，不部分扣减、不占操作键。空需求允许无数值成本的授权凭据。
+- `numericResources()` 提供当前发布的供给总量，`availableResources()` 直接借用当前余额 Map，在下一次预留、退款或供给更新时会变化；调用方只读访问，比较前后数量时记录所需标量。研究与普通配方使用同一份余额和整机并发，研究最后结算。
+- `reserve(Operation, required, authorized)` 先检查完整需求向量的余额，再整组 addTo 扣减。不足返回 null，不部分扣减、不占操作键。空需求允许无数值成本的授权凭据。
 
 Operation 包含 machine UUID、稳定 source ResourceLocation 和 sequence；source 表示工位/来源，sequence 区分同 tick 新一轮工作，不能拿 capture epoch 作工作序号。成功预留后本 tick 同键不可再次使用，包括已补偿的键；未接受的申请可以原键重试。账本只保存去重键，不反向保存 receipt，避免已结束操作滞留旧 Publication 与宿主。
 
@@ -24,9 +24,9 @@ Operation 包含 machine UUID、稳定 source ResourceLocation 和 sequence；so
 
 owner 从 MachineNetworkDevice.workPermit 或准确 Registration 取 WorkPermit，网络拒绝时为 null；组件入口还检查实际绑定。凭据绑定准确 Registration、identity revision、Publication 和本 tick 队伍账本。worker 可读 current()，但它只检查发布/身份，不能据此直接消费。
 
-requestLease、reserve 和 receipt commit 在 owner 上重验该 Publication 的全部 Capture.current，包括依赖中心与供给设备。任一失效或抛错撤销仍生效的原发布；若回调已生成新发布，不撤销新发布。proof 仍须遵守只读契约。
+requestLease、reserve 和 receipt commit 在 owner 上重验该 Publication 的全部 Capture.current，包括依赖中心与供给设备。任一失效或抛错撤销仍生效的原发布；若回调已生成新发布，不撤销新发布。proof 必须遵守只读调用规则。
 
-commit 只接受 RESERVED：授权或账本过期返回 false 并保留 RESERVED 供撤销；成功变 COMMITTED，重复/终态提交为调用错误。rollback 可撤 RESERVED 或补偿 COMMITTED，完整退款预检后仅向 issuing book addTo，重复调用幂等。它不要求当前授权，但仍限定 owner；旧 tick 退款不会进入新账本。
+commit 只接受 RESERVED：授权或账本过期返回 false 并保留 RESERVED 供撤销；成功变 COMMITTED，重复/终态提交为调用错误。rollback 可撤 RESERVED 或补偿 COMMITTED，从 issuing book 的已分配数量中用 addTo 扣减退款量，再按当前供给重算可用余额，重复调用幂等。它不要求当前授权，但仍限定 owner；旧 tick 退款不会进入新账本。
 
 可变集合和 receipt 状态由 owner 管理，使用 fastutil；worker 只读不可变供给、操作身份和发布状态，不能直接操作余额、lease、receipt 状态。原 TaskScheduler worker、同步与亲和 lanes 保持。
 

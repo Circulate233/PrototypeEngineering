@@ -60,11 +60,15 @@ final class PatternRecipeTransfer<C extends ContainerPatternEncodingTerm> implem
                                                           Function<List<GenericStack>, GenericStack> select, boolean merge) {
         var result = new ObjectArrayList<PatternRecipeTransferSlot>(groups.size());
         var byKey = new Object2ObjectOpenHashMap<AEKey, PatternRecipeTransferSlot>(groups.size());
-        for (var candidates : groups) {
+        for (int index3 = 0; index3 < groups.size(); index3++) {
+            var candidates = groups.get(index3);
             var selected = select.apply(candidates);
             if (selected == null || !candidates.contains(selected)) return null;
             var keys = new ObjectArrayList<AEKey>(candidates.size());
-            for (var candidate : candidates) if (!keys.contains(candidate.what())) keys.add(candidate.what());
+            for (int index1 = 0; index1 < candidates.size(); index1++) {
+                var candidate = candidates.get(index1);
+                if (!keys.contains(candidate.what())) keys.add(candidate.what());
+            }
             var prior = merge ? byKey.get(selected.what()) : null;
             if (prior == null) {
                 var slot = new PatternRecipeTransferSlot(result.size(), selected, keys);
@@ -162,8 +166,14 @@ final class PatternRecipeTransfer<C extends ContainerPatternEncodingTerm> implem
         var categoryUid = category.getUid();
         if (!current.getAsBoolean()) return errors.createInternalError();
         container.setMode(EncodingMode.PROCESSING);
-        for (var packet : inputPackets) InitNetwork.sendToServer(packet);
-        for (var packet : outputPackets) InitNetwork.sendToServer(packet);
+        for (int index = 0; index < inputPackets.size(); index++) {
+            var packet = inputPackets.get(index);
+            InitNetwork.sendToServer(packet);
+        }
+        for (int index2 = 0; index2 < outputPackets.size(); index2++) {
+            var packet = outputPackets.get(index2);
+            InitNetwork.sendToServer(packet);
+        }
         container.setHeiProcessingRecipe(categoryUid, candidateTags);
         return null;
     }

@@ -9,6 +9,7 @@ import java.util.Objects;
 
 /**
  * Ordered alternatives for one input; the first satisfiable key is locked by the requirement owner.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public record FuzzyInputGroup(List<AEKey> candidates, long amount) {
     public FuzzyInputGroup {
@@ -17,7 +18,8 @@ public record FuzzyInputGroup(List<AEKey> candidates, long amount) {
         }
         Objects.requireNonNull(candidates, "candidates");
         var copy = new ObjectArrayList<AEKey>(candidates.size());
-        for (var candidate : candidates) {
+        for (int index = 0; index < candidates.size(); index++) {
+            var candidate = candidates.get(index);
             copy.add(Objects.requireNonNull(candidate, "candidate"));
         }
         // An empty group deliberately cannot be satisfied, for disabled selector alternatives.

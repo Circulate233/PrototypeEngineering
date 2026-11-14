@@ -90,7 +90,8 @@ public final class MachineWorkSlots {
         var declared = !dynamicRoster && definitions.isEmpty() ? List.of(new WorkSlotDefinition("main", defaultGroups)) : definitions;
         declaredSlotCount = declared.size();
         var workSlots = new ObjectArrayList<WorkSlot>(declared.size());
-        for (var definition : declared) {
+        for (int index25 = 0; index25 < declared.size(); index25++) {
+            var definition = declared.get(index25);
             var slot = new WorkSlot(Objects.requireNonNull(definition));
             if (dynamicRoster && slot.name().startsWith("pe_cross/"))
                 throw new IllegalArgumentException("Declared slot uses the runtime slot namespace");
@@ -123,7 +124,8 @@ public final class MachineWorkSlots {
     public static TickGroup prepareTickGroup(List<MachineWorkSlots> hosts) {
         var unique = new ReferenceOpenHashSet<MachineWorkSlots>(hosts.size());
         var batches = new ObjectArrayList<TickBatch>(hosts.size());
-        for (var host : hosts) {
+        for (int index21 = 0; index21 < hosts.size(); index21++) {
+            var host = hosts.get(index21);
             Objects.requireNonNull(host);
             if (!unique.add(host)) {
                 throw new IllegalArgumentException("Duplicate work-slot host in tick group");
@@ -131,7 +133,8 @@ public final class MachineWorkSlots {
             batches.add(host.captureTickBatch());
         }
         var group = new TickGroup(batches);
-        for (var batch : batches) {
+        for (int index2 = 0; index2 < batches.size(); index2++) {
+            var batch = batches.get(index2);
             batch.group = group;
             batch.host.activeBatch = batch;
         }
@@ -163,7 +166,10 @@ public final class MachineWorkSlots {
         if (!dynamicRoster) return null;
         var rule = new WorkSlotDefinition("runtime", dynamicGroups, false, WorkSlotRestartPolicy.LOCKED_RETRY);
         if (!rule.accepts(recipe)) return null;
-        for (var slot : slots) if (slot.process() == null && slot.definition().accepts(recipe)) return slot;
+        for (int index1 = 0; index1 < slots.size(); index1++) {
+            var slot = slots.get(index1);
+            if (slot.process() == null && slot.definition().accepts(recipe)) return slot;
+        }
         return appendRuntimeSlot(recipe);
     }
 
@@ -329,7 +335,8 @@ public final class MachineWorkSlots {
 
     public List<RecipeProcess> activeProcesses() {
         var processes = new ObjectArrayList<RecipeProcess>(slots.size());
-        for (var slot : slots) {
+        for (int index4 = 0; index4 < slots.size(); index4++) {
+            var slot = slots.get(index4);
             if (slot.process() != null) {
                 processes.add(slot.process());
             }
@@ -340,7 +347,8 @@ public final class MachineWorkSlots {
     public boolean start(RecipeProcess process) {
         requireBoundary();
         validateUnattached(process);
-        for (var slot : slots) {
+        for (int index7 = 0; index7 < slots.size(); index7++) {
+            var slot = slots.get(index7);
             if (slot.process() == null && accepts(slot, process)) {
                 return startIn(slot.name(), process);
             }
@@ -417,7 +425,8 @@ public final class MachineWorkSlots {
     public boolean detach(RecipeProcess process) {
         requireBoundary();
         Objects.requireNonNull(process);
-        for (var slot : slots) {
+        for (int index9 = 0; index9 < slots.size(); index9++) {
+            var slot = slots.get(index9);
             if (slot.process() == process) {
                 process.requirePersistenceBoundary();
                 process.detachFrom(this);
@@ -440,7 +449,8 @@ public final class MachineWorkSlots {
         requireCancellationBoundary();
         Objects.requireNonNull(process);
         Objects.requireNonNull(reason);
-        for (var slot : slots) {
+        for (int index14 = 0; index14 < slots.size(); index14++) {
+            var slot = slots.get(index14);
             if (slot.process() != process) {
                 continue;
             }
@@ -536,7 +546,8 @@ public final class MachineWorkSlots {
         }
         executing = true;
         try {
-            for (var slot : slots) {
+            for (int index13 = 0; index13 < slots.size(); index13++) {
+                var slot = slots.get(index13);
                 if (workPaused()) {
                     break;
                 }
@@ -594,7 +605,8 @@ public final class MachineWorkSlots {
             throw new IllegalStateException("Custom synchronous recipe executor does not provide staged execution");
         }
         var entries = new ObjectArrayList<TickBatch.Entry>(slots.size());
-        for (var slot : slots) {
+        for (int index11 = 0; index11 < slots.size(); index11++) {
+            var slot = slots.get(index11);
             var process = slot.process();
             if (process == null) {
                 continue;
@@ -682,7 +694,8 @@ public final class MachineWorkSlots {
     public List<SlotSnapshot> snapshot() {
         requireBoundary();
         var snapshot = new ObjectArrayList<SlotSnapshot>(slots.size());
-        for (var slot : slots) {
+        for (int index12 = 0; index12 < slots.size(); index12++) {
+            var slot = slots.get(index12);
             var process = slot.process();
             if (process != null) {
                 process.requirePersistenceBoundary();
@@ -713,7 +726,8 @@ public final class MachineWorkSlots {
             return false;
         }
         boolean quiescent = true;
-        for (var slot : slots) {
+        for (int index10 = 0; index10 < slots.size(); index10++) {
+            var slot = slots.get(index10);
             var process = slot.process();
             if (process == null) {
                 continue;
@@ -742,7 +756,8 @@ public final class MachineWorkSlots {
         var previousProcesses = new ReferenceOpenHashSet<RecipeProcess>();
         var names = new ObjectOpenHashSet<String>(replacement.size());
         long restoredNext = nextRuntimeSlot;
-        for (var old : previous) {
+        for (int index5 = 0; index5 < previous.size(); index5++) {
+            var old = previous.get(index5);
             if (old.process() != null) {
                 previousProcesses.add(old.process());
             }
@@ -792,7 +807,8 @@ public final class MachineWorkSlots {
         if (dynamicRoster) {
             slots.clear();
             byName.clear();
-            for (var saved : replacement) {
+            for (int index8 = 0; index8 < replacement.size(); index8++) {
+                var saved = replacement.get(index8);
                 var slot = new WorkSlot(saved.definition());
                 slots.add(slot);
                 byName.put(slot.name(), slot);
@@ -830,7 +846,8 @@ public final class MachineWorkSlots {
 
     private int activeCount() {
         int count = 0;
-        for (var slot : slots) {
+        for (int index3 = 0; index3 < slots.size(); index3++) {
+            var slot = slots.get(index3);
             if (slot.process() != null) {
                 count++;
             }
@@ -905,8 +922,10 @@ public final class MachineWorkSlots {
 
         private TickGroup(ObjectArrayList<TickBatch> batches) {
             this.batches = batches;
-            for (var batch : batches) {
-                for (var entry : batch.entries) {
+            for (int index6 = 0; index6 < batches.size(); index6++) {
+                var batch = batches.get(index6);
+                for (int index15 = 0; index15 < batch.entries.size(); index15++) {
+                    var entry = batch.entries.get(index15);
                     processes.add(entry.process);
                 }
             }
@@ -920,7 +939,8 @@ public final class MachineWorkSlots {
             begun = true;
             executing = true;
             try {
-                for (var batch : batches) {
+                for (int index17 = 0; index17 < batches.size(); index17++) {
+                    var batch = batches.get(index17);
                     controlledBatch = batch;
                     batch.begin();
                 }
@@ -948,7 +968,8 @@ public final class MachineWorkSlots {
             var stages = new ObjectArrayList<RecipeProcess.Stage>();
             try {
                 var checked = new ReferenceOpenHashSet<MachineInstance>();
-                for (var batch : batches) {
+                for (int index23 = 0; index23 < batches.size(); index23++) {
+                    var batch = batches.get(index23);
                     if (checked.add(batch.host.owner)) {
                         CrossRecipeBatch.validateTickIo(batch.host.owner);
                         CrossRecipeBatch.prepareRound(batch.host.owner);
@@ -975,7 +996,8 @@ public final class MachineWorkSlots {
             var stages = new ObjectArrayList<RecipeProcess.Stage>();
             var previous = controlledBatch;
             try {
-                for (var batch : batches) {
+                for (int index20 = 0; index20 < batches.size(); index20++) {
+                    var batch = batches.get(index20);
                     if (batch.finished) {
                         continue;
                     }
@@ -993,7 +1015,8 @@ public final class MachineWorkSlots {
             stopped = true;
             var previous = controlledBatch;
             try {
-                for (var batch : batches) {
+                for (int index18 = 0; index18 < batches.size(); index18++) {
+                    var batch = batches.get(index18);
                     if (batch.finished) {
                         continue;
                     }
@@ -1014,7 +1037,8 @@ public final class MachineWorkSlots {
             stopped = true;
             var previous = controlledBatch;
             try {
-                for (var batch : batches) {
+                for (int index24 = 0; index24 < batches.size(); index24++) {
+                    var batch = batches.get(index24);
                     if (batch.finished) {
                         continue;
                     }
@@ -1043,7 +1067,8 @@ public final class MachineWorkSlots {
             Throwable failure = null;
             boolean pending = false;
             try {
-                for (var batch : batches) {
+                for (int index29 = 0; index29 < batches.size(); index29++) {
+                    var batch = batches.get(index29);
                     if (batch.finished) {
                         continue;
                     }
@@ -1064,7 +1089,8 @@ public final class MachineWorkSlots {
                     }
                 }
                 if (!pending) {
-                    for (var batch : batches) {
+                    for (int index16 = 0; index16 < batches.size(); index16++) {
+                        var batch = batches.get(index16);
                         batch.host.activeBatch = null;
                     }
                     finished = true;
@@ -1099,7 +1125,8 @@ public final class MachineWorkSlots {
 
         private void requireIdentity() {
             requireLive();
-            for (var batch : batches) {
+            for (int index19 = 0; index19 < batches.size(); index19++) {
+                var batch = batches.get(index19);
                 if (batch.group != this || batch.host.activeBatch != batch) {
                     throw new IllegalStateException("Work-slot group lost its exact host lease");
                 }
@@ -1151,7 +1178,8 @@ public final class MachineWorkSlots {
             begun = true;
             host.executing = true;
             try {
-                for (var entry : entries) {
+                for (int index28 = 0; index28 < entries.size(); index28++) {
+                    var entry = entries.get(index28);
                     if (host.workPaused()) {
                         stopped = true;
                         break;
@@ -1191,7 +1219,8 @@ public final class MachineWorkSlots {
             host.executing = true;
             var stages = new ObjectArrayList<RecipeProcess.Stage>();
             try {
-                for (var entry : entries) {
+                for (int index26 = 0; index26 < entries.size(); index26++) {
+                    var entry = entries.get(index26);
                     entry.requireIdentity(host);
                     if (entry.session == null || entry.postAttempted) {
                         continue;
@@ -1219,7 +1248,8 @@ public final class MachineWorkSlots {
         public List<RecipeProcess.Stage> currentStages() {
             requireOwner();
             var stages = new ObjectArrayList<RecipeProcess.Stage>();
-            for (var entry : entries) {
+            for (int index22 = 0; index22 < entries.size(); index22++) {
+                var entry = entries.get(index22);
                 entry.requireIdentity(host);
                 if (entry.session == null || entry.postAttempted) {
                     continue;
@@ -1250,7 +1280,8 @@ public final class MachineWorkSlots {
             host.faulted = true;
             var previousProcess = permitted;
             try {
-                for (var entry : entries) {
+                for (int index27 = 0; index27 < entries.size(); index27++) {
+                    var entry = entries.get(index27);
                     if (entry.session == null || entry.postAttempted) {
                         continue;
                     }
@@ -1283,7 +1314,8 @@ public final class MachineWorkSlots {
             Throwable failure = null;
             boolean pending = false;
             try {
-                for (var entry : entries) {
+                for (int index30 = 0; index30 < entries.size(); index30++) {
+                    var entry = entries.get(index30);
                     if (entry.published) {
                         continue;
                     }

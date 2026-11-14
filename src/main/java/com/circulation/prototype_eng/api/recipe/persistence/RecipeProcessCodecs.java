@@ -18,6 +18,7 @@ import java.util.Objects;
  * Stable process persistence resolver. Published snapshots retain all explicitly supplied historical
  * definitions, including revisions that may still occur in unloaded chunks. A declaration loader must
  * supply those same revisions again on a cold start; an unknown revision never means the latest one.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class RecipeProcessCodecs {
     private final boolean fixed;

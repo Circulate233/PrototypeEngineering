@@ -17,10 +17,13 @@ public record JeiPatternRecipe(List<List<GenericStack>> inputs, List<List<Generi
     }
 
     private static void validate(List<List<GenericStack>> groups) {
-        for (var group : groups) {
+        for (int index4 = 0; index4 < groups.size(); index4++) {
+            var group = groups.get(index4);
             if (group.isEmpty()) throw new IllegalArgumentException("Empty pattern candidate group");
-            for (var stack : group)
+            for (int index2 = 0; index2 < group.size(); index2++) {
+                var stack = group.get(index2);
                 if (stack == null || stack.amount() <= 0) throw new IllegalArgumentException("Invalid pattern amount");
+            }
         }
     }
 
@@ -31,15 +34,20 @@ public record JeiPatternRecipe(List<List<GenericStack>> inputs, List<List<Generi
 
     private static List<List<GenericStack>> stacks(List<List<JeiRecipeDisplay.Resource>> groups, long durationTicks) {
         var result = new ObjectArrayList<List<GenericStack>>(groups.size());
-        for (var group : groups) {
+        for (int index6 = 0; index6 < groups.size(); index6++) {
+            var group = groups.get(index6);
             var candidates = new ObjectArrayList<GenericStack>(group.size());
-            for (var row : group) {
+            for (int index5 = 0; index5 < group.size(); index5++) {
+                var row = group.get(index5);
                 boolean perTick = false;
-                for (var detail : row.details())
+                var elements3 = row.details();
+                for (int index3 = 0; index3 < elements3.size(); index3++) {
+                    var detail = elements3.get(index3);
                     if (perTick(detail)) {
                         perTick = true;
                         break;
                     }
+                }
                 long amount = perTick ? Math.multiplyExact(row.stack().amount(), durationTicks) : row.stack().amount();
                 candidates.add(new GenericStack(row.stack().what(), amount));
             }
@@ -50,7 +58,11 @@ public record JeiPatternRecipe(List<List<GenericStack>> inputs, List<List<Generi
 
     private static boolean perTick(JeiRecipeDisplay.Text text) {
         if (text.text() == JeiText.Tick) return true;
-        for (var scope : text.context()) if (perTick(scope)) return true;
+        var elements = text.context();
+        for (int index = 0; index < elements.size(); index++) {
+            var scope = elements.get(index);
+            if (perTick(scope)) return true;
+        }
         return false;
     }
 }

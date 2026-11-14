@@ -3,11 +3,15 @@ package com.circulation.prototype_eng.api.machine;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
+import com.circulation.prototype_eng.api.network.ComputerInputWork;
 import com.circulation.prototype_eng.api.network.MachineComputerComponents;
 import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
 import com.circulation.prototype_eng.api.network.NetworkComputer;
+import com.circulation.prototype_eng.api.network.NetworkDeviceEvent;
+import com.circulation.prototype_eng.api.network.NetworkDeviceEvents;
 import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
+import com.circulation.prototype_eng.api.network.NetworkResourceState;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.NetworkSupplyTransaction;
 import com.circulation.prototype_eng.api.network.resource.ComputerRecipe;
@@ -15,26 +19,23 @@ import com.circulation.prototype_eng.api.network.resource.NetworkComputerCompone
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.ComputerInputWork;
-import com.circulation.prototype_eng.api.network.NetworkDeviceEvent;
-import com.circulation.prototype_eng.api.network.NetworkDeviceEvents;
-import com.circulation.prototype_eng.api.network.NetworkResourceState;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
- * 配方与组件定义在本加载周期内保持不变。网络所属线程准备并提交材料、组件费用与供给。
+ * Recipe and component definitions remain unchanged during this load. The network owner prepares and commits costs and supply.
+ * The machine type and network role are attached before supply callbacks run.
  */
+@SuppressWarnings("DataFlowIssue")
 public class ComputerController extends MachineInstance implements NetworkComputer {
     public static final ComponentType<MachineInstance, MachineComputerComponents> COMPONENTS = MachineComputerComponents.component(
         new ResourceLocation(Tags.MOD_ID, "computer_components"), NetworkComputerComponentRegistry.INSTANCE);
@@ -90,7 +91,7 @@ public class ComputerController extends MachineInstance implements NetworkComput
      * External hosts may bind a component reader backed by their own registry.
      */
     protected MachineComputerComponents computerComponents() {
-        return Objects.requireNonNull(components().get(COMPONENTS));
+        return components().get(COMPONENTS);
     }
 
     public List<NetworkComputerComponentInventory.Installed> installedComponents() {
@@ -129,7 +130,7 @@ public class ComputerController extends MachineInstance implements NetworkComput
 
     @Override
     public boolean requiresTick() {
-        return !Objects.requireNonNull(type()).computerInputRecipes().isEmpty();
+        return !type().computerInputRecipes().isEmpty();
     }
 
     @Override
@@ -154,7 +155,7 @@ public class ComputerController extends MachineInstance implements NetworkComput
         var reader = computerComponents();
         reader.installed();
         long composition = reader.compositionVersion();
-        if (suppliedComposition != reader.compositionVersion()) {
+        if (suppliedComposition != composition) {
             var inputWork = components().get(ComputerInputWork.TYPE);
             if (inputWork != null) inputWork.invalidateEffects();
             supplied = Reference2DoubleMaps.emptyMap();
@@ -164,12 +165,12 @@ public class ComputerController extends MachineInstance implements NetworkComput
             componentDemand = Reference2DoubleMaps.emptyMap();
         }
         return new NetworkRuntime.Capture(new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.COMPUTER, 0,
-            Objects.requireNonNull(lifecycle()).formed(), identity.loadOrder(), suppliedConcurrency, supplied, NetworkResourceModifier.EMPTY, 0, 0),
+            lifecycle().formed(), identity.loadOrder(), suppliedConcurrency, supplied, NetworkResourceModifier.EMPTY, 0, 0),
             () -> reader.compositionCurrent(composition), null, this::prepareSupply);
     }
 
     /**
-     * 只能在所属线程边界调用。必须完成或回滚当前事务后才可准备下一次供给。
+     * Call at an owner-thread boundary. Complete or roll back the current transaction before preparing another supply.
      */
     public NetworkSupplyTransaction prepareSupply(long tick) {
         var reader = computerComponents();
@@ -184,14 +185,13 @@ public class ComputerController extends MachineInstance implements NetworkComput
             var values = inputWork != null && inputWork.hasEffects(tick) ? inputWork.effects().copy()
                 : new NetworkResourceState(installed.resourcesPerTick(), installed.requiredResources(), installed.concurrencyPerTick());
             var device = networkDevice();
-            if (device != null && device.networkData() != null) {
-                NetworkDeviceEvents.fire(new NetworkDeviceEvent(this, device.networkData(), values));
-                device.networkValues(values);
-            }
+            NetworkDeviceEvents.fire(new NetworkDeviceEvent(this, device.networkData(), values));
+            device.networkValues(values);
             limit(values.resources);
             var available = new Reference2DoubleOpenHashMap<>(values.resources);
             var needed = values.required;
-            for (var recipe : recipes) {
+            for (int index5 = 0; index5 < recipes.size(); index5++) {
+                var recipe = recipes.get(index5);
                 long requested = recipe.unitsFor(needed, available);
                 if (requested == 0) continue;
                 var conversion = recipe.prepare(this, requested);
@@ -299,19 +299,28 @@ public class ComputerController extends MachineInstance implements NetworkComput
 
         @Override
         public boolean prepareCommit() {
-            for (var transaction : transactions) if (!transaction.prepareCommit()) return false;
+            for (int index3 = 0; index3 < transactions.size(); index3++) {
+                var transaction = transactions.get(index3);
+                if (!transaction.prepareCommit()) return false;
+            }
             return true;
         }
 
         @Override
         public boolean validateCommit() {
-            for (var transaction : transactions) if (!transaction.validateCommit()) return false;
+            for (int index4 = 0; index4 < transactions.size(); index4++) {
+                var transaction = transactions.get(index4);
+                if (!transaction.validateCommit()) return false;
+            }
             return true;
         }
 
         @Override
         public void commit() {
-            for (var transaction : transactions) transaction.commit();
+            for (int index = 0; index < transactions.size(); index++) {
+                var transaction = transactions.get(index);
+                transaction.commit();
+            }
             suppliedTick = tick;
             suppliedComposition = composition;
             supplied = result;
@@ -325,7 +334,10 @@ public class ComputerController extends MachineInstance implements NetworkComput
 
         @Override
         public void complete() {
-            for (var transaction : transactions) transaction.complete();
+            for (int index2 = 0; index2 < transactions.size(); index2++) {
+                var transaction = transactions.get(index2);
+                transaction.complete();
+            }
             resolution = Resolution.COMPLETED;
         }
 

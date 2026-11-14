@@ -7,15 +7,28 @@ import stanhebben.zenscript.annotations.*;
 @ZenRegister
 @ZenClass("mods.prototype_eng.network.ComputerRecipeEvent")
 @SuppressWarnings("unused")
-public record ZenComputerRecipeEvent(ComputerRecipeEvent value) {
+public final class ZenComputerRecipeEvent {
+    private final ComputerRecipeEvent value;
+    private final ZenNetworkData network;
+    private final ZenNetworkValues values;
+
+    public ZenComputerRecipeEvent(ComputerRecipeEvent value) {
+        this.value = value;
+        network = new ZenNetworkData(value.network());
+        values = new ZenNetworkValues(value.values());
+    }
+
+    public ComputerRecipeEvent value() {
+        return value;
+    }
     @ZenGetter("network")
     public ZenNetworkData network() {
-        return new ZenNetworkData(value.network());
+        return network;
     }
 
     @ZenGetter("values")
     public ZenNetworkValues values() {
-        return new ZenNetworkValues(value.values());
+        return values;
     }
 
     @ZenGetter("stage")

@@ -7,6 +7,8 @@ import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 
 import java.util.Objects;
 
+import net.minecraft.util.ResourceLocation;
+
 /**
  * Network demands expressed as totals or per-station tick limits, converted using the stage duration.
  * Resource keys use object identity. Reuse singletons and do not modify returned definitions.
@@ -19,10 +21,10 @@ public final class ResearchResourceFormula {
     private final Reference2DoubleMap<NetworkResourceType> tickSlopes;
 
     private ResearchResourceFormula(Builder builder) {
-        baseDemands = immutable(builder.baseDemands);
-        demandSlopes = immutable(builder.demandSlopes);
-        tickDemands = immutable(builder.tickDemands);
-        tickSlopes = immutable(builder.tickSlopes);
+        baseDemands = builder.baseDemands;
+        demandSlopes = builder.demandSlopes;
+        tickDemands = builder.tickDemands;
+        tickSlopes = builder.tickSlopes;
     }
 
     public static Builder builder() {
@@ -37,16 +39,21 @@ public final class ResearchResourceFormula {
         }
     }
 
-    private static Reference2DoubleMap<NetworkResourceType> immutable(Reference2DoubleMap<NetworkResourceType> source) {
-        return NetworkResourceModifier.copyResources(source);
-    }
-
     public Reference2DoubleMap<NetworkResourceType> baseDemands() {
         return baseDemands;
     }
 
     public Reference2DoubleMap<NetworkResourceType> demandSlopes() {
         return demandSlopes;
+    }
+
+    /**
+     * Resolves a saved identifier within this formula's existing singleton keys.
+     */
+    public NetworkResourceType resourceType(ResourceLocation id) {
+        for (var type : baseDemands.keySet()) if (type.id().equals(id)) return type;
+        for (var type : tickDemands.keySet()) if (type.id().equals(id)) return type;
+        throw new IllegalArgumentException("Saved resource is not a research requirement: " + id);
     }
 
     public boolean isEmpty() {
@@ -119,6 +126,9 @@ public final class ResearchResourceFormula {
             return this;
         }
 
+        /**
+         * Transfers completed maps; do not modify the builder after this call.
+         */
         public ResearchResourceFormula build() {
             return new ResearchResourceFormula(this);
         }

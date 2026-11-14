@@ -379,7 +379,9 @@ public final class StructurePreviewView {
     public boolean slices(Object expected, StructurePreviewPath path, int count) {
         var complete = model();
         if (expected != token || complete == null) return false;
-        for (var occurrence : complete.occurrences()) {
+        var elements3 = complete.occurrences();
+        for (int index3 = 0; index3 < elements3.size(); index3++) {
+            var occurrence = elements3.get(index3);
             if (!occurrence.path().equals(path)) continue;
             var node = complete.generation().nodes().get(occurrence.node());
             if (node.kind() != StructurePreviewProvider.Kind.SLICE || count < node.minCount() || count > node.maxCount())
@@ -484,7 +486,9 @@ public final class StructurePreviewView {
         var result = new ObjectArrayList<Material>();
         var round = token;
         long nameEpoch = namesRevision;
-        for (var line : complete.bom()) {
+        var elements = complete.bom();
+        for (int index2 = 0; index2 < elements.size(); index2++) {
+            var line = elements.get(index2);
             var display = line.display();
             var name = display == null ? unknownName : names.get(display);
             if (name == null) {
@@ -514,7 +518,8 @@ public final class StructurePreviewView {
     private ObjectArrayList<Material> filteredRows(List<Material> rows) {
         var result = new ObjectArrayList<Material>(rows.size());
         var query = search.trim().toLowerCase(Locale.ROOT);
-        for (var row : rows) {
+        for (int index1 = 0; index1 < rows.size(); index1++) {
+            var row = rows.get(index1);
             var display = row.display();
             var name = row.name();
             if (!query.isEmpty() && !name.toLowerCase(Locale.ROOT).contains(query)

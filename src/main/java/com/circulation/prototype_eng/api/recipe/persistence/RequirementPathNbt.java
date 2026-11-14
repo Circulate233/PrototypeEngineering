@@ -1,10 +1,10 @@
 package com.circulation.prototype_eng.api.recipe.persistence;
 
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.recipe.process.RequirementPath;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 
 /**
@@ -31,20 +31,18 @@ final class RequirementPathNbt {
     }
 
     static RequirementPath decode(NBTTagList list) {
-        StrictNbt.requireListElements(list, Constants.NBT.TAG_COMPOUND);
         if (list.isEmpty()) {
             throw new IllegalArgumentException("Empty requirement path");
         }
         RequirementPath path = null;
         for (int i = 0; i < list.tagCount(); i++) {
             var entry = list.getCompoundTagAt(i);
-            StrictNbt.requireKeys(entry, "Type", "Id");
-            path = new RequirementPath(path, StrictNbt.requireId(entry, "Type"), StrictNbt.requireId(entry, "Id"));
+            path = new RequirementPath(path, new ResourceLocation(entry.getString("Type")), new ResourceLocation(entry.getString("Id")));
         }
         return path;
     }
 
     static RequirementPath read(NBTTagCompound tag) {
-        return decode(StrictNbt.requireList(tag, "Path", Constants.NBT.TAG_COMPOUND));
+        return decode(tag.getTagList("Path", Constants.NBT.TAG_COMPOUND));
     }
 }

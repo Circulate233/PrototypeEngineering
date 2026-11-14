@@ -44,7 +44,6 @@ import net.minecraft.world.World;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -78,7 +77,7 @@ final class StationFixtures implements AutoCloseable {
         research.register(definition);
         research.freeze();
         network = new NetworkRuntime(identities, player -> OwnerTeamResolution.resolved(player, player.equals(OWNER) ? "team" : "other",
-            OwnerTeamType.SERVER, ObjectSets.singleton(player), Optional.empty()), this::requireOwner);
+            OwnerTeamType.SERVER, ObjectSets.singleton(player), null), this::requireOwner);
         network.beginTick(0);
         role(NetworkDeviceRole.NETWORK_CENTER, 3, 0, OWNER, world);
         dataCenter(dataCenterTier);

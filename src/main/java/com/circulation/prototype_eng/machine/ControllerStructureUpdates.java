@@ -197,8 +197,11 @@ public class ControllerStructureUpdates {
         var previous = host.structureConfiguration();
         if (previous == null) return null;
         lifecycle.machine().requirePersistenceBoundary();
-        for (var binding : lifecycle.machine().components().assemblyBindings())
+        var elements = lifecycle.machine().components().assemblyBindings();
+        for (int index = 0; index < elements.size(); index++) {
+            var binding = elements.get(index);
             if (binding.component() instanceof MachineWorkSlots slots) slots.requireQuiescent();
+        }
         var definition = catalog.get(previous.definition().id());
         if (definition == null)
             throw new IllegalArgumentException("Reload deletes a loaded host's required structure: " + previous.definition().id());

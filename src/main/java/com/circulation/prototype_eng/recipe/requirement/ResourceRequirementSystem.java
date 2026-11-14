@@ -170,7 +170,8 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         if (times == 0) {
             return amounts;
         }
-        for (var stack : stacks) {
+        for (int index2 = 0; index2 < stacks.size(); index2++) {
+            var stack = stacks.get(index2);
             addChecked(amounts, stack.what(), stack.amount());
         }
         for (var entry : amounts.object2LongEntrySet()) {
@@ -193,7 +194,9 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         if (pool.pickCount() >= pool.candidates().size()) {
             // Every positive-weight entry is certain; avoid one sampling/allocation pass per parallel.
             var stacks = new ObjectArrayList<GenericStack>(pool.candidates().size());
-            for (var candidate : pool.candidates()) {
+            var elements = pool.candidates();
+            for (int index3 = 0; index3 < elements.size(); index3++) {
+                var candidate = elements.get(index3);
                 stacks.add(candidate.value());
             }
             merge(output, scaled(stacks, times));
@@ -203,7 +206,8 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         for (long execution = 0; execution < times; execution++) {
             var selected = WeightedSampling.sampleWithoutReplacement(process.random(salt + ":random:" + execution),
                 pool.candidates(), pool.pickCount());
-            for (var stack : selected) {
+            for (int index4 = 0; index4 < selected.size(); index4++) {
+                var stack = selected.get(index4);
                 addChecked(output, stack.what(), stack.amount());
             }
         }
@@ -227,7 +231,8 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         }
         var storages = new ObjectArrayList<ResourceStorage>(hatches.size());
         var visited = new ReferenceOpenHashSet<StorageContext>(hatches.size());
-        for (var hatch : hatches) {
+        for (int index6 = 0; index6 < hatches.size(); index6++) {
+            var hatch = hatches.get(index6);
             if (!hatch.isValid()) {
                 continue;
             }
@@ -242,7 +247,8 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         for (var entry : quantities.object2LongEntrySet()) {
             AEKey key = entry.getKey();
             long remaining = entry.getLongValue();
-            for (var storage : storages) {
+            for (int index1 = 0; index1 < storages.size(); index1++) {
+                var storage = storages.get(index1);
                 var context = storage.context();
                 context.lock();
                 try {
@@ -292,7 +298,10 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
     private static List<GenericStack> batchStacks(List<GenericStack> values, long times) {
         if (times == 0 || values.isEmpty()) return List.of();
         var result = new ObjectArrayList<GenericStack>(values.size());
-        for (var value : values) result.add(new GenericStack(value.what(), Math.multiplyExact(value.amount(), times)));
+        for (int index5 = 0; index5 < values.size(); index5++) {
+            var value = values.get(index5);
+            result.add(new GenericStack(value.what(), Math.multiplyExact(value.amount(), times)));
+        }
         return result;
     }
 

@@ -51,7 +51,9 @@ public final class CompositeRecipePool implements RecipePool {
         var definitions = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineRecipe>();
         var order = new Reference2IntOpenHashMap<MachineRecipe>();
         var membership = new ObjectArrayList<Members>(pools.size());
-        for (var pool : Objects.requireNonNull(pools)) {
+        var elements8 = Objects.requireNonNull(pools);
+        for (int index8 = 0; index8 < elements8.size(); index8++) {
+            var pool = elements8.get(index8);
             Objects.requireNonNull(pool);
             var previousPool = providers.putIfAbsent(Objects.requireNonNull(pool.id()), pool);
             if (previousPool != null) {
@@ -63,7 +65,9 @@ public final class CompositeRecipePool implements RecipePool {
             var identities = new ReferenceOpenHashSet<MachineRecipe>(pool.recipes().size());
             int previousOrder = -1, minimumOrder = Integer.MAX_VALUE;
             boolean monotonic = true;
-            for (var recipe : Objects.requireNonNull(pool.recipes())) {
+            var elements5 = Objects.requireNonNull(pool.recipes());
+            for (int index5 = 0; index5 < elements5.size(); index5++) {
+                var recipe = elements5.get(index5);
                 Objects.requireNonNull(recipe);
                 if (!identities.add(recipe))
                     throw new IllegalArgumentException("Repeated child recipe: " + recipe.id());
@@ -126,7 +130,8 @@ public final class CompositeRecipePool implements RecipePool {
         Objects.requireNonNull(inventory);
         MachineRecipe best = null;
         int bestOrder = Integer.MAX_VALUE;
-        for (var child : members) {
+        for (int index7 = 0; index7 < members.size(); index7++) {
+            var child = members.get(index7);
             if (child.minimumOrder >= bestOrder) continue;
             if (child.monotonic) {
                 var candidate = child.pool.match(inventory);
@@ -139,7 +144,10 @@ public final class CompositeRecipePool implements RecipePool {
                     }
                 }
             } else {
-                for (var match : child.pool.match(inventory, 1)) {
+
+                var elements = child.pool.match(inventory, 1);
+                for (int index1 = 0; index1 < elements.size(); index1++) {
+                    var match = elements.get(index1);
                     var candidate = Objects.requireNonNull(match).recipe();
                     requireMember(child, candidate);
                     int order = priority.getInt(candidate);
@@ -148,6 +156,7 @@ public final class CompositeRecipePool implements RecipePool {
                         bestOrder = order;
                     }
                 }
+
             }
             if (bestOrder == 0) break;
         }
@@ -160,8 +169,11 @@ public final class CompositeRecipePool implements RecipePool {
         if (parallelism < 1) throw new IllegalArgumentException("Nonpositive matching parallelism");
         var bounds = new Reference2IntOpenHashMap<MachineRecipe>();
         var chosen = new Int2ObjectAVLTreeMap<MachineRecipe>();
-        for (var child : members) {
-            for (var match : child.pool.match(inventory, parallelism)) {
+        for (int index4 = 0; index4 < members.size(); index4++) {
+            var child = members.get(index4);
+            var elements2 = child.pool.match(inventory, parallelism);
+            for (int index2 = 0; index2 < elements2.size(); index2++) {
+                var match = elements2.get(index2);
                 Objects.requireNonNull(match);
                 var recipe = match.recipe();
                 requireMember(child, recipe);
@@ -194,9 +206,13 @@ public final class CompositeRecipePool implements RecipePool {
                 throw new IllegalArgumentException("Composite freeze changed recipe membership or order");
         }
         var frozen = new ObjectArrayList<RecipePool>(members.size());
-        for (var child : members) {
+        for (int index6 = 0; index6 < members.size(); index6++) {
+            var child = members.get(index6);
             var definitions = new ObjectArrayList<MachineRecipe>(child.recipes.size());
-            for (var recipe : child.recipes) definitions.add(Objects.requireNonNull(replacements.get(recipe.id())));
+            for (int index3 = 0; index3 < child.recipes.size(); index3++) {
+                var recipe = child.recipes.get(index3);
+                definitions.add(Objects.requireNonNull(replacements.get(recipe.id())));
+            }
             var provider = Objects.requireNonNull(child.pool.freeze(definitions, machines));
             if (!child.pool.id().equals(provider.id()) || !child.pool.translationKey().equals(provider.translationKey())
                 || child.pool.hasExistingJeiPage() != provider.hasExistingJeiPage()

@@ -133,7 +133,8 @@ public final class GuiMEPatternAssembly extends AEBaseGui<ContainerMEPatternAsse
                 Math.max(0, ContainerMEPatternAssembly.rowCount(container.snapshot.side(kind).total())
                     - ContainerMEPatternAssembly.height(kind) / 18), 1);
         container.requestView(scrollbars[0].getCurrentScroll(), scrollbars[1].getCurrentScroll(), scrollbars[2].getCurrentScroll());
-        for (var slot : container.inventorySlots) {
+        for (int index3 = 0; index3 < container.inventorySlots.size(); index3++) {
+            var slot = container.inventorySlots.get(index3);
             if (!container.isResourceSlot(slot.slotNumber)) continue;
             var resource = (AppEngSlot) slot;
             int kind = container.kind(slot.slotNumber);
@@ -152,7 +153,8 @@ public final class GuiMEPatternAssembly extends AEBaseGui<ContainerMEPatternAsse
     @Override
     public void drawBG(int x, int y, int mouseX, int mouseY, float partialTicks) {
         GuiAtlas.draw(BACKGROUND, x, y, 0, 0, xSize, ySize, 384, 256);
-        for (var slot : container.inventorySlots) {
+        for (int index2 = 0; index2 < container.inventorySlots.size(); index2++) {
+            var slot = container.inventorySlots.get(index2);
             if (!container.isResourceSlot(slot.slotNumber) || !slot.isEnabled()) continue;
             clip(container.kind(slot.slotNumber));
             try {
@@ -211,7 +213,8 @@ public final class GuiMEPatternAssembly extends AEBaseGui<ContainerMEPatternAsse
     @Override
     protected boolean isPointInRegion(int left, int top, int regionWidth, int regionHeight, int x, int y) {
         if (regionWidth == 16 && regionHeight == 16) {
-            for (var slot : container.inventorySlots) {
+            for (int index1 = 0; index1 < container.inventorySlots.size(); index1++) {
+                var slot = container.inventorySlots.get(index1);
                 if (container.isResourceSlot(slot.slotNumber) && slot.xPos == left && slot.yPos == top
                     && !inside(slot, x, y)) return false;
             }

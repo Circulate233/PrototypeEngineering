@@ -16,7 +16,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
+import java.util.Collection;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -53,7 +53,7 @@ public final class NetworkParticipants {
     private static boolean sameOwner(OwnerTeamResolution expected, OwnerTeamResolution current) {
         return expected.ownerId().equals(current.ownerId()) && expected.status() == current.status()
             && (!expected.accepted() || expected.teamId().equals(current.teamId()) && expected.teamType() == current.teamType()
-            && expected.members().equals(current.members()) && expected.teamOwnerId().equals(current.teamOwnerId()));
+            && expected.members().equals(current.members()) && Objects.equals(expected.teamOwnerId(), current.teamOwnerId()));
     }
 
     /**
@@ -69,14 +69,13 @@ public final class NetworkParticipants {
             Objects.requireNonNull(participant);
             var id = Objects.requireNonNull(participant.participantId());
             var owner = Objects.requireNonNull(participant.ownerId());
-            var kind = Objects.requireNonNull(participant.kind());
             if (Objects.requireNonNull(participant.state()) == NetworkParticipant.State.UNREGISTERED) {
                 throw new IllegalArgumentException("Cannot register an unregistered participant");
             }
             if (registrations.containsKey(id))
                 throw new IllegalArgumentException("Duplicate participant identity: " + id);
-            var registration = new Registration(participant, id, owner, kind);
-            registration.requireIdentity();
+            var registration = new Registration(participant, id, owner);
+
             runtime.revoke();
             registrations.put(id, registration);
             return registration;
@@ -87,10 +86,11 @@ public final class NetworkParticipants {
 
     /**
      * Original receipts that still own cancellation or compensation, including detached hosts.
+     * Borrowed read-only until the next participant operation.
      */
-    public List<Work> pendingWork() {
+    public Collection<Work> pendingWork() {
         ownerCheck.run();
-        return List.copyOf(pending);
+        return pending;
     }
 
     /**
@@ -149,7 +149,10 @@ public final class NetworkParticipants {
 
     private boolean settlePending() {
         Throwable failure = null;
-        for (var work : new ObjectArrayList<>(pending)) {
+
+        var elements = new ObjectArrayList<>(pending);
+        for (int index = 0; index < elements.size(); index++) {
+            var work = elements.get(index);
             try {
                 work.cancelOriginal();
             } catch (RuntimeException | Error problem) {
@@ -157,6 +160,7 @@ public final class NetworkParticipants {
                 else if (failure != problem) failure.addSuppressed(problem);
             }
         }
+
         if (failure instanceof RuntimeException exception) throw exception;
         if (failure instanceof Error error) throw error;
         return pending.isEmpty();
@@ -168,7 +172,7 @@ public final class NetworkParticipants {
         try {
             var result = new CaptureSet();
             for (var registration : registrations.values()) {
-                registration.requireIdentity();
+
                 var state = Objects.requireNonNull(registration.participant.state());
                 if (state == NetworkParticipant.State.UNREGISTERED) {
                     throw new IllegalStateException("Registered participant reported UNREGISTERED");
@@ -177,16 +181,6 @@ public final class NetworkParticipants {
                 if (state == NetworkParticipant.State.ACTIVE) {
                     capture = Objects.requireNonNull(registration.participant.capture(tick, epoch));
                     var snapshot = capture.snapshot();
-                    if (!snapshot.participantId().equals(registration.id) || !snapshot.ownerId().equals(registration.owner)
-                        || snapshot.kind() != registration.kind || snapshot.tick() != tick || snapshot.epoch() != epoch) {
-                        throw new IllegalArgumentException("Participant capture changed its identity or requested generation");
-                    }
-                    var last = registration.lastSnapshot;
-                    if (last != null && (snapshot.version() < last.version()
-                        || snapshot.version() == last.version() && (snapshot.tick() != last.tick() || !snapshot.sameCapabilities(last)))) {
-                        throw new IllegalArgumentException("Participant snapshot version did not advance with its tick or capabilities");
-                    }
-                    registration.lastSnapshot = snapshot;
                     result.contributions.add(new NetworkContribution(registration.id, registration.owner, epoch,
                         snapshot.version(), snapshot.concurrencyPerTick(), snapshot.resources()));
                 }
@@ -206,7 +200,7 @@ public final class NetworkParticipants {
                 var registration = entry.getKey();
                 var observed = entry.getValue();
                 if (!registration.active || registrations.get(registration.id) != registration) return false;
-                registration.requireIdentity();
+
                 if (registration.participant.state() != observed.state) return false;
                 var capture = observed.capture;
                 if (capture != null) {
@@ -214,8 +208,7 @@ public final class NetworkParticipants {
                     var expected = captures.owners.get(registration.owner);
                     if (expected != null && !sameOwner(expected, Objects.requireNonNull(teams.resolve(registration.owner))))
                         return false;
-                    // A proof/resolver may discover an invalidation; sample identity and state once more.
-                    registration.requireIdentity();
+
                     if (registration.participant.state() != observed.state) return false;
                 }
             }
@@ -251,11 +244,6 @@ public final class NetworkParticipants {
     }
 
     public record PlanResult(PlanStatus status, @Nullable Work work) {
-        public PlanResult {
-            Objects.requireNonNull(status);
-            if ((status == PlanStatus.ACCEPTED) == (work == null))
-                throw new IllegalArgumentException("Inconsistent participant plan result");
-        }
 
         private static PlanResult denied(PlanStatus status) {
             return new PlanResult(status, null);
@@ -266,23 +254,15 @@ public final class NetworkParticipants {
         private final NetworkParticipant participant;
         private final UUID id;
         private final UUID owner;
-        private final NetworkParticipant.Kind kind;
         private final Object2ObjectOpenHashMap<UUID, Work> workById = new Object2ObjectOpenHashMap<>();
-        private @Nullable Snapshot lastSnapshot;
         private volatile boolean active = true;
 
-        private Registration(NetworkParticipant participant, UUID id, UUID owner, NetworkParticipant.Kind kind) {
+        private Registration(NetworkParticipant participant, UUID id, UUID owner) {
             this.participant = participant;
             this.id = id;
             this.owner = owner;
-            this.kind = kind;
         }
 
-        private void requireIdentity() {
-            if (!id.equals(participant.participantId()) || !owner.equals(participant.ownerId()) || kind != participant.kind()) {
-                throw new IllegalStateException("Participant identity changed after registration");
-            }
-        }
 
         /**
          * Returns this publication's worker-safe value only while its entire supply is authorized.
@@ -326,12 +306,18 @@ public final class NetworkParticipants {
                     return PlanResult.denied(PlanStatus.OWNER_TEAM_REJECTED);
                 }
                 NetworkParticipant.WorkType selectedWork = null;
-                for (var candidate : snapshot.workTypes())
+                var elements1 = snapshot.workTypes();
+                for (int index1 = 0; index1 < elements1.size(); index1++) {
+                    var candidate = elements1.get(index1);
                     if (candidate.id().equals(workType)) selectedWork = candidate;
+                }
                 if (selectedWork == null) return PlanResult.denied(PlanStatus.WORK_UNSUPPORTED);
                 NetworkParticipant.MaterialSource selectedSource = null;
-                for (var candidate : snapshot.materialSources())
+                var elements3 = snapshot.materialSources();
+                for (int index3 = 0; index3 < elements3.size(); index3++) {
+                    var candidate = elements3.get(index3);
                     if (candidate.id().equals(materialSource)) selectedSource = candidate;
+                }
                 if (materialSource != null && selectedSource == null)
                     return PlanResult.denied(PlanStatus.SOURCE_UNSUPPORTED);
                 var budget = runtime.participantBudget(resolved.teamId());
@@ -365,7 +351,10 @@ public final class NetworkParticipants {
                     if (publication != null && publication.participants().observed.containsKey(this)) runtime.revoke();
                 }
                 Throwable failure = null;
-                for (var work : new ObjectArrayList<>(pending)) {
+
+                var elements2 = new ObjectArrayList<>(pending);
+                for (int index2 = 0; index2 < elements2.size(); index2++) {
+                    var work = elements2.get(index2);
                     if (work.registration != this) continue;
                     try {
                         work.cancelOriginal();
@@ -374,6 +363,7 @@ public final class NetworkParticipants {
                         else if (failure != problem) failure.addSuppressed(problem);
                     }
                 }
+
                 if (failure instanceof RuntimeException exception) throw exception;
                 if (failure instanceof Error error) throw error;
                 workById.clear();
@@ -444,7 +434,7 @@ public final class NetworkParticipants {
                     try {
                         cancelOriginal();
                     } catch (RuntimeException | Error _) {
-                        // cancelOriginal already retained the exact cleanup failure on this work.
+                        throw problem;
                     }
                     throw problem;
                 }

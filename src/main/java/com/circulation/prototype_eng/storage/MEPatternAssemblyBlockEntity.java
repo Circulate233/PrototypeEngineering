@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.storage;
 
-import com.circulation.prototype_eng.structure.tool.BuilderDropRecovery;
 import ae2.api.AECapabilities;
 import ae2.api.config.Actionable;
 import ae2.api.crafting.IPatternDetails;
@@ -37,13 +36,13 @@ import ae2.util.inv.filter.IAEItemFilter;
 import com.circulation.prototype_eng.MEAssemblyConfig;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.HatchCapabilities;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.storage.ResourceHatchGrouping;
 import com.circulation.prototype_eng.localization.MEAssemblyText;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import com.circulation.prototype_eng.structure.tool.BuilderDropRecovery;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
@@ -242,8 +241,11 @@ public final class MEPatternAssemblyBlockEntity extends AEBaseTile implements II
             if (!(decoded instanceof AEProcessingPattern processing)) continue;
             var inputs = new AEKey2LongMap.OpenHashMap();
             boolean valid = true;
-            for (var stack : processing.getSparseInputs())
+            var elements = processing.getSparseInputs();
+            for (int index3 = 0; index3 < elements.size(); index3++) {
+                var stack = elements.get(index3);
                 if (stack != null && !PatternInputSignature.add(inputs, stack.what(), stack.amount())) valid = false;
+            }
             if (!valid || inputs.isEmpty()) continue;
             if (next == null) next = new DecodedPatterns(new Reference2ObjectOpenHashMap<>(),
                 new Object2ObjectOpenHashMap<>(), new ObjectArrayList<>());
@@ -491,7 +493,7 @@ public final class MEPatternAssemblyBlockEntity extends AEBaseTile implements II
         storage().save(tag);
         saveConfiguration(tag);
         if (mainNode != null) mainNode.saveToNBT(tag);
-        else if (nodeData != null && nodeData.hasKey("MeNode")) tag.setTag("MeNode", nodeData.getTag("MeNode").copy());
+        else if (nodeData != null && nodeData.hasKey("MeNode")) tag.setTag("MeNode", nodeData.getTag("MeNode"));
     }
 
     private void saveConfiguration(NBTTagCompound tag) {
@@ -505,22 +507,22 @@ public final class MEPatternAssemblyBlockEntity extends AEBaseTile implements II
 
     @Override
     public void loadTag(@NotNull NBTTagCompound tag) {
-        int nextPages = StrictNbt.requireInt(tag, "PatternPages");
+        int nextPages = tag.getInteger("PatternPages");
         if (nextPages <= 0 || nextPages > Integer.MAX_VALUE / 36)
             throw new IllegalArgumentException("Invalid saved pattern page count");
-        var nextColor = AEColor.valueOf(StrictNbt.requireString(tag, "ResourceColor"));
-        long nextRevision = StrictNbt.requireLong(tag, "PatternRevision");
+        var nextColor = AEColor.valueOf(tag.getString("ResourceColor"));
+        long nextRevision = tag.getLong("PatternRevision");
         if (nextRevision < 0) throw new IllegalArgumentException("Negative saved pattern revision");
-        boolean nextVisible = StrictNbt.requireBoolean(tag, "TerminalVisible");
-        var nextName = tag.hasKey("TerminalName") ? StrictNbt.requireString(tag, "TerminalName") : null;
+        boolean nextVisible = tag.getBoolean("TerminalVisible");
+        var nextName = tag.hasKey("TerminalName") ? tag.getString("TerminalName") : null;
         var nextStorage = MEPatternAssemblyStorage.load(tag, nextPages * 36, this::inputColor, this::requestStorageSave);
         var nextPatterns = new PatternInventory(nextPages * 36);
         if (tag.hasKey("Patterns")) {
-            var savedPatterns = StrictNbt.requireList(tag, "Patterns", 10);
+            var savedPatterns = tag.getTagList("Patterns", 10);
             boolean[] visited = new boolean[nextPatterns.size()];
             for (int index = 0; index < savedPatterns.tagCount(); index++) {
                 var saved = savedPatterns.getCompoundTagAt(index);
-                int slot = Objects.checkIndex(StrictNbt.requireInt(saved, "Slot"), nextPatterns.size());
+                int slot = Objects.checkIndex(saved.getInteger("Slot"), nextPatterns.size());
                 var stack = new ItemStack(saved);
                 if (visited[slot] || stack.isEmpty() || stack.getCount() != 1 || !PatternDetailsHelper.isEncodedPattern(stack))
                     throw new IllegalArgumentException("Invalid or repeated saved pattern slot");
@@ -542,7 +544,7 @@ public final class MEPatternAssemblyBlockEntity extends AEBaseTile implements II
         suspendedStorage = null;
 
         if (mainNode != null) mainNode.loadFromNBT(tag);
-        else nodeData = tag.copy();
+        else nodeData = tag;
         decodingNeeded = true;
         rebuildPatterns();
     }
@@ -580,13 +582,19 @@ public final class MEPatternAssemblyBlockEntity extends AEBaseTile implements II
         var contents = storage().removeForDrops(deferred -> {
             Runnable deliver = () -> {
                 var delayed = new ObjectArrayList<ItemStack>();
-                for (var stack : deferred) GenericResourcePackageItem.addDrop(stack.what(), stack.amount(), delayed);
+                for (int index2 = 0; index2 < deferred.size(); index2++) {
+                    var stack = deferred.get(index2);
+                    GenericResourcePackageItem.addDrop(stack.what(), stack.amount(), delayed);
+                }
                 destination.accept(delayed);
             };
             if (server.isCallingFromMinecraftThread()) deliver.run();
             else server.addScheduledTask(deliver);
         });
-        for (var stack : contents) GenericResourcePackageItem.addDrop(stack.what(), stack.amount(), drops);
+        for (int index1 = 0; index1 < contents.size(); index1++) {
+            var stack = contents.get(index1);
+            GenericResourcePackageItem.addDrop(stack.what(), stack.amount(), drops);
+        }
     }
 
     @Override

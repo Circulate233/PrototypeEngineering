@@ -55,29 +55,28 @@ public final class ResearchLevelStage {
         durationTicks = builder.durationTicks;
         resourceFormula = Objects.requireNonNull(builder.resourceFormula, "Research stage formula");
         resourceFormula.validateRange(firstLevel, lastLevel, durationTicks);
-        prerequisites = ResearchSnapshots.levels(builder.prerequisites);
-        mutexRules = ObjectLists.unmodifiable(new ObjectArrayList<>(builder.mutexRules));
-        var materials = new ObjectArrayList<RecipeRequirement<?>>(builder.materialRequirements.size());
+        prerequisites = builder.prerequisites;
+        mutexRules = builder.mutexRules;
         var materialIds = new ObjectOpenHashSet<ResourceLocation>(builder.materialRequirements.size());
-        for (var requirement : builder.materialRequirements) {
+        for (int index2 = 0; index2 < builder.materialRequirements.size(); index2++) {
+            var requirement = builder.materialRequirements.get(index2);
             if (!materialIds.add(requirement.id())) {
                 throw new IllegalArgumentException("Duplicate research material requirement " + requirement.id());
             }
-            materials.add(requirement);
         }
-        materialRequirements = ObjectLists.unmodifiable(materials);
+        materialRequirements = builder.materialRequirements;
         materialTotals = compileMaterials();
-        var rewards = new Int2ObjectOpenHashMap<ObjectList<RewardGroup>>(builder.rewardsByLevel.size());
         for (var entry : builder.rewardsByLevel.int2ObjectEntrySet()) {
             var ids = new ObjectOpenHashSet<ResourceLocation>(entry.getValue().size());
-            for (var reward : entry.getValue()) {
+            var elements = entry.getValue();
+            for (int index1 = 0; index1 < elements.size(); index1++) {
+                var reward = elements.get(index1);
                 if (!ids.add(reward.id())) {
                     throw new IllegalArgumentException("Duplicate research reward group " + reward.id());
                 }
             }
-            rewards.put(entry.getIntKey(), ObjectLists.unmodifiable(new ObjectArrayList<>(entry.getValue())));
         }
-        rewardsByLevel = ResearchSnapshots.sparse(rewards);
+        rewardsByLevel = builder.rewardsByLevel;
     }
 
     public static Builder builder(int firstLevel, int lastLevel) {
@@ -154,7 +153,8 @@ public final class ResearchLevelStage {
             throw new IllegalArgumentException("Tier-zero research cannot declare numeric resources");
         }
         var totals = ImmutableResourceAmounts.builder();
-        for (var requirement : materialRequirements) {
+        for (int index4 = 0; index4 < materialRequirements.size(); index4++) {
+            var requirement = materialRequirements.get(index4);
             if (requirement.type() != RecipeRequirements.RESOURCES
                 || !(requirement.payload() instanceof ResourceRequirement(
                 var inputs, var inputsPerTick, var outputsPerTick,
@@ -167,7 +167,8 @@ public final class ResearchLevelStage {
                 || inputAllocation != InputAllocation.SPLITTABLE) {
                 throw new IllegalArgumentException("Research supports only static total resource inputs: " + requirement.id());
             }
-            for (var input : inputs) {
+            for (int index3 = 0; index3 < inputs.size(); index3++) {
+                var input = inputs.get(index3);
                 if (researchTier == 0 && !(input.what() instanceof AEItemKey))
                     throw new IllegalArgumentException("Tier-zero research requires item inputs: " + requirement.id());
                 totals.addTo(input.what(), input.amount());
@@ -176,13 +177,16 @@ public final class ResearchLevelStage {
         return totals.build();
     }
 
+    /**
+     * Transfers its completed collections on build; do not reuse or mutate the builder afterward.
+     */
     public static final class Builder {
         private final int firstLevel;
         private final int lastLevel;
         private final Object2IntOpenHashMap<ResourceLocation> prerequisites = new Object2IntOpenHashMap<>();
         private final ObjectArrayList<ResearchMutexRule> mutexRules = new ObjectArrayList<>();
         private final ObjectArrayList<RecipeRequirement<?>> materialRequirements = new ObjectArrayList<>();
-        private final Int2ObjectOpenHashMap<ObjectArrayList<RewardGroup>> rewardsByLevel = new Int2ObjectOpenHashMap<>();
+        private final Int2ObjectOpenHashMap<ObjectList<RewardGroup>> rewardsByLevel = new Int2ObjectOpenHashMap<>();
         private int researchTier = -1;
         private long durationTicks;
         private ResearchResourceFormula resourceFormula;
@@ -220,7 +224,8 @@ public final class ResearchLevelStage {
 
         public Builder mutex(ResourceLocation researchId, int minLevel) {
             var rule = new ResearchMutexRule(researchId, minLevel);
-            for (var existing : mutexRules) {
+            for (int index = 0; index < mutexRules.size(); index++) {
+                var existing = mutexRules.get(index);
                 if (existing.researchId().equals(researchId)) {
                     throw new IllegalArgumentException("Duplicate research mutex " + researchId);
                 }

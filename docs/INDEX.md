@@ -4,9 +4,11 @@
 
 ## 当前检查点
 
+- 防御检查、复制与循环清理完成：删除 StrictNbt、重复 codec/索引、Optional 和多余数组/集合/NBT 复制；969 个 List 增强 for 改为索引，API 要求常数时间随机访问。生产数组 clone 只保留两处共享模型顶点变换。1735 tests/269 suites、完整 Gradle build、Spotless、IDEA MCP 构建、27 Java addon 和 15 ZS 脚本通过。451 Java 已格式化/全级检查，449 份零诊断、1 份 CTM 保留 9 条依赖 ERROR、1 份 run 被排除；生成 addon 未安装。入口：[审查](defensive-programming-audit.md)、[实施进度](implementation-status.md)、[API](../api.md)。下一步由用户复验游戏行为，保留 AGENTS.md 用户修改，本地提交。
+
 - 2026-11-14 研究站正式界面与时间/材料/网络进度已实现。逐种材料等权付款、多站加速、共享预算最低优先级、出队保留进度与 AE 行增量同步已接入。1781 tests/270 suites、Gradle build 和 IDEA MCP 构建通过；74 Java 已格式化，72 项目文件全级零诊断、2 run 被排除。Java addon 和 15 ZS 脚本编译通过，安装因目标 jar 被占用未完成。保存版本为世界 V6、队列 V3、手动 V2，旧版本未迁移。入口：[研究站](research-stations.md)、[GUI](research-gui.md)、[实施进度](implementation-status.md)。
 
-- 用户追加要求：完成上述阶段提交后，逐项复查 b72090aacf2896c25c82c1b15135dcf0f95df30e 之后所有新类和改动，移除无实际必要的防御检查、复制和对应测试。明确包含 StrictNbt.requireKeys 的字段白名单检查。最近两个中文提交信息必须重新提交为英文，新增代码注释必须使用英文；消息和项目文档继续使用简体中文。当前审查尚未完成。
+- 用户追加要求：完成上述阶段提交后，逐项复查 b72090aacf2896c25c82c1b15135dcf0f95df30e 之后所有新类和改动，移除无实际必要的防御检查、复制和对应测试。明确包含 StrictNbt.requireKeys 的字段白名单检查。最近两个中文提交信息必须重新提交为英文，新增代码注释必须使用英文；消息和项目文档继续使用简体中文。本轮已完成，详细处理与最终验证见最新实施记录。
 
 - 2026-11-14 构建器供电纠正：撤销误加的工具电量、充电、能量卡与传输耗电；独立绑定继续使用，配置页保留一个原生量子桥卡槽和奇点槽，主界面尺寸不变。工具提示用 AE 原生绿/红色显示已链接/未链接。入口[结构工具](structure-tools.md)，5Java已IDEA格式化且全级零诊断，构建证据见[实施进度](implementation-status.md)。下一步用户复验绑定、卡片/奇点装卸及链接提示；本地提交，AGENTS.md用户修改保留。
 

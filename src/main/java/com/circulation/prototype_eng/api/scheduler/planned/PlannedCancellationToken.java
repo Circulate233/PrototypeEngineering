@@ -9,6 +9,7 @@ import java.util.function.Consumer;
 
 /**
  * Cooperative cancellation with one retained reason and independently removable registrations.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class PlannedCancellationToken {
     private final Object cancellationLock = new Object();
@@ -31,7 +32,8 @@ public final class PlannedCancellationToken {
             registrations.clear();
         }
         Throwable firstFailure = null;
-        for (var registration : callbacks) {
+        for (int index = 0; index < callbacks.size(); index++) {
+            var registration = callbacks.get(index);
             try {
                 registration.handler.accept(reason);
             } catch (Throwable failure) {

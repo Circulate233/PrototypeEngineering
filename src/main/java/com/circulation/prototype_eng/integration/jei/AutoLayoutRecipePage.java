@@ -134,7 +134,9 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
         int maximumInputs = 0;
         int maximumOutputs = 0;
         boolean paginated = false;
-        for (var recipe : pool.recipes()) {
+        var elements7 = pool.recipes();
+        for (int index7 = 0; index7 < elements7.size(); index7++) {
+            var recipe = elements7.get(index7);
             var display = describe.apply(recipe);
             var measured = RecipeInformationLayout.measure(display.information(), WIDTH, font);
             information.put(display, measured);
@@ -301,9 +303,12 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
                 ingredients().showGroups(layout, panels.inputGroups(panel), panels.outputGroups(panel),
                     geometry.inputs.size(), geometry.outputs.size());
                 int energySlot = 0;
-                for (var paragraph : explanation.paragraphs())
+                var elements5 = explanation.paragraphs();
+                for (int index5 = 0; index5 < elements5.size(); index5++) {
+                    var paragraph = elements5.get(index5);
                     if (paragraph.source().energy() != null)
                         JeiEnergyIngredients.slot(layout, energySlot++, paragraph.source().energy(), 4, geometry.informationY + paragraph.y(), 18, 18);
+                }
             }
         }
 
@@ -316,20 +321,31 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
         public void drawInfo(Minecraft minecraft, int recipeWidth, int recipeHeight, int mouseX, int mouseY) {
             if (!isCurrent()) return;
             super.drawInfo(minecraft, recipeWidth, recipeHeight, mouseX, mouseY);
-            for (var slot : geometry.inputs)
+            for (int index2 = 0; index2 < geometry.inputs.size(); index2++) {
+                var slot = geometry.inputs.get(index2);
                 EMPTY_SLOT.draw(minecraft, slot.x(), slot.y(), slot.width(), slot.height());
-            for (var slot : geometry.outputs)
+            }
+            for (int index3 = 0; index3 < geometry.outputs.size(); index3++) {
+                var slot = geometry.outputs.get(index3);
                 EMPTY_SLOT.draw(minecraft, slot.x(), slot.y(), slot.width(), slot.height());
-            for (var decoration : geometry.decorations) decoration.draw(minecraft, this);
+            }
+            for (int index = 0; index < geometry.decorations.size(); index++) {
+                var decoration = geometry.decorations.get(index);
+                decoration.draw(minecraft, this);
+            }
             resources(minecraft, panels.inputGroups(panel), geometry.inputs);
             resources(minecraft, panels.outputGroups(panel), geometry.outputs);
-            for (var paragraph : explanation.paragraphs()) {
+            var elements6 = explanation.paragraphs();
+            for (int index6 = 0; index6 < elements6.size(); index6++) {
+                var paragraph = elements6.get(index6);
                 int y = geometry.informationY + paragraph.y();
                 var energy = paragraph.source().energy();
                 if (energy != null) JeiVisuals.Energy.ONE_1.draw(minecraft, 4, y, 18, 18,
                     energy.role(), owner.renderOptions().energyLedYOffset());
                 int textY = y + (paragraph.height() - paragraph.lines().size() * owner.font.lineHeight()) / 2;
-                for (var line : paragraph.lines()) {
+                var elements = paragraph.lines();
+                for (int index4 = 0; index4 < elements.size(); index4++) {
+                    var line = elements.get(index4);
                     minecraft.fontRenderer.drawString(line, paragraph.x(), textY, 0x404040);
                     textY += owner.font.lineHeight();
                 }

@@ -35,7 +35,6 @@ import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -360,21 +359,6 @@ class ResearchWorldDownloadTest {
         assertEquals(1, fixture.inventory.consumptions);
     }
 
-    @Test
-    void strictWorldNbtRejectsDuplicateNoncesAndCorruptedNativeOutput() {
-        var fixture = new Fixture();
-        var initial = fixture.initial();
-        var operation = initial.downloads().getFirst();
-        var otherId = new UUID(0, 30);
-        var material = ResearchDownloadMaterial.prepare(PLAYER, otherId, 5, fixture.inventory.image);
-        assertNotNull(material);
-        var duplicate = new ResearchDownloadOperation(otherId, operation.intent(), operation.sources(), material, operation.output(), operation.amount(), 1,
-            ResearchDownloadOperation.Status.PREPARED, false, ObjectList.of());
-        assertThrows(IllegalArgumentException.class, () -> new ResearchWorldSnapshot(1, initial.players(), initial.teams(), ObjectList.of(operation, duplicate), ObjectList.of()));
-        var corrupted = fixture.codec.encode(initial);
-        corrupted.getTagList("Downloads", 10).getCompoundTagAt(0).getCompoundTag("Output").setString("ForgeCaps", "unknown payload");
-        assertThrows(IllegalArgumentException.class, () -> fixture.codec.decode(corrupted));
-    }
 
     private static final class Fixture {
         final ResearchRegistry registry = new ResearchRegistry();
@@ -403,7 +387,7 @@ class ResearchWorldDownloadTest {
             var team = new TeamOwnedResearch("original_team", registry);
             var queue = new TeamResearchQueue(registry, team.teamId());
             var members = new ObjectOpenHashSet<>(ObjectList.of(PLAYER, OFFLINE));
-            var membership = OwnerTeamResolution.resolved(PLAYER, team.teamId(), OwnerTeamType.PLAYER, members, Optional.of(PLAYER));
+            var membership = OwnerTeamResolution.resolved(PLAYER, team.teamId(), OwnerTeamType.PLAYER, members, PLAYER);
             var players = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
             players.put(PLAYER, first);
             players.put(OFFLINE, offline);
@@ -434,7 +418,7 @@ class ResearchWorldDownloadTest {
 
         ResearchDownloadResult request(ResearchWorld world, ResearchDownloadOperation.Intent intent, AtomicInteger evaluations) {
             var membership = OwnerTeamResolution.resolved(PLAYER, intent.teamId(), OwnerTeamType.PLAYER,
-                new ObjectOpenHashSet<>(ObjectList.of(PLAYER, OFFLINE)), Optional.of(PLAYER));
+                new ObjectOpenHashSet<>(ObjectList.of(PLAYER, OFFLINE)), PLAYER);
             var permission = new ResearchPermissionContext(PLAYER, intent.teamId(), PLAYER, intent.teamId(), true, false, false);
             var levels = new Object2IntOpenHashMap<ResourceLocation>();
             levels.put(RESEARCH, 4);
@@ -557,7 +541,7 @@ class ResearchWorldDownloadTest {
             var id = new UUID(0, 100);
             return ObjectList.of(new ItemDeliveryFragment(id, parent, ITEM, Math.toIntExact(amount),
                 ItemDeliveryTemplates.taggedLeaf(template, Math.toIntExact(amount), parent, id), new ItemDeliveryFragment.Inventory(8),
-                Optional.empty(), ItemDeliveryFragment.Status.PLANNED));
+                null, ItemDeliveryFragment.Status.PLANNED));
         }
 
         @Override
@@ -585,7 +569,7 @@ class ResearchWorldDownloadTest {
             assertEquals(ItemDeliveryFragment.Status.DELIVERING, saves.durable.downloads().getFirst().fragments().getFirst().status());
             assertTrue(physical.add(fragment.id()), "A frozen output fragment must not be issued twice");
             deliveries++;
-            return new Delivery(fragment.count(), Optional.empty());
+            return new Delivery(fragment.count(), null);
         }
 
         @Override

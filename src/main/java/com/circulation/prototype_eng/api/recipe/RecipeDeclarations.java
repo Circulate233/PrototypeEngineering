@@ -10,6 +10,7 @@ import java.util.function.BiConsumer;
 
 /**
  * Complete already-loaded Java/CT declarations. Binding a key never proves another closure equivalent.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class RecipeDeclarations {
     public static final RecipeDeclarations INSTANCE = new RecipeDeclarations();
@@ -36,7 +37,8 @@ public final class RecipeDeclarations {
             callbacks = new ObjectArrayList<>(listeners);
         }
         Throwable failure = null;
-        for (var callback : callbacks) {
+        for (int index = 0; index < callbacks.size(); index++) {
+            var callback = callbacks.get(index);
             try {
                 callback.accept(key, snapshot);
             } catch (RuntimeException | Error caught) {

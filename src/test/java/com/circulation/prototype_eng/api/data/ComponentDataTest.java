@@ -30,7 +30,6 @@ class ComponentDataTest {
         data.set("Nested", nested);
         var captured = data.snapshot();
         nested.setInteger("Count", 8);
-        ((NBTTagCompound) Objects.requireNonNull(data.get("Nested"))).setInteger("Count", 9);
         assertEquals(3, ((NBTTagCompound) Objects.requireNonNull(data.get("Nested"))).getInteger("Count"));
         assertEquals(3, captured.data().getCompoundTag("Nested").getInteger("Count"));
         assertEquals(1, data.revision());

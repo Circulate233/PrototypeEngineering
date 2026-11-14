@@ -2,8 +2,8 @@ package com.circulation.prototype_eng.api.network;
 
 import com.circulation.prototype_eng.api.component.ComponentSystem;
 import com.circulation.prototype_eng.api.component.ComponentType;
-import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.ComputerController;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleListener;
 import com.circulation.prototype_eng.api.machine.persistence.MachineComponentCodec;
@@ -14,18 +14,21 @@ import net.minecraft.nbt.NBTTagList;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
- * 保存普通配方进度；资源事件结果仅作用于本次计算机工作周期，在下一次网络发布使用。
+ * Retains ordinary recipe progress. Resource effects belong to this work cycle and apply at the next network publication.
+ * The owner has its declared type and network role throughout recipe execution.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
+@SuppressWarnings("DataFlowIssue")
 public final class ComputerInputWork implements MachineLifecycleListener {
+    private static final ResourceLocation SYSTEM_ID = new ResourceLocation("prototype_eng", "computer_input_work");
     public static final ComponentType<MachineInstance, ComputerInputWork> TYPE = new ComponentType<>(
         new ResourceLocation("prototype_eng", "computer_input_recipes"), ComputerInputWork::new,
         List.of(new ComponentSystem<>() {
             @Override
             public ResourceLocation id() {
-                return new ResourceLocation("prototype_eng", "computer_input_work");
+                return SYSTEM_ID;
             }
 
             @Override
@@ -69,12 +72,12 @@ public final class ComputerInputWork implements MachineLifecycleListener {
 
     private ComputerInputWork(MachineInstance owner) {
         this.owner = owner;
-        recipes = Objects.requireNonNull(owner.type()).computerInputRecipes();
+        recipes = owner.type().computerInputRecipes();
         processes = new RecipeProcess[recipes.size()];
     }
 
     public NetworkResourceState effects() {
-        return Objects.requireNonNull(effects);
+        return effects;
     }
 
     public boolean hasEffects(long tick) {
@@ -95,7 +98,7 @@ public final class ComputerInputWork implements MachineLifecycleListener {
 
     private void tick() {
         if (!owner.canProcessRecipes()) return;
-        var data = Objects.requireNonNull(owner.networkDevice()).networkData();
+        var data = owner.networkDevice().networkData();
         if (lastTick == data.tick()) return;
         lastTick = data.tick();
         var installed = ((ComputerController) owner).installedInventory();

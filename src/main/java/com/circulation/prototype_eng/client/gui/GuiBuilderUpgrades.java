@@ -33,10 +33,16 @@ public final class GuiBuilderUpgrades extends AEBaseGui<ContainerBuilderUpgrades
     @Override
     public void drawBG(int offsetX, int offsetY, int mouseX, int mouseY, float partialTicks) {
         BackgroundGenerator.draw(xSize, ySize, offsetX, offsetY);
-        for (var slot : container.getSlots(SlotSemantics.PLAYER_INVENTORY))
+        var elements2 = container.getSlots(SlotSemantics.PLAYER_INVENTORY);
+        for (int index2 = 0; index2 < elements2.size(); index2++) {
+            var slot = elements2.get(index2);
             Icon.SLOT_BACKGROUND.getBlitter().dest(offsetX + slot.xPos - 1, offsetY + slot.yPos - 1).blit();
-        for (var slot : container.getSlots(SlotSemantics.PLAYER_HOTBAR))
+        }
+        var elements = container.getSlots(SlotSemantics.PLAYER_HOTBAR);
+        for (int index = 0; index < elements.size(); index++) {
+            var slot = elements.get(index);
             Icon.SLOT_BACKGROUND.getBlitter().dest(offsetX + slot.xPos - 1, offsetY + slot.yPos - 1).blit();
+        }
     }
 
     @Override

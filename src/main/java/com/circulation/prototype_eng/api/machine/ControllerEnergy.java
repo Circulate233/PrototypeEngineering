@@ -11,10 +11,10 @@ import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Owner-side controller upkeep. A successful payment is charged at most once per server tick.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class ControllerEnergy {
     private long paidTick = Long.MIN_VALUE;
@@ -23,7 +23,9 @@ public final class ControllerEnergy {
         long remaining = machine.networkEnergy(machine.energyPerTick());
         if (remaining == 0 || paidTick == tick) return true;
         var visited = new ReferenceOpenHashSet<StorageContext>();
-        for (var source : MachineHatches.get(machine).energyInputs()) {
+        var elements = MachineHatches.get(machine).energyInputs();
+        for (int index = 0; index < elements.size(); index++) {
+            var source = elements.get(index);
             var context = source.context();
             if (!source.isValid() || !visited.add(context)) continue;
             context.lock();
@@ -54,7 +56,9 @@ public final class ControllerEnergy {
         var tokens = new ObjectArrayList<ResourceReservation>();
         var visited = new ReferenceOpenHashSet<StorageContext>();
         try {
-            for (var source : MachineHatches.get(machine).energyInputs()) {
+            var elements2 = MachineHatches.get(machine).energyInputs();
+            for (int index2 = 0; index2 < elements2.size(); index2++) {
+                var source = elements2.get(index2);
                 var context = source.context();
                 if (!source.isValid() || !visited.add(context)) continue;
                 context.lock();
@@ -64,7 +68,7 @@ public final class ControllerEnergy {
                     if (amount == 0) continue;
                     var reserved = source.reserveExtractEnergy(snapshot, amount);
                     if (reserved.status() != ReservationResult.Status.ACCEPTED) break;
-                    tokens.add(Objects.requireNonNull(reserved.reservation()));
+                    tokens.add(reserved.reservation());
                     remaining -= amount;
                 } finally {
                     context.unlock();
@@ -108,8 +112,9 @@ public final class ControllerEnergy {
         }
 
         @Override
+        @SuppressWarnings("DataFlowIssue")
         public void commit() {
-            Objects.requireNonNull(owner).paidTick = tick;
+            owner.paidTick = tick;
             committed = true;
         }
 
@@ -119,8 +124,9 @@ public final class ControllerEnergy {
         }
 
         @Override
+        @SuppressWarnings("DataFlowIssue")
         public void rollback() {
-            if (committed) Objects.requireNonNull(owner).paidTick = previousTick;
+            if (committed) owner.paidTick = previousTick;
             committed = false;
             resolution = Resolution.ROLLED_BACK;
         }

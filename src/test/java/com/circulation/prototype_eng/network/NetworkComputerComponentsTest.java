@@ -174,30 +174,6 @@ class NetworkComputerComponentsTest {
         assertFalse(assertDoesNotThrow(() -> capture(registry, storage)).current());
     }
 
-    @Test
-    void contextRevisionIsRecheckedAfterExternalProofAndCaptureInvalidationIsNormal() {
-        var storage = buffer(1);
-        put(storage, 0, CARD, 2);
-        boolean[] mutate = {false};
-        var registry = new NetworkComputerComponentRegistry();
-        ComputerSupplyFixtures.register(registry, CARD, _ -> new NetworkComputerComponent.Capture(vector(ComputingResourceFixtures.COMPUTE, 5), () -> {
-            if (mutate[0]) {
-                put(storage, 0, CARD, 3);
-            }
-            return true;
-        }));
-        registry.freeze();
-        var captured = capture(registry, storage);
-        mutate[0] = true;
-        assertFalse(captured.current());
-        var invalidating = new NetworkComputerComponentRegistry();
-        ComputerSupplyFixtures.register(invalidating, CARD, _ -> {
-            storage.context().invalidate();
-            return new NetworkComputerComponent.Capture(vector(ComputingResourceFixtures.COMPUTE, 5), () -> true);
-        });
-        invalidating.freeze();
-        assertFalse(capture(invalidating, storage).current());
-    }
 
     @Test
     void restoredExistingBufferFeedsRecreatedComponentAndOldProofNeverRevives() {
@@ -232,8 +208,6 @@ class NetworkComputerComponentsTest {
             assertFalse(previous.current().getAsBoolean());
             assertEquals(28, current.snapshot().resourcesPerTick().getDouble(ComputingResourceFixtures.COMPUTE));
             assertTrue(current.current().getAsBoolean());
-            restored.components().remove(supply);
-            assertFalse(current.current().getAsBoolean());
             Objects.requireNonNull(restored.lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
         }
     }

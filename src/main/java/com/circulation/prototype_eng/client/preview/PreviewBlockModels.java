@@ -109,9 +109,11 @@ public final class PreviewBlockModels implements AutoCloseable {
         if (staticVbo && ready == null) return samples;
         var boxes = new ObjectArrayList<StructureProjectionState.Sample>();
         var represented = new ObjectArrayList<StructureProjectionState.Sample>();
-        for (var sample : samples)
+        for (int index4 = 0; index4 < samples.size(); index4++) {
+            var sample = samples.get(index4);
             if (PreviewBlockStates.represented(sample.cell())) represented.add(sample);
             else boxes.add(sample);
+        }
         var token = cache.epochToken();
         var before = State.capture(colors);
         Throwable failure = null;
@@ -208,8 +210,13 @@ public final class PreviewBlockModels implements AutoCloseable {
                 if (ready != null) drawChunks(ready, intent, cameraX, cameraY, cameraZ, valid);
                 else {
                     var samples = new ObjectArrayList<StructureProjectionState.Sample>();
-                    for (var cell : view.sceneSamples(options.renderVisitsPerFrame()))
+
+                    var elements = view.sceneSamples(options.renderVisitsPerFrame());
+                    for (int index = 0; index < elements.size(); index++) {
+                        var cell = elements.get(index);
                         samples.add(new StructureProjectionState.Sample(cell, cell.position(), StructureProjectionState.Status.UNKNOWN));
+                    }
+
                     drawSamples(model, samples, intent, cache.epochToken(), cameraX, cameraY, cameraZ, valid);
                 }
             } finally {
@@ -259,7 +266,8 @@ public final class PreviewBlockModels implements AutoCloseable {
             GL11.glEnableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
             OpenGlHelper.setClientActiveTexture(OpenGlHelper.defaultTexUnit);
             for (int layer = 0; layer < 3; layer++) {
-                for (var mesh : selected) {
+                for (int index3 = 0; index3 < selected.size(); index3++) {
+                    var mesh = selected.get(index3);
                     if (!cache.valid(ready) || !guard.getAsBoolean()) return;
                     var drawable = mesh.layers[layer];
                     if (drawable != null) drawable.draw();
@@ -269,10 +277,14 @@ public final class PreviewBlockModels implements AutoCloseable {
                 GlStateManager.enableBlend();
                 GlStateManager.depthMask(false);
             }
-            for (var mesh : PreviewBlockModelCache.translucentOrder(selected, intent.anchor(), x, y, z)) {
+
+            var elements2 = PreviewBlockModelCache.translucentOrder(selected, intent.anchor(), x, y, z);
+            for (int index2 = 0; index2 < elements2.size(); index2++) {
+                var mesh = elements2.get(index2);
                 if (!cache.valid(ready) || !guard.getAsBoolean()) return;
                 mesh.layers[3].draw();
             }
+
         } finally {
             GL11.glPopClientAttrib();
             OpenGlHelper.glBindBuffer(OpenGlHelper.GL_ARRAY_BUFFER, oldArrayBuffer);
@@ -292,8 +304,10 @@ public final class PreviewBlockModels implements AutoCloseable {
         BooleanSupplier valid = () -> cache.currentEpoch(token) && current(model) && guard.getAsBoolean();
         var visible = new ObjectArrayList<StructureProjectionState.Sample>();
         double maximumDistance = intent.options().maxDistance() * intent.options().maxDistance();
-        for (var sample : samples)
+        for (int index1 = 0; index1 < samples.size(); index1++) {
+            var sample = samples.get(index1);
             if (distance(sample.position(), x, y, z) <= maximumDistance) visible.add(sample);
+        }
         visible.sort((left, right) -> Double.compare(distance(right.position(), x, y, z), distance(left.position(), x, y, z)));
         var buffer = buffers.borrow();
         boolean building = false;

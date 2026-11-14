@@ -14,6 +14,7 @@ import java.util.Objects;
  * Counts describe one execution, scaled by effective parallelism and chance at acquisition.
  * Fuzzy/dynamic groups resolve and lock one key per group at START; weighted outputs run at END.
  * All supplied lists and their elements are borrowed immutable values for this definition's lifetime.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public record ResourceRequirement(List<GenericStack> inputs, List<GenericStack> inputsPerTick,
                                   List<GenericStack> outputsPerTick, List<GenericStack> outputs,
@@ -58,7 +59,8 @@ public record ResourceRequirement(List<GenericStack> inputs, List<GenericStack> 
      * Validates declaration quantities and borrows the list unchanged; no defensive copy is made.
      */
     public static void validateStacks(List<GenericStack> stacks) {
-        for (var stack : stacks) {
+        for (int index = 0; index < stacks.size(); index++) {
+            var stack = stacks.get(index);
             if (stack.amount() <= 0)
                 throw new IllegalArgumentException("Resource requirements need positive quantities");
         }

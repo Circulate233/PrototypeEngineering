@@ -108,10 +108,6 @@ class ZenAdvancedRecipeBridgeTest {
                 if (context.isEnergy) {
                     return [AllocationPortion.create(context.sources[1].index, context.amount)] as AllocationPortion[];
                 }
-                var localSources = context.sources;
-                localSources[0] = localSources[1];
-                var localResources = context.sources[0].resources;
-                localResources[0] = AdvancedHarness.product(99);
                 return [AllocationPortion.create(context.sources[0].index, context.sources[0].resources[0].amount - 2),
                         AllocationPortion.create(context.sources[1].index, context.amount - 7)] as AllocationPortion[];
             });

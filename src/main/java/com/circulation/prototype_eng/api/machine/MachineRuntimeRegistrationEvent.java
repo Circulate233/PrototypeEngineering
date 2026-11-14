@@ -18,6 +18,7 @@ import java.util.Objects;
  * Collects post-init structure and assembly definitions without publishing them. The caller resolves
  * both snapshots together after event delivery; every machine must use its frozen canonical type.
  * Definition callbacks must not reenter this event's registration methods.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class MachineRuntimeRegistrationEvent extends Event {
     private final MachineTypeRegistry registry;

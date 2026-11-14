@@ -165,7 +165,9 @@ class TeamResearchStartTest {
         callback[0] = () -> setup.queue.enqueue(RESEARCH, 1, MEMBER, 1);
         assertEquals(TeamResearchStart.Status.STALE_CONTEXT, start.start(request).status());
         assertEquals(1, setup.queue.size());
-        setup.queue.removeUnstarted(setup.queue.activeHead().orElseThrow().key());
+        var head = setup.queue.activeHead();
+        assertNotNull(head);
+        setup.queue.removeUnstarted(head.key());
         callback[0] = () -> start.start(request);
         assertThrows(IllegalStateException.class, () -> start.start(request));
         assertEquals(0, setup.queue.size());

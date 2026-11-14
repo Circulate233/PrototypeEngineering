@@ -50,7 +50,8 @@ public record HatchConfigurationSnapshot(UUID session, long revision, List<Hatch
         out.writeInt(side.capacities().size());
         var entries = new ObjectArrayList<>(side.capacities().reference2LongEntrySet());
         entries.sort(Comparator.comparing(entry -> entry.getKey().getId()));
-        for (var entry : entries) {
+        for (int index2 = 0; index2 < entries.size(); index2++) {
+            var entry = entries.get(index2);
             out.writeUTF(entry.getKey().getId().toString());
             out.writeLong(entry.getLongValue());
             if (out.size() > MAX_BYTES) throw new IllegalArgumentException("Hatch configuration snapshot is too large");
@@ -58,7 +59,10 @@ public record HatchConfigurationSnapshot(UUID session, long revision, List<Hatch
         out.writeBoolean(side.basis() != null);
         if (side.basis() != null) {
             out.writeLong(side.basis().itemEquivalent());
-            for (var entry : entries) out.writeLong(side.basis().ratios().getLong(entry.getKey()));
+            for (int index1 = 0; index1 < entries.size(); index1++) {
+                var entry = entries.get(index1);
+                out.writeLong(side.basis().ratios().getLong(entry.getKey()));
+            }
         }
     }
 
@@ -121,7 +125,8 @@ public record HatchConfigurationSnapshot(UUID session, long revision, List<Hatch
             out.writeLong(session.getMostSignificantBits());
             out.writeLong(session.getLeastSignificantBits());
             out.writeLong(revision);
-            for (var profile : profiles) {
+            for (int index3 = 0; index3 < profiles.size(); index3++) {
+                var profile = profiles.get(index3);
                 if (profile instanceof ResourceHatchConfiguration(var input, var output)) {
                     if (input != null) writeSide(out, input);
                     if (output != null) writeSide(out, output);

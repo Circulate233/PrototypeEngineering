@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.api.research.download;
 
 import com.circulation.prototype_eng.api.persistence.NbtCodec;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
@@ -12,8 +11,6 @@ import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
@@ -21,8 +18,8 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Comparator;
 import java.util.Map;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -135,7 +132,8 @@ public final class ResearchDownloadSources {
             if (definition.researchTierForLevel(downloadLevel) > database.level())
                 return evaluation(Status.DATA_CENTER_LEVEL_TOO_LOW);
             var changes = new ObjectArrayList<MemberChange>(members.size());
-            for (var member : members) {
+            for (int index2 = 0; index2 < members.size(); index2++) {
+                var member = members.get(index2);
                 var source = player(players, member);
                 int before;
                 if (source == null) before = 0;
@@ -171,7 +169,9 @@ public final class ResearchDownloadSources {
         var acquired = new ObjectArrayList<PlayerResearchState>(plan.memberChanges().size());
         try {
             if (plan.policy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM) {
-                for (var change : plan.memberChanges()) {
+                var elements13 = plan.memberChanges();
+                for (int index13 = 0; index13 < elements13.size(); index13++) {
+                    var change = elements13.get(index13);
                     var source = player(players, change.memberId());
                     Status rejected = null;
                     if (source == null) rejected = Status.SOURCE_CHANGED;
@@ -215,13 +215,16 @@ public final class ResearchDownloadSources {
             return team.releaseSource(plan.researchId(), operationId) ? Status.READY : Status.SOURCE_BUSY;
         }
         var originalSources = new ObjectArrayList<PlayerResearchState>(plan.memberChanges().size());
-        for (var change : plan.memberChanges()) {
+        var elements10 = plan.memberChanges();
+        for (int index10 = 0; index10 < elements10.size(); index10++) {
+            var change = elements10.get(index10);
             var source = player(players, change.memberId());
             if (source == null) return Status.SOURCE_CHANGED;
             if (!source.canReleaseSource(plan.researchId(), operationId)) return Status.SOURCE_BUSY;
             originalSources.add(source);
         }
-        for (var source : originalSources) {
+        for (int index1 = 0; index1 < originalSources.size(); index1++) {
+            var source = originalSources.get(index1);
             if (!source.releaseSource(plan.researchId(), operationId)) return Status.SOURCE_BUSY;
         }
         return Status.READY;
@@ -246,7 +249,9 @@ public final class ResearchDownloadSources {
         TeamOwnedResearch.Completion teamMutation = null;
         try {
             if (plan.policy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM) {
-                for (var change : plan.memberChanges()) {
+                var elements14 = plan.memberChanges();
+                for (int index14 = 0; index14 < elements14.size(); index14++) {
+                    var change = elements14.get(index14);
                     var source = player(players, change.memberId());
                     if (source == null) {
                         if (operationId != null || change.beforeLevel() != 0)
@@ -294,7 +299,9 @@ public final class ResearchDownloadSources {
         Objects.requireNonNull(players);
         requireTeam(plan.teamId(), team);
         if (plan.policy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM) {
-            for (var change : plan.memberChanges()) {
+            var elements12 = plan.memberChanges();
+            for (int index12 = 0; index12 < elements12.size(); index12++) {
+                var change = elements12.get(index12);
                 var source = player(players, change.memberId());
                 if (source == null) {
                     if (change.afterLevel() != 0) return Status.SOURCE_CHANGED;
@@ -321,7 +328,11 @@ public final class ResearchDownloadSources {
         if (definition.specialOnly() || definition.deliveryPolicy() != plan.policy() || plan.cost() > definition.maxLevel()) {
             throw new IllegalArgumentException("Frozen download source policy is incompatible with its definition");
         }
-        for (var change : plan.memberChanges()) requireSourceLevel(definition, change.beforeLevel());
+        var elements7 = plan.memberChanges();
+        for (int index7 = 0; index7 < elements7.size(); index7++) {
+            var change = elements7.get(index7);
+            requireSourceLevel(definition, change.beforeLevel());
+        }
         if (plan.policy() == ResearchDownloadDeliveryPolicy.ITEM_ONLY)
             requireSourceLevel(definition, plan.teamBeforeLevel());
         // Cost is the persisted cost, not a newly sampled definition.itemDownloadLevelCost().
@@ -369,42 +380,11 @@ public final class ResearchDownloadSources {
 
     /**
      * No live source, membership provider, database permit or transaction is serialized.
+     * Members and changes must be sorted by member UUID and remain immutable while retained.
      */
     public record Plan(ResearchDownloadDeliveryPolicy policy, ResourceLocation researchId, int downloadLevel, int cost,
                        String teamId, ObjectList<UUID> members, ObjectList<MemberChange> memberChanges,
                        int teamBeforeLevel, int teamAfterLevel) {
-        public Plan {
-            Objects.requireNonNull(policy);
-            StrictNbt.requireId(Objects.requireNonNull(researchId).toString());
-            if (downloadLevel < 1 || cost < 0 || Objects.requireNonNull(teamId).isBlank() || !teamId.equals(teamId.trim())) {
-                throw new IllegalArgumentException("Invalid frozen download source metadata");
-            }
-            var memberCopy = new ObjectArrayList<>(Objects.requireNonNull(members));
-            var ids = new ObjectOpenHashSet<UUID>();
-            for (var member : memberCopy)
-                if (!ids.add(Objects.requireNonNull(member)))
-                    throw new IllegalArgumentException("Duplicate frozen member");
-            if (memberCopy.isEmpty()) throw new IllegalArgumentException("Download requires original members");
-            memberCopy.sort(null);
-            members = ObjectLists.unmodifiable(memberCopy);
-            var changes = new ObjectArrayList<>(Objects.requireNonNull(memberChanges));
-            var changed = new ObjectOpenHashSet<UUID>();
-            for (var change : changes) {
-                Objects.requireNonNull(change);
-                if (!changed.add(change.memberId()) || change.beforeLevel() < cost || change.afterLevel() != change.beforeLevel() - cost) {
-                    throw new IllegalArgumentException("Frozen member source cost differs");
-                }
-            }
-            changes.sort(Comparator.comparing(MemberChange::memberId));
-            memberChanges = ObjectLists.unmodifiable(changes);
-            if (policy == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM) {
-                if (!changed.equals(ids) || teamBeforeLevel != -1 || teamAfterLevel != -1)
-                    throw new IllegalArgumentException("Invalid aggregate source scope");
-            } else if (!changes.isEmpty() || teamBeforeLevel < downloadLevel || teamBeforeLevel < cost
-                || teamAfterLevel < 0 || teamAfterLevel != teamBeforeLevel - cost) {
-                throw new IllegalArgumentException("Invalid team source scope");
-            }
-        }
     }
 
     private record HeldPlayer(PlayerResearchState source, PlayerResearchState.Completion mutation) {
@@ -439,13 +419,19 @@ public final class ResearchDownloadSources {
         public boolean owns(PlayerResearchState source) {
             requireOwner();
             if (terminal != Resolution.REVERSIBLE) return false;
-            for (var held : players) if (held.source() == source) return held.mutation().owns(source);
+            for (int index6 = 0; index6 < players.size(); index6++) {
+                var held = players.get(index6);
+                if (held.source() == source) return held.mutation().owns(source);
+            }
             return false;
         }
 
         public PlayerResearchState.Snapshot snapshot(PlayerResearchState source) {
             requireOwner();
-            for (var held : players) if (held.source() == source && owns(source)) return held.mutation().snapshot();
+            for (int index9 = 0; index9 < players.size(); index9++) {
+                var held = players.get(index9);
+                if (held.source() == source && owns(source)) return held.mutation().snapshot();
+            }
             throw new IllegalStateException("Download does not own this personal source snapshot");
         }
 
@@ -467,7 +453,10 @@ public final class ResearchDownloadSources {
                 throw new IllegalStateException("Download source commit cannot replay");
             commitAttempted = true;
             try {
-                for (var held : players) held.mutation().commit();
+                for (int index3 = 0; index3 < players.size(); index3++) {
+                    var held = players.get(index3);
+                    held.mutation().commit();
+                }
                 if (teamMutation != null) teamMutation.commit();
                 committed = true;
             } catch (RuntimeException | Error failure) {
@@ -493,14 +482,20 @@ public final class ResearchDownloadSources {
             if (terminal == Resolution.COMPLETED) return;
             if (terminal != Resolution.REVERSIBLE || !committed)
                 throw new IllegalStateException("Download sources have not committed");
-            for (var held : players) held.mutation().complete();
+            for (int index4 = 0; index4 < players.size(); index4++) {
+                var held = players.get(index4);
+                held.mutation().complete();
+            }
             if (teamMutation != null) teamMutation.complete();
             terminal = Resolution.COMPLETED;
         }
 
         private boolean allRolledBack() {
             if (teamMutation != null && teamMutation.resolution() != Resolution.ROLLED_BACK) return false;
-            for (var held : players) if (held.mutation().resolution() != Resolution.ROLLED_BACK) return false;
+            for (int index8 = 0; index8 < players.size(); index8++) {
+                var held = players.get(index8);
+                if (held.mutation().resolution() != Resolution.ROLLED_BACK) return false;
+            }
             return true;
         }
 
@@ -530,48 +525,52 @@ public final class ResearchDownloadSources {
             tag.setInteger("TeamBefore", plan.teamBeforeLevel());
             tag.setInteger("TeamAfter", plan.teamAfterLevel());
             var members = new NBTTagList();
-            for (var member : plan.members()) members.appendTag(new NBTTagString(member.toString()));
-            tag.setTag("Members", members);
-            var changes = new NBTTagList();
-            for (var change : plan.memberChanges()) {
-                var saved = new NBTTagCompound();
-                saved.setString("Member", change.memberId().toString());
-                saved.setInteger("Before", change.beforeLevel());
-                saved.setInteger("After", change.afterLevel());
-                changes.appendTag(saved);
+            var elements = plan.members();
+            for (int index5 = 0; index5 < elements.size(); index5++) {
+                var member = elements.get(index5);
+                members.appendTag(new NBTTagString(member.toString()));
             }
-            tag.setTag("Changes", changes);
+            tag.setTag("Members", members);
+            tag.setTag("Changes", changes(plan.memberChanges()));
             return tag;
+        }
+
+        private static NBTTagList changes(List<MemberChange> changes) {
+            var list = new NBTTagList();
+            for (int index = 0; index < changes.size(); index++) {
+                var change = changes.get(index);
+                var tag = new NBTTagCompound();
+                tag.setString("Member", change.memberId().toString());
+                tag.setInteger("Before", change.beforeLevel());
+                tag.setInteger("After", change.afterLevel());
+                list.appendTag(tag);
+            }
+            return list;
         }
 
         @Override
         public Plan decode(NBTTagCompound tag) {
-            StrictNbt.requireKeys(tag, "Version", "Policy", "Research", "DownloadLevel", "Cost", "Team", "TeamBefore", "TeamAfter", "Members", "Changes");
-            if (StrictNbt.requireInt(tag, "Version") != 1)
+            if (tag.getInteger("Version") != 1)
                 throw new IllegalArgumentException("Unknown download source plan version");
-            var memberTags = StrictNbt.requireList(tag, "Members", Constants.NBT.TAG_STRING);
+            var memberTags = tag.getTagList("Members", Constants.NBT.TAG_STRING);
             var members = new ObjectArrayList<UUID>(memberTags.tagCount());
             for (int index = 0; index < memberTags.tagCount(); index++)
                 members.add(uuid(memberTags.getStringTagAt(index)));
-            var changeTags = StrictNbt.requireList(tag, "Changes", Constants.NBT.TAG_COMPOUND);
+            var changeTags = tag.getTagList("Changes", Constants.NBT.TAG_COMPOUND);
             var changes = new ObjectArrayList<MemberChange>(changeTags.tagCount());
             for (int index = 0; index < changeTags.tagCount(); index++) {
                 var saved = changeTags.getCompoundTagAt(index);
-                StrictNbt.requireKeys(saved, "Member", "Before", "After");
-                changes.add(new MemberChange(uuid(StrictNbt.requireString(saved, "Member")), StrictNbt.requireInt(saved, "Before"), StrictNbt.requireInt(saved, "After")));
+                changes.add(new MemberChange(uuid(saved.getString("Member")), saved.getInteger("Before"), saved.getInteger("After")));
             }
-            var plan = new Plan(ResearchDownloadDeliveryPolicy.valueOf(StrictNbt.requireString(tag, "Policy")),
-                StrictNbt.requireId(tag, "Research"), StrictNbt.requireInt(tag, "DownloadLevel"), StrictNbt.requireInt(tag, "Cost"),
-                StrictNbt.requireString(tag, "Team"), members, changes, StrictNbt.requireInt(tag, "TeamBefore"), StrictNbt.requireInt(tag, "TeamAfter"));
+            var plan = new Plan(ResearchDownloadDeliveryPolicy.valueOf(tag.getString("Policy")),
+                new ResourceLocation(tag.getString("Research")), tag.getInteger("DownloadLevel"), tag.getInteger("Cost"),
+                tag.getString("Team"), members, changes, tag.getInteger("TeamBefore"), tag.getInteger("TeamAfter"));
             validate(plan);
             return plan;
         }
 
         private UUID uuid(String value) {
-            var id = UUID.fromString(value);
-            if (!id.toString().equals(value))
-                throw new IllegalArgumentException("Noncanonical frozen download member UUID");
-            return id;
+            return UUID.fromString(value);
         }
     }
 }

@@ -11,15 +11,14 @@ import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import net.minecraft.network.PacketBuffer;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
- * 组件列表和资源定义在发送前必须完成，调用方不得修改。仅组成变化时发布。
+ * Complete component lists and resource definitions before sending; callers must not mutate them. Publish only on composition changes.
  */
 public record ComputerDetailsPacket(List<Component> components) implements PacketWritable {
     public static final ComputerDetailsPacket EMPTY = new ComputerDetailsPacket(List.of());
 
-    @SuppressWarnings("unused") // AE GuiSync 调用具体包类型的 ByteBuf 构造器。
+    @SuppressWarnings("unused") // AE GuiSync invokes the concrete packet type's ByteBuf constructor.
     public ComputerDetailsPacket(ByteBuf data) {
         this(readComponents(new PacketBuffer(data)));
     }
@@ -28,7 +27,7 @@ public record ComputerDetailsPacket(List<Component> components) implements Packe
         int count = data.readVarInt();
         var rows = new ObjectArrayList<Component>(count);
         for (int index = 0; index < count; index++)
-            rows.add(new Component(Objects.requireNonNull(AEKey.readKey(data)), data.readVarLong(), data.readVarLong(),
+            rows.add(new Component(AEKey.readKey(data), data.readVarLong(), data.readVarLong(),
                 data.readVarLong(), readResources(data), readResources(data)));
         return rows;
     }
@@ -44,7 +43,8 @@ public record ComputerDetailsPacket(List<Component> components) implements Packe
     public void writeToPacket(ByteBuf buffer) {
         var data = new PacketBuffer(buffer);
         data.writeVarInt(components.size());
-        for (var row : components) {
+        for (int index1 = 0; index1 < components.size(); index1++) {
+            var row = components.get(index1);
             AEKey.writeKey(data, row.item);
             data.writeVarLong(row.count);
             data.writeVarLong(row.concurrency);

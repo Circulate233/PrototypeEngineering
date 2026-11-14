@@ -10,6 +10,7 @@ import java.util.Objects;
 /**
  * Immutable IO overrides: null inherits the base field, while an empty list explicitly clears it.
  * Non-null input lists are borrowed and must remain unchanged while this patch or its result is used.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public record ResourceRequirementPatch(@Nullable List<GenericStack> inputs,
                                        @Nullable List<GenericStack> inputsPerTick,

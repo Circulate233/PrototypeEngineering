@@ -188,18 +188,26 @@ public class PrototypeJeiPlugin implements IModPlugin {
             if (updates == null)
                 return rejectGeneration("A JEI page does not support definition updates", capturedInvalidation, token, previous, wrappers, registry, gui);
             var allDisplays = new ObjectArrayList<JeiRecipeDisplay>();
-            for (var recipe : RecipePoolJeiRegistry.INSTANCE.ownedRecipes(snapshot.orderedPools()))
+
+            var elements5 = RecipePoolJeiRegistry.INSTANCE.ownedRecipes(snapshot.orderedPools());
+            for (int index5 = 0; index5 < elements5.size(); index5++) {
+                var recipe = elements5.get(index5);
                 allDisplays.add(descriptions.describe(recipe));
+            }
+
             allDisplays.addAll(computerRecipes.displays());
             var converters = IngredientConverters.getConverters();
             var identities = JeiQueryIdentityIndex.capture(converters, capturedIngredients, allDisplays);
-            for (var update : updates) {
+            for (int index12 = 0; index12 < updates.size(); index12++) {
+                var update = updates.get(index12);
                 boolean disabled = HeiRecipeGeneration.categoryDisabled(update.page().getUid());
                 var category = registry.getRecipeCategory(update.page().getUid());
                 if (category != update.page() && !(disabled && category == null))
                     throw new IllegalStateException("HEI category identity changed: " + update.page().getUid());
                 if (disabled) continue;
-                for (var recipe : update.pool().recipes()) {
+                var elements18 = update.pool().recipes();
+                for (int index18 = 0; index18 < elements18.size(); index18++) {
+                    var recipe = elements18.get(index18);
                     var display = descriptions.describe(recipe);
                     var recipeIngredients = new JeiRecipeIngredients(display, converters, capturedIngredients, identities);
                     var wrapper = Objects.requireNonNull(update.createRecipe(recipe, display, recipeIngredients), "JEI page returned null wrapper");
@@ -223,13 +231,20 @@ public class PrototypeJeiPlugin implements IModPlugin {
                 return status();
             }
             pageDataCurrent = false;
-            for (var update : updates) update.apply();
-            for (var update : updates)
+            for (int index = 0; index < updates.size(); index++) {
+                var update = updates.get(index);
+                update.apply();
+            }
+            for (int index7 = 0; index7 < updates.size(); index7++) {
+                var update = updates.get(index7);
                 if (update.page().pool() != update.pool())
                     throw new IllegalStateException("JEI page did not install its prepared pool");
-            for (var wrapper : wrappers)
+            }
+            for (int index8 = 0; index8 < wrappers.size(); index8++) {
+                var wrapper = wrappers.get(index8);
                 if (!access.confirmed(wrapper, false))
                     throw new IllegalStateException("HEI category or focus mappings changed after page data installation");
+            }
             var preparedGeneration = new Generation(snapshot, displays.frozenCopy(), descriptions, identities, ObjectLists.unmodifiable(wrappers), token);
             boolean finalDesired = staticInitial || matchesDesired(snapshot, displays);
             if (!finalDesired || desiredResolved != capturedDesiredSource || invalidationEpoch != capturedInvalidation || runtime != capturedRuntime || ingredients != capturedIngredients)
@@ -268,7 +283,8 @@ public class PrototypeJeiPlugin implements IModPlugin {
                                                                                RecipeRegistry.Snapshot snapshot, RecipeJeiDisplays.Snapshot descriptions,
                                                                                @Nullable RecipeJeiDisplays.Snapshot measured, boolean currentProviders) {
         var updates = new ObjectArrayList<RecipePoolJeiPage.PreparedUpdate>(pages.size());
-        for (var page : pages) {
+        for (int index19 = 0; index19 < pages.size(); index19++) {
+            var page = pages.get(index19);
             var pool = snapshot.pools().get(page.pool().id());
             if (pool == null) return null;
             var update = page.prepareUpdate(pool, descriptions);
@@ -311,7 +327,8 @@ public class PrototypeJeiPlugin implements IModPlugin {
                                            RecipeJeiDisplays displays, Set<String> categoryIds, boolean postDeclaration) {
         requireClientOwner();
         var known = new ObjectOpenHashSet<>(categoryIds);
-        for (var pool : pools) {
+        for (int index14 = 0; index14 < pools.size(); index14++) {
+            var pool = pools.get(index14);
             var target = pool.existingJeiPageId();
             if (pool.hasExistingJeiPage() && target != null && !target.isBlank()
                 && Config.isRecipeCategoryDisabled(target)) known.add(target);
@@ -323,7 +340,13 @@ public class PrototypeJeiPlugin implements IModPlugin {
             ? new SingleInputRecipePage(simple, helper, descriptions, pages.renderOptions(pool.id()))
             : new AutoLayoutRecipePage(pool, helper, descriptions, pages.renderOptions(pool.id())), descriptions, known);
         registrationDescriptions = descriptions;
-        for (var page : pages.pages()) registration.addRecipeCategories(page);
+
+        var elements = pages.pages();
+        for (int index2 = 0; index2 < elements.size(); index2++) {
+            var page = elements.get(index2);
+            registration.addRecipeCategories(page);
+        }
+
         if (!declarationEventPosted && postDeclaration) {
             declarationEventPosted = true;
             MinecraftForge.EVENT_BUS.post(new ClientRecipeDeclarationRegistrationEvent(ClientRecipeDeclarations.INSTANCE, registrationSnapshot, displays));
@@ -336,9 +359,14 @@ public class PrototypeJeiPlugin implements IModPlugin {
         transfer.addRecipeTransferHandler(new PatternRecipeTransfer<>(ContainerPatternEncodingTerm.class, helper), StructurePreviewJeiCategory.UID);
         transfer.addRecipeTransferHandler(new PatternRecipeTransfer<>(ContainerPEATerm.class, helper), StructurePreviewJeiCategory.UID);
         var structures = new ObjectArrayList<StructurePreviewJeiRecipe>();
-        for (var machine : MachineTypeRegistry.INSTANCE.types()) {
+        var elements20 = MachineTypeRegistry.INSTANCE.types();
+        for (int index20 = 0; index20 < elements20.size(); index20++) {
+            var machine = elements20.get(index20);
             var controllers = new ObjectArrayList<ItemStack>();
-            for (var block : MachineControllerBlocks.all()) {
+
+            var elements11 = MachineControllerBlocks.all();
+            for (int index11 = 0; index11 < elements11.size(); index11++) {
+                var block = elements11.get(index11);
                 if (block.type() != machine) continue;
                 var stack = new ItemStack(block);
                 if (!stack.isEmpty()) {
@@ -346,6 +374,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
                     registration.addRecipeCatalyst(stack.copy(), StructurePreviewJeiCategory.UID);
                 }
             }
+
             structures.add(new StructurePreviewJeiRecipe(machine, controllers));
         }
         registration.addRecipes(structures, StructurePreviewJeiCategory.UID);
@@ -361,23 +390,34 @@ public class PrototypeJeiPlugin implements IModPlugin {
         var allWrappers = new ObjectArrayList<RecipePoolJeiRecipe>();
         var converters = IngredientConverters.getConverters();
         var allDisplays = new ObjectArrayList<JeiRecipeDisplay>();
-        for (var page : pages.pages()) {
-            for (var recipe : page.pool().recipes()) {
+
+        var elements6 = pages.pages();
+        for (int index6 = 0; index6 < elements6.size(); index6++) {
+            var page = elements6.get(index6);
+            var elements1 = page.pool().recipes();
+            for (int index1 = 0; index1 < elements1.size(); index1++) {
+                var recipe = elements1.get(index1);
                 allDisplays.add(descriptions.describe(recipe));
             }
         }
+
         allDisplays.addAll(computerRecipes.displays());
         // Finish the global identity audit before registering any pool's wrappers.
         var identities = JeiQueryIdentityIndex.capture(converters, registration.getIngredientRegistry(), allDisplays);
 
-        for (var page : pages.pages()) {
+
+        var elements13 = pages.pages();
+        for (int index13 = 0; index13 < elements13.size(); index13++) {
+            var page = elements13.get(index13);
             if (HeiRecipeGeneration.categoryDisabled(page.getUid())) continue;
             var wrappers = new ObjectArrayList<>();
             var transfer = registration.getRecipeTransferRegistry();
             var helper = registration.getJeiHelpers().recipeTransferHandlerHelper();
             transfer.addRecipeTransferHandler(new PatternRecipeTransfer<>(ContainerPatternEncodingTerm.class, helper), page.getUid());
             transfer.addRecipeTransferHandler(new PatternRecipeTransfer<>(ContainerPEATerm.class, helper), page.getUid());
-            for (var recipe : page.pool().recipes()) {
+            var elements17 = page.pool().recipes();
+            for (int index17 = 0; index17 < elements17.size(); index17++) {
+                var recipe = elements17.get(index17);
                 var display = descriptions.describe(recipe);
                 var ingredients = new JeiRecipeIngredients(display, converters, registration.getIngredientRegistry(), identities);
                 var wrapper = Objects.requireNonNull(page.createRecipe(recipe, display, ingredients), "JEI page returned null wrapper");
@@ -387,11 +427,19 @@ public class PrototypeJeiPlugin implements IModPlugin {
                 wrappers.add(wrapper);
             }
             registration.addRecipes(wrappers, page.getUid());
-            for (var catalyst : pages.catalysts(page.pool().id())) {
+
+            var elements4 = pages.catalysts(page.pool().id());
+            for (int index4 = 0; index4 < elements4.size(); index4++) {
+                var catalyst = elements4.get(index4);
                 registration.addRecipeCatalyst(catalyst, page.getUid());
             }
-            for (var machine : page.pool().machines()) {
-                for (var block : MachineControllerBlocks.all()) {
+
+            var elements16 = page.pool().machines();
+            for (int index16 = 0; index16 < elements16.size(); index16++) {
+                var machine = elements16.get(index16);
+                var elements10 = MachineControllerBlocks.all();
+                for (int index10 = 0; index10 < elements10.size(); index10++) {
+                    var block = elements10.get(index10);
                     if (block.type() != machine) continue;
                     var controller = new ItemStack(block);
                     if (!controller.isEmpty()) {
@@ -400,6 +448,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
                 }
             }
         }
+
         allWrappers.addAll(computerRecipes.registerRecipes(registration, converters, identities, token));
         generation = new Generation(registrationSnapshot, displays.frozenCopy(), descriptions,
             identities, ObjectLists.unmodifiable(allWrappers), token);
@@ -413,12 +462,23 @@ public class PrototypeJeiPlugin implements IModPlugin {
         for (var binding : pages.externalPages().entrySet()) {
             var pool = registrationSnapshot.pools().get(binding.getKey());
             var uid = binding.getValue();
-            for (var catalyst : pages.catalysts(pool.id())) registration.addRecipeCatalyst(catalyst, uid);
+
+            var elements3 = pages.catalysts(pool.id());
+            for (int index3 = 0; index3 < elements3.size(); index3++) {
+                var catalyst = elements3.get(index3);
+                registration.addRecipeCatalyst(catalyst, uid);
+            }
+
             if (StructurePreviewJeiCategory.UID.equals(uid)) continue;
             var machines = seen.computeIfAbsent(uid, _ -> new ReferenceOpenHashSet<>());
-            for (var machine : pool.machines()) {
+            var elements15 = pool.machines();
+            for (int index15 = 0; index15 < elements15.size(); index15++) {
+                var machine = elements15.get(index15);
                 if (!machines.add(machine)) continue;
-                for (var block : MachineControllerBlocks.all()) {
+
+                var elements9 = MachineControllerBlocks.all();
+                for (int index9 = 0; index9 < elements9.size(); index9++) {
+                    var block = elements9.get(index9);
                     if (block.type() != machine) continue;
                     var stack = new ItemStack(block);
                     if (!stack.isEmpty()) registration.addRecipeCatalyst(stack, uid);

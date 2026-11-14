@@ -241,7 +241,8 @@ public final class UnboundedResourceBuffer implements ResourceStorage {
     public void restore(List<GenericStack> contents) {
         Objects.requireNonNull(contents);
         var next = new AEKey2LongMap.OpenHashMap(contents.size());
-        for (var stack : contents) {
+        for (int index = 0; index < contents.size(); index++) {
+            var stack = contents.get(index);
             Objects.requireNonNull(stack);
             if (stack.amount() <= 0 || stack.amount() > Long.MAX_VALUE - next.getLong(stack.what()))
                 throw new IllegalArgumentException("Invalid saved output resource amount");

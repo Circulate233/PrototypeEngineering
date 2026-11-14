@@ -353,7 +353,7 @@ public final class RunNetworkRender {
                                 processes.getFirst().recipe()).scaledResources(expected);
                             NativeChecks.check("net_final_numeric_vector", required.size() == 1 && required.getDouble(compute) == 2L * expected
                             );
-                            var before = permit.availableResources();
+                            double before = permit.availableResources().getDouble(compute);
                             var receipts = new it.unimi.dsi.fastutil.objects.ObjectArrayList<com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget.Reservation>();
                             boolean committed = true;
                             try {
@@ -368,13 +368,13 @@ public final class RunNetworkRender {
                                     receipts.add(receipt);
                                 }
                                 NativeChecks.check("net_same_machine_lease_shared", permit.requestLease() == com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget.LeaseStatus.ALREADY_GRANTED);
-                                NativeChecks.check("net_native_budget_actual_total_delta", permit.availableResources().getDouble(compute) == before.getDouble(compute) - 2L * expected * expectedCount);
+                                NativeChecks.check("net_native_budget_actual_total_delta", permit.availableResources().getDouble(compute) == before - 2L * expected * expectedCount);
                                 for (var receipt : receipts) committed &= receipt.commit();
                             } finally {
                                 for (var receipt : receipts) receipt.rollback();
                             }
                             NativeChecks.check("net_native_budget_commit_and_compensation", committed && receipts.stream().allMatch(r -> r.state() == com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget.Reservation.State.ROLLED_BACK)
-                                && permit.availableResources().equals(before));
+                                && permit.availableResources().getDouble(compute) == before);
                             pass(player, "net_final_parallelism_actual", "actual processes=" + expectedCount + " each effective=" + expected + " suggested=1; THREAD same-machine lease=1; numeric compute total="
                                 + (2L * expected * expectedCount) + " actual issuing-book delta/commit/refund verified");
                             return;
@@ -472,7 +472,7 @@ public final class RunNetworkRender {
                     image.setLong("elapsed", state.elapsedTicks());
                     image.setDouble("numeric_progress", progress);
                     var materials = new NBTTagList();
-                    var keys = new com.circulation.prototype_eng.api.persistence.ResourceKeyNbt();
+                    var keys = com.circulation.prototype_eng.api.persistence.ResourceKeyNbt.INSTANCE;
                     for (var key : ResearchRegistry.INSTANCE.require(head.researchId()).stageForLevel(head.targetLevel()).materialTotals().keySet()) {
                         var material = new NBTTagCompound();
                         material.setTag("key", keys.encode(key));

@@ -25,6 +25,9 @@ public final class PreviewClientOpenQueue {
         if (event.phase != TickEvent.Phase.END || pending.isEmpty()) return;
         var ready = pending;
         pending = new ObjectArrayList<>();
-        for (var action : ready) action.run();
+        for (int index = 0; index < ready.size(); index++) {
+            var action = ready.get(index);
+            action.run();
+        }
     }
 }

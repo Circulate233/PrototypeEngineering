@@ -122,6 +122,7 @@ public final class StructurePreviewModel {
 
     /**
      * The old layer control selects one relative Y plane without changing the whole-structure BOM.
+     * List arguments and results, including nested lists, must support constant-time indexed access.
      */
     public record Layer(int y) {
         public boolean includes(Cell cell) {

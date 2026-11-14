@@ -1,22 +1,23 @@
 package com.circulation.prototype_eng.api.research.manual;
 
 import com.circulation.prototype_eng.api.persistence.NbtCodec;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
+import com.circulation.prototype_eng.api.research.ResearchLevelStage;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 
 import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Strict versioned checkpoints. Decoding preserves the exact state; world loading calls restored().
+ * Versioned checkpoints. Decoding preserves the exact state; world loading calls restored().
  */
 @SuppressWarnings("unused")
 public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSession> {
@@ -43,17 +44,15 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
     }
 
     public static ManualResearchSession.MaterialIntent decodeMaterialIntent(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Operation", "Contributor", "Sequence", "Pending", "Expected", "Elapsed", "AdvancedAt");
-        return new ManualResearchSession.MaterialIntent(uuid(StrictNbt.requireString(tag, "Operation")),
-            uuid(StrictNbt.requireString(tag, "Contributor")), StrictNbt.requireLong(tag, "Sequence"),
-            decodeWork(StrictNbt.requireList(tag, "Pending", Constants.NBT.TAG_COMPOUND)),
-            decodeWork(StrictNbt.requireList(tag, "Expected", Constants.NBT.TAG_COMPOUND)),
-            StrictNbt.requireLong(tag, "Elapsed"), StrictNbt.requireLong(tag, "AdvancedAt"));
+        return new ManualResearchSession.MaterialIntent(uuid(tag.getString("Operation")),
+            uuid(tag.getString("Contributor")), tag.getLong("Sequence"),
+            decodeWork(tag.getTagList("Pending", Constants.NBT.TAG_COMPOUND)),
+            decodeWork(tag.getTagList("Expected", Constants.NBT.TAG_COMPOUND)),
+            tag.getLong("Elapsed"), tag.getLong("AdvancedAt"));
     }
 
     public static NBTTagList encodeWork(Object2LongMap<ManualMaterialKey> work) {
         var list = new NBTTagList();
-        ManualResearchSession.validateWork(work);
         for (var entry : work.object2LongEntrySet()) {
             var tag = new NBTTagCompound();
             tag.setString("Requirement", entry.getKey().requirementId().toString());
@@ -65,16 +64,14 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
     }
 
     public static Object2LongMap<ManualMaterialKey> decodeWork(NBTTagList list) {
-        StrictNbt.requireListElements(list, Constants.NBT.TAG_COMPOUND);
         var amounts = new Object2LongOpenHashMap<ManualMaterialKey>(list.tagCount());
         for (int index = 0; index < list.tagCount(); index++) {
             var tag = list.getCompoundTagAt(index);
-            StrictNbt.requireKeys(tag, "Requirement", "Input", "Amount");
-            var key = new ManualMaterialKey(StrictNbt.requireId(tag, "Requirement"), StrictNbt.requireInt(tag, "Input"));
+            var key = new ManualMaterialKey(new ResourceLocation(tag.getString("Requirement")), tag.getInteger("Input"));
             if (amounts.containsKey(key)) {
                 throw new IllegalArgumentException("Duplicate saved manual material key");
             }
-            amounts.put(key, StrictNbt.requireLong(tag, "Amount"));
+            amounts.put(key, tag.getLong("Amount"));
         }
         ManualResearchSession.validateWork(amounts);
         return amounts;
@@ -95,19 +92,17 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
     }
 
     private static ManualResearchSession.CompletionIntent decodeCompletion(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "WorldTime", "Baselines");
-        var saved = StrictNbt.requireList(tag, "Baselines", Constants.NBT.TAG_COMPOUND);
+        var saved = tag.getTagList("Baselines", Constants.NBT.TAG_COMPOUND);
         var baselines = new Object2IntOpenHashMap<UUID>(saved.tagCount());
         for (int index = 0; index < saved.tagCount(); index++) {
             var baseline = saved.getCompoundTagAt(index);
-            StrictNbt.requireKeys(baseline, "Player", "Level");
-            var player = uuid(StrictNbt.requireString(baseline, "Player"));
+            var player = uuid(baseline.getString("Player"));
             if (baselines.containsKey(player)) {
                 throw new IllegalArgumentException("Duplicate saved manual completion member");
             }
-            baselines.put(player, StrictNbt.requireInt(baseline, "Level"));
+            baselines.put(player, baseline.getInteger("Level"));
         }
-        return new ManualResearchSession.CompletionIntent(StrictNbt.requireLong(tag, "WorldTime"), baselines);
+        return new ManualResearchSession.CompletionIntent(tag.getLong("WorldTime"), baselines);
     }
 
     private static void validateWork(Object2LongMap<ManualMaterialKey> work, Object2LongMap<ManualMaterialKey> required) {
@@ -119,16 +114,11 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
     }
 
     private static UUID uuid(String text) {
-        var id = UUID.fromString(text);
-        if (!id.toString().equals(text)) {
-            throw new IllegalArgumentException("Noncanonical manual research UUID");
-        }
-        return id;
+        return UUID.fromString(text);
     }
 
     @Override
     public NBTTagCompound encode(ManualResearchSession value) {
-        validateDefinition(value);
         var tag = new NBTTagCompound();
         tag.setInteger("Version", 2);
         tag.setString("Id", value.id().toString());
@@ -158,22 +148,33 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
 
     @Override
     public ManualResearchSession decode(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Version", "Id", "Team", "QueueKey", "LastActivity", "Status", "Contributor", "PauseReason", "Work", "Material", "Completion");
-        if (StrictNbt.requireInt(tag, "Version") != 2) {
+        if (tag.getInteger("Version") != 2) {
             throw new IllegalArgumentException("Unknown manual research save version");
         }
-        var key = StrictNbt.requireCompound(tag, "QueueKey");
-        StrictNbt.requireKeys(key, "Research", "Level", "EntryId");
-        var saved = new ManualResearchSession(uuid(StrictNbt.requireString(tag, "Id")), StrictNbt.requireString(tag, "Team"),
-            new TeamResearchQueue.Key(StrictNbt.requireId(key, "Research"), StrictNbt.requireInt(key, "Level"), StrictNbt.requireLong(key, "EntryId")),
-            tag.hasKey("Contributor") ? uuid(StrictNbt.requireString(tag, "Contributor")) : null,
-            StrictNbt.requireLong(tag, "LastActivity"), ManualResearchSession.Status.valueOf(StrictNbt.requireString(tag, "Status")),
-            tag.hasKey("PauseReason") ? ManualResearchSession.PauseReason.valueOf(StrictNbt.requireString(tag, "PauseReason")) : null,
-            decodeWork(StrictNbt.requireList(tag, "Work", Constants.NBT.TAG_COMPOUND)),
-            tag.hasKey("Material") ? decodeMaterialIntent(StrictNbt.requireCompound(tag, "Material")) : null,
-            tag.hasKey("Completion") ? decodeCompletion(StrictNbt.requireCompound(tag, "Completion")) : null);
+        var key = tag.getCompoundTag("QueueKey");
+        var saved = new ManualResearchSession(uuid(tag.getString("Id")), tag.getString("Team"),
+            new TeamResearchQueue.Key(new ResourceLocation(key.getString("Research")), key.getInteger("Level"), key.getLong("EntryId")),
+            tag.hasKey("Contributor") ? uuid(tag.getString("Contributor")) : null,
+            tag.getLong("LastActivity"), ManualResearchSession.Status.valueOf(tag.getString("Status")),
+            tag.hasKey("PauseReason") ? ManualResearchSession.PauseReason.valueOf(tag.getString("PauseReason")) : null,
+            decodeWork(tag.getTagList("Work", Constants.NBT.TAG_COMPOUND)),
+            tag.hasKey("Material") ? decodeMaterialIntent(tag.getCompoundTag("Material")) : null,
+            tag.hasKey("Completion") ? decodeCompletion(tag.getCompoundTag("Completion")) : null);
         validateDefinition(saved);
         return saved;
+    }
+
+    private static Object2LongOpenHashMap<ManualMaterialKey> requiredMaterials(ResearchLevelStage stage) {
+        var required = new Object2LongOpenHashMap<ManualMaterialKey>();
+        var elements = stage.materialRequirements();
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var requirement = elements.get(index1);
+            var payload = (ResourceRequirement) requirement.payload();
+            for (int index = 0; index < payload.inputs().size(); index++) {
+                required.put(new ManualMaterialKey(requirement.id(), index), payload.inputs().get(index).amount());
+            }
+        }
+        return required;
     }
 
     private void validateDefinition(ManualResearchSession value) {
@@ -181,13 +182,7 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
         if (stage.researchTier() != 0) {
             throw new IllegalArgumentException("Manual session requires tier-zero research");
         }
-        var required = new Object2LongOpenHashMap<ManualMaterialKey>();
-        for (var requirement : stage.materialRequirements()) {
-            var payload = (ResourceRequirement) requirement.payload();
-            for (int index = 0; index < payload.inputs().size(); index++) {
-                required.put(new ManualMaterialKey(requirement.id(), index), payload.inputs().get(index).amount());
-            }
-        }
+        var required = requiredMaterials(stage);
         validateWork(value.work(), required);
         var material = value.materialIntent();
         if (material != null) {

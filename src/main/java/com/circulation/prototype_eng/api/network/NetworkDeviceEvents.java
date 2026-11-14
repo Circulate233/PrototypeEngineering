@@ -12,15 +12,17 @@ public final class NetworkDeviceEvents {
     }
 
     /**
-     * 在定义注册阶段调用，世界运行期间不得更改监听列表。
+     * Register during definition loading; do not change listeners while a world is running.
      */
     public static void register(Consumer<NetworkDeviceEvent> listener) {
         LISTENERS.add(listener);
     }
 
     public static void fire(NetworkDeviceEvent event) {
-        for (var listener : LISTENERS) listener.accept(event);
+        for (int index = 0; index < LISTENERS.size(); index++) {
+            var listener = LISTENERS.get(index);
+            listener.accept(event);
+        }
         event.machine().onNetworkEvent(event);
-        event.values().validate();
     }
 }

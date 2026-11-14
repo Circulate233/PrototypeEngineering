@@ -6,12 +6,15 @@ import net.minecraft.util.ResourceLocation;
 import java.util.List;
 
 /**
- * 本次发布前的同队设备快照。列表只读，禁止跨发布周期保留或修改其中设备。
+ * Team device snapshot before publication. Lists are read-only; do not retain them across publications or mutate devices.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public record NetworkData(String teamId, long tick, List<Device> devices, List<NetworkContribution> contributions) {
     public boolean hasDevice(ResourceLocation type) {
-        for (var device : devices)
+        for (int index = 0; index < devices.size(); index++) {
+            var device = devices.get(index);
             if (device.location().machineType().equals(type) && device.snapshot().formed()) return true;
+        }
         return false;
     }
 

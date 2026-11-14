@@ -12,6 +12,7 @@ import java.util.Objects;
 /**
  * One modifier application. Tracked writes are valid only during apply; direct process/machine
  * mutations do not acquire compensation rights. Each descriptor occurrence owns separate layer IDs.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class RecipeOverlayContext {
     private final RecipeProcess process;

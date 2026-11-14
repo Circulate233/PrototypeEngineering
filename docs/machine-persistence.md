@@ -12,13 +12,13 @@
 
 ## 保存内容与恢复顺序
 
-机器 NBT Version 2 保存 `Type`、`Revision`、`Attributes`、`Components`、`PendingDependencies` 和 exact-long 非负 `FormationGeneration`。形成次数保留端口身份的代号，恢复后仍需重新匹配和成型，不恢复授权。组件条目保存描述符 ID、实际动态依赖与独立 `Data`。未知或重复条目、错误字段类型、坏修订/ID、循环组件/系统依赖都拒绝，不能跳过坏项加载半台机器。
+机器 NBT Version 2 保存 `Type`、`Revision`、`Attributes`、`Components`、`PendingDependencies` 和 exact-long 非负 `FormationGeneration`。形成次数保留端口身份的代号，恢复后仍需重新匹配和成型，不恢复授权。组件条目保存描述符 ID、实际动态依赖与独立 `Data`。NBT 字段使用原生 getter 读取。未知组件、重复条目、不兼容修订及循环依赖仍会报告错误。
 
 恢复先解析并验证完整保存图，再创建所有已保存组件；随后按组件依赖顺序恢复数据，最后完整校验。保存的实际图优先于类型默认图：已删除的声明组件不被重新添加，运行时新增组件必须已有显式绑定，尚未安装 dependent 的 pending 约束保留。`ComponentMap.validateGraph` 与实际 dispatch 复用同一系统排序逻辑，预检不调用工厂。
 
-组件 codec 可以修改自己的新组件并返回它，也可以返回一个不可变替代对象。`ComponentMap.replaceValue` 保留节点位置、当前依赖与 pending 约束，不用普通 `put` 将替代节点移到末尾。factory/restore/validator 前后按对象身份校验装配图；相同 ID 或 `equals` 相等不能掩盖对象替换。
+组件 codec 可以修改自己的新组件并返回它，也可以返回一个不可变替代对象。`ComponentMap.replaceValue` 保留节点位置、当前依赖与 pending 约束，不用普通 `put` 将替代节点移到末尾。factory、restore 和 validator 必须遵守组件图与属性的调用规则，框架不在每次回调前后复制并比较完整装配图。
 
-恢复值整图替换工厂初始属性，随后只为不存在的属性 ID 补类型默认 base，再进入组件codec恢复，使组件看到完整根属性。已存在的 modifier-only 项也不补 base，避免改变保存的含义。PM 的旧流程先补默认、随后属性 NBT 清表，会丢失保存缺项的默认值，本阶段修正这一点。codec/validator 不得暗中修改 owner 属性；检测比较包含修饰器对象身份和顺序。
+恢复值整图替换工厂初始属性，随后只为不存在的属性 ID 补类型默认 base，再进入组件codec恢复，使组件看到完整根属性。已存在的 modifier-only 项也不补 base，避免改变保存的含义。PM 的旧流程先补默认、随后属性 NBT 清表，会丢失保存缺项的默认值，本阶段修正这一点。codec 和 validator 只修改声明负责的状态，不得改动其他 owner 属性。
 
 `MachineScheduling` 使用内置 codec 保存实例模式，未保存权限代或执行状态；fresh 只在缺席时补入类型默认模式。它不会自动给所有机器增加工位或 scanner。工位 codec 继续保存完整进程状态，普通卸载保存后恢复不重跑 START，重新成型后才能继续配方。
 
@@ -30,10 +30,12 @@
 
 任何装配或保存回调故障都会使实例不可再执行/保存。装配失败直接退休尚未加载实例；已加载实例保存失败后仍可执行正常卸载清理。故障不会通过重复 load 或保存重试复活。
 
-这些 gate 拒绝重叠，不替代真实 worker join。实际控制器在保存、卸载或变更配置前仍须遵守 scheduler 的独占边界。公开低级属性/组件 API 不具有独立并发安全语义；扩展仍须遵守不可变定义和纯 codec 契约，检测不使用反射检查任意对象内部状态。
+这些 gate 拒绝重叠，不替代真实 worker join。实际控制器在保存、卸载或变更配置前仍须遵守 scheduler 的独占边界。公开低级属性/组件 API 不具有独立并发安全语义；扩展仍须遵守不可变定义和codec 的参数与返回值约束。
 
 ## 验收与后续
 
-逻辑测试覆盖恢复/创建顺序、默认补缺、组件和标签隔离、动态图与不可变替换、失败不发布、保存故障、已提交进程恢复，以及实际线程上的边界拒绝。最终数量与逐文件 IDEA MCP 证据见[实施进度](implementation-status.md)。未创建真实 World 或启动游戏。
+逻辑测试覆盖恢复/创建顺序、默认补缺、独立组件恢复、动态图与不可变替换、失败不发布、保存故障、已提交进程恢复，以及实际线程上的边界拒绝。最终数量与逐文件 IDEA MCP 证据见[实施进度](implementation-status.md)。未创建真实 World 或启动游戏。
 
 `MachineController` 已接 load 后登记、登记失败清理、延后卸载和未装配原 NBT 保存，见[控制器运行时](machine-controller.md)。实际 TE 暂存/恢复、Forge 调用、方向、放置者与客户端显示现已接入，见[控制器集成](controller-integration.md)。持久身份/复制冲突与 Java GUI 已接，下一步仍是当前队伍和工作许可、正式 planned/PN 预算。尚未装配的 TE 必须保存原暂存数据，不能用空运行状态覆盖；二次 readFromNBT 也不能直接覆盖已加载实例。完整控制器规则继续见[迁移审查](machine-controller-migration-audit.md)。
+
+编码器必须返回完成的 NBT 数据，调用方按只读方式保留。需要修改内部状态的组件由自身 codec 建立独立状态；框架直接传递 NBT，不为错误的回调实现增加多层复制。默认资源编码器使用 `ResourceKeyNbt.INSTANCE`。

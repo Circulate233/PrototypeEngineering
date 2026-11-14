@@ -61,23 +61,22 @@ public final class MachineController implements PlannedMachineTask {
     }
 
     /**
-     * Null requests fresh creation. A queued restored load retains its original data for saving.
+     * Null requests fresh creation. Retained save data must remain unchanged while loading is queued.
      */
     public void load(@Nullable NBTTagCompound saved) {
         host.requireServerThread();
         if (loadRequested || phase != Phase.NEW || requestedStop != null) {
             throw new IllegalStateException("Controller can request loading only once before retirement");
         }
-        var copy = saved == null ? null : saved.copy();
         scheduler.runAtBoundary(() -> {
             loadRequested = true;
-            pendingSave = copy;
-            loadAtBoundary(copy);
+            pendingSave = saved;
+            loadAtBoundary(saved);
         });
         // An IDLE caller already completed the action. A MAIN caller has only enqueued it.
         loadRequested = true;
         if (phase == Phase.NEW) {
-            pendingSave = copy;
+            pendingSave = saved;
         }
     }
 
@@ -91,7 +90,7 @@ public final class MachineController implements PlannedMachineTask {
         host.requireServerThread();
         var current = machine;
         if (current == null) {
-            return pendingSave == null ? null : pendingSave.copy();
+            return pendingSave;
         }
         return assembly.encode(current);
     }

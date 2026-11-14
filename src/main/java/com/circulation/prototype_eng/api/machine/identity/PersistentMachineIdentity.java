@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.api.machine.identity;
 
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import net.minecraft.nbt.NBTTagCompound;
 
 import java.util.Objects;
@@ -21,14 +20,13 @@ public record PersistentMachineIdentity(UUID machineId, UUID ownerId) {
      * Validates the entire borrowed compound before returning a new identity, without mutating the input.
      */
     public static PersistentMachineIdentity decode(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "version", "machineMost", "machineLeast", "ownerMost", "ownerLeast");
-        if (StrictNbt.requireInt(tag, "version") != SCHEMA_VERSION) {
+        if (tag.getInteger("version") != SCHEMA_VERSION) {
             throw new IllegalArgumentException("Unsupported persistent machine identity version");
         }
-        long machineMost = StrictNbt.requireLong(tag, "machineMost");
-        long machineLeast = StrictNbt.requireLong(tag, "machineLeast");
-        long ownerMost = StrictNbt.requireLong(tag, "ownerMost");
-        long ownerLeast = StrictNbt.requireLong(tag, "ownerLeast");
+        long machineMost = tag.getLong("machineMost");
+        long machineLeast = tag.getLong("machineLeast");
+        long ownerMost = tag.getLong("ownerMost");
+        long ownerLeast = tag.getLong("ownerLeast");
         return new PersistentMachineIdentity(new UUID(machineMost, machineLeast), new UUID(ownerMost, ownerLeast));
     }
 

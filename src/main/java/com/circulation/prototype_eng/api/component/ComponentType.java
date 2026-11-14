@@ -15,6 +15,7 @@ import java.util.function.Function;
 /**
  * Published collections are read-only by contract and must not be modified by consumers.
  * Typed identity and factory, with no mirrored interface/Impl or reflective class discovery.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class ComponentType<E, C> {
     private final ResourceLocation id;

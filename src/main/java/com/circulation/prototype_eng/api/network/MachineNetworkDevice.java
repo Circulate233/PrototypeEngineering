@@ -16,18 +16,19 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
  * Explicit role attachment; its runtime state is recreated while MachineOwnership persists identity.
+ * Lifecycle callbacks run with declared ownership; an allowed role has its registration.
  */
+@SuppressWarnings("DataFlowIssue")
 public final class MachineNetworkDevice implements MachineLifecycleListener {
     public static final ComponentType<MachineInstance, MachineNetworkDevice> DEFAULT = capturedComponent(
         new ResourceLocation(Tags.MOD_ID, "default_network_device"), (owner, identity) ->
             new NetworkRuntime.Capture(new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.DEVICE, 0,
-                Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), Reference2DoubleMaps.emptyMap(),
+                owner.lifecycle().formed(), identity.loadOrder(), Reference2DoubleMaps.emptyMap(),
                 NetworkResourceModifier.EMPTY, 0, 0), () -> true));
     private final MachineInstance owner;
     private final ComponentType<MachineInstance, MachineOwnership> ownershipType;
@@ -94,11 +95,8 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
                                                                                  ComponentType<MachineInstance, MachineOwnership> ownership,
                                                                                  BiFunction<MachineInstance, MachineIdentityRegistry.Registration, NetworkDeviceSnapshot> source,
                                                                                  Function<MachineLifecycleHost, NetworkRuntime> runtime) {
-        Objects.requireNonNull(ownership);
-        Objects.requireNonNull(source);
-        Objects.requireNonNull(runtime);
         return capturedComponent(id, ownership, (owner, identity) -> {
-            var snapshot = Objects.requireNonNull(source.apply(owner, identity), "Network role snapshot");
+            var snapshot = source.apply(owner, identity);
             // Convenience sources are observational: re-sampling checks resources and contents as well as formation.
             return new NetworkRuntime.Capture(snapshot, () -> snapshot.equals(source.apply(owner, identity)));
         }, runtime);
@@ -117,14 +115,11 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
                                                                                          ComponentType<MachineInstance, MachineOwnership> ownership,
                                                                                          BiFunction<MachineInstance, MachineIdentityRegistry.Registration, NetworkRuntime.Capture> source,
                                                                                          Function<MachineLifecycleHost, NetworkRuntime> runtime) {
-        Objects.requireNonNull(ownership);
-        Objects.requireNonNull(source);
-        Objects.requireNonNull(runtime);
         return new ComponentType<>(id, (owner, type) -> new MachineNetworkDevice(owner, type, ownership, source, runtime), List.of(), List.of(ownership));
     }
 
     public boolean allowsNetworkWork() {
-        return registration != null && owner.components().get(boundType) == this && registration.allowsNetworkWork();
+        return registration != null && registration.allowsNetworkWork();
     }
 
     @Nullable
@@ -147,26 +142,26 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
      */
     @Nullable
     public NetworkRuntime.WorkPermit workPermit() {
-        var lifecycle = Objects.requireNonNull(owner.lifecycle());
+        var lifecycle = owner.lifecycle();
         lifecycle.host().requireServerThread();
-        return allowsNetworkWork() ? Objects.requireNonNull(registration).workPermit() : null;
+        return allowsNetworkWork() ? registration.workPermit() : null;
     }
 
     @Override
     @SuppressWarnings("resource") // The runtime belongs to the server owner; this component owns only its registration.
     public void onLoaded(MachineLifecycleEvent.Loaded event) {
         if (automatic() && !owner.requiresNetwork()) return;
-        var ownership = Objects.requireNonNull(owner.components().get(ownershipType), "Network role requires declared ownership");
-        var identity = Objects.requireNonNull(ownership.registration(), "Ownership must load before its network role");
+        var ownership = owner.components().get(ownershipType);
+        var identity = ownership.registration();
         registration = runtime.apply(event.context().host()).register(identity, this::capture);
     }
 
     @Nullable
     private NetworkRuntime.Capture capture(MachineIdentityRegistry.Registration identity) {
-        var lifecycle = Objects.requireNonNull(owner.lifecycle());
+        var lifecycle = owner.lifecycle();
         var host = lifecycle.host();
         host.requireServerThread();
-        if (!lifecycle.schedulingAllowed() || owner.components().get(boundType) != this) {
+        if (!lifecycle.schedulingAllowed()) {
             return null;
         }
         var structureHost = host instanceof MachineStructureHost structure ? structure : null;
@@ -175,13 +170,10 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
             return null;
         }
         boolean formed = lifecycle.formed();
-        var captured = Objects.requireNonNull(source.apply(owner, identity), "Network role capture");
+        var captured = source.apply(owner, identity);
         var snapshot = captured.snapshot();
-        if (snapshot.formed() != formed) {
-            throw new IllegalArgumentException("Network source changed physical formation state");
-        }
         return new NetworkRuntime.Capture(snapshot, () -> lifecycle.schedulingAllowed() && lifecycle.formed() == formed
-            && owner.components().get(boundType) == this && (structureHost == null || structureHost.structureConfiguration() == configuration)
+            && (structureHost == null || structureHost.structureConfiguration() == configuration)
             && captured.current().getAsBoolean(), captured.centerPower(), captured.computerWork());
     }
 

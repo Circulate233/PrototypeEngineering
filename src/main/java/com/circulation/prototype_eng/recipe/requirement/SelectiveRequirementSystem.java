@@ -164,8 +164,11 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
             return RequirementTransaction.SUCCESS;
         }
         var payload = requirement.payload();
-        for (var candidate : payload.candidates())
+        var elements = payload.candidates();
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var candidate = elements.get(index1);
             if (candidate.usesContinuations()) return new Selecting(process, state, path, payload);
+        }
         for (int index = 0; index < payload.candidates().size(); index++) {
             var candidate = capture(process, payload.candidates().get(index), RecipeStage.START);
             if (candidate.result() != ProcessResult.SUCCESS) {

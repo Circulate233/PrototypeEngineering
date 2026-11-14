@@ -66,7 +66,10 @@ public final class ControllerRenderSnapshots {
         }
         var ids = new ObjectArrayList<ResourceLocation>();
         var bindings = machine.components().assemblyBindings();
-        for (var binding : bindings) ids.add(binding.type().id());
+        for (int index1 = 0; index1 < bindings.size(); index1++) {
+            var binding = bindings.get(index1);
+            ids.add(binding.type().id());
+        }
         var animation = machine.components().get(MachineAnimationState.TYPE);
         var result = new MachineRenderSnapshot(display, new MachineRenderSnapshot.CatalogToken(view.session(), view.sequence()), controller,
             configuration.definition().id(), occurrences, new ObjectArrayList<>(positions), ids, animation == null ? null : animation.snapshot());

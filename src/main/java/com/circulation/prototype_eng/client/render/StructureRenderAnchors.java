@@ -40,7 +40,9 @@ public final class StructureRenderAnchors {
         boolean structurePath = usesStructureBindings(snapshot, bindings);
         if (structurePath) {
             long anchorCount = 0;
-            for (var occurrence : snapshot.occurrences()) {
+            var elements4 = snapshot.occurrences();
+            for (int index4 = 0; index4 < elements4.size(); index4++) {
+                var occurrence = elements4.get(index4);
                 var binding = bindings.structures().get(new MachineRenderBindings.StructureKey(type, occurrence.structure()));
                 if (binding == null) continue;
                 anchorCount += perSlice(occurrence, binding)
@@ -64,7 +66,9 @@ public final class StructureRenderAnchors {
             if (machine != null)
                 result.add(anchor(snapshot, new Part(Kind.MACHINE, type, IntList.of(), -1), snapshot.controller(), machine, data));
             // Only actual assembled IDs participate; no client component factories or declaration guesses.
-            for (var id : snapshot.components()) {
+            var elements3 = snapshot.components();
+            for (int index3 = 0; index3 < elements3.size(); index3++) {
+                var id = elements3.get(index3);
                 var binding = bindings.components().get(id);
                 if (binding != null)
                     result.add(anchor(snapshot, new Part(Kind.COMPONENT, id, IntList.of(), -1), snapshot.controller(), binding, data));
@@ -79,13 +83,20 @@ public final class StructureRenderAnchors {
     public static boolean hasBinding(MachineRenderSnapshot snapshot, MachineRenderBindings.View bindings) {
         var type = snapshot.display().type();
         if (usesStructureBindings(snapshot, bindings)) {
-            for (var occurrence : snapshot.occurrences())
+            var elements2 = snapshot.occurrences();
+            for (int index2 = 0; index2 < elements2.size(); index2++) {
+                var occurrence = elements2.get(index2);
                 if (bindings.structures().containsKey(new MachineRenderBindings.StructureKey(type, occurrence.structure())))
                     return true;
+            }
             return false;
         }
         if (bindings.machines().containsKey(type)) return true;
-        for (var component : snapshot.components()) if (bindings.components().containsKey(component)) return true;
+        var elements = snapshot.components();
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var component = elements.get(index1);
+            if (bindings.components().containsKey(component)) return true;
+        }
         return false;
     }
 

@@ -67,7 +67,10 @@ public final class PreviewScreenTransitions {
             window = container.windowId;
             parent = mc.currentScreen;
             originalSlots = new ObjectArrayList<>(container.inventorySlots.size());
-            for (var slot : container.inventorySlots) originalSlots.add(new SavedSlot(slot));
+            for (int index1 = 0; index1 < container.inventorySlots.size(); index1++) {
+                var slot = container.inventorySlots.get(index1);
+                originalSlots.add(new SavedSlot(slot));
+            }
         }
 
         public boolean ownerCurrent() {
@@ -101,12 +104,18 @@ public final class PreviewScreenTransitions {
         }
 
         private void restoreSlots() {
-            for (var saved : originalSlots) if (container.inventorySlots.contains(saved.slot)) saved.restore();
+            for (int index = 0; index < originalSlots.size(); index++) {
+                var saved = originalSlots.get(index);
+                if (container.inventorySlots.contains(saved.slot)) saved.restore();
+            }
         }
 
         public void suspendNativeSlots(GuiStructurePreview<?> screen) {
             if (screen.getContainer() != container || !viewerCurrent(screen)) return;
-            for (var saved : originalSlots) if (container.inventorySlots.contains(saved.slot)) saved.suspend();
+            for (int index2 = 0; index2 < originalSlots.size(); index2++) {
+                var saved = originalSlots.get(index2);
+                if (container.inventorySlots.contains(saved.slot)) saved.suspend();
+            }
         }
 
         public void back() {

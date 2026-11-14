@@ -74,11 +74,13 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
             var copiedValidators = new ObjectArrayList<StructurePredicate>(validators.size());
             var copiedChildren = new ObjectArrayList<MachineStructure>(children.size());
             boolean stable = budgeted && pattern.planReusable();
-            for (var validator : validators) {
+            for (int index7 = 0; index7 < validators.size(); index7++) {
+                var validator = validators.get(index7);
                 copiedValidators.add(Objects.requireNonNull(validator));
                 stable = stable && validator.planReusable();
             }
-            for (var child : children) {
+            for (int index5 = 0; index5 < children.size(); index5++) {
+                var child = children.get(index5);
                 copiedChildren.add(Objects.requireNonNull(child));
                 stable = stable && child.planReusable();
             }
@@ -165,11 +167,13 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
             rotation.apply(orientation.getSide(RelativeSide.FRONT)),
             rotation.apply(orientation.getSide(RelativeSide.TOP)));
         var transformedValidators = new ObjectArrayList<StructurePredicate>(validators.size());
-        for (StructurePredicate validator : validators) {
+        for (int index3 = 0; index3 < validators.size(); index3++) {
+            StructurePredicate validator = validators.get(index3);
             transformedValidators.add(validator.transform(rotation));
         }
         var transformedChildren = new ObjectArrayList<MachineStructure>(children.size());
-        for (MachineStructure child : children) {
+        for (int index1 = 0; index1 < children.size(); index1++) {
+            MachineStructure child = children.get(index1);
             transformedChildren.add(child.transform(rotation));
         }
         return new SliceStructure(id, transformedOrientation, rotation.apply(offset), hideWorldBlocks,
@@ -189,13 +193,15 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
         for (long index = 0; index < maxCount; index++) {
             pattern.collectReads(plan, sliceOrigin(origin, Math.toIntExact(index)), controller);
         }
-        for (StructurePredicate validator : validators) {
+        for (int index2 = 0; index2 < validators.size(); index2++) {
+            StructurePredicate validator = validators.get(index2);
             validator.collectReads(plan, origin, controller);
         }
         if (!children.isEmpty()) {
             for (long count = minCount; count <= maxCount; count++) {
                 BlockPos childOrigin = sliceOrigin(origin, Math.toIntExact(count - 1));
-                for (MachineStructure child : children) {
+                for (int index4 = 0; index4 < children.size(); index4++) {
+                    MachineStructure child = children.get(index4);
                     child.collectReads(plan, childOrigin, controller);
                 }
             }
@@ -231,7 +237,8 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
         if (count < minCount) {
             return null;
         }
-        for (StructurePredicate validator : validators) {
+        for (int index6 = 0; index6 < validators.size(); index6++) {
+            StructurePredicate validator = validators.get(index6);
             if (!validator.matches(snapshot, origin, controller)) {
                 return null;
             }
@@ -239,7 +246,8 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
         var matchedChildren = new ObjectArrayList<StructureMatch>(children.size());
         if (!children.isEmpty()) {
             BlockPos childOrigin = sliceOrigin(origin, Math.toIntExact((long) count - 1));
-            for (MachineStructure child : children) {
+            for (int index8 = 0; index8 < children.size(); index8++) {
+                MachineStructure child = children.get(index8);
                 StructureMatch result = child.match(snapshot, childOrigin, controller);
                 if (result == null) {
                     return null;

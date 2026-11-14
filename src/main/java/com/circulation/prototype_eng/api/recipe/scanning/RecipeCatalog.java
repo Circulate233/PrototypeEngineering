@@ -58,7 +58,9 @@ public final class RecipeCatalog {
             var membership = new ReferenceOpenHashSet<MachineRecipe>(pool.recipes().size());
             var groups = new Object2ObjectOpenHashMap<ResourceLocation, ObjectArrayList<MachineRecipe>>();
             var ids = new ObjectLinkedOpenHashSet<ResourceLocation>(pool.recipes().size());
-            for (var recipe : Objects.requireNonNull(pool.recipes(), "pool recipes")) {
+            var elements = Objects.requireNonNull(pool.recipes(), "pool recipes");
+            for (int index3 = 0; index3 < elements.size(); index3++) {
+                var recipe = elements.get(index3);
                 Objects.requireNonNull(recipe, "pool recipe");
                 if (!ids.add(recipe.id()))
                     throw new IllegalArgumentException("Duplicate recipe in pool: " + recipe.id());
@@ -82,11 +84,13 @@ public final class RecipeCatalog {
         recipes = Object2ObjectMaps.unmodifiable(canonical);
         orderedRecipes = ObjectLists.unmodifiable(new ObjectArrayList<>(canonical.values()));
         boolean stable = true;
-        for (var recipe : orderedRecipes)
+        for (int index2 = 0; index2 < orderedRecipes.size(); index2++) {
+            var recipe = orderedRecipes.get(index2);
             if (!recipe.parallelismSelection().stableFixedInputLowerBounds()) {
                 stable = false;
                 break;
             }
+        }
         stableFixedInputLowerBounds = stable;
     }
 
@@ -280,7 +284,10 @@ public final class RecipeCatalog {
             if (owner != machine) throw new IllegalArgumentException("Pool selection belongs to another machine");
             if (recipes.get(recipe.id()) != recipe) return false;
             var recipeOwners = owners.get(recipe);
-            for (var pool : recipeOwners) if (selected.contains(pool)) return true;
+            for (int index1 = 0; index1 < recipeOwners.size(); index1++) {
+                var pool = recipeOwners.get(index1);
+                if (selected.contains(pool)) return true;
+            }
             return false;
         }
     }

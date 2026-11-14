@@ -96,7 +96,6 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -773,7 +772,7 @@ class NetworkRecipeExecutionTest {
             var research = new ResearchRegistry();
             research.freeze();
             network = new NetworkRuntime(identities,
-                identity -> OwnerTeamResolution.resolved(identity, "team", OwnerTeamType.SERVER, ObjectSets.singleton(identity), Optional.empty()), this::requireOwner);
+                identity -> OwnerTeamResolution.resolved(identity, "team", OwnerTeamType.SERVER, ObjectSets.singleton(identity), null), this::requireOwner);
             var factory = new MachineRecipeExecutionFactory(this::candidates, () -> this::refresh, () -> tick, () -> tickOpen && tickGate.get(), machine -> machine.components().assemblyBindings().stream()
                                                                                                                                                                    .anyMatch(binding -> binding.component() instanceof NetworkRecipeWork));
             scheduler = new TaskScheduler(owner, 2, 2, factory, Duration.ofSeconds(5));

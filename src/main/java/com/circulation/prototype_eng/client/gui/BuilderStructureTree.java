@@ -150,7 +150,7 @@ final class BuilderStructureTree {
         }
         var key = new ItemChoice(option, tileNbt);
         var cached = itemChoices.get(key);
-        if (cached != null) return cached.copy();
+        if (cached != null) return cached;
         var block = Block.REGISTRY.getObject(option.blockId());
         @SuppressWarnings("deprecation") var state = option.resolveProperties(block.getStateFromMeta(option.meta()));
         if (state == null) return ItemStack.EMPTY;
@@ -161,7 +161,7 @@ final class BuilderStructureTree {
             picked = world.pick(state, BuilderState.position(container.snapshot()), mc.player, tileNbt);
         }
         itemChoices.put(key, picked);
-        return picked.copy();
+        return picked;
     }
 
     private String name(StructureDisplay.BlockOption option, @Nullable String tileNbt) {
@@ -206,7 +206,9 @@ final class BuilderStructureTree {
         var plan = StructureBuildPlan.expand(current, id, orientation, slices);
         cells = plan.cells();
         var rows = new Object2ObjectLinkedOpenHashMap<String, Row>();
-        for (var instance : plan.nodes()) {
+        var elements11 = plan.nodes();
+        for (int index11 = 0; index11 < elements11.size(); index11++) {
+            var instance = elements11.get(index11);
             var node = current.nodes().get(instance.index());
             var entry = current.entries().get(node.id());
             String label = entry == null || entry.translationKey() == null ? node.id().toString() : new StructureTitle(entry.translationKey()).getLocal();
@@ -226,7 +228,9 @@ final class BuilderStructureTree {
             if (node.kind() == StructurePreviewProvider.Kind.SLICE)
                 row.children.add(new Row(instance.path() + "/slice", StructureToolText.BuildInstrumentSliceSlider.getLocal(instance.count(), node.maxCount()), 3, null, instance.path(), node.minCount(), node.maxCount(), instance.count()));
             var counts = new Object2LongLinkedOpenHashMap<MaterialChoice>();
-            for (var cell : plan.cells()) {
+            var elements = plan.cells();
+            for (int index10 = 0; index10 < elements.size(); index10++) {
+                var cell = elements.get(index10);
                 var display = cell.display();
                 if (display == null || !(cell.path().equals(instance.path()) || cell.path().startsWith(instance.path() + "/")))
                     continue;
@@ -244,7 +248,8 @@ final class BuilderStructureTree {
             int index = 0;
             var materialsByCount = new ObjectArrayList<>(counts.object2LongEntrySet());
             materialsByCount.sort((a, b) -> Long.compare(b.getLongValue(), a.getLongValue()));
-            for (var count : materialsByCount) {
+            for (int index8 = 0; index8 < materialsByCount.size(); index8++) {
+                var count = materialsByCount.get(index8);
                 var display = count.getKey().display;
                 var choice = count.getKey().option;
                 boolean alternatives = display.options().size() > 1;
@@ -266,10 +271,12 @@ final class BuilderStructureTree {
     private void updateHighlight() {
         if (highlightedPath == null) return;
         var positions = new ObjectOpenHashSet<BlockPos>();
-        for (var cell : cells)
+        for (int index5 = 0; index5 < cells.size(); index5++) {
+            var cell = cells.get(index5);
             if ((cell.path().equals(highlightedPath) || cell.path().startsWith(highlightedPath + "/"))
                 && (highlightedDisplay == null || highlightedDisplay.equals(cell.display())))
                 positions.add(cell.position());
+        }
         highlight.accept(positions);
     }
 
@@ -277,7 +284,8 @@ final class BuilderStructureTree {
         if (hits.isEmpty()) return;
         float minX = Float.POSITIVE_INFINITY, minY = Float.POSITIVE_INFINITY;
         float maxX = Float.NEGATIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY;
-        for (var hit : hits) {
+        for (int index4 = 0; index4 < hits.size(); index4++) {
+            var hit = hits.get(index4);
             minX = Math.min(minX, hit.x() - 4);
             minY = Math.min(minY, hit.y() - 2);
             maxX = Math.max(maxX, hit.x() + hit.width() + 4);
@@ -332,21 +340,27 @@ final class BuilderStructureTree {
                         pending.add(new Visit(row.children.get(i), visit.depth() + 1));
                 }
                 // Draw continuous parent rails with the same two-pixel bright line and one-pixel shadow.
-                for (var hit : hits)
+                for (int index7 = 0; index7 < hits.size(); index7++) {
+                    var hit = hits.get(index7);
                     if (open(hit.row()) && !hit.row().children.isEmpty()) {
                         int last = hit.y() + 14;
-                        for (var child : hits)
+                        for (int index6 = 0; index6 < hits.size(); index6++) {
+                            var child = hits.get(index6);
                             if (hit.row().children.contains(child.row())) {
                                 last = child.y() + 7;
                                 Gui.drawRect(hit.x() + 5, last - 1, child.x() - 1, last + 1, 0xfff2f2f2);
                                 Gui.drawRect(hit.x() + 5, last + 1, child.x() - 1, last + 2, 0xff696d88);
                             }
+                        }
                         Gui.drawRect(hit.x() + 5, hit.y() + 14, hit.x() + 7, last, 0xfff2f2f2);
                         Gui.drawRect(hit.x() + 7, hit.y() + 14, hit.x() + 8, last, 0xff696d88);
-                        for (var child : hits)
+                        for (int index2 = 0; index2 < hits.size(); index2++) {
+                            var child = hits.get(index2);
                             if (hit.row().children.contains(child.row()))
                                 Gui.drawRect(hit.x() + 5, child.y() + 6, hit.x() + 8, child.y() + 8, 0xfff2f2f2);
+                        }
                     }
+                }
             } finally {
                 GlStateManager.popMatrix();
             }
@@ -409,7 +423,8 @@ final class BuilderStructureTree {
         }
         if (button != 0) return false;
         float tx = (x - drawnPanX) / drawnScale, ty = (y - drawnPanY) / drawnScale;
-        for (var hit : hits)
+        for (int index9 = 0; index9 < hits.size(); index9++) {
+            var hit = hits.get(index9);
             if (hit.contains(tx, ty)) {
                 var row = hit.row();
                 if (hit.toggle(tx, ty)) {
@@ -439,6 +454,7 @@ final class BuilderStructureTree {
                 }
                 return true;
             }
+        }
         if (selected == null) return false;
         selected = null;
         highlightedPath = null;
@@ -466,9 +482,11 @@ final class BuilderStructureTree {
     }
 
     void release(int x, int y, int button) {
-        if (button == 0 && pressed != null) for (var hit : hits)
+        if (button == 0 && pressed != null) for (int index1 = 0; index1 < hits.size(); index1++) {
+            var hit = hits.get(index1);
             if (hit.row().id.equals(pressed) && hit.toggle((x - drawnPanX) / drawnScale, (y - drawnPanY) / drawnScale))
                 expanded.put(pressed, !open(hit.row()));
+        }
         pressed = null;
         slider = null;
         if (dragButton == button) dragButton = -1;
@@ -488,9 +506,11 @@ final class BuilderStructureTree {
     List<String> tooltip(int x, int y) {
         if (x < 0 || y < 0 || x >= 185 || y >= HEIGHT) return List.of();
         float tx = (x - drawnPanX) / drawnScale, ty = (y - drawnPanY) / drawnScale;
-        for (var hit : hits)
+        for (int index3 = 0; index3 < hits.size(); index3++) {
+            var hit = hits.get(index3);
             if (hit.contains(tx, ty) && hit.row().display != null && hit.row().display.options().size() > 1)
                 return List.of(StructureToolText.BuildInstrumentDoubleClickReplaceAll.getLocal());
+        }
         return List.of();
     }
 

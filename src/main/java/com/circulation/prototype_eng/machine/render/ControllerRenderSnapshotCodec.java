@@ -4,7 +4,6 @@ import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
 import com.circulation.prototype_eng.api.machine.render.MachineAnimationState;
 import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -82,7 +81,9 @@ public final class ControllerRenderSnapshotCodec {
             out.writeBoolean(snapshot.structure() != null);
             if (snapshot.structure() != null) id(out, snapshot.structure());
             out.writeInt(snapshot.occurrences().size());
-            for (var node : snapshot.occurrences()) {
+            var elements4 = snapshot.occurrences();
+            for (int index4 = 0; index4 < elements4.size(); index4++) {
+                var node = elements4.get(index4);
                 out.writeInt(node.parent());
                 out.writeInt(node.childEdge());
                 id(out, node.structure());
@@ -92,16 +93,28 @@ public final class ControllerRenderSnapshotCodec {
                 position(out, node.sliceStep());
                 out.writeBoolean(node.hideWorldBlocks());
                 out.writeInt(node.blocks().size());
-                for (var block : node.blocks()) position(out, block);
+                var elements = node.blocks();
+                for (int index = 0; index < elements.size(); index++) {
+                    var block = elements.get(index);
+                    position(out, block);
+                }
             }
             // The distinct union and bounds are reconstructed from complete occurrence membership.
             out.writeInt(snapshot.components().size());
-            for (var component : snapshot.components()) id(out, component);
+            var elements2 = snapshot.components();
+            for (int index2 = 0; index2 < elements2.size(); index2++) {
+                var component = elements2.get(index2);
+                id(out, component);
+            }
             out.writeBoolean(snapshot.animation() != null);
             if (snapshot.animation() != null) {
                 out.writeLong(snapshot.animation().revision());
                 out.writeInt(snapshot.animation().layers().size());
-                for (var layer : snapshot.animation().layers()) string(out, layer);
+                var elements3 = snapshot.animation().layers();
+                for (int index3 = 0; index3 < elements3.size(); index3++) {
+                    var layer = elements3.get(index3);
+                    string(out, layer);
+                }
             }
         } catch (IOException failure) {
             throw new IllegalArgumentException("Cannot encode machine render snapshot", failure);
@@ -200,7 +213,7 @@ public final class ControllerRenderSnapshotCodec {
     }
 
     private static ResourceLocation id(DataInputStream in) throws IOException {
-        return StrictNbt.requireId(string(in));
+        return new ResourceLocation(string(in));
     }
 
     private static void string(DataOutputStream out, String value) throws IOException {

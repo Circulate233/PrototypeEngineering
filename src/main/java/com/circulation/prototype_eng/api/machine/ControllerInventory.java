@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.api.machine;
 
 import ae2.api.inventories.BaseInternalInventory;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
@@ -14,6 +13,7 @@ import java.util.function.ObjIntConsumer;
 
 /**
  * Controller-owned item slots. Use only after the machine's workers have joined.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class ControllerInventory extends BaseInternalInventory {
     public static final int CAPACITY = 16;
@@ -139,12 +139,12 @@ public final class ControllerInventory extends BaseInternalInventory {
     public void readFromNBT(NBTTagCompound tag, String key) {
         ItemStack[] replacement = null;
         if (tag.hasKey(key)) {
-            var saved = StrictNbt.requireList(tag, key, 10);
+            var saved = tag.getTagList(key, 10);
             if (saved.tagCount() > CAPACITY)
                 throw new IllegalArgumentException("Too many controller inventory entries");
             for (int index = 0; index < saved.tagCount(); index++) {
                 var entry = saved.getCompoundTagAt(index);
-                int slot = Objects.checkIndex(StrictNbt.requireInt(entry, "Slot"), CAPACITY);
+                int slot = Objects.checkIndex(entry.getInteger("Slot"), CAPACITY);
                 var stack = new ItemStack(entry);
                 if (stack.isEmpty() || stack.getCount() > Math.min(64, stack.getMaxStackSize()))
                     throw new IllegalArgumentException("Invalid saved controller item");

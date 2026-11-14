@@ -27,12 +27,14 @@ public final class ComponentData {
         return storage.hasKey(Objects.requireNonNull(key));
     }
 
+    /**
+     * Returns a borrowed read-only value. Changes must go through set or merge to advance the revision.
+     */
     @Nullable
     @SuppressWarnings("DataFlowIssue")
     // Native NBTTagCompound.getTag directly returns Map.get, including null for absent keys.
     public synchronized NBTBase get(String key) {
-        var value = storage.getTag(Objects.requireNonNull(key));
-        return value == null ? null : value.copy();
+        return storage.getTag(key);
     }
 
     /**
@@ -97,9 +99,5 @@ public final class ComponentData {
      * Data is a completed capture; producers and consumers must not modify it after publication.
      */
     public record Snapshot(long revision, NBTTagCompound data) {
-        public Snapshot {
-            if (revision < 0) throw new IllegalArgumentException("Negative component-data revision");
-            Objects.requireNonNull(data);
-        }
     }
 }

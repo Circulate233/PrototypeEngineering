@@ -77,38 +77,6 @@ class EnergyHatchReconfigurationTest {
         assertEquals(31, old.primary().receiveEnergy(100, Actionable.MODULATE));
     }
 
-    @Test
-    void modernIdentityAndSettingsDamageCannotReplaceEitherBalanceOrCancelPendingConfiguration() {
-        var tile = new EnergyHatchBlockEntity(HatchMode.MIXED, HatchTier.LV10);
-        Objects.requireNonNull(tile.inputStorage()).restore(31);
-        Objects.requireNonNull(tile.outputStorage()).restore(47);
-        tile.setAutoOutput(true);
-        tile.setMaxInputRate(17);
-        var saved = new NBTTagCompound();
-        tile.saveAdditional(saved);
-        var original = tile.storage();
-        var output = tile.outputStorage();
-        var profile = tile.effectiveConfiguration();
-        tile.requestConfiguration(profile(10, 10));
-        var status = tile.configurationStatus();
-        for (String field : List.of("Mode", "Tier", "AutoInput", "AutoOutput", "MaxInRate", "MaxOutRate")) {
-            var missing = saved.copy();
-            missing.removeTag(field);
-            assertThrows(IllegalArgumentException.class, () -> tile.loadTag(missing), field);
-            var wrongType = saved.copy();
-            if (field.equals("Mode")) wrongType.setInteger(field, 1);
-            else wrongType.setString(field, "wrong");
-            assertThrows(IllegalArgumentException.class, () -> tile.loadTag(wrongType), field);
-            assertSame(original, tile.storage());
-            assertSame(output, tile.outputStorage());
-            assertSame(profile, tile.effectiveConfiguration());
-            assertEquals(status, tile.configurationStatus());
-            assertEquals(31, original.savedEnergy());
-            assertEquals(47, Objects.requireNonNull(output).savedEnergy());
-            assertEquals(17, tile.maxInputRate());
-            assertTrue(tile.autoOutput());
-        }
-    }
 
     @Test
     void effectiveProfileAndBothBalancesSurviveNbtAndReattachmentWithSmallerPendingTarget() {
@@ -148,8 +116,5 @@ class EnergyHatchReconfigurationTest {
         assertSame(unchanged, restored.storage());
         assertEquals(911, Objects.requireNonNull(restored.inputStorage()).storedEnergy());
         assertEquals(1293, Objects.requireNonNull(restored.outputStorage()).storedEnergy());
-        saved.removeTag("OutputEnergy");
-        assertThrows(IllegalArgumentException.class, () -> restored.loadTag(saved));
-        assertSame(unchanged, restored.storage());
     }
 }

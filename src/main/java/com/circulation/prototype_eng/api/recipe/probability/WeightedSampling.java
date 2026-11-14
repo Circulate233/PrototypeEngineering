@@ -28,7 +28,8 @@ public final class WeightedSampling {
         }
         var pool = new ObjectArrayList<Weighted<T>>(candidates.size());
         long total = 0;
-        for (var candidate : candidates) {
+        for (int index = 0; index < candidates.size(); index++) {
+            var candidate = candidates.get(index);
             Objects.requireNonNull(candidate, "candidate");
             if (candidate.weight() > 0) {
                 pool.add(candidate);

@@ -254,7 +254,9 @@ public final class ResearchDataCenter implements DataCenterStorage {
     }
 
     private boolean mutexBlocked(ResearchDefinition candidate, int target, Object2IntMap<ResourceLocation> visible) {
-        for (var rule : candidate.mutexRulesForLevel(target)) {
+        var elements = candidate.mutexRulesForLevel(target);
+        for (int index = 0; index < elements.size(); index++) {
+            var rule = elements.get(index);
             if (visible.getInt(rule.researchId()) >= rule.minLevel()) {
                 return true;
             }
@@ -263,7 +265,9 @@ public final class ResearchDataCenter implements DataCenterStorage {
             if (entry.getKey().equals(candidate.id()) || entry.getIntValue() < 1) {
                 continue;
             }
-            for (var rule : registry.require(entry.getKey()).mutexRulesForLevel(entry.getIntValue())) {
+            var elements2 = registry.require(entry.getKey()).mutexRulesForLevel(entry.getIntValue());
+            for (int index2 = 0; index2 < elements2.size(); index2++) {
+                var rule = elements2.get(index2);
                 if (rule.researchId().equals(candidate.id()) && target >= rule.minLevel()) {
                     return true;
                 }

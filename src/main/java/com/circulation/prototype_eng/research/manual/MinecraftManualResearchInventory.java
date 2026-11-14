@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.research.manual;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.persistence.PlayerInventoryNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchMaterialReceipt;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchMaterialReceiptNbt;
@@ -382,20 +381,19 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
         if (!entity.hasKey(EntityPlayer.PERSISTED_NBT_TAG)) {
             return receipts;
         }
-        var persisted = StrictNbt.requireCompound(entity, EntityPlayer.PERSISTED_NBT_TAG);
+        var persisted = entity.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG);
         if (!persisted.hasKey(NAMESPACE)) {
             return receipts;
         }
-        var namespace = StrictNbt.requireCompound(persisted, NAMESPACE);
+        var namespace = persisted.getCompoundTag(NAMESPACE);
         if (!namespace.hasKey(STORE)) {
             return receipts;
         }
-        var stored = StrictNbt.requireCompound(namespace, STORE);
-        StrictNbt.requireKeys(stored, "version", "receipts");
-        if (StrictNbt.requireInt(stored, "version") != 1) {
+        var stored = namespace.getCompoundTag(STORE);
+        if (stored.getInteger("version") != 1) {
             throw new IllegalArgumentException("Unsupported manual material store version");
         }
-        var list = StrictNbt.requireList(stored, "receipts", Constants.NBT.TAG_COMPOUND);
+        var list = stored.getTagList("receipts", Constants.NBT.TAG_COMPOUND);
         if (list.tagCount() > MAX_RECEIPTS) {
             throw new IllegalArgumentException("Too many saved material receipts");
         }
@@ -419,9 +417,8 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
         store.setInteger("version", 1);
         store.setTag("receipts", list);
         var entity = player.getEntityData();
-        var persisted = entity.hasKey(EntityPlayer.PERSISTED_NBT_TAG)
-            ? StrictNbt.requireCompound(entity, EntityPlayer.PERSISTED_NBT_TAG).copy() : new NBTTagCompound();
-        var namespace = persisted.hasKey(NAMESPACE) ? StrictNbt.requireCompound(persisted, NAMESPACE).copy() : new NBTTagCompound();
+        var persisted = entity.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG);
+        var namespace = persisted.getCompoundTag(NAMESPACE);
         if (receipts.isEmpty()) {
             namespace.removeTag(STORE);
         } else {

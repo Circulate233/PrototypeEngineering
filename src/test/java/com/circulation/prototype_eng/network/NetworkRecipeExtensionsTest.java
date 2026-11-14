@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.network;
 
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
-import com.circulation.prototype_eng.api.network.recipe.NetworkWorkRequirements;
 import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
@@ -60,14 +59,13 @@ class NetworkRecipeExtensionsTest {
         var catalog = new RecipeCatalog(List.of(pool("one", last, first), pool("two", middle, first)));
         var extensions = new NetworkRecipeExtensions();
         var calls = new ObjectArrayList<String>();
-        var retained = new ObjectArrayList<NetworkWorkRequirements.Builder>();
+
         extensions.register(20, (recipe, builder) -> {
             calls.add(recipe.id().getPath() + ":late");
             builder.resource(ComputingResourceFixtures.COMPUTE, 2);
         });
         extensions.register(-10, (recipe, builder) -> {
             calls.add(recipe.id().getPath() + ":first");
-            retained.add(builder);
             assertFalse(extensions.published());
             assertThrows(IllegalStateException.class, () -> extensions.require(first));
             builder.research(id("research"), 1).resource(ComputingResourceFixtures.COMPUTE, 3);
@@ -86,27 +84,22 @@ class NetworkRecipeExtensionsTest {
             assertEquals(7, demands.resources().getDouble(ComputingResourceFixtures.QUBIT));
             assertThrows(IllegalArgumentException.class, () -> extensions.require(recipe(recipe.id().getPath())));
         }
-        for (var builder : retained) {
-            assertThrows(IllegalStateException.class, () -> builder.resource(ComputingResourceFixtures.COMPUTE, 1));
-            assertThrows(IllegalStateException.class, builder::build);
-        }
         assertThrows(IllegalArgumentException.class, () -> extensions.require(recipe("foreign")));
         assertThrows(IllegalStateException.class, () -> extensions.register((_, _) -> fail("Late callback")));
         assertThrows(IllegalStateException.class, () -> extensions.publish(catalog, research()));
     }
 
     @Test
-    void originalCallbackFailurePublishesNothingAndClosesCompletedAndFailingContextsWithoutReplay() {
+    void originalCallbackFailurePublishesNothingAndNeverReplaysCallbacks() {
         var first = recipe("a");
         var last = recipe("z");
         var catalog = catalog(first, last);
         var extensions = new NetworkRecipeExtensions();
-        var retained = new ObjectArrayList<NetworkWorkRequirements.Builder>();
+
         var calls = new AtomicInteger();
         var failure = new IllegalArgumentException("Extension failure");
         extensions.register((recipe, builder) -> {
             calls.incrementAndGet();
-            retained.add(builder);
             builder.resource(ComputingResourceFixtures.COMPUTE, 5);
             if (recipe == last) {
                 throw failure;
@@ -118,32 +111,22 @@ class NetworkRecipeExtensionsTest {
         assertFalse(extensions.published());
         assertThrows(IllegalStateException.class, () -> extensions.require(first));
         assertThrows(IllegalStateException.class, () -> extensions.require(last));
-        for (var builder : retained) {
-            assertThrows(IllegalStateException.class, () -> builder.research(id("research"), 1));
-            assertThrows(IllegalStateException.class, builder::build);
-        }
         assertThrows(IllegalStateException.class, () -> extensions.publish(catalog, research));
         assertThrows(IllegalStateException.class, () -> extensions.register((_, _) -> calls.incrementAndGet()));
         assertEquals(2, calls.get());
     }
 
     @Test
-    void lateResearchValidationFailureDiscardsEarlierEntriesAndSealsAllCallbackContexts() {
+    void lateResearchValidationFailureDiscardsEarlierEntries() {
         for (var invalidId : List.of(id("research"), id("unknown_research"))) {
             var first = recipe("a");
             var last = recipe("z");
             var extensions = new NetworkRecipeExtensions();
-            var retained = new ObjectArrayList<NetworkWorkRequirements.Builder>();
-            extensions.register((recipe, builder) -> {
-                retained.add(builder);
-                builder.research(recipe == last ? invalidId : id("research"), recipe == last ? 3 : 1);
-            });
+
+            extensions.register((recipe, builder) -> builder.research(recipe == last ? invalidId : id("research"), recipe == last ? 3 : 1));
             assertThrows(IllegalArgumentException.class, () -> extensions.publish(catalog(first, last), research()));
             assertFalse(extensions.published());
             assertThrows(IllegalStateException.class, () -> extensions.require(first));
-            for (var builder : retained) {
-                assertThrows(IllegalStateException.class, builder::build);
-            }
         }
     }
 

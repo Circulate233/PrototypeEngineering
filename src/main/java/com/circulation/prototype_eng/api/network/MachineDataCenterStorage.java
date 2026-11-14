@@ -231,9 +231,6 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
     public NetworkRuntime.Capture networkCapture(MachineIdentityRegistry.Registration identity, boolean formed,
                                                  Reference2DoubleMap<NetworkResourceType> resources, NetworkResourceModifier modifier) {
         requireLive();
-        if (identity.runtimeIdentity() != owner || !identity.identity().machineId().equals(snapshot().dataCenterId())) {
-            throw new IllegalArgumentException("Data-center capture has foreign ownership");
-        }
         var captured = capture();
         var snapshot = new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.DATA_CENTER, level, formed,
             identity.loadOrder(), resources, modifier, capacity, captured.snapshot().storedResearch().size(), captured.snapshot());

@@ -49,7 +49,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -197,7 +196,7 @@ class MachineNetworkDeviceTest {
         private final MachineIdentityRegistry identities = new MachineIdentityRegistry(this::requireOwner);
         private final NetworkRuntime network = new NetworkRuntime(identities, owner -> this.rejected
             ? OwnerTeamResolution.rejected(owner, OwnerTeamResolutionStatus.NO_TEAM, "test owner has no team")
-            : OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER, ObjectSets.singleton(owner), Optional.empty()),
+            : OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER, ObjectSets.singleton(owner), null),
             this::requireOwner);
         private final ComponentType<MachineInstance, MachineOwnership> ownershipType = new ComponentType<>(id("ownership"),
             owner -> new MachineOwnership(owner, _ -> identities), List.of());

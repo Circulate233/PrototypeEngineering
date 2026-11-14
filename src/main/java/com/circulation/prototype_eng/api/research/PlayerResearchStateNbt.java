@@ -1,8 +1,8 @@
 package com.circulation.prototype_eng.api.research;
 
+
 import com.circulation.prototype_eng.api.persistence.NbtCodec;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragmentNbt;
 import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
@@ -17,8 +17,6 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 
 import java.util.Objects;
-import java.util.Optional;
-import java.util.OptionalLong;
 import java.util.UUID;
 
 /**
@@ -34,14 +32,12 @@ public final class PlayerResearchStateNbt implements NbtCodec<PlayerResearchStat
         fragments = new ItemDeliveryFragmentNbt(Objects.requireNonNull(resources, "resources"));
     }
 
-    private static OptionalLong optionalLong(NBTTagCompound tag, String name) {
-        return tag.hasKey(name) ? OptionalLong.of(StrictNbt.requireLong(tag, name)) : OptionalLong.empty();
+    private static long timestamp(NBTTagCompound tag, String name) {
+        return tag.hasKey(name) ? tag.getLong(name) : -1;
     }
 
     private static UUID uuid(String value) {
-        var uuid = UUID.fromString(value);
-        if (!uuid.toString().equals(value)) throw new IllegalArgumentException("Noncanonical UUID");
-        return uuid;
+        return UUID.fromString(value);
     }
 
     private static <E extends Enum<E>> E enumValue(E[] values, String name) {
@@ -56,7 +52,6 @@ public final class PlayerResearchStateNbt implements NbtCodec<PlayerResearchStat
         tag.setString("Player", value.playerUuid().toString());
         var levels = new NBTTagList();
         for (var entry : value.completedLevels().object2IntEntrySet()) {
-            validateLevel(entry.getKey(), entry.getIntValue(), true);
             var level = new NBTTagCompound();
             level.setString("Research", entry.getKey().toString());
             level.setInteger("Level", entry.getIntValue());
@@ -64,49 +59,52 @@ public final class PlayerResearchStateNbt implements NbtCodec<PlayerResearchStat
         }
         tag.setTag("Completed", levels);
         var claims = new NBTTagList();
-        for (var claim : value.rewardClaims()) claims.appendTag(encodeClaim(claim));
+        var elements = value.rewardClaims();
+        for (int index1 = 0; index1 < elements.size(); index1++) {
+            var claim = elements.get(index1);
+            claims.appendTag(encodeClaim(claim));
+        }
         tag.setTag("Claims", claims);
         return tag;
     }
 
     @Override
     public PlayerResearchState.Snapshot decode(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Version", "Player", "Completed", "Claims");
-        if (StrictNbt.requireInt(tag, "Version") != 1)
+        if (tag.getInteger("Version") != 1)
             throw new IllegalArgumentException("Unknown player research version");
-        var player = uuid(StrictNbt.requireString(tag, "Player"));
+        var player = uuid(tag.getString("Player"));
         var levels = new Object2IntOpenHashMap<ResourceLocation>();
-        var savedLevels = StrictNbt.requireList(tag, "Completed", Constants.NBT.TAG_COMPOUND);
+        var savedLevels = tag.getTagList("Completed", Constants.NBT.TAG_COMPOUND);
         for (int index = 0; index < savedLevels.tagCount(); index++) {
             var entry = savedLevels.getCompoundTagAt(index);
-            StrictNbt.requireKeys(entry, "Research", "Level");
-            var id = StrictNbt.requireId(entry, "Research");
-            int level = StrictNbt.requireInt(entry, "Level");
+            var id = new ResourceLocation(entry.getString("Research"));
+            int level = entry.getInteger("Level");
             validateLevel(id, level, true);
             if (levels.containsKey(id)) throw new IllegalArgumentException("Duplicate completed research");
             levels.put(id, level);
         }
         var claims = new ObjectArrayList<RewardClaim>();
-        var savedClaims = StrictNbt.requireList(tag, "Claims", Constants.NBT.TAG_COMPOUND);
+        var savedClaims = tag.getTagList("Claims", Constants.NBT.TAG_COMPOUND);
         for (int index = 0; index < savedClaims.tagCount(); index++)
             claims.add(decodeClaim(savedClaims.getCompoundTagAt(index)));
         return new PlayerResearchState.Snapshot(player, levels, claims);
     }
 
     public NBTTagCompound encodeClaim(RewardClaim claim) {
-        validateClaim(claim);
         var tag = new NBTTagCompound();
         tag.setString("Player", claim.key().playerUuid().toString());
         tag.setString("Research", claim.key().researchId().toString());
         tag.setInteger("Level", claim.key().level());
         tag.setString("Status", claim.status().name());
         tag.setLong("Eligible", claim.eligibleAtWorldTime());
-        if (claim.selectedGroupId().isPresent())
-            tag.setString("Group", claim.selectedGroupId().orElseThrow().toString());
-        if (claim.claimingAtWorldTime().isPresent()) tag.setLong("Claiming", claim.claimingAtWorldTime().getAsLong());
-        if (claim.claimedAtWorldTime().isPresent()) tag.setLong("Claimed", claim.claimedAtWorldTime().getAsLong());
+        if ((claim.selectedGroupId() != null))
+            tag.setString("Group", claim.selectedGroupId().toString());
+        if (claim.claimingAtWorldTime() >= 0) tag.setLong("Claiming", claim.claimingAtWorldTime());
+        if (claim.claimedAtWorldTime() >= 0) tag.setLong("Claimed", claim.claimedAtWorldTime());
         var children = new NBTTagList();
-        for (var child : claim.children()) {
+        var elements3 = claim.children();
+        for (int index3 = 0; index3 < elements3.size(); index3++) {
+            var child = elements3.get(index3);
             var saved = new NBTTagCompound();
             saved.setString("Child", child.key().childId().toString());
             saved.setString("Kind", child.kind().name());
@@ -121,29 +119,27 @@ public final class PlayerResearchStateNbt implements NbtCodec<PlayerResearchStat
     }
 
     public RewardClaim decodeClaim(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Player", "Research", "Level", "Status", "Eligible", "Group", "Claiming", "Claimed", "Children");
-        var key = new RewardClaim.Key(uuid(StrictNbt.requireString(tag, "Player")), StrictNbt.requireId(tag, "Research"), StrictNbt.requireInt(tag, "Level"));
-        var status = enumValue(RewardClaim.Status.VALUES, StrictNbt.requireString(tag, "Status"));
-        var group = tag.hasKey("Group") ? Optional.of(StrictNbt.requireId(tag, "Group")) : Optional.<ResourceLocation>empty();
+        var key = new RewardClaim.Key(uuid(tag.getString("Player")), new ResourceLocation(tag.getString("Research")), tag.getInteger("Level"));
+        var status = enumValue(RewardClaim.Status.VALUES, tag.getString("Status"));
+        var group = tag.hasKey("Group") ? new ResourceLocation(tag.getString("Group")) : null;
         var children = new ObjectArrayList<RewardClaim.Child>();
-        var savedChildren = StrictNbt.requireList(tag, "Children", Constants.NBT.TAG_COMPOUND);
-        if (savedChildren.tagCount() != 0 && group.isEmpty())
+        var savedChildren = tag.getTagList("Children", Constants.NBT.TAG_COMPOUND);
+        if (savedChildren.tagCount() != 0 && group == null)
             throw new IllegalArgumentException("Selected reward children require a group");
         for (int index = 0; index < savedChildren.tagCount(); index++) {
             var saved = savedChildren.getCompoundTagAt(index);
-            StrictNbt.requireKeys(saved, "Child", "Kind", "Status", "Fragments");
-            var parent = new RewardEventKey(key.playerUuid(), key.researchId(), key.level(), group.orElseThrow(), StrictNbt.requireId(saved, "Child"));
+            var parent = new RewardEventKey(key.playerUuid(), key.researchId(), key.level(), group, new ResourceLocation(saved.getString("Child")));
             var fragments = new Object2ObjectLinkedOpenHashMap<UUID, ItemDeliveryFragment>();
-            var savedFragments = StrictNbt.requireList(saved, "Fragments", Constants.NBT.TAG_COMPOUND);
+            var savedFragments = saved.getTagList("Fragments", Constants.NBT.TAG_COMPOUND);
             for (int fragmentIndex = 0; fragmentIndex < savedFragments.tagCount(); fragmentIndex++) {
                 var fragment = this.fragments.decodePayload(savedFragments.getCompoundTagAt(fragmentIndex), parent);
                 if (fragments.putIfAbsent(fragment.id(), fragment) != null)
                     throw new IllegalArgumentException("Duplicate reward fragment");
             }
-            children.add(new RewardClaim.Child(parent, enumValue(RewardClaim.Kind.VALUES, StrictNbt.requireString(saved, "Kind")),
-                enumValue(RewardClaim.ChildStatus.VALUES, StrictNbt.requireString(saved, "Status")), fragments));
+            children.add(new RewardClaim.Child(parent, enumValue(RewardClaim.Kind.VALUES, saved.getString("Kind")),
+                enumValue(RewardClaim.ChildStatus.VALUES, saved.getString("Status")), fragments));
         }
-        var claim = new RewardClaim(key, status, StrictNbt.requireLong(tag, "Eligible"), group, optionalLong(tag, "Claiming"), children, optionalLong(tag, "Claimed"));
+        var claim = new RewardClaim(key, status, tag.getLong("Eligible"), group, timestamp(tag, "Claiming"), children, timestamp(tag, "Claimed"));
         validateClaim(claim);
         return claim;
     }
@@ -161,8 +157,9 @@ public final class PlayerResearchStateNbt implements NbtCodec<PlayerResearchStat
         var choices = research.require(claim.key().researchId()).rewardGroupsForLevel(claim.key().level());
         if (choices.isEmpty()) throw new IllegalArgumentException("Reward claim has no registered reward level");
         if (claim.status() == RewardClaim.Status.UNCLAIMED) return;
-        for (var group : choices) {
-            if (group.id().equals(claim.selectedGroupId().orElseThrow()) && ResearchRewardClaimer.validRecovery(claim, group))
+        for (int index2 = 0; index2 < choices.size(); index2++) {
+            var group = choices.get(index2);
+            if (group.id().equals(claim.selectedGroupId()) && ResearchRewardClaimer.validRecovery(claim, group))
                 return;
         }
         throw new IllegalArgumentException("Reward selection/children differ from registered definitions");

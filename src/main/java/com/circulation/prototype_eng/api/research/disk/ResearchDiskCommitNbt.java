@@ -1,9 +1,6 @@
 package com.circulation.prototype_eng.api.research.disk;
 
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
-import com.circulation.prototype_eng.api.research.ResearchRegistry;
-import com.circulation.prototype_eng.research.ResearchDataCenter;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -16,7 +13,8 @@ import java.util.Comparator;
 import java.util.UUID;
 
 /**
- * Strict complete receipt codec shared by the single world operation and its physical database.
+ * Complete receipt codec shared by the single world operation and its physical database.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class ResearchDiskCommitNbt {
     private ResearchDiskCommitNbt() {
@@ -38,43 +36,36 @@ public final class ResearchDiskCommitNbt {
         return tag;
     }
 
-    public static ResearchDiskCommit decode(NBTTagCompound tag, ResearchRegistry registry) {
-        StrictNbt.requireKeys(tag, "Version", "Operation", "Actor", "Team", "Database", "DatabaseTier", "Capacity", "DiskTier",
-            "Entries", "Before", "After");
-        if (StrictNbt.requireInt(tag, "Version") != 1)
+    public static ResearchDiskCommit decode(NBTTagCompound tag) {
+        if (tag.getInteger("Version") != 1)
             throw new IllegalArgumentException("Unsupported disk import receipt schema");
         var database = uuid(tag, "Database");
-        int tier = StrictNbt.requireInt(tag, "DatabaseTier");
-        int capacity = StrictNbt.requireInt(tag, "Capacity");
-        int diskTier = StrictNbt.requireInt(tag, "DiskTier");
+        int tier = tag.getInteger("DatabaseTier");
+        int capacity = tag.getInteger("Capacity");
+        int diskTier = tag.getInteger("DiskTier");
         var entries = decodeLevels(tag, "Entries");
-        new ResearchDiskData(registry, diskTier, entries);
-        var before = validated(database, tier, capacity, decodeLevels(tag, "Before"), registry);
-        var after = validated(database, tier, capacity, decodeLevels(tag, "After"), registry);
-        return new ResearchDiskCommit(uuid(tag, "Operation"), uuid(tag, "Actor"), StrictNbt.requireString(tag, "Team"),
+        var before = snapshot(database, tier, capacity, decodeLevels(tag, "Before"));
+        var after = snapshot(database, tier, capacity, decodeLevels(tag, "After"));
+        return new ResearchDiskCommit(uuid(tag, "Operation"), uuid(tag, "Actor"), tag.getString("Team"),
             diskTier, entries, before, after);
     }
 
-    private static DataCenterResearchSnapshot validated(UUID database, int tier, int capacity,
-                                                        Object2IntMap<ResourceLocation> contents, ResearchRegistry registry) {
-        var snapshot = new DataCenterResearchSnapshot(database, tier, capacity, 0, contents);
-        return ResearchDataCenter.restore(snapshot, registry, () -> {
-        }, () -> {
-        }).snapshot();
+    private static DataCenterResearchSnapshot snapshot(UUID database, int tier, int capacity,
+                                                       Object2IntMap<ResourceLocation> contents) {
+        return new DataCenterResearchSnapshot(database, tier, capacity, 0, contents);
     }
 
     private static UUID uuid(NBTTagCompound tag, String key) {
-        var text = StrictNbt.requireString(tag, key);
-        var id = UUID.fromString(text);
-        if (!id.toString().equals(text)) throw new IllegalArgumentException("Noncanonical disk receipt UUID: " + key);
-        return id;
+        var text = tag.getString(key);
+        return UUID.fromString(text);
     }
 
     private static NBTTagList encodeLevels(Object2IntMap<ResourceLocation> levels) {
         var list = new NBTTagList();
         var ids = new ObjectArrayList<>(levels.keySet());
         ids.sort(Comparator.naturalOrder());
-        for (var id : ids) {
+        for (int index1 = 0; index1 < ids.size(); index1++) {
+            var id = ids.get(index1);
             var entry = new NBTTagCompound();
             entry.setString("Id", id.toString());
             entry.setInteger("Level", levels.getInt(id));
@@ -84,13 +75,12 @@ public final class ResearchDiskCommitNbt {
     }
 
     private static Object2IntMap<ResourceLocation> decodeLevels(NBTTagCompound tag, String key) {
-        var list = StrictNbt.requireList(tag, key, Constants.NBT.TAG_COMPOUND);
+        var list = tag.getTagList(key, Constants.NBT.TAG_COMPOUND);
         var result = new Object2IntOpenHashMap<ResourceLocation>(list.tagCount());
         for (int index = 0; index < list.tagCount(); index++) {
             var entry = list.getCompoundTagAt(index);
-            StrictNbt.requireKeys(entry, "Id", "Level");
-            var id = StrictNbt.requireId(entry, "Id");
-            int level = StrictNbt.requireInt(entry, "Level");
+            var id = new ResourceLocation(entry.getString("Id"));
+            int level = entry.getInteger("Level");
             if (level < 1 || result.containsKey(id))
                 throw new IllegalArgumentException("Invalid or duplicate disk receipt research");
             result.put(id, level);

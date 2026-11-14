@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.storage;
 
-import com.circulation.prototype_eng.structure.tool.BuilderDropRecovery;
 import ae2.api.AECapabilities;
 import ae2.api.config.Actionable;
 import ae2.api.networking.GridFlags;
@@ -20,9 +19,9 @@ import ae2.items.misc.GenericResourcePackageItem;
 import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.MEAssemblyConfig;
 import com.circulation.prototype_eng.api.HatchCapabilities;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.ResourceHatchGrouping;
+import com.circulation.prototype_eng.structure.tool.BuilderDropRecovery;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
@@ -233,14 +232,14 @@ public class MEResourceHatchBlockEntity extends AEBaseTile implements IInWorldGr
         storage().save(tag);
         tag.setString("ResourceColor", resourceColor.name());
         if (mainNode != null) mainNode.saveToNBT(tag);
-        else if (nodeData != null && nodeData.hasKey("MeNode")) tag.setTag("MeNode", nodeData.getTag("MeNode").copy());
+        else if (nodeData != null && nodeData.hasKey("MeNode")) tag.setTag("MeNode", nodeData.getTag("MeNode"));
     }
 
     @Override
     public void loadTag(@NotNull NBTTagCompound tag) {
         if (hatch != null && (!hatch.isValid() || hatch.hasTransferReservation()))
             throw new IllegalStateException("Cannot reload an invalid or unresolved ME storage");
-        var nextColor = tag.hasKey("ResourceColor") ? AEColor.valueOf(StrictNbt.requireString(tag, "ResourceColor")) : AEColor.TRANSPARENT;
+        var nextColor = tag.hasKey("ResourceColor") ? AEColor.valueOf(tag.getString("ResourceColor")) : AEColor.TRANSPARENT;
         var next = MEResourceHatch.load(tag, this::requestStorageSave, this::resourceColor);
         if (hatch != null) {
             if (!hatch.retireIfIdle()) throw new IllegalStateException("Cannot reload unresolved ME storage");
@@ -248,13 +247,13 @@ public class MEResourceHatchBlockEntity extends AEBaseTile implements IInWorldGr
         super.loadTag(tag);
         mode = next.mode();
         resourceColor = nextColor;
-        inputSlots = Math.max(1, StrictNbt.requireInt(tag, "InputSlots"));
+        inputSlots = Math.max(1, tag.getInteger("InputSlots"));
         hatch = next;
 
         suspendedStorage = null;
 
         if (mainNode != null) mainNode.loadFromNBT(tag);
-        else nodeData = tag.copy();
+        else nodeData = tag;
     }
 
     public NBTTagCompound saveForItemDrop() {
@@ -277,13 +276,19 @@ public class MEResourceHatchBlockEntity extends AEBaseTile implements IInWorldGr
         var contents = storage().removeForDrops(deferred -> {
             Runnable deliver = () -> {
                 var delayed = new ObjectArrayList<ItemStack>();
-                for (var stack : deferred) GenericResourcePackageItem.addDrop(stack.what(), stack.amount(), delayed);
+                for (int index1 = 0; index1 < deferred.size(); index1++) {
+                    var stack = deferred.get(index1);
+                    GenericResourcePackageItem.addDrop(stack.what(), stack.amount(), delayed);
+                }
                 destination.accept(delayed);
             };
             if (server.isCallingFromMinecraftThread()) deliver.run();
             else server.addScheduledTask(deliver);
         });
-        for (var stack : contents) GenericResourcePackageItem.addDrop(stack.what(), stack.amount(), drops);
+        for (int index = 0; index < contents.size(); index++) {
+            var stack = contents.get(index);
+            GenericResourcePackageItem.addDrop(stack.what(), stack.amount(), drops);
+        }
     }
 
     @Override

@@ -127,7 +127,9 @@ public final class SelectiveState implements ProcessAbortListener {
             selection.committed = true;
             selection.startCompleted = true;
             selection.completed = saved.completed();
-            for (var reference : saved.modifiers()) {
+            var elements4 = saved.modifiers();
+            for (int index4 = 0; index4 < elements4.size(); index4++) {
+                var reference = elements4.get(index4);
                 Objects.requireNonNull(reference);
                 if (!claimedModifiers.add(reference)) {
                     throw new IllegalArgumentException("Modifier ownership is repeated");
@@ -142,7 +144,9 @@ public final class SelectiveState implements ProcessAbortListener {
                 owned.expected = modifier;
                 selection.modifiers.put(reference, owned);
             }
-            for (var reference : saved.overlays()) {
+            var elements5 = saved.overlays();
+            for (int index5 = 0; index5 < elements5.size(); index5++) {
+                var reference = elements5.get(index5);
                 Objects.requireNonNull(reference);
                 if (!claimedOverlays.add(reference)) {
                     throw new IllegalArgumentException("Overlay ownership is repeated");
@@ -183,12 +187,15 @@ public final class SelectiveState implements ProcessAbortListener {
         var overlays = new ObjectOpenHashSet<OverlayReference>();
         var local = process.attributes().localSnapshot();
         var layers = process.components().get(RecipeOverlays.TYPE);
-        for (var receipt : receipts) {
+        for (int index6 = 0; index6 < receipts.size(); index6++) {
+            var receipt = receipts.get(index6);
             Objects.requireNonNull(receipt);
             if (!paths.add(receipt.selectionPath())) {
                 throw new IllegalArgumentException("Repeated abort selection path");
             }
-            for (var reference : receipt.modifiers()) {
+            var elements3 = receipt.modifiers();
+            for (int index3 = 0; index3 < elements3.size(); index3++) {
+                var reference = elements3.get(index3);
                 if (!modifiers.add(reference)) {
                     throw new IllegalArgumentException("Repeated removed modifier");
                 }
@@ -197,7 +204,9 @@ public final class SelectiveState implements ProcessAbortListener {
                     throw new IllegalArgumentException("Aborted modifier is still installed: " + reference.id());
                 }
             }
-            for (var reference : receipt.overlays()) {
+            var elements = receipt.overlays();
+            for (int index2 = 0; index2 < elements.size(); index2++) {
+                var reference = elements.get(index2);
                 if (!overlays.add(reference)) {
                     throw new IllegalArgumentException("Repeated removed overlay");
                 }
@@ -375,7 +384,8 @@ public final class SelectiveState implements ProcessAbortListener {
                     failure = accumulate(failure, cleanup);
                 }
             }
-            for (var change : pendingOverlays) {
+            for (int index1 = 0; index1 < pendingOverlays.size(); index1++) {
+                var change = pendingOverlays.get(index1);
                 try {
                     change.complete();
                 } catch (RuntimeException | Error cleanup) {

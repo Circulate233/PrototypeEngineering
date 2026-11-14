@@ -1,16 +1,15 @@
 package com.circulation.prototype_eng.api.research.manual;
 
 import com.circulation.prototype_eng.api.persistence.PlayerInventoryNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraftforge.common.util.Constants;
+import net.minecraft.util.ResourceLocation;
 
 import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Strict receipt codec and complete InventoryPlayer image validation without game initialization.
+ * Receipt codec using complete InventoryPlayer images.
  */
 public final class ManualResearchMaterialReceiptNbt {
     private ManualResearchMaterialReceiptNbt() {
@@ -39,29 +38,18 @@ public final class ManualResearchMaterialReceiptNbt {
     }
 
     public static ManualResearchMaterialReceipt decode(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "version", "sessionId", "teamId", "researchId", "targetLevel", "queueEntryId",
-            "intent", "inventoryBefore", "inventoryAfter", "status", "preparedAt", "committedAt", "confirmedAt");
-        if (StrictNbt.requireInt(tag, "version") != 1) {
+        if (tag.getInteger("version") != 1) {
             throw new IllegalArgumentException("Unsupported material receipt version");
         }
-        String rawSession = StrictNbt.requireString(tag, "sessionId");
+        String rawSession = tag.getString("sessionId");
         var session = UUID.fromString(rawSession);
-        if (!session.toString().equals(rawSession)) {
-            throw new IllegalArgumentException("Non-canonical material receipt session UUID");
-        }
-        return new ManualResearchMaterialReceipt(session, StrictNbt.requireString(tag, "teamId"),
-            new TeamResearchQueue.Key(StrictNbt.requireId(tag, "researchId"), StrictNbt.requireInt(tag, "targetLevel"),
-                StrictNbt.requireLong(tag, "queueEntryId")),
-            ManualResearchSessionNbt.decodeMaterialIntent(StrictNbt.requireCompound(tag, "intent")),
-            bytes(tag, "inventoryBefore"), tag.hasKey("inventoryAfter") ? bytes(tag, "inventoryAfter") : null,
-            ManualResearchMaterialReceipt.Status.valueOf(StrictNbt.requireString(tag, "status")),
-            StrictNbt.requireLong(tag, "preparedAt"), StrictNbt.requireLong(tag, "committedAt"), StrictNbt.requireLong(tag, "confirmedAt"));
-    }
-
-    public static byte[] copyInventory(byte[] source) {
-        var copy = Objects.requireNonNull(source).clone();
-        decodeInventory(copy);
-        return copy;
+        return new ManualResearchMaterialReceipt(session, tag.getString("teamId"),
+            new TeamResearchQueue.Key(new ResourceLocation(tag.getString("researchId")), tag.getInteger("targetLevel"),
+                tag.getLong("queueEntryId")),
+            ManualResearchSessionNbt.decodeMaterialIntent(tag.getCompoundTag("intent")),
+            tag.getByteArray("inventoryBefore"), tag.hasKey("inventoryAfter") ? tag.getByteArray("inventoryAfter") : null,
+            ManualResearchMaterialReceipt.Status.valueOf(tag.getString("status")),
+            tag.getLong("preparedAt"), tag.getLong("committedAt"), tag.getLong("confirmedAt"));
     }
 
     public static byte[] encodeInventory(NBTTagCompound image) {
@@ -72,10 +60,4 @@ public final class ManualResearchMaterialReceiptNbt {
         return PlayerInventoryNbt.decode(source);
     }
 
-    private static byte[] bytes(NBTTagCompound tag, String key) {
-        if (!tag.hasKey(key, Constants.NBT.TAG_BYTE_ARRAY)) {
-            throw new IllegalArgumentException("Receipt field must be a byte array: " + key);
-        }
-        return tag.getByteArray(key).clone();
-    }
 }

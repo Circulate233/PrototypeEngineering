@@ -17,6 +17,7 @@ import java.util.function.Consumer;
 /**
  * Deferred declarations share the existing synchronous Java registration events and their validation.
  * Each phase closes before delivering callbacks. Startup definitions cannot be replayed as a reload.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class DefinitionRegistrations {
     private static final Phase<MachineTypeRegistrationEvent> MACHINES = new Phase<>("machine types (#loader preinit)");
@@ -128,7 +129,10 @@ public final class DefinitionRegistrations {
                 callbacks = new ObjectArrayList<>(declarations);
                 declarations.clear();
             }
-            for (var callback : callbacks) callback.accept(event);
+            for (int index = 0; index < callbacks.size(); index++) {
+                var callback = callbacks.get(index);
+                callback.accept(event);
+            }
         }
     }
 }

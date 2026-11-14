@@ -11,6 +11,7 @@ import java.util.Objects;
 /**
  * Explicit host entry point; process creation never invokes this pipeline automatically. Acquisition
  * applies descriptors in order, including repeated descriptors, and returns their local undo boundary.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class RecipeOverlayPipeline {
     private RecipeOverlayPipeline() {

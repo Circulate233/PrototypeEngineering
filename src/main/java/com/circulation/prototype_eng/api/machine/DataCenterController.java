@@ -4,8 +4,6 @@ import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.network.DataCenter;
 import com.circulation.prototype_eng.api.research.DataCenterStorage;
 
-import java.util.Objects;
-
 /**
  * Ready-to-use database runtime composed with an existing persistent storage component. Level,
  * capacity and contents belong to that component; downloads and synchronization use the shared
@@ -21,7 +19,7 @@ public class DataCenterController extends MachineInstance implements DataCenter 
 
     @Override
     public DataCenterStorage dataCenterStorage() {
-        return Objects.requireNonNull(components().get(storage));
+        return components().get(storage);
     }
 
     @Override

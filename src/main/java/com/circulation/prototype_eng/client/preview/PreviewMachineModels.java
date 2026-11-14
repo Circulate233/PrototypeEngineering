@@ -200,12 +200,14 @@ final class PreviewMachineModels implements AutoCloseable {
             if (released) return;
             released = true;
             Throwable failure = null;
-            for (var entry : entries)
+            for (int index = 0; index < entries.size(); index++) {
+                var entry = entries.get(index);
                 try {
                     entry.lease().close();
                 } catch (RuntimeException | Error caught) {
                     failure = PreviewBlockModelCache.merge(failure, caught);
                 }
+            }
             PreviewBlockModelCache.rethrow(failure);
         }
     }

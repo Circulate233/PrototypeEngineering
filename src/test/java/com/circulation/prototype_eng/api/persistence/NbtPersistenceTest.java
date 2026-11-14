@@ -12,13 +12,9 @@ import com.circulation.prototype_eng.api.recipe.overlay.ResourceRequirementPatch
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.nbt.NBTTagList;
-import net.minecraft.nbt.NBTTagString;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.ResourceLocation;
-import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentString;
 import org.junit.jupiter.api.Test;
 
@@ -32,18 +28,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NbtPersistenceTest {
     private static final KeyType TYPE = new KeyType("nbt_persistence");
-    private static final AEKeyType RETAINING_TYPE = new AEKeyType(new ResourceLocation("persistence_test", "retaining"),
-        RetainingKey.class, new TextComponentString("retaining")) {
-        @Override
-        public AEKey readFromPacket(PacketBuffer input) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public AEKey loadKeyFromTag(NBTTagCompound tag) {
-            return new RetainingKey(tag);
-        }
-    };
 
     private static AttributeModifierCodec squareCodec() {
         return new AttributeModifierCodec() {
@@ -61,74 +45,17 @@ class NbtPersistenceTest {
 
             @Override
             public AttributeModifier decode(NBTTagCompound tag) {
-                StrictNbt.requireKeys(tag, "Id");
-                return new SquareModifier(StrictNbt.requireString(tag, "Id"));
+                return new SquareModifier(tag.getString("Id"));
             }
         };
     }
 
     @Test
-    void rejectsMissingFieldsNumericCoercionInvalidBooleansAndNonfiniteNumbers() {
-        var tag = new NBTTagCompound();
-        assertThrows(IllegalArgumentException.class, () -> StrictNbt.requireLong(tag, "Quantity"));
-        tag.setInteger("Quantity", 4);
-        assertThrows(IllegalArgumentException.class, () -> StrictNbt.requireLong(tag, "Quantity"));
-        tag.setFloat("Progress", 0.5f);
-        assertThrows(IllegalArgumentException.class, () -> StrictNbt.requireDouble(tag, "Progress"));
-        tag.setDouble("Progress", Double.NaN);
-        assertThrows(IllegalArgumentException.class, () -> StrictNbt.requireDouble(tag, "Progress"));
-        tag.setDouble("Progress", Double.POSITIVE_INFINITY);
-        assertThrows(IllegalArgumentException.class, () -> StrictNbt.requireDouble(tag, "Progress"));
-        tag.setByte("Started", (byte) 2);
-        assertThrows(IllegalArgumentException.class, () -> StrictNbt.requireBoolean(tag, "Started"));
-        tag.setInteger("Started", 1);
-        assertThrows(IllegalArgumentException.class, () -> StrictNbt.requireBoolean(tag, "Started"));
-        tag.setBoolean("Started", true);
-        assertTrue(StrictNbt.requireBoolean(tag, "Started"));
-    }
-
-    @Test
-    void rejectsImplicitNamespaceNoncanonicalIdsAndUnknownFields() {
-        var tag = new NBTTagCompound();
-        for (var id : List.of("", "material", ":material", "example:", "EXAMPLE:material")) {
-            tag.setString("Type", id);
-            assertThrows(IllegalArgumentException.class, () -> StrictNbt.requireId(tag, "Type"));
-        }
-        tag.setString("Type", "example:material");
-        tag.setString("Unrecognized", "value");
-        assertThrows(IllegalArgumentException.class, () -> StrictNbt.requireKeys(tag, "Type"));
-    }
-
-    @Test
-    void rejectsUnknownNullAndForeignResourceDecodersWithoutReplacingMissingContent() {
+    void rejectsUnknownAndNullResourceDecodersWithoutReplacingMissingContent() {
         var codec = new ResourceKeyNbt(id -> id.equals(TYPE.getId()) ? TYPE : null);
         var saved = codec.encode(new Key(TYPE, "material"));
         saved.setString("Type", "persistence_test:unknown");
         assertThrows(IllegalArgumentException.class, () -> codec.decode(saved));
-        saved.setString("Type", TYPE.getId().toString());
-        saved.setString("Data", "wrong type");
-        assertThrows(IllegalArgumentException.class, () -> codec.decode(saved));
-        saved.setTag("Data", new NBTTagCompound());
-        saved.setInteger("Unexpected", 1);
-        assertThrows(IllegalArgumentException.class, () -> codec.decode(saved));
-
-        var foreign = new AEKeyType(new ResourceLocation("persistence_test", "foreign"), Key.class,
-            new TextComponentString("foreign")) {
-            @Override
-            public AEKey readFromPacket(PacketBuffer input) {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public AEKey loadKeyFromTag(NBTTagCompound tag) {
-                return new Key(TYPE, "material");
-            }
-        };
-        var foreignTag = new NBTTagCompound();
-        foreignTag.setString("Type", foreign.getId().toString());
-        foreignTag.setTag("Data", new NBTTagCompound());
-        assertThrows(IllegalArgumentException.class, () -> new ResourceKeyNbt(_ -> foreign).decode(foreignTag));
-
         var absent = new AEKeyType(new ResourceLocation("persistence_test", "absent"), Key.class,
             new TextComponentString("absent")) {
             @Override
@@ -141,46 +68,19 @@ class NbtPersistenceTest {
                 return null;
             }
         };
+        var foreignTag = new NBTTagCompound();
         foreignTag.setString("Type", absent.getId().toString());
         assertThrows(IllegalArgumentException.class, () -> new ResourceKeyNbt(_ -> absent).decode(foreignTag));
     }
 
-    @Test
-    void isolatesEncodingAndDecodingEvenWhenAnExternalKeyRetainsMutableData() {
-        var codec = new ResourceKeyNbt(_ -> RETAINING_TYPE);
-        var data = new NBTTagCompound();
-        var nested = new NBTTagCompound();
-        nested.setString("Value", "original");
-        data.setTag("Nested", nested);
-        var original = new RetainingKey(data);
-        var saved = codec.encode(original);
-        saved.getCompoundTag("Data").getCompoundTag("Nested").setString("Value", "encoded change");
-        assertEquals("original", original.toTag().getCompoundTag("Nested").getString("Value"));
-
-        var restored = codec.decode(saved);
-        saved.getCompoundTag("Data").getCompoundTag("Nested").setString("Value", "input change");
-        assertEquals("encoded change", restored.toTag().getCompoundTag("Nested").getString("Value"));
-        restored.toTag().getCompoundTag("Nested").setString("Value", "decoded change");
-        assertEquals("input change", saved.getCompoundTag("Data").getCompoundTag("Nested").getString("Value"));
-    }
 
     @Test
-    void stackListRoundTripPreservesOrderAndRejectsTheWholeListOnMalformedLaterEntries() {
+    void stackListRoundTripPreservesOrder() {
         var codec = new ResourceKeyNbt(_ -> TYPE);
         var expected = List.of(new GenericStack(new Key(TYPE, "first"), 2), new GenericStack(new Key(TYPE, "second"), 5));
         var saved = codec.writeStacks(expected);
         var restored = codec.readStacks(saved);
         assertEquals(expected, restored);
-        saved.getCompoundTagAt(1).setInteger("Quantity", 5);
-        assertThrows(IllegalArgumentException.class, () -> codec.readStacks(saved));
-        saved.getCompoundTagAt(1).setLong("Quantity", 0);
-        assertThrows(IllegalArgumentException.class, () -> codec.readStacks(saved));
-        assertEquals(expected, restored);
-        assertThrows(IllegalArgumentException.class, () -> codec.writeStacks(List.of(new GenericStack(new Key(TYPE, "first"), -1))));
-
-        var wrongElements = new NBTTagList();
-        wrongElements.appendTag(new NBTTagString("not a stack"));
-        assertThrows(IllegalArgumentException.class, () -> codec.readStacks(wrongElements));
     }
 
     @Test
@@ -227,7 +127,7 @@ class NbtPersistenceTest {
 
     @Test
     void validatesAllAttributeEntriesBeforePublishingAndRejectsDuplicatesOrEmptyEntries() {
-        var codec = new MachineAttributesNbt(new AttributeModifierNbt());
+        var codec = MachineAttributesNbt.INSTANCE;
         var first = new ResourceLocation("persistence_test", "first");
         var second = new ResourceLocation("persistence_test", "second");
         var source = new MachineAttributes();
@@ -273,7 +173,7 @@ class NbtPersistenceTest {
         var source = new MachineAttributes(parent, 1);
         source.addModifier(id, new NumericAttributeModifier("local", 1, AttributeModifier.Operation.ADDITION));
         source.setResolvedBase(id, parent.value(id));
-        var codec = new MachineAttributesNbt(new AttributeModifierNbt());
+        var codec = MachineAttributesNbt.INSTANCE;
         var saved = codec.encode(source.localSnapshot());
         parent.setBase(id, 10);
         var restored = new MachineAttributes(parent, 1);
@@ -284,15 +184,6 @@ class NbtPersistenceTest {
         leaf.addModifier(id, new NumericAttributeModifier("leaf", 2, AttributeModifier.Operation.ADDITION));
         assertEquals(7, leaf.value(id));
 
-        var missingFlag = saved.copy();
-        missingFlag.getTagList("Attributes", 10).getCompoundTagAt(0).removeTag("InheritModifiers");
-        assertThrows(IllegalArgumentException.class, () -> restored.restoreLocal(codec.decode(missingFlag)));
-        var wrongType = saved.copy();
-        wrongType.getTagList("Attributes", 10).getCompoundTagAt(0).setInteger("InheritModifiers", 0);
-        assertThrows(IllegalArgumentException.class, () -> restored.restoreLocal(codec.decode(wrongType)));
-        var missingBase = saved.copy();
-        missingBase.getTagList("Attributes", 10).getCompoundTagAt(0).removeTag("Base");
-        assertThrows(IllegalArgumentException.class, () -> restored.restoreLocal(codec.decode(missingBase)));
         var oldVersion = saved.copy();
         oldVersion.setInteger("Version", 1);
         assertThrows(IllegalArgumentException.class, () -> restored.restoreLocal(codec.decode(oldVersion)));
@@ -301,35 +192,6 @@ class NbtPersistenceTest {
         assertEquals(22, restored.value(id));
     }
 
-    @Test
-    void copiesExternalCodecOutputAndInputBeforeCallingTheImplementation() {
-        var shared = new NBTTagCompound();
-        var external = new AttributeModifierCodec() {
-            @Override
-            public boolean supports(AttributeModifier modifier) {
-                return modifier instanceof SquareModifier;
-            }
-
-            @Override
-            public NBTTagCompound encode(AttributeModifier value) {
-                shared.setString("Id", value.id());
-                return shared;
-            }
-
-            @Override
-            public AttributeModifier decode(NBTTagCompound tag) {
-                var id = StrictNbt.requireString(tag, "Id");
-                tag.setString("Id", "decoder mutation");
-                return new SquareModifier(id);
-            }
-        };
-        var codec = new AttributeModifierNbt(List.of(new AttributeModifierNbt.Binding(new ResourceLocation("persistence_test", "square"), external)));
-        var saved = codec.encode(new SquareModifier("original"));
-        shared.setString("Id", "encoder mutation");
-        assertEquals("original", saved.getCompoundTag("Data").getString("Id"));
-        assertEquals(9, codec.decode(saved).apply(0, 3));
-        assertEquals("original", saved.getCompoundTag("Data").getString("Id"));
-    }
 
     @Test
     void overlayCodecsPreserveAbsentAndExplicitEmptyFieldsAndRejectMalformedQuantities() {
@@ -349,8 +211,6 @@ class NbtPersistenceTest {
         var energy = BuiltinOverlayCodecs.ENERGY_RATES;
         assertEquals(new EnergyRequirementPatch(null, 0L, false), energy.decode(energy.encode(new EnergyRequirementPatch(null, 0L, false))));
         var invalid = energy.encode(new EnergyRequirementPatch(1L, null, null));
-        invalid.setInteger("InputsPerTick", 1);
-        assertThrows(IllegalArgumentException.class, () -> energy.decode(invalid));
         invalid.setLong("InputsPerTick", -1);
         assertThrows(IllegalArgumentException.class, () -> energy.decode(invalid));
     }
@@ -367,59 +227,4 @@ class NbtPersistenceTest {
         }
     }
 
-    /**
-     * Deliberately returns and retains its tag to expose codec aliasing.
-     */
-    private static final class RetainingKey extends AEKey {
-        private final NBTTagCompound data;
-
-        private RetainingKey(NBTTagCompound data) {
-            this.data = data;
-        }
-
-        @Override
-        public AEKeyType getType() {
-            return RETAINING_TYPE;
-        }
-
-        @Override
-        public AEKey dropSecondary() {
-            return this;
-        }
-
-        @Override
-        public Object getPrimaryKey() {
-            return this;
-        }
-
-        @Override
-        public ResourceLocation getId() {
-            return RETAINING_TYPE.getId();
-        }
-
-        @Override
-        public Object getReadOnlyStack() {
-            return this;
-        }
-
-        @Override
-        protected ITextComponent computeDisplayName() {
-            return new TextComponentString("retaining");
-        }
-
-        @Override
-        public NBTBase get(String componentId) {
-            return data.getTag(componentId);
-        }
-
-        @Override
-        public void writeToPacket(PacketBuffer output) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public NBTTagCompound toTag() {
-            return data;
-        }
-    }
 }

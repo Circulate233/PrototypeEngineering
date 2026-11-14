@@ -259,7 +259,8 @@ public class ReusableModelVboUploader implements AutoCloseable {
         if (closed || leases.isEmpty()) return;
         var first = leases.getFirst().buffers();
         int cached = 0;
-        for (var lease : leases) {
+        for (int index = 0; index < leases.size(); index++) {
+            var lease = leases.get(index);
             var value = lease.buffers();
             if (!first.origin().equals(value.origin()) || first.textureIdentity() != value.textureIdentity()) {
                 leases.forEach(item -> draw(item, pass));
@@ -275,7 +276,8 @@ public class ReusableModelVboUploader implements AutoCloseable {
         if (mergeScratch == null)
             mergeScratch = ByteBuffer.allocateDirect((8 * 1024 * 1024 / STRIDE) * STRIDE).order(ByteOrder.nativeOrder());
         mergeScratch.clear();
-        for (var lease : leases) {
+        for (int index2 = 0; index2 < leases.size(); index2++) {
+            var lease = leases.get(index2);
             var value = lease.buffers();
             var resident = value.gpu().get(pass);
             if (resident != null) {

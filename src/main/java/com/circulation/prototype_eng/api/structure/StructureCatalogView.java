@@ -19,6 +19,7 @@ import java.util.UUID;
 /**
  * Complete server-authoritative presentation graph, never a client matching or execution registry.
  * Collections and their contents are borrowed read-only and must remain unchanged for the view's lifetime.
+ * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 @SuppressWarnings("ClassCanBeRecord") // This object is the authoritative completed-generation identity.
 public final class StructureCatalogView {
@@ -59,7 +60,11 @@ public final class StructureCatalogView {
             var geometry = shape instanceof StructurePreviewProvider provider ? Objects.requireNonNull(provider.previewGeometry())
                 : new StructurePreviewProvider.Geometry(StructurePreviewProvider.Kind.OPAQUE, BlockPos.ORIGIN, 0, 0, BlockPos.ORIGIN, List.of(), List.of());
             var children = new IntArrayList(geometry.children().size());
-            for (var child : geometry.children()) children.add(index(child, indexes, shapes));
+            var elements = geometry.children();
+            for (int index1 = 0; index1 < elements.size(); index1++) {
+                var child = elements.get(index1);
+                children.add(index(child, indexes, shapes));
+            }
             nodes.add(new Node(shape.id(), shape.orientation(), shape.hideWorldBlocks(), geometry.kind(), geometry.offset(),
                 geometry.minCount(), geometry.maxCount(), geometry.sliceOffset(), geometry.cells(), children, shape.displays()));
         }

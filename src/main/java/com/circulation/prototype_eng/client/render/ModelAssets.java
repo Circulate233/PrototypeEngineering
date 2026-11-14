@@ -66,7 +66,8 @@ public class ModelAssets implements IResourceManager, AutoCloseable {
         client.requireOwner();
         Map<ResourceLocation, Source> captured = new Object2ObjectOpenHashMap<>(locations.size());
         try {
-            for (var location : locations) {
+            for (int index = 0; index < locations.size(); index++) {
+                var location = locations.get(index);
                 synchronized (this) {
                     if (retired) throw new IOException("Model resource epoch retired");
                     if (sources.containsKey(location) || captured.containsKey(location)) continue;

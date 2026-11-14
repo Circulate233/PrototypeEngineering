@@ -62,11 +62,13 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
             var copiedValidators = new ObjectArrayList<StructurePredicate>(validators.size());
             var copiedChildren = new ObjectArrayList<MachineStructure>(children.size());
             boolean stable = budgeted && pattern.planReusable();
-            for (var validator : validators) {
+            for (int index7 = 0; index7 < validators.size(); index7++) {
+                var validator = validators.get(index7);
                 copiedValidators.add(Objects.requireNonNull(validator));
                 stable = stable && validator.planReusable();
             }
-            for (var child : children) {
+            for (int index5 = 0; index5 < children.size(); index5++) {
+                var child = children.get(index5);
                 copiedChildren.add(Objects.requireNonNull(child));
                 stable = stable && child.planReusable();
             }
@@ -141,11 +143,13 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
             rotation.apply(orientation.getSide(RelativeSide.FRONT)),
             rotation.apply(orientation.getSide(RelativeSide.TOP)));
         var transformedValidators = new ObjectArrayList<StructurePredicate>(validators.size());
-        for (StructurePredicate validator : validators) {
+        for (int index4 = 0; index4 < validators.size(); index4++) {
+            StructurePredicate validator = validators.get(index4);
             transformedValidators.add(validator.transform(rotation));
         }
         var transformedChildren = new ObjectArrayList<MachineStructure>(children.size());
-        for (MachineStructure child : children) {
+        for (int index2 = 0; index2 < children.size(); index2++) {
+            MachineStructure child = children.get(index2);
             transformedChildren.add(child.transform(rotation));
         }
         return new TemplateStructure(id, transformedOrientation, rotation.apply(offset), hideWorldBlocks,
@@ -162,10 +166,12 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
         Objects.requireNonNull(controller);
         BlockPos origin = StructurePattern.add(anchor, offset);
         pattern.collectReads(plan, origin, controller);
-        for (StructurePredicate validator : validators) {
+        for (int index3 = 0; index3 < validators.size(); index3++) {
+            StructurePredicate validator = validators.get(index3);
             validator.collectReads(plan, origin, controller);
         }
-        for (MachineStructure child : children) {
+        for (int index = 0; index < children.size(); index++) {
+            MachineStructure child = children.get(index);
             child.collectReads(plan, origin, controller);
         }
     }
@@ -180,13 +186,15 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
         if (!pattern.matches(snapshot, origin, controller)) {
             return null;
         }
-        for (StructurePredicate validator : validators) {
+        for (int index6 = 0; index6 < validators.size(); index6++) {
+            StructurePredicate validator = validators.get(index6);
             if (!validator.matches(snapshot, origin, controller)) {
                 return null;
             }
         }
         var matchedChildren = new ObjectArrayList<StructureMatch>(children.size());
-        for (MachineStructure child : children) {
+        for (int index8 = 0; index8 < children.size(); index8++) {
+            MachineStructure child = children.get(index8);
             StructureMatch result = child.match(snapshot, origin, controller);
             if (result == null) {
                 return null;
