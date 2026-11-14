@@ -1,5 +1,13 @@
 # 实施进度
 
+## 2026-11-14 构建器AE回收、流体优先与脚下掉落
+
+- “ME取料”文案改为“使用AE”，提示同步说明取料和回收。ConstructionMEAccess增加StorageHelper.poweredInsert入口，沿无线终端绑定/范围/权限/耗能，不查询磁铁卡或过滤配置。物品、实际抽取的流体和资源包内资源优先入网，网络未接收部分进入原本的背包/容器处理，最终余物在玩家脚下生成，初速度为零。
+- BuilderDropRecovery使用只在当前挖掘调用存活的线程局部作用域，通过Forge EntityJoinWorldEvent捕获实际产生的物品；保留其他处理器已取消的结果，不搜集附近已有物品。标准采掘/时运/精准采集及BreakEvent沿原流程。四类仓室的延迟回收取得本次交付函数，已退休来源完成预留后继续按玩家回收；交付期间暂时停止捕获，防止另一轮挖掘收走已有收件人的物品；玩家已离开时使用其挖掘时脚下位置。
+- ConstructionProgress用同一位置状态数组管理流体优先阶段，未完成流体在重试期间阻止普通位置执行。拆解成功抽取的目标直接完成；清障建造收集流体后把该位置移交放置阶段。只在任务建立时分类已加载目标，未加载目标等待确认，不强制加载区块。严格空间/忽略流体模式沿原替换规则。
+- 新增2项必要进度行为测试，验证流体重试阻止方块提前执行、已收集流体的位置继续放置；既有背包预检、任务状态、仓室销毁/预留归还及持久化测试共同运行，共30项/6 suites通过，无失败、错误或跳过。未增加源码包含、文案或常量测试。10Java经本机IDEA格式化及逐文件errorsOnly:false检查，错误/警告/弱警告全零；MCP构建及Gradle build -x test通过，复用前述测试结果。
+- 证据根C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261114/，文件为builder-recovery-tests.log、builder-recovery-tests/、builder-recovery-idea-final.json和builder-recovery-build-final.log。参考本机AE WirelessTerminalActions.insertStack和StorageHelper源码。World实际生成、终端存入、流体容器、保护插件及脚下位置仍待用户重启复验；本轮未启动游戏，不推送，本地提交。
+
 ## 2026-11-14 计算机JEI与供给配方页精简
 
 - 资源转换JEI删除行为说明句和“本机资源”前缀，每种资源仅显示“每份资源名：数量”，材料tooltip仅标注“每份”。计算机分类关闭加工箭头及其占用的间距，材料重新居中；通用机器配方保留原箭头布局。仍使用资源自己的displayName与format方法。

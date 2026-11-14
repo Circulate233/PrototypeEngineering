@@ -282,8 +282,7 @@ public final class StructureBuildTasks {
         var tool = task.tool;
         var tag = BuilderState.data(tool);
         var pos = target.position();
-        if (world.isOutsideBuildHeight(pos) || !world.isBlockLoaded(pos, false) || !world.isBlockModifiable(player, pos)
-            || !player.canPlayerEdit(pos, EnumFacing.UP, tool)) {
+        if (world.isOutsideBuildHeight(pos) || !world.isBlockLoaded(pos, false)) {
             if (target.state() != null && !BuilderState.Setting.REQUIRE_SPACE.enabled(tag)) {
                 player.sendMessage(StructureToolText.BuilderBlocked.text(1));
                 return Step.COMPLETE;
@@ -291,9 +290,18 @@ public final class StructureBuildTasks {
             return Step.RETRY;
         }
         var current = world.getBlockState(pos);
+        if (task.progress.firstPass() && !fluid(current)) return Step.DEFER;
+        if (!world.isBlockModifiable(player, pos) || !player.canPlayerEdit(pos, EnumFacing.UP, tool)) {
+            if (target.state() != null && !BuilderState.Setting.REQUIRE_SPACE.enabled(tag)) {
+                player.sendMessage(StructureToolText.BuilderBlocked.text(1));
+                return Step.COMPLETE;
+            }
+            return Step.RETRY;
+        }
         var desired = target.state();
         if (desired == null && world.isAirBlock(pos) || current.equals(desired)) return Step.COMPLETE;
-        if (desired == null) return remove(player, task, pos, current) ? Step.COMPLETE : Step.RETRY;
+        if (desired == null || task.progress.firstPass())
+            return remove(player, task, pos, current) ? desired == null ? Step.COMPLETE : Step.DEFER : Step.RETRY;
         if (!placeable(player, tool, pos, current)) {
             if (!BuilderState.Setting.REQUIRE_SPACE.enabled(tag)) {
                 player.sendMessage(StructureToolText.BuilderBlocked.text(1));
@@ -375,26 +383,27 @@ public final class StructureBuildTasks {
             ? 0 : block.getExpDrop(state, world, pos, EnchantmentHelper.getEnchantmentLevel(Enchantments.FORTUNE, harvestedWith)));
         if (MinecraftForge.EVENT_BUS.post(event) || !world.getBlockState(pos).equals(state) || !task.valid(player))
             return false;
-        if (fluid && !task.dismantle) return world.setBlockToAir(pos);
         if (fluid && !player.isCreative()) {
             var source = FluidUtil.getFluidHandler(world, pos, EnumFacing.UP);
             if (source == null) return false;
             var available = source.drain(Integer.MAX_VALUE, false);
-            // Flowing fluid has no independently drainable source; never manufacture a bucket from it.
+            // 流动流体没有可独立抽取的源，不产生回收量。
             if (available == null || available.amount <= 0) return world.setBlockToAir(pos);
             var drained = source.drain(available, true);
             if (drained == null || drained.amount <= 0) return false;
-            BuilderFluidRecovery.deliver(player, pos, drained);
-            // A successful source drain owns removal; a neighbor refill must not farm this target again.
+            BuilderFluidRecovery.deliver((EntityPlayerMP) player, drained, BuilderState.meMode(BuilderState.data(tool)) > 0);
+            // 成功抽取后完成此位置，邻居补流不能再次产生回收量。
             return true;
         }
-        var tile = world.getTileEntity(pos);
-        if (!block.removedByPlayer(state, world, pos, player, !player.isCreative())) return false;
-        block.onPlayerDestroy(world, pos, state);
-        world.playEvent(player, 2001, pos, Block.getStateId(state));
-        if (!player.isCreative()) {
-            block.harvestBlock(world, player, pos, state, tile, harvestedWith);
-            if (event.getExpToDrop() > 0) block.dropXpOnBlockBreak(world, pos, event.getExpToDrop());
+        try (var _ = BuilderDropRecovery.capture((EntityPlayerMP) player, BuilderState.meMode(BuilderState.data(tool)) > 0)) {
+            var tile = world.getTileEntity(pos);
+            if (!block.removedByPlayer(state, world, pos, player, !player.isCreative())) return false;
+            block.onPlayerDestroy(world, pos, state);
+            world.playEvent(player, 2001, pos, Block.getStateId(state));
+            if (!player.isCreative()) {
+                block.harvestBlock(world, player, pos, state, tile, harvestedWith);
+                if (event.getExpToDrop() > 0) block.dropXpOnBlockBreak(world, pos, event.getExpToDrop());
+            }
         }
         return true;
     }
@@ -424,7 +433,11 @@ public final class StructureBuildTasks {
             orientation = controller.orientation();
             this.dismantle = dismantle;
             this.targets = targets;
-            progress = new ConstructionProgress(targets.size());
+            progress = dismantle || !BuilderState.Setting.REQUIRE_SPACE.enabled(BuilderState.data(tool))
+                ? new ConstructionProgress(targets.size(), index -> {
+                var pos = targets.get(index).position();
+                return !world.isBlockLoaded(pos, false) || fluid(world.getBlockState(pos));
+            }) : new ConstructionProgress(targets.size());
         }
 
         boolean valid(EntityPlayer player) {

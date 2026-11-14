@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.storage;
 
+import com.circulation.prototype_eng.structure.tool.BuilderDropRecovery;
 import ae2.api.AECapabilities;
 import ae2.api.behaviors.GenericInternalInventoryAdapters;
 import ae2.api.stacks.AEItemKey;
@@ -7,7 +8,6 @@ import ae2.api.stacks.GenericStack;
 import ae2.api.util.AEColor;
 import ae2.items.misc.GenericResourcePackageItem;
 import ae2.tile.AEBaseTile;
-import ae2.util.Platform;
 import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.api.HatchCapabilities;
 import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
@@ -390,11 +390,12 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         var removalWorld = world;
         var removalPosition = pos.toImmutable();
         var server = Objects.requireNonNull(removalWorld.getMinecraftServer());
+        var destination = BuilderDropRecovery.destination(removalWorld, removalPosition);
         var contents = storage().removeForDrops(deferred -> {
             Runnable deliver = () -> {
                 var delayed = new ObjectArrayList<ItemStack>();
                 addResourceDrops(deferred, delayed, removalWorld, removalPosition);
-                Platform.spawnDrops(removalWorld, removalPosition, delayed);
+                destination.accept(delayed);
             };
             if (server.isCallingFromMinecraftThread()) deliver.run();
             else server.addScheduledTask(deliver);

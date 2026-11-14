@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.storage;
 
+import com.circulation.prototype_eng.structure.tool.BuilderDropRecovery;
 import ae2.api.AECapabilities;
 import ae2.api.config.Actionable;
 import ae2.api.networking.GridFlags;
@@ -17,7 +18,6 @@ import ae2.api.util.AEColor;
 import ae2.block.IOwnerAwareTile;
 import ae2.items.misc.GenericResourcePackageItem;
 import ae2.tile.AEBaseTile;
-import ae2.util.Platform;
 import com.circulation.prototype_eng.MEAssemblyConfig;
 import com.circulation.prototype_eng.api.HatchCapabilities;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
@@ -273,11 +273,12 @@ public class MEResourceHatchBlockEntity extends AEBaseTile implements IInWorldGr
         var removalWorld = world;
         var removalPosition = pos.toImmutable();
         var server = Objects.requireNonNull(world.getMinecraftServer());
+        var destination = BuilderDropRecovery.destination(removalWorld, removalPosition);
         var contents = storage().removeForDrops(deferred -> {
             Runnable deliver = () -> {
                 var delayed = new ObjectArrayList<ItemStack>();
                 for (var stack : deferred) GenericResourcePackageItem.addDrop(stack.what(), stack.amount(), delayed);
-                Platform.spawnDrops(removalWorld, removalPosition, delayed);
+                destination.accept(delayed);
             };
             if (server.isCallingFromMinecraftThread()) deliver.run();
             else server.addScheduledTask(deliver);

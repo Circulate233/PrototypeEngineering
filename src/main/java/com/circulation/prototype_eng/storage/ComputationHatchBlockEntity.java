@@ -1,9 +1,9 @@
 package com.circulation.prototype_eng.storage;
 
+import com.circulation.prototype_eng.structure.tool.BuilderDropRecovery;
 import ae2.api.AECapabilities;
 import ae2.api.behaviors.GenericInternalInventoryAdapters;
 import ae2.tile.AEBaseTile;
-import ae2.util.Platform;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.HatchCapabilities;
 import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
@@ -177,11 +177,12 @@ public class ComputationHatchBlockEntity extends AEBaseTile implements ResourceH
         var removalWorld = world;
         var position = pos.toImmutable();
         var server = Objects.requireNonNull(world.getMinecraftServer());
+        var destination = BuilderDropRecovery.destination(removalWorld, position);
         var contents = computationHatch().removeForDrops(deferred -> {
             Runnable deliver = () -> {
                 var delayed = new ObjectArrayList<ItemStack>();
                 for (var stack : deferred) stack.what().addDrops(stack.amount(), delayed, removalWorld, position);
-                Platform.spawnDrops(removalWorld, position, delayed);
+                destination.accept(delayed);
             };
             if (server.isCallingFromMinecraftThread()) deliver.run();
             else server.addScheduledTask(deliver);

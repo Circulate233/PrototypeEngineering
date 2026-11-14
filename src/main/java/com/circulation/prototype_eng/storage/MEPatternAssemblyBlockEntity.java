@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.storage;
 
+import com.circulation.prototype_eng.structure.tool.BuilderDropRecovery;
 import ae2.api.AECapabilities;
 import ae2.api.config.Actionable;
 import ae2.api.crafting.IPatternDetails;
@@ -30,7 +31,6 @@ import ae2.helpers.patternmodifier.PatternModifierLogic;
 import ae2.helpers.patternprovider.PatternContainer;
 import ae2.items.misc.GenericResourcePackageItem;
 import ae2.tile.AEBaseTile;
-import ae2.util.Platform;
 import ae2.util.inv.AppEngInternalInventory;
 import ae2.util.inv.InternalInventoryHost;
 import ae2.util.inv.filter.IAEItemFilter;
@@ -576,11 +576,12 @@ public final class MEPatternAssemblyBlockEntity extends AEBaseTile implements II
         var removalWorld = world;
         var removalPosition = pos.toImmutable();
         var server = Objects.requireNonNull(world.getMinecraftServer());
+        var destination = BuilderDropRecovery.destination(removalWorld, removalPosition);
         var contents = storage().removeForDrops(deferred -> {
             Runnable deliver = () -> {
                 var delayed = new ObjectArrayList<ItemStack>();
                 for (var stack : deferred) GenericResourcePackageItem.addDrop(stack.what(), stack.amount(), delayed);
-                Platform.spawnDrops(removalWorld, removalPosition, delayed);
+                destination.accept(delayed);
             };
             if (server.isCallingFromMinecraftThread()) deliver.run();
             else server.addScheduledTask(deliver);

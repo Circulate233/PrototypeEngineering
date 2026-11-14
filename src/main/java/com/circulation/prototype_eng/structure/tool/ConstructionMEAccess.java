@@ -45,6 +45,12 @@ final class ConstructionMEAccess {
             new PlayerSource(player, terminal.actionHost()), action);
     }
 
+    long insert(AEKey key, long amount) {
+        if (!current()) return 0;
+        return StorageHelper.poweredInsert(terminal.energySource(), terminal.host().getInventory(), key, amount,
+            new PlayerSource(player, terminal.actionHost()));
+    }
+
     long refund(AEKey key, long amount) {
         if (!current()) return 0;
         // Returned escrow must not require additional energy after a failed placement.
