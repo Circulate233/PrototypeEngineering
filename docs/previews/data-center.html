@@ -1,21 +1,21 @@
 <div id="pe-data-center">
   <style>
-    #pe-data-center { --dc-base:#cbccd4; --dc-panel:#9a9fb4; --dc-slot:#adb0c4; --dc-light:#f2f2f2; --dc-dark:#413f54; --dc-line:#696d88; --dc-text:#404040; --dc-hover:#b6baca; --dc-good:#006600; --dc-bad:#a02020; --dc-frame:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAADyCAYAAABEWhLBAAADuklEQVR4nO3YsW0CQRBA0TuLOgjtMhAFIBIqoCeHpgeLaiCkhGsAhC0kN2DO8n8v2GCTneyvZlyvdtcBgJzF/fg8HobT+fJ18fa6nHsmAH7ZdrP/DsBPjxAA8D89Pvovcw8CwDwEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKLGaZqucw8BwHNtN/th8f5xfPKzAPwFVkAAUeN6tbMCAhh6brlyFUbPokkcAAAAAElFTkSuQmCC); --dc-button:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAAUAgMAAAC1yppZAAAACXBIWXMAAAsTAAALEwEAmpwYAAAADFBMVEWtsMRpbYian7RBP1TFg3A3AAAALElEQVQoz2P4TzJgOMBAImBmOLWKRLB4VMuoFpprISMlXw0lEYTTSQvpGRkAEMNJfplgmvYAAAAASUVORK5CYII=); --dc-button-hover:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAAUBAMAAAA6im/5AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAD1BMVEVHcExwjLra//9BP1Sc0//2meR8AAAAAXRSTlMAQObYZgAAADNJREFUOMtjYKAHMKYDYDBSojlQZjByoTkYtWTUklFLRi0ZopbQoxQ2FKQ5EKaPJfSoGQEAYqbfOaAPDgAAAABJRU5ErkJggg==); font:14px/20px "Microsoft YaHei","Segoe UI",sans-serif; color:var(--dc-text); }
+    #pe-data-center { --dc-base:#cbccd4; --dc-panel:#9a9fb4; --dc-slot:#adb0c4; --dc-light:#f2f2f2; --dc-dark:#413f54; --dc-line:#696d88; --dc-arrow:#878fa5; --dc-text:#404040; --dc-hover:#b6baca; --dc-good:#006600; --dc-bad:#a02020; --dc-frame:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAADyCAYAAABEWhLBAAADuklEQVR4nO3YsW0CQRBA0TuLOgjtMhAFIBIqoCeHpgeLaiCkhGsAhC0kN2DO8n8v2GCTneyvZlyvdtcBgJzF/fg8HobT+fJ18fa6nHsmAH7ZdrP/DsBPjxAA8D89Pvovcw8CwDwEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKLGaZqucw8BwHNtN/th8f5xfPKzAPwFVkAAUeN6tbMCAhh6brlyFUbPokkcAAAAAElFTkSuQmCC); --dc-button:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAAUAgMAAAC1yppZAAAACXBIWXMAAAsTAAALEwEAmpwYAAAADFBMVEWtsMRpbYian7RBP1TFg3A3AAAALElEQVQoz2P4TzJgOMBAImBmOLWKRLB4VMuoFpprISMlXw0lEYTTSQvpGRkAEMNJfplgmvYAAAAASUVORK5CYII=); --dc-button-hover:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAAUBAMAAAA6im/5AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAD1BMVEVHcExwjLra//9BP1Sc0//2meR8AAAAAXRSTlMAQObYZgAAADNJREFUOMtjYKAHMKYDYDBSojlQZjByoTkYtWTUklFLRi0ZopbQoxQ2FKQ5EKaPJfSoGQEAYqbfOaAPDgAAAABJRU5ErkJggg==); font:14px/20px "Microsoft YaHei","Segoe UI",sans-serif; color:var(--dc-text); user-select:none; }
     #pe-data-center * { box-sizing:border-box; }
     #pe-data-center [hidden] { display:none !important; }
     #pe-data-center .dc-stage { display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px 2px 16px; }
     #pe-data-center .dc-states { display:flex; flex-wrap:wrap; justify-content:center; gap:4px; font-size:12px; }
     #pe-data-center .dc-states label { display:flex; align-items:center; gap:3px; padding:0 6px; }
-    #pe-data-center .dc-window { width:100%; max-width:640px; height:480px; padding:10px 12px; border:7px solid transparent; border-image:var(--dc-frame) 4 / 7px stretch; background:var(--dc-base); display:grid; grid-template-rows:auto minmax(0,1fr); gap:8px; }
+    #pe-data-center .dc-window { width:100%; max-width:640px; padding:10px 12px 12px; border:7px solid transparent; border-image:var(--dc-frame) 4 / 7px stretch; background:var(--dc-base); display:flex; flex-direction:column; gap:8px; }
     #pe-data-center .dc-title { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:0 10px; min-width:0; }
     #pe-data-center .dc-title-info { display:flex; gap:12px; align-items:center; white-space:nowrap; }
     #pe-data-center .dc-small { font-size:12px; line-height:20px; }
     #pe-data-center .dc-number { white-space:nowrap; font-variant-numeric:tabular-nums; }
     #pe-data-center .dc-good { color:var(--dc-good); }
     #pe-data-center .dc-bad { color:var(--dc-bad); }
-    #pe-data-center .dc-columns { display:grid; grid-template-columns:1fr 1fr; gap:10px; min-height:0; }
+    #pe-data-center .dc-columns { display:grid; grid-template-columns:1fr 1fr; gap:10px; height:236px; }
     #pe-data-center .dc-inset { background:var(--dc-panel); border:2px solid var(--dc-light); }
-    #pe-data-center .dc-pane { padding:8px; min-width:0; min-height:0; display:flex; flex-direction:column; gap:6px; }
+    #pe-data-center .dc-pane { padding:8px; min-width:0; min-height:0; display:flex; flex-direction:column; gap:4px; }
     #pe-data-center .dc-heading { display:flex; justify-content:space-between; align-items:center; gap:6px; min-height:20px; }
     #pe-data-center .dc-list { list-style:none; margin:0; padding:0 4px 0 0; flex:1; min-height:0; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#878fa5 var(--dc-panel); }
     #pe-data-center .dc-list li + li { border-top:1px solid var(--dc-line); }
@@ -25,35 +25,48 @@
     #pe-data-center .dc-entry img, #pe-data-center .dc-name img { width:24px; height:24px; image-rendering:pixelated; }
     #pe-data-center .dc-entry-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     #pe-data-center .dc-entry-level { font-size:12px; text-align:right; }
-    #pe-data-center .dc-empty { display:flex; align-items:center; justify-content:center; min-height:90px; font-size:13px; text-align:center; }
+    #pe-data-center .dc-empty { display:flex; align-items:center; justify-content:center; flex:1; min-height:60px; font-size:13px; text-align:center; }
+    #pe-data-center .dc-detail { display:flex; flex-direction:column; gap:2px; flex:1; min-height:0; }
     #pe-data-center .dc-name { display:grid; grid-template-columns:24px minmax(0,1fr); align-items:center; gap:8px; min-height:28px; }
     #pe-data-center .dc-name span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     #pe-data-center .dc-pair { display:flex; justify-content:space-between; align-items:center; gap:8px; min-height:20px; }
-    #pe-data-center .dc-separator { height:1px; background:var(--dc-line); flex:none; margin:2px 0; }
+    #pe-data-center .dc-separator { height:1px; background:var(--dc-line); flex:none; margin:3px 0; }
     #pe-data-center .dc-stepper { display:flex; align-items:center; gap:6px; }
     #pe-data-center .dc-stepper .dc-number { width:22px; text-align:center; }
-    #pe-data-center .dc-action { display:flex; align-items:center; justify-content:center; height:30px; min-width:0; padding:0 8px; font:12px/18px "Microsoft YaHei","Segoe UI",sans-serif; color:var(--dc-light); background:transparent; border:5px solid transparent; border-image:var(--dc-button) 2 / 5px stretch; image-rendering:pixelated; }
-    #pe-data-center .dc-action:hover:not(:disabled) { color:#517497; border-image-source:var(--dc-button-hover); }
-    #pe-data-center .dc-action:disabled { opacity:0.5; cursor:default; }
-    #pe-data-center .dc-step { width:26px; padding:0; }
-    #pe-data-center .dc-materials { display:grid; grid-template-columns:repeat(6,30px); gap:2px; min-height:30px; }
-    #pe-data-center .dc-slot { position:relative; width:30px; height:30px; border:0; padding:3px; background:var(--dc-slot); box-shadow:inset 1px 1px var(--dc-dark), inset -1px -1px var(--dc-light); }
-    #pe-data-center .dc-slot img { width:100%; height:100%; image-rendering:pixelated; display:block; }
-    #pe-data-center .dc-slot-count { position:absolute; right:1px; bottom:0; font-size:11px; line-height:12px; color:var(--dc-light); text-shadow:1px 1px var(--dc-dark),-1px 0 var(--dc-dark),0 -1px var(--dc-dark); font-variant-numeric:tabular-nums; }
-    #pe-data-center .dc-slot[aria-pressed=true] { outline:2px solid var(--dc-dark); outline-offset:-2px; background:var(--dc-light); }
-    #pe-data-center .dc-slot:hover { background:var(--dc-hover); }
-    #pe-data-center .dc-materials > .dc-small { grid-column:1 / -1; }
-    #pe-data-center .dc-result { margin-top:auto; min-height:40px; font-size:12px; line-height:20px; }
+    #pe-data-center .dc-step { display:flex; align-items:center; justify-content:center; width:24px; height:22px; padding:0; font:12px/12px "Microsoft YaHei","Segoe UI",sans-serif; color:var(--dc-light); background:transparent; border:4px solid transparent; border-image:var(--dc-button) 2 / 4px stretch; image-rendering:pixelated; }
+    #pe-data-center .dc-step:hover:not(:disabled) { color:#517497; border-image-source:var(--dc-button-hover); }
+    #pe-data-center .dc-step:disabled { opacity:0.5; cursor:default; }
+    #pe-data-center .dc-transfer { display:flex; align-items:center; justify-content:center; gap:10px; padding:6px 0 2px; }
+    #pe-data-center .dc-arrow { position:relative; width:44px; height:16px; }
+    #pe-data-center .dc-arrow::before { content:""; position:absolute; left:0; right:12px; top:5px; height:6px; background:var(--dc-arrow); }
+    #pe-data-center .dc-arrow::after { content:""; position:absolute; right:0; top:0; border-left:13px solid var(--dc-arrow); border-top:8px solid transparent; border-bottom:8px solid transparent; }
+    #pe-data-center .dc-arrow.dc-ready::before { background:var(--dc-dark); }
+    #pe-data-center .dc-arrow.dc-ready::after { border-left-color:var(--dc-dark); }
+    #pe-data-center .dc-reason { min-height:20px; font-size:12px; line-height:20px; text-align:center; }
+    #pe-data-center .dc-slot { position:relative; width:30px; height:30px; padding:3px; background:var(--dc-slot); box-shadow:inset 0 2px var(--dc-panel), inset 2px 0 var(--dc-panel), inset 0 -2px var(--dc-light), inset -2px 0 var(--dc-light); }
+    #pe-data-center .dc-slot:hover::after { content:""; position:absolute; inset:3px; background:#ffffff80; pointer-events:none; }
+    #pe-data-center .dc-slot img { width:100%; height:100%; image-rendering:pixelated; display:block; pointer-events:none; }
+    #pe-data-center .dc-slot-large { width:40px; height:40px; padding:8px; }
+    #pe-data-center .dc-slot-large:hover::after { inset:8px; }
+    #pe-data-center .dc-ghost img { opacity:0.45; }
+    #pe-data-center .dc-count { position:absolute; right:1px; bottom:0; font-size:11px; line-height:12px; color:var(--dc-light); text-shadow:1px 1px var(--dc-dark),-1px 0 var(--dc-dark),0 -1px var(--dc-dark); font-variant-numeric:tabular-nums; pointer-events:none; }
+    #pe-data-center .dc-slot-large .dc-count { right:4px; bottom:3px; }
+    #pe-data-center .dc-inventory { align-self:center; display:flex; flex-direction:column; gap:2px; width:100%; max-width:270px; }
+    #pe-data-center .dc-inventory-grid { display:grid; grid-template-columns:repeat(9,minmax(0,30px)); }
+    #pe-data-center .dc-inventory-grid .dc-slot { width:auto; height:auto; aspect-ratio:1; }
+    #pe-data-center .dc-hotbar { margin-top:6px; }
+    #pe-data-center .dc-held { position:fixed; z-index:11; width:24px; height:24px; pointer-events:none; }
+    #pe-data-center .dc-held img { width:100%; height:100%; image-rendering:pixelated; }
+    #pe-data-center .dc-held .dc-count { right:-3px; bottom:-3px; }
     #pe-data-center .dc-tooltip { position:fixed; z-index:10; pointer-events:none; padding:3px 6px; background:#100010f0; border:2px solid #2d0a63; color:#f2f2f2; font-size:12px; line-height:16px; white-space:pre; }
     @media(max-width:540px) {
-      #pe-data-center .dc-window { height:auto; min-height:480px; padding:8px; }
-      #pe-data-center .dc-columns { grid-template-columns:1fr; }
+      #pe-data-center .dc-window { padding:8px; }
+      #pe-data-center .dc-columns { grid-template-columns:1fr; height:auto; }
+      #pe-data-center .dc-list { max-height:160px; }
       #pe-data-center .dc-title { flex-wrap:wrap; }
-      #pe-data-center .dc-list { max-height:200px; }
     }
     @media(pointer:coarse) {
-      #pe-data-center .dc-entry, #pe-data-center .dc-action { min-height:44px; }
-      #pe-data-center .dc-window { height:auto; }
+      #pe-data-center .dc-entry { min-height:44px; }
     }
   </style>
   <div class="dc-stage viz-dotted-background">
@@ -75,37 +88,45 @@
           <div class="dc-heading"><span>已存研究</span><span class="dc-small">等级</span></div>
           <ul class="dc-list" id="dc-list"></ul>
         </section>
-        <section class="dc-pane dc-inset" aria-label="物品化下载">
-          <div id="dc-detail">
+        <section class="dc-pane dc-inset" aria-label="研究下载">
+          <div class="dc-detail" id="dc-detail">
             <div class="dc-name"><img id="dc-icon" alt=""><span id="dc-name"></span></div>
             <div class="dc-pair dc-small"><span>已存等级</span><span class="dc-number" id="dc-stored"></span></div>
-            <div class="dc-pair dc-small"><span>研究阶级</span><span class="dc-number" id="dc-research-tier"></span></div>
-            <div class="dc-separator"></div>
-            <div class="dc-heading"><span>物品化下载</span></div>
-            <div class="dc-pair">
-              <span class="dc-small">目标等级</span>
+            <div class="dc-pair dc-small">
+              <span>下载等级</span>
               <span class="dc-stepper">
-                <button class="dc-action dc-step cursor-interaction" type="button" id="dc-less" aria-label="降低目标等级">−</button>
+                <button class="dc-step cursor-interaction" type="button" id="dc-less" aria-label="降低下载等级">−</button>
                 <span class="dc-number" id="dc-target"></span>
-                <button class="dc-action dc-step cursor-interaction" type="button" id="dc-more" aria-label="提高目标等级">+</button>
+                <button class="dc-step cursor-interaction" type="button" id="dc-more" aria-label="提高下载等级">+</button>
               </span>
             </div>
+            <div class="dc-pair dc-small"><span>研究阶级</span><span class="dc-number" id="dc-research-tier"></span></div>
             <div class="dc-pair dc-small"><span>等级费用</span><span id="dc-cost"></span></div>
-            <div class="dc-heading dc-small"><span>材料（背包）</span><span id="dc-material-name"></span></div>
-            <div class="dc-materials" id="dc-materials"></div>
-            <button class="dc-action cursor-interaction" type="button" id="dc-download" style="margin-top:8px">下载为物品</button>
+            <div class="dc-separator"></div>
+            <div class="dc-heading"><span>研究下载</span></div>
+            <div class="dc-transfer">
+              <div class="dc-slot dc-slot-large cursor-interaction" data-slot="input" role="button" aria-label="下载材料槽"></div>
+              <div class="dc-arrow" id="dc-arrow" aria-hidden="true"></div>
+              <div class="dc-slot dc-slot-large cursor-interaction" data-slot="output" role="button" aria-label="下载输出槽"></div>
+            </div>
+            <div class="dc-reason" id="dc-reason" aria-live="polite"></div>
           </div>
           <div class="dc-empty" id="dc-detail-empty"></div>
-          <div class="dc-result" id="dc-result" aria-live="polite"></div>
         </section>
       </div>
+      <section class="dc-inventory" aria-label="玩家背包">
+        <div class="dc-small">背包</div>
+        <div class="dc-inventory-grid" id="dc-main"></div>
+        <div class="dc-inventory-grid dc-hotbar" id="dc-hotbar"></div>
+      </section>
     </section>
   </div>
+  <div class="dc-held" id="dc-held" hidden></div>
   <div class="dc-tooltip" id="dc-tooltip" hidden></div>
   <script>
     (() => {
       const root = document.getElementById("pe-data-center");
-      const assets = {"calculation": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAALVBMVEVHcEwNDRQiJDMsMUIxSmMZGyaKu++qISs1Qk9HZ4d9qdJETVdYZmvYPDqc0/8s9BJGAAAAAXRSTlMAQObYZgAAAFVJREFUCNdjYMAGGAWgtHgglA4qBQsJKV0KAgtJKCmZKoGEJjYbKyspAhle0sbGFo1ABsvCzTYbJUGK3GQOSpaAGCyJklcSwCa5LUl4AGawODzAZjMA1fsQFfrYadUAAAAASUVORK5CYII=", "logic": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAMFBMVEVHcEwNDRQsMUJ1KAIiJDOqISuyZBE1Qk/61kr99V8ZGyZETVdYZmvYPDrpsRXclhPKMKYIAAAAAXRSTlMAQObYZgAAAFBJREFUCNdjYMAKGAWgtOhCKL0qRABMq1xxcQQyRJQuObkXAhniSkrahWJARuImnY1iwUCGvcxBseAGIIO5UexywwSQdrvHEJqB2WACA14AAFoVEF57IMHWAAAAAElFTkSuQmCC", "engineering": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAALVBMVEVHcEwNDRQiJDMsMUIUXlMZGyaqISsgxbU1Qk8RcnrYPDpETVcaqqdK7dlYZms/ezpLAAAAAXRSTlMAQObYZgAAAGFJREFUCNdjYEAGgjA6VQBKhwVCaC3VpUAhRiUtpaAgRSCjSUlZVUlJgIFTwtjIyKhDgIHl4GZj4x2CExgYfKSNXwtOc2BgYCl8JzjNHaTfXXCWOy+IwVIDoRkYXHgZsAEA2PQRhetk6lAAAAAASUVORK5CYII=", "blank": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAIVBMVEVHcExBP1RpbYhNTWfLzNStsMTy8vKHj6Wc0//a//99qdJajswBAAAAAXRSTlMAQObYZgAAADlJREFUCNdjYCAOGAtCaOY0FwEww8xJNRDC0GwuhDA0FkMYIs6mjmCGUKiLIpjBqKQE0cUgKIjfHgDenwbFxGmADQAAAABJRU5ErkJggg==", "blank2": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAHlBMVEVHcExNTWdpbYhBP1TLzNTy8vKtsMSc0/99qdLa//9Y71hXAAAAAXRSTlMAQObYZgAAAFZJREFUCNdjYCAKMAoKCoBp0dBQRxBLNERJ0SUZxFCqqFByBsoETRcSmi5iwMDoVCGWVAFkMLsIpgARkKGWoqTk4mTAwGCkZGyspAzUxWzMwGBsgMUiAAv7DMDSmG5MAAAAAElFTkSuQmCC", "blank3": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAIVBMVEVHcExNTWdpbYhBP1TLzNStsMSc0//y8vJ9qdKHj6Xa//9YUsghAAAAAXRSTlMAQObYZgAAAG9JREFUCNdjYEACgoIQmrG8XADMEHdSCYYwtBLBDMYStUZPA7BMkoYISEhETVEILCeiIcDYCGYoTZRUmgxUW7RMrGmZpAEDo1OGkFAGkMHsIhgaIhgCZKiGKCm5OAENMlIyNlZSBupiNmZgMDZgAABnhxJhFtbg5AAAAABJRU5ErkJggg=="};
+      const assets = {"calculation": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAALVBMVEVHcEwNDRQiJDMsMUIxSmMZGyaKu++qISs1Qk9HZ4d9qdJETVdYZmvYPDqc0/8s9BJGAAAAAXRSTlMAQObYZgAAAFVJREFUCNdjYMAGGAWgtHgglA4qBQsJKV0KAgtJKCmZKoGEJjYbKyspAhle0sbGFo1ABsvCzTYbJUGK3GQOSpaAGCyJklcSwCa5LUl4AGawODzAZjMA1fsQFfrYadUAAAAASUVORK5CYII=", "logic": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAMFBMVEVHcEwNDRQsMUJ1KAIiJDOqISuyZBE1Qk/61kr99V8ZGyZETVdYZmvYPDrpsRXclhPKMKYIAAAAAXRSTlMAQObYZgAAAFBJREFUCNdjYMAKGAWgtOhCKL0qRABMq1xxcQQyRJQuObkXAhniSkrahWJARuImnY1iwUCGvcxBseAGIIO5UexywwSQdrvHEJqB2WACA14AAFoVEF57IMHWAAAAAElFTkSuQmCC", "engineering": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAALVBMVEVHcEwNDRQiJDMsMUIUXlMZGyaqISsgxbU1Qk8RcnrYPDpETVcaqqdK7dlYZms/ezpLAAAAAXRSTlMAQObYZgAAAGFJREFUCNdjYEAGgjA6VQBKhwVCaC3VpUAhRiUtpaAgRSCjSUlZVUlJgIFTwtjIyKhDgIHl4GZj4x2CExgYfKSNXwtOc2BgYCl8JzjNHaTfXXCWOy+IwVIDoRkYXHgZsAEA2PQRhetk6lAAAAAASUVORK5CYII=", "blank1": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAIVBMVEVHcExBP1RpbYhNTWfLzNStsMTy8vKHj6Wc0//a//99qdJajswBAAAAAXRSTlMAQObYZgAAADlJREFUCNdjYCAOGAtCaOY0FwEww8xJNRDC0GwuhDA0FkMYIs6mjmCGUKiLIpjBqKQE0cUgKIjfHgDenwbFxGmADQAAAABJRU5ErkJggg==", "blank2": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAHlBMVEVHcExNTWdpbYhBP1TLzNTy8vKtsMSc0/99qdLa//9Y71hXAAAAAXRSTlMAQObYZgAAAFZJREFUCNdjYCAKMAoKCoBp0dBQRxBLNERJ0SUZxFCqqFByBsoETRcSmi5iwMDoVCGWVAFkMLsIpgARkKGWoqTk4mTAwGCkZGyspAzUxWzMwGBsgMUiAAv7DMDSmG5MAAAAAElFTkSuQmCC", "blank3": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAIVBMVEVHcExNTWdpbYhBP1TLzNStsMSc0//y8vJ9qdKHj6Xa//9YUsghAAAAAXRSTlMAQObYZgAAAG9JREFUCNdjYEACgoIQmrG8XADMEHdSCYYwtBLBDMYStUZPA7BMkoYISEhETVEILCeiIcDYCGYoTZRUmgxUW7RMrGmZpAEDo1OGkFAGkMHsIhgaIhgCZKiGKCm5OAENMlIyNlZSBupiNmZgMDZgAABnhxJhFtbg5AAAAABJRU5ErkJggg==", "disk1": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAJ1BMVEVHcExNTWctaeFBP1TLzNTe3+Oan7Q4lP9pbYjy8vKHj6WtsMRAwf99HS0HAAAAAXRSTlMAQObYZgAAAGhJREFUCNdjYEACjMJQWsTFAEK7ujhD+CEuICFR11AnJVegkJiSUki5SogBg5hOuar7IaCQmNLxotAajWYGxnTN0MjpWs1ARdUzpy0CijAwZm9JXtEMMlJsS1YzxOjsxQYQy4QNkJ0AAN7dF3/YDeWSAAAAAElFTkSuQmCC", "disk2": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAJ1BMVEVHcEyAl/9NTWdBP1TLzNTe3+Oan7SAyv9pbYjy8vKtsMSHj6WA9/+ci8/5AAAAAXRSTlMAQObYZgAAAGhJREFUCNdjYEACTMpQWsXFAEK7ujhD+CEuICFV11BHQVegkJqgYEi5SIgBg5pMuaj7QaCQmuDxwtAaiWYGpnTJ0Mjp0s1ARVUzp20EijAwZS1J3tEMMlJtSXYzxOiszQYQy5QNkJ0AAOdMF41Ge//aAAAAAElFTkSuQmCC", "disk3": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAJ1BMVEVHcExNTWcisK7LzNRBP1Te3+Oan7QvzLdpbYjy8vKtsMSHj6Vl6MkSTpdnAAAAAXRSTlMAQObYZgAAAGhJREFUCNdjYEACjCJQWtjYAUKbGptA+MHGICFR01AjJVOgkJiSUnC5crADg5hOuar5IaCQmNLxotAajRYGxnTN0Mjp2i1ARVUzp20CijAwZi1O2dECMlJscXYLxOisLQ4Qy0QckJ0AAKJoFxyZCxahAAAAAElFTkSuQmCC", "silicon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAGFBMVEVHcEw1Qk8NDRQsMUIiJDMZGyZETVdYZmsY232GAAAAAXRSTlMAQObYZgAAAEdJREFUCNdjYMAHWENDIYwQQcEAsIBjeqIQmGGYViaoAGIYiyULgxmOhibGIAaTs7CzM4jBoGLiYgJmMLkYO0EMUlJSwGsjAIvICMjitz7TAAAAAElFTkSuQmCC", "certus": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAHlBMVEVHcEw8X4ApQFdskLOs6f99qdL+///a//+c0/+Ku+9zEPfqAAAAAXRSTlMAQObYZgAAAFJJREFUCNdjYMAKBKE0YyGUIeYIFUj3EIAwMqAMplJXKMN1qgJInyCT82RDkHIx4ckR5oFAhniGYbAIiKHpLGgoagRSK6hoJKwA0qXEpKCEZDEAb0MKiHZ6aRkAAAAASUVORK5CYII=", "matter": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAG1BMVEVHcExNTWdpbYitsMTLzNTe3+OHj6Wan7Ty8vI3hmg4AAAAAXRSTlMAQObYZgAAADVJREFUCNdjYCAOKClBaCbXYAUwQ6U5xAjMUDV2KQQzREOcE8EMcediCIOxLE0Aok1QkEh7ANMqBoPAloKNAAAAAElFTkSuQmCC"};
       const research = [
         {id:"parallel",name:"并行处理",icon:"calculation",stored:3,max:5,tiers:[1,1,2,2,3],cost:1},
         {id:"compression",name:"数据压缩",icon:"logic",stored:2,max:3,tiers:[1,2,2],cost:1},
@@ -116,121 +137,247 @@
         {id:"analysis",name:"高精度数据分析与长期归档",icon:"calculation",stored:1,max:3,tiers:[2,3,3],cost:1}
       ];
       const memberLevels = {parallel:[3,2],compression:[2,2],automation:[1,1],sampling:[0,0],connection:[4,3],signal:[2,1],analysis:[1,1]};
-      const backpack = [
-        {slot:0,name:"空白研究盘（1 阶）",icon:"blank",count:3,tier:1},
-        {slot:4,name:"空白研究盘（3 阶）",icon:"blank3",count:1,tier:3},
-        {slot:27,name:"空白研究盘（2 阶）",icon:"blank2",count:12,tier:2}
-      ];
+      const blank = tier => ({key:"blank" + tier,name:"空白研究盘（" + tier + " 阶）",icon:"blank" + tier,count:1,max:64,material:true,tier});
+      const stack = (base,count) => Object.assign({},base,{count});
+      const slots = {input:null,output:null};
+      for (let index = 0; index < 36; index++) slots["inv" + index] = null;
+      slots.inv0 = stack(blank(1),3);
+      slots.inv4 = stack(blank(3),1);
+      slots.inv9 = {key:"silicon",name:"硅",icon:"silicon",count:24,max:64};
+      slots.inv14 = {key:"certus",name:"赛特斯石英水晶",icon:"certus",count:7,max:64};
+      slots.inv27 = stack(blank(2),12);
+      slots.inv30 = {key:"matter",name:"物质球",icon:"matter",count:16,max:64};
       const summary = {level:2,capacity:16};
       let state = "active";
       let selected = research[0].id;
       let target = 1;
-      let materialSlot = backpack[0].slot;
+      let cursor = null;
       let message = null;
+      let mouse = {x:0,y:0};
       const byId = id => root.querySelector("#" + id);
       const current = () => research.find(entry => entry.id === selected);
-      const visibleResearch = () => state === "empty" ? [] : research;
-      const canDownload = () => state === "active";
+      const listed = () => state === "denied" || state === "empty" ? [] : research;
+      const same = (a,b) => a && b && a.key === b.key;
+      const accepts = (slot,item) => slot !== "output" && (slot !== "input" || item.material === true);
+
+      function stateReason() {
+        return {inactive:"只有队伍当前活动数据库可以下载",pending:"世界存档待确认，暂不能下载",readonly:"没有下载权限"}[state];
+      }
+      function downloadOutput() {
+        const entry = listed().length ? current() : null;
+        const input = slots.input;
+        if (stateReason() || !entry || !input || slots.output) return null;
+        if (entry.tiers[target - 1] > input.tier) return null;
+        return {key:"disk" + input.tier + ":" + entry.id + ":" + target,name:"研究盘 · " + entry.name + " Lv." + target,
+          icon:"disk" + input.tier,count:1,max:1,detail:entry.name + " Lv." + target + "\n盘阶级 " + input.tier};
+      }
+      function reason() {
+        const entry = listed().length ? current() : null;
+        if (stateReason()) return {text:stateReason(),good:false};
+        if (message) return message;
+        if (!entry) return {text:"",good:false};
+        if (slots.output) return {text:"取出输出物品后才能继续下载",good:false};
+        if (!slots.input) return {text:"放入下载材料",good:false};
+        const tier = entry.tiers[target - 1];
+        if (tier > slots.input.tier) return {text:"研究阶级 " + tier + " 高于材料阶级 " + slots.input.tier,good:false};
+        return {text:"点击输出槽下载",good:true};
+      }
+
+      function drawSlot(element,item,ghost) {
+        element.replaceChildren();
+        element.classList.toggle("dc-ghost",!!ghost);
+        const shown = item || ghost;
+        if (!shown) {
+          element.dataset.tip = "";
+          return;
+        }
+        const image = document.createElement("img");
+        image.alt = "";
+        image.src = assets[shown.icon];
+        element.append(image);
+        if (shown.count > 1) {
+          const count = document.createElement("span");
+          count.className = "dc-count";
+          count.textContent = shown.count;
+          element.append(count);
+        }
+        const entry = current();
+        element.dataset.tip = ghost ? ghost.name + "\n点击下载：消耗 1 个" + slots.input.name +
+          (entry.cost ? "，每名成员扣除 " + entry.cost + " 级" : "")
+          : item.name + (item.count > 1 ? " × " + item.count : "") + (item.detail ? "\n" + item.detail : "");
+      }
 
       function render() {
         const denied = state === "denied";
         byId("dc-tier").textContent = denied ? "" : "等级 " + summary.level;
-        byId("dc-capacity").textContent = denied ? "" : "容量 " + visibleResearch().length + " / " + summary.capacity;
-        const stateText = {active:["活动",true],inactive:["未启用",false],pending:["存档待确认",false],readonly:["活动",true],denied:["",false],empty:["活动",true]}[state];
-        byId("dc-state").textContent = stateText[0];
-        byId("dc-state").className = stateText[1] ? "dc-good" : "";
+        byId("dc-capacity").textContent = denied ? "" : "容量 " + listed().length + " / " + summary.capacity;
+        const status = {active:["活动",true],inactive:["未启用",false],pending:["存档待确认",false],readonly:["活动",true],denied:["",false],empty:["活动",true]}[state];
+        byId("dc-state").textContent = status[0];
+        byId("dc-state").className = status[1] ? "dc-good" : "";
         const list = byId("dc-list");
         list.replaceChildren();
-        const entries = denied ? [] : visibleResearch();
-        for (const entry of entries) {
+        for (const entry of listed()) {
           const item = document.createElement("li");
           const button = document.createElement("button");
           button.type = "button";
           button.className = "dc-entry cursor-interaction";
           button.dataset.research = entry.id;
           button.setAttribute("aria-pressed", String(entry.id === selected));
+          button.dataset.tip = entry.name + "\n已存等级 " + entry.stored + " / 最高 " + entry.max;
           button.innerHTML = '<img alt="" src="' + assets[entry.icon] + '"><span class="dc-entry-name">' + entry.name +
             '</span><span class="dc-entry-level dc-number">Lv.' + entry.stored + "</span>";
-          button.dataset.tip = entry.name + "\n已存等级 " + entry.stored + " / 最高 " + entry.max;
           item.append(button);
           list.append(item);
         }
-        if (!entries.length) {
+        if (!listed().length) {
           const empty = document.createElement("li");
           empty.className = "dc-empty";
           empty.textContent = denied ? "无查看权限" : "数据库中没有研究";
           list.append(empty);
         }
-        const entry = entries.length ? current() : null;
+        const entry = listed().length ? current() : null;
         byId("dc-detail").hidden = !entry;
         byId("dc-detail-empty").hidden = !!entry;
         byId("dc-detail-empty").textContent = denied ? "" : "未选择研究";
-        if (!entry) {
-          byId("dc-result").textContent = "";
-          return;
+        if (entry) {
+          byId("dc-icon").src = assets[entry.icon];
+          byId("dc-name").textContent = entry.name;
+          byId("dc-name").dataset.tip = entry.name;
+          byId("dc-stored").textContent = entry.stored + " / " + entry.max;
+          byId("dc-target").textContent = target;
+          byId("dc-research-tier").textContent = entry.tiers[target - 1];
+          byId("dc-cost").textContent = entry.cost === 0 ? "无" : "每名成员 " + entry.cost + " 级";
+          byId("dc-less").disabled = target <= 1;
+          byId("dc-more").disabled = target >= entry.stored;
+          const ghost = downloadOutput();
+          drawSlot(root.querySelector('[data-slot="input"]'),slots.input,null);
+          drawSlot(root.querySelector('[data-slot="output"]'),slots.output,slots.output ? null : ghost);
+          byId("dc-arrow").classList.toggle("dc-ready",!!ghost);
+          const text = reason();
+          byId("dc-reason").textContent = text.text;
+          byId("dc-reason").className = "dc-reason " + (text.good ? "dc-good" : text.text ? "dc-bad" : "");
         }
-        byId("dc-icon").src = assets[entry.icon];
-        byId("dc-name").textContent = entry.name;
-        byId("dc-name").dataset.tip = entry.name;
-        byId("dc-stored").textContent = entry.stored + " / " + entry.max;
-        byId("dc-target").textContent = target;
-        byId("dc-research-tier").textContent = entry.tiers[target - 1];
-        byId("dc-cost").textContent = entry.cost === 0 ? "无" : "每名成员 " + entry.cost + " 级";
-        byId("dc-less").disabled = !canDownload() || target <= 1;
-        byId("dc-more").disabled = !canDownload() || target >= entry.stored;
-        const materials = byId("dc-materials");
-        materials.replaceChildren();
-        const stacks = backpack.filter(stack => stack.count > 0);
-        if (!stacks.some(stack => stack.slot === materialSlot)) materialSlot = stacks.length ? stacks[0].slot : null;
-        for (const stack of stacks) {
-          const slot = document.createElement("button");
-          slot.type = "button";
-          slot.className = "dc-slot cursor-interaction";
-          slot.dataset.slot = stack.slot;
-          slot.disabled = !canDownload();
-          slot.setAttribute("aria-pressed", String(stack.slot === materialSlot));
-          slot.setAttribute("aria-label", stack.name + " × " + stack.count);
-          slot.dataset.tip = stack.name + " × " + stack.count + "\n背包第 " + (stack.slot + 1) + " 格";
-          slot.innerHTML = '<img alt="" src="' + assets[stack.icon] + '"><span class="dc-slot-count">' + (stack.count > 1 ? stack.count : "") + "</span>";
-          materials.append(slot);
+        for (const [id,from] of [["dc-main",9],["dc-hotbar",0]]) {
+          const grid = byId(id);
+          if (!grid.children.length) for (let index = 0; index < (from ? 27 : 9); index++) {
+            const slot = document.createElement("div");
+            slot.className = "dc-slot cursor-interaction";
+            slot.dataset.slot = "inv" + (from ? index + 9 : index);
+            grid.append(slot);
+          }
+          for (const slot of grid.children) drawSlot(slot,slots[slot.dataset.slot],null);
         }
-        if (!stacks.length) {
-          const empty = document.createElement("span");
-          empty.className = "dc-small";
-          empty.textContent = "背包中没有可用材料";
-          materials.append(empty);
+        const held = byId("dc-held");
+        held.hidden = !cursor;
+        held.replaceChildren();
+        if (cursor) {
+          held.innerHTML = '<img alt="" src="' + assets[cursor.icon] + '">' + (cursor.count > 1 ? '<span class="dc-count">' + cursor.count + "</span>" : "");
+          held.style.left = mouse.x - 12 + "px";
+          held.style.top = mouse.y - 12 + "px";
         }
-        const chosen = stacks.find(stack => stack.slot === materialSlot);
-        byId("dc-material-name").textContent = chosen ? chosen.name : "";
-        byId("dc-download").disabled = !canDownload() || !chosen;
-        const result = byId("dc-result");
-        const hint = {inactive:"只有队伍当前活动数据库可以下载",pending:"世界存档待确认，暂不能下载",readonly:"没有下载权限"}[state];
-        if (hint) {
-          result.textContent = hint;
-          result.className = "dc-result";
-        } else if (message) {
-          result.textContent = message.text;
-          result.className = "dc-result " + (message.good ? "dc-good" : "dc-bad");
-        } else result.textContent = "";
       }
+
+      function insert(item,order) {
+        for (const slot of order) {
+          const target = slots[slot];
+          if (!same(target,item) || target.count >= target.max) continue;
+          const moved = Math.min(item.count,target.max - target.count);
+          target.count += moved;
+          item.count -= moved;
+          if (!item.count) return true;
+        }
+        for (const slot of order) {
+          if (slots[slot]) continue;
+          slots[slot] = item;
+          return true;
+        }
+        return false;
+      }
+      const range = (from,to) => Array.from({length:to - from},(value,index) => "inv" + (from + index));
 
       function download() {
         const entry = current();
-        const stack = backpack.find(value => value.slot === materialSlot);
-        const tier = entry.tiers[target - 1];
-        if (tier > stack.tier) {
-          message = {good:false,text:"研究阶级 " + tier + " 高于材料阶级 " + stack.tier};
-          return;
-        }
+        const output = downloadOutput();
         if (memberLevels[entry.id].some(level => level < entry.cost)) {
-          message = {good:false,text:"成员研究等级不足，需每人 " + entry.cost + " 级"};
+          message = {text:"成员研究等级不足，需每人 " + entry.cost + " 级",good:false};
           return;
         }
         memberLevels[entry.id] = memberLevels[entry.id].map(level => level - entry.cost);
-        stack.count--;
-        message = {good:true,text:"已交付 研究盘 · " + entry.name + " Lv." + target};
+        slots.input.count--;
+        if (!slots.input.count) slots.input = null;
+        slots.output = output;
+        message = {text:"已下载 " + entry.name + " Lv." + target,good:true};
       }
 
+      function click(slot,button,shift) {
+        const item = slots[slot];
+        if (slot === "output") {
+          if (!item) {
+            if (button === 0 && downloadOutput()) download();
+            return;
+          }
+          if (shift) {
+            if (insert(item,[...range(0,9).reverse(),...range(9,36).reverse()])) slots.output = null;
+          } else if (!cursor) {
+            cursor = item;
+            slots.output = null;
+          }
+          message = null;
+          return;
+        }
+        if (shift) {
+          if (!item) return;
+          const order = slot === "input" ? [...range(0,9).reverse(),...range(9,36).reverse()]
+            : item.material && !slots.input || same(slots.input,item) ? ["input"]
+            : Number(slot.slice(3)) < 9 ? range(9,36) : range(0,9);
+          if (insert(item,order)) slots[slot] = null;
+          message = null;
+          return;
+        }
+        if (button === 0) {
+          if (!cursor) {
+            cursor = item;
+            slots[slot] = null;
+          } else if (!accepts(slot,cursor)) return;
+          else if (!item) {
+            slots[slot] = cursor;
+            cursor = null;
+          } else if (same(item,cursor)) {
+            const moved = Math.min(cursor.count,item.max - item.count);
+            item.count += moved;
+            cursor.count -= moved;
+            if (!cursor.count) cursor = null;
+          } else {
+            slots[slot] = cursor;
+            cursor = item;
+          }
+        } else if (button === 2) {
+          if (!cursor && item) {
+            const taken = Math.ceil(item.count / 2);
+            cursor = Object.assign({},item,{count:taken});
+            item.count -= taken;
+            if (!item.count) slots[slot] = null;
+          } else if (cursor && accepts(slot,cursor) && (!item || same(item,cursor) && item.count < item.max)) {
+            if (item) item.count++;
+            else slots[slot] = Object.assign({},cursor,{count:1});
+            cursor.count--;
+            if (!cursor.count) cursor = null;
+          }
+        }
+        message = null;
+      }
+
+      root.addEventListener("contextmenu", event => {
+        if (event.target.closest("[data-slot]")) event.preventDefault();
+      });
+      root.addEventListener("mousedown", event => {
+        const slot = event.target.closest("[data-slot]");
+        if (!slot) return;
+        event.preventDefault();
+        click(slot.dataset.slot,event.button,event.shiftKey);
+        render();
+        moveTooltip(event);
+      });
       root.addEventListener("click", event => {
         const entry = event.target.closest("[data-research]");
         if (entry) {
@@ -242,20 +389,12 @@
           render();
           return;
         }
-        const slot = event.target.closest("[data-slot]");
-        if (slot && !slot.disabled) {
-          materialSlot = Number(slot.dataset.slot);
-          message = null;
-          render();
-          return;
-        }
         const button = event.target.closest("button");
         if (!button || button.disabled) return;
         if (button.id === "dc-less") target--;
         else if (button.id === "dc-more") target++;
-        else if (button.id === "dc-download") download();
         else return;
-        if (button.id !== "dc-download") message = null;
+        message = null;
         render();
       });
       root.addEventListener("change", event => {
@@ -263,18 +402,22 @@
         state = event.target.value;
         message = null;
         target = 1;
-        if (state !== "empty" && !current()) selected = research[0].id;
         render();
       });
       const tooltip = byId("dc-tooltip");
-      root.addEventListener("mousemove", event => {
-        const owner = event.target.closest("[data-tip]");
-        tooltip.hidden = !owner;
-        if (!owner) return;
+      function moveTooltip(event) {
+        mouse = {x:event.clientX,y:event.clientY};
+        const held = byId("dc-held");
+        held.style.left = mouse.x - 12 + "px";
+        held.style.top = mouse.y - 12 + "px";
+        const owner = cursor ? null : event.target.closest("[data-tip]");
+        tooltip.hidden = !owner || !owner.dataset.tip;
+        if (tooltip.hidden) return;
         tooltip.textContent = owner.dataset.tip;
-        tooltip.style.left = event.clientX + 12 + "px";
-        tooltip.style.top = event.clientY - 18 + "px";
-      });
+        tooltip.style.left = mouse.x + 12 + "px";
+        tooltip.style.top = mouse.y - 18 + "px";
+      }
+      root.addEventListener("mousemove", moveTooltip);
       root.addEventListener("mouseleave", () => tooltip.hidden = true);
       render();
     })();
