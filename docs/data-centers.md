@@ -76,7 +76,7 @@ ZS使用 `MachineType.dataCenter(id, translationKey, structureId, level, capacit
 
 ## 界面
 
-数据库页已随整套研究GUI移除，按用户要求延缓实现；数据库存储、下载及后台Java接口保留。
+2026-11-15 数据库界面重新设计为只显示已存研究和执行物品化下载，不通过界面把研究下载到数据库；界面要求和预览见[研究 GUI](research-gui.md#数据库界面)，正式 Java 界面尚未实现。数据库存储、下载及后台 Java 接口保留。
 
 ## 验证与剩余范围
 

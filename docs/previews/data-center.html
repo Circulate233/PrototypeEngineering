@@ -1,0 +1,282 @@
+<div id="pe-data-center">
+  <style>
+    #pe-data-center { --dc-base:#cbccd4; --dc-panel:#9a9fb4; --dc-slot:#adb0c4; --dc-light:#f2f2f2; --dc-dark:#413f54; --dc-line:#696d88; --dc-text:#404040; --dc-hover:#b6baca; --dc-good:#006600; --dc-bad:#a02020; --dc-frame:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAADyCAYAAABEWhLBAAADuklEQVR4nO3YsW0CQRBA0TuLOgjtMhAFIBIqoCeHpgeLaiCkhGsAhC0kN2DO8n8v2GCTneyvZlyvdtcBgJzF/fg8HobT+fJ18fa6nHsmAH7ZdrP/DsBPjxAA8D89Pvovcw8CwDwEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKLGaZqucw8BwHNtN/th8f5xfPKzAPwFVkAAUeN6tbMCAhh6brlyFUbPokkcAAAAAElFTkSuQmCC); --dc-button:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAAUAgMAAAC1yppZAAAACXBIWXMAAAsTAAALEwEAmpwYAAAADFBMVEWtsMRpbYian7RBP1TFg3A3AAAALElEQVQoz2P4TzJgOMBAImBmOLWKRLB4VMuoFpprISMlXw0lEYTTSQvpGRkAEMNJfplgmvYAAAAASUVORK5CYII=); --dc-button-hover:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAAUBAMAAAA6im/5AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAD1BMVEVHcExwjLra//9BP1Sc0//2meR8AAAAAXRSTlMAQObYZgAAADNJREFUOMtjYKAHMKYDYDBSojlQZjByoTkYtWTUklFLRi0ZopbQoxQ2FKQ5EKaPJfSoGQEAYqbfOaAPDgAAAABJRU5ErkJggg==); font:14px/20px "Microsoft YaHei","Segoe UI",sans-serif; color:var(--dc-text); }
+    #pe-data-center * { box-sizing:border-box; }
+    #pe-data-center [hidden] { display:none !important; }
+    #pe-data-center .dc-stage { display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px 2px 16px; }
+    #pe-data-center .dc-states { display:flex; flex-wrap:wrap; justify-content:center; gap:4px; font-size:12px; }
+    #pe-data-center .dc-states label { display:flex; align-items:center; gap:3px; padding:0 6px; }
+    #pe-data-center .dc-window { width:100%; max-width:640px; height:480px; padding:10px 12px; border:7px solid transparent; border-image:var(--dc-frame) 4 / 7px stretch; background:var(--dc-base); display:grid; grid-template-rows:auto minmax(0,1fr); gap:8px; }
+    #pe-data-center .dc-title { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:0 10px; min-width:0; }
+    #pe-data-center .dc-title-info { display:flex; gap:12px; align-items:center; white-space:nowrap; }
+    #pe-data-center .dc-small { font-size:12px; line-height:20px; }
+    #pe-data-center .dc-number { white-space:nowrap; font-variant-numeric:tabular-nums; }
+    #pe-data-center .dc-good { color:var(--dc-good); }
+    #pe-data-center .dc-bad { color:var(--dc-bad); }
+    #pe-data-center .dc-columns { display:grid; grid-template-columns:1fr 1fr; gap:10px; min-height:0; }
+    #pe-data-center .dc-inset { background:var(--dc-panel); border:2px solid var(--dc-light); }
+    #pe-data-center .dc-pane { padding:8px; min-width:0; min-height:0; display:flex; flex-direction:column; gap:6px; }
+    #pe-data-center .dc-heading { display:flex; justify-content:space-between; align-items:center; gap:6px; min-height:20px; }
+    #pe-data-center .dc-list { list-style:none; margin:0; padding:0 4px 0 0; flex:1; min-height:0; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#878fa5 var(--dc-panel); }
+    #pe-data-center .dc-list li + li { border-top:1px solid var(--dc-line); }
+    #pe-data-center .dc-entry { display:grid; grid-template-columns:24px minmax(0,1fr) auto; align-items:center; gap:6px; width:100%; height:32px; border:0; padding:3px 5px; background:transparent; color:inherit; font:inherit; text-align:left; }
+    #pe-data-center .dc-entry[aria-pressed=true] { background:var(--dc-slot); }
+    #pe-data-center .dc-entry:hover { background:var(--dc-hover); }
+    #pe-data-center .dc-entry img, #pe-data-center .dc-name img { width:24px; height:24px; image-rendering:pixelated; }
+    #pe-data-center .dc-entry-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    #pe-data-center .dc-entry-level { font-size:12px; text-align:right; }
+    #pe-data-center .dc-empty { display:flex; align-items:center; justify-content:center; min-height:90px; font-size:13px; text-align:center; }
+    #pe-data-center .dc-name { display:grid; grid-template-columns:24px minmax(0,1fr); align-items:center; gap:8px; min-height:28px; }
+    #pe-data-center .dc-name span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    #pe-data-center .dc-pair { display:flex; justify-content:space-between; align-items:center; gap:8px; min-height:20px; }
+    #pe-data-center .dc-separator { height:1px; background:var(--dc-line); flex:none; margin:2px 0; }
+    #pe-data-center .dc-stepper { display:flex; align-items:center; gap:6px; }
+    #pe-data-center .dc-stepper .dc-number { width:22px; text-align:center; }
+    #pe-data-center .dc-action { display:flex; align-items:center; justify-content:center; height:30px; min-width:0; padding:0 8px; font:12px/18px "Microsoft YaHei","Segoe UI",sans-serif; color:var(--dc-light); background:transparent; border:5px solid transparent; border-image:var(--dc-button) 2 / 5px stretch; image-rendering:pixelated; }
+    #pe-data-center .dc-action:hover:not(:disabled) { color:#517497; border-image-source:var(--dc-button-hover); }
+    #pe-data-center .dc-action:disabled { opacity:0.5; cursor:default; }
+    #pe-data-center .dc-step { width:26px; padding:0; }
+    #pe-data-center .dc-materials { display:grid; grid-template-columns:repeat(6,30px); gap:2px; min-height:30px; }
+    #pe-data-center .dc-slot { position:relative; width:30px; height:30px; border:0; padding:3px; background:var(--dc-slot); box-shadow:inset 1px 1px var(--dc-dark), inset -1px -1px var(--dc-light); }
+    #pe-data-center .dc-slot img { width:100%; height:100%; image-rendering:pixelated; display:block; }
+    #pe-data-center .dc-slot-count { position:absolute; right:1px; bottom:0; font-size:11px; line-height:12px; color:var(--dc-light); text-shadow:1px 1px var(--dc-dark),-1px 0 var(--dc-dark),0 -1px var(--dc-dark); font-variant-numeric:tabular-nums; }
+    #pe-data-center .dc-slot[aria-pressed=true] { outline:2px solid var(--dc-dark); outline-offset:-2px; background:var(--dc-light); }
+    #pe-data-center .dc-slot:hover { background:var(--dc-hover); }
+    #pe-data-center .dc-materials > .dc-small { grid-column:1 / -1; }
+    #pe-data-center .dc-result { margin-top:auto; min-height:40px; font-size:12px; line-height:20px; }
+    #pe-data-center .dc-tooltip { position:fixed; z-index:10; pointer-events:none; padding:3px 6px; background:#100010f0; border:2px solid #2d0a63; color:#f2f2f2; font-size:12px; line-height:16px; white-space:pre; }
+    @media(max-width:540px) {
+      #pe-data-center .dc-window { height:auto; min-height:480px; padding:8px; }
+      #pe-data-center .dc-columns { grid-template-columns:1fr; }
+      #pe-data-center .dc-title { flex-wrap:wrap; }
+      #pe-data-center .dc-list { max-height:200px; }
+    }
+    @media(pointer:coarse) {
+      #pe-data-center .dc-entry, #pe-data-center .dc-action { min-height:44px; }
+      #pe-data-center .dc-window { height:auto; }
+    }
+  </style>
+  <div class="dc-stage viz-dotted-background">
+    <div class="dc-states" role="radiogroup" aria-label="预览状态">
+      <label><input type="radio" name="dc-state" value="active" checked>活动数据库</label>
+      <label><input type="radio" name="dc-state" value="inactive">非活动数据库</label>
+      <label><input type="radio" name="dc-state" value="pending">存档待确认</label>
+      <label><input type="radio" name="dc-state" value="readonly">无下载权限</label>
+      <label><input type="radio" name="dc-state" value="denied">无查看权限</label>
+      <label><input type="radio" name="dc-state" value="empty">数据库为空</label>
+    </div>
+    <section class="dc-window" aria-label="数据库界面预览">
+      <div class="dc-title">
+        <span>数据库</span>
+        <span class="dc-title-info dc-small"><span id="dc-tier"></span><span id="dc-capacity"></span><span id="dc-state"></span></span>
+      </div>
+      <div class="dc-columns">
+        <section class="dc-pane dc-inset" aria-label="已存研究">
+          <div class="dc-heading"><span>已存研究</span><span class="dc-small">等级</span></div>
+          <ul class="dc-list" id="dc-list"></ul>
+        </section>
+        <section class="dc-pane dc-inset" aria-label="物品化下载">
+          <div id="dc-detail">
+            <div class="dc-name"><img id="dc-icon" alt=""><span id="dc-name"></span></div>
+            <div class="dc-pair dc-small"><span>已存等级</span><span class="dc-number" id="dc-stored"></span></div>
+            <div class="dc-pair dc-small"><span>研究阶级</span><span class="dc-number" id="dc-research-tier"></span></div>
+            <div class="dc-separator"></div>
+            <div class="dc-heading"><span>物品化下载</span></div>
+            <div class="dc-pair">
+              <span class="dc-small">目标等级</span>
+              <span class="dc-stepper">
+                <button class="dc-action dc-step cursor-interaction" type="button" id="dc-less" aria-label="降低目标等级">−</button>
+                <span class="dc-number" id="dc-target"></span>
+                <button class="dc-action dc-step cursor-interaction" type="button" id="dc-more" aria-label="提高目标等级">+</button>
+              </span>
+            </div>
+            <div class="dc-pair dc-small"><span>等级费用</span><span id="dc-cost"></span></div>
+            <div class="dc-heading dc-small"><span>材料（背包）</span><span id="dc-material-name"></span></div>
+            <div class="dc-materials" id="dc-materials"></div>
+            <button class="dc-action cursor-interaction" type="button" id="dc-download" style="margin-top:8px">下载为物品</button>
+          </div>
+          <div class="dc-empty" id="dc-detail-empty"></div>
+          <div class="dc-result" id="dc-result" aria-live="polite"></div>
+        </section>
+      </div>
+    </section>
+  </div>
+  <div class="dc-tooltip" id="dc-tooltip" hidden></div>
+  <script>
+    (() => {
+      const root = document.getElementById("pe-data-center");
+      const assets = {"calculation": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAALVBMVEVHcEwNDRQiJDMsMUIxSmMZGyaKu++qISs1Qk9HZ4d9qdJETVdYZmvYPDqc0/8s9BJGAAAAAXRSTlMAQObYZgAAAFVJREFUCNdjYMAGGAWgtHgglA4qBQsJKV0KAgtJKCmZKoGEJjYbKyspAhle0sbGFo1ABsvCzTYbJUGK3GQOSpaAGCyJklcSwCa5LUl4AGawODzAZjMA1fsQFfrYadUAAAAASUVORK5CYII=", "logic": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAMFBMVEVHcEwNDRQsMUJ1KAIiJDOqISuyZBE1Qk/61kr99V8ZGyZETVdYZmvYPDrpsRXclhPKMKYIAAAAAXRSTlMAQObYZgAAAFBJREFUCNdjYMAKGAWgtOhCKL0qRABMq1xxcQQyRJQuObkXAhniSkrahWJARuImnY1iwUCGvcxBseAGIIO5UexywwSQdrvHEJqB2WACA14AAFoVEF57IMHWAAAAAElFTkSuQmCC", "engineering": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAALVBMVEVHcEwNDRQiJDMsMUIUXlMZGyaqISsgxbU1Qk8RcnrYPDpETVcaqqdK7dlYZms/ezpLAAAAAXRSTlMAQObYZgAAAGFJREFUCNdjYEAGgjA6VQBKhwVCaC3VpUAhRiUtpaAgRSCjSUlZVUlJgIFTwtjIyKhDgIHl4GZj4x2CExgYfKSNXwtOc2BgYCl8JzjNHaTfXXCWOy+IwVIDoRkYXHgZsAEA2PQRhetk6lAAAAAASUVORK5CYII=", "blank": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAIVBMVEVHcExBP1RpbYhNTWfLzNStsMTy8vKHj6Wc0//a//99qdJajswBAAAAAXRSTlMAQObYZgAAADlJREFUCNdjYCAOGAtCaOY0FwEww8xJNRDC0GwuhDA0FkMYIs6mjmCGUKiLIpjBqKQE0cUgKIjfHgDenwbFxGmADQAAAABJRU5ErkJggg==", "blank2": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAHlBMVEVHcExNTWdpbYhBP1TLzNTy8vKtsMSc0/99qdLa//9Y71hXAAAAAXRSTlMAQObYZgAAAFZJREFUCNdjYCAKMAoKCoBp0dBQRxBLNERJ0SUZxFCqqFByBsoETRcSmi5iwMDoVCGWVAFkMLsIpgARkKGWoqTk4mTAwGCkZGyspAzUxWzMwGBsgMUiAAv7DMDSmG5MAAAAAElFTkSuQmCC", "blank3": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAIVBMVEVHcExNTWdpbYhBP1TLzNStsMSc0//y8vJ9qdKHj6Xa//9YUsghAAAAAXRSTlMAQObYZgAAAG9JREFUCNdjYEACgoIQmrG8XADMEHdSCYYwtBLBDMYStUZPA7BMkoYISEhETVEILCeiIcDYCGYoTZRUmgxUW7RMrGmZpAEDo1OGkFAGkMHsIhgaIhgCZKiGKCm5OAENMlIyNlZSBupiNmZgMDZgAABnhxJhFtbg5AAAAABJRU5ErkJggg=="};
+      const research = [
+        {id:"parallel",name:"并行处理",icon:"calculation",stored:3,max:5,tiers:[1,1,2,2,3],cost:1},
+        {id:"compression",name:"数据压缩",icon:"logic",stored:2,max:3,tiers:[1,2,2],cost:1},
+        {id:"automation",name:"自动化协调",icon:"engineering",stored:1,max:4,tiers:[1,2,2,3],cost:2},
+        {id:"sampling",name:"精密采样",icon:"calculation",stored:1,max:1,tiers:[1],cost:0},
+        {id:"connection",name:"高速连接",icon:"engineering",stored:4,max:4,tiers:[1,1,2,3],cost:1},
+        {id:"signal",name:"信号处理",icon:"logic",stored:2,max:2,tiers:[1,2],cost:1},
+        {id:"analysis",name:"高精度数据分析与长期归档",icon:"calculation",stored:1,max:3,tiers:[2,3,3],cost:1}
+      ];
+      const memberLevels = {parallel:[3,2],compression:[2,2],automation:[1,1],sampling:[0,0],connection:[4,3],signal:[2,1],analysis:[1,1]};
+      const backpack = [
+        {slot:0,name:"空白研究盘（1 阶）",icon:"blank",count:3,tier:1},
+        {slot:4,name:"空白研究盘（3 阶）",icon:"blank3",count:1,tier:3},
+        {slot:27,name:"空白研究盘（2 阶）",icon:"blank2",count:12,tier:2}
+      ];
+      const summary = {level:2,capacity:16};
+      let state = "active";
+      let selected = research[0].id;
+      let target = 1;
+      let materialSlot = backpack[0].slot;
+      let message = null;
+      const byId = id => root.querySelector("#" + id);
+      const current = () => research.find(entry => entry.id === selected);
+      const visibleResearch = () => state === "empty" ? [] : research;
+      const canDownload = () => state === "active";
+
+      function render() {
+        const denied = state === "denied";
+        byId("dc-tier").textContent = denied ? "" : "等级 " + summary.level;
+        byId("dc-capacity").textContent = denied ? "" : "容量 " + visibleResearch().length + " / " + summary.capacity;
+        const stateText = {active:["活动",true],inactive:["未启用",false],pending:["存档待确认",false],readonly:["活动",true],denied:["",false],empty:["活动",true]}[state];
+        byId("dc-state").textContent = stateText[0];
+        byId("dc-state").className = stateText[1] ? "dc-good" : "";
+        const list = byId("dc-list");
+        list.replaceChildren();
+        const entries = denied ? [] : visibleResearch();
+        for (const entry of entries) {
+          const item = document.createElement("li");
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "dc-entry cursor-interaction";
+          button.dataset.research = entry.id;
+          button.setAttribute("aria-pressed", String(entry.id === selected));
+          button.innerHTML = '<img alt="" src="' + assets[entry.icon] + '"><span class="dc-entry-name">' + entry.name +
+            '</span><span class="dc-entry-level dc-number">Lv.' + entry.stored + "</span>";
+          button.dataset.tip = entry.name + "\n已存等级 " + entry.stored + " / 最高 " + entry.max;
+          item.append(button);
+          list.append(item);
+        }
+        if (!entries.length) {
+          const empty = document.createElement("li");
+          empty.className = "dc-empty";
+          empty.textContent = denied ? "无查看权限" : "数据库中没有研究";
+          list.append(empty);
+        }
+        const entry = entries.length ? current() : null;
+        byId("dc-detail").hidden = !entry;
+        byId("dc-detail-empty").hidden = !!entry;
+        byId("dc-detail-empty").textContent = denied ? "" : "未选择研究";
+        if (!entry) {
+          byId("dc-result").textContent = "";
+          return;
+        }
+        byId("dc-icon").src = assets[entry.icon];
+        byId("dc-name").textContent = entry.name;
+        byId("dc-name").dataset.tip = entry.name;
+        byId("dc-stored").textContent = entry.stored + " / " + entry.max;
+        byId("dc-target").textContent = target;
+        byId("dc-research-tier").textContent = entry.tiers[target - 1];
+        byId("dc-cost").textContent = entry.cost === 0 ? "无" : "每名成员 " + entry.cost + " 级";
+        byId("dc-less").disabled = !canDownload() || target <= 1;
+        byId("dc-more").disabled = !canDownload() || target >= entry.stored;
+        const materials = byId("dc-materials");
+        materials.replaceChildren();
+        const stacks = backpack.filter(stack => stack.count > 0);
+        if (!stacks.some(stack => stack.slot === materialSlot)) materialSlot = stacks.length ? stacks[0].slot : null;
+        for (const stack of stacks) {
+          const slot = document.createElement("button");
+          slot.type = "button";
+          slot.className = "dc-slot cursor-interaction";
+          slot.dataset.slot = stack.slot;
+          slot.disabled = !canDownload();
+          slot.setAttribute("aria-pressed", String(stack.slot === materialSlot));
+          slot.setAttribute("aria-label", stack.name + " × " + stack.count);
+          slot.dataset.tip = stack.name + " × " + stack.count + "\n背包第 " + (stack.slot + 1) + " 格";
+          slot.innerHTML = '<img alt="" src="' + assets[stack.icon] + '"><span class="dc-slot-count">' + (stack.count > 1 ? stack.count : "") + "</span>";
+          materials.append(slot);
+        }
+        if (!stacks.length) {
+          const empty = document.createElement("span");
+          empty.className = "dc-small";
+          empty.textContent = "背包中没有可用材料";
+          materials.append(empty);
+        }
+        const chosen = stacks.find(stack => stack.slot === materialSlot);
+        byId("dc-material-name").textContent = chosen ? chosen.name : "";
+        byId("dc-download").disabled = !canDownload() || !chosen;
+        const result = byId("dc-result");
+        const hint = {inactive:"只有队伍当前活动数据库可以下载",pending:"世界存档待确认，暂不能下载",readonly:"没有下载权限"}[state];
+        if (hint) {
+          result.textContent = hint;
+          result.className = "dc-result";
+        } else if (message) {
+          result.textContent = message.text;
+          result.className = "dc-result " + (message.good ? "dc-good" : "dc-bad");
+        } else result.textContent = "";
+      }
+
+      function download() {
+        const entry = current();
+        const stack = backpack.find(value => value.slot === materialSlot);
+        const tier = entry.tiers[target - 1];
+        if (tier > stack.tier) {
+          message = {good:false,text:"研究阶级 " + tier + " 高于材料阶级 " + stack.tier};
+          return;
+        }
+        if (memberLevels[entry.id].some(level => level < entry.cost)) {
+          message = {good:false,text:"成员研究等级不足，需每人 " + entry.cost + " 级"};
+          return;
+        }
+        memberLevels[entry.id] = memberLevels[entry.id].map(level => level - entry.cost);
+        stack.count--;
+        message = {good:true,text:"已交付 研究盘 · " + entry.name + " Lv." + target};
+      }
+
+      root.addEventListener("click", event => {
+        const entry = event.target.closest("[data-research]");
+        if (entry) {
+          if (selected !== entry.dataset.research) {
+            selected = entry.dataset.research;
+            target = 1;
+            message = null;
+          }
+          render();
+          return;
+        }
+        const slot = event.target.closest("[data-slot]");
+        if (slot && !slot.disabled) {
+          materialSlot = Number(slot.dataset.slot);
+          message = null;
+          render();
+          return;
+        }
+        const button = event.target.closest("button");
+        if (!button || button.disabled) return;
+        if (button.id === "dc-less") target--;
+        else if (button.id === "dc-more") target++;
+        else if (button.id === "dc-download") download();
+        else return;
+        if (button.id !== "dc-download") message = null;
+        render();
+      });
+      root.addEventListener("change", event => {
+        if (event.target.name !== "dc-state") return;
+        state = event.target.value;
+        message = null;
+        target = 1;
+        if (state !== "empty" && !current()) selected = research[0].id;
+        render();
+      });
+      const tooltip = byId("dc-tooltip");
+      root.addEventListener("mousemove", event => {
+        const owner = event.target.closest("[data-tip]");
+        tooltip.hidden = !owner;
+        if (!owner) return;
+        tooltip.textContent = owner.dataset.tip;
+        tooltip.style.left = event.clientX + 12 + "px";
+        tooltip.style.top = event.clientY - 18 + "px";
+      });
+      root.addEventListener("mouseleave", () => tooltip.hidden = true);
+      render();
+    })();
+  </script>
+</div>
