@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.recipe.requirement;
 
+import com.circulation.prototype_eng.api.recipe.requirement.BudgetResult;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
@@ -1043,13 +1045,13 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
 
         @Override
         public boolean canApply() {
-            return Boolean.TRUE.equals(canApplyWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE)));
+            return canApplyWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE)) == BudgetResult.ACCEPTED;
         }
 
         @Override
-        public @Nullable Boolean canApplyWithinBudget(RecipeWorkBudget budget) {
-            if (cancelled || result == null) return false;
-            return token == null ? budget.take() ? Boolean.TRUE : null : token.canApplyWithinBudget(budget);
+        public BudgetResult canApplyWithinBudget(RecipeWorkBudget budget) {
+            if (cancelled || result == null) return BudgetResult.REJECTED;
+            return token == null ? budget.take() ? BudgetResult.ACCEPTED : BudgetResult.YIELDED : token.canApplyWithinBudget(budget);
         }
 
         @Override

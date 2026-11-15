@@ -52,10 +52,6 @@ public final class EnergyBuffer implements EnergyHatch {
         }
     }
 
-    private static ReservationResult rejected(ReservationResult.Status status) {
-        return new ReservationResult(status, null);
-    }
-
     @Override
     public StorageContext context() {
         return context;
@@ -198,15 +194,15 @@ public final class EnergyBuffer implements EnergyHatch {
         context.lock();
         try {
             if (!context.isValid()) {
-                return rejected(ReservationResult.Status.INVALID_STORAGE);
+                return ReservationResult.INVALID_STORAGE;
             }
             if (snapshot.context() != context || snapshot.revision() != context.revision()) {
-                return rejected(ReservationResult.Status.STALE_SNAPSHOT);
+                return ReservationResult.STALE_SNAPSHOT;
             }
             long available = receive ? capacity - stored - reservedReceive : stored - reservedExtract;
             long limit = receive ? maxReceive : maxExtract;
             if (amount > available || amount > limit) {
-                return rejected(ReservationResult.Status.INSUFFICIENT);
+                return ReservationResult.INSUFFICIENT;
             }
             if (activeReservations == Integer.MAX_VALUE) {
                 throw new IllegalStateException("Too many active energy reservations");

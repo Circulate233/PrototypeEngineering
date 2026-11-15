@@ -4,6 +4,7 @@ import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
+import com.circulation.prototype_eng.api.recipe.requirement.BudgetResult;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken.Reason;
@@ -312,8 +313,8 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                     if (accepted && participants != null) {
                         try {
                             var result = captureParticipants(entry);
-                            if (result == null) break;
-                            accepted = result;
+                            if (result == BudgetResult.YIELDED) break;
+                            accepted = result == BudgetResult.ACCEPTED;
                         } catch (RuntimeException | Error participantFailure) {
                             record(participantFailure);
                             continue;
@@ -426,17 +427,17 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     }
 
     @SuppressWarnings("DataFlowIssue")
-    private @Nullable Boolean captureParticipants(Entry entry) {
-        if (entry.participantUnknown) return null;
-        if (entry.participantAccepted != null) return entry.participantAccepted;
+    private BudgetResult captureParticipants(Entry entry) {
+        if (entry.participantUnknown) return BudgetResult.YIELDED;
+        if (entry.participantAccepted != BudgetResult.YIELDED) return entry.participantAccepted;
         if (!entry.participantStarted) {
-            if (!takeOwnerWork()) return null;
+            if (!takeOwnerWork()) return BudgetResult.YIELDED;
             entry.participantStarted = true;
             try {
                 var captured = participants.apply(entry.stage);
                 if (captured == null) {
-                    entry.participantAccepted = false;
-                    return false;
+                    entry.participantAccepted = BudgetResult.REJECTED;
+                    return BudgetResult.REJECTED;
                 }
                 entry.participantInput = captured.iterator();
             } catch (RuntimeException | Error failure) {
@@ -445,15 +446,15 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
             }
         }
         while (entry.participantInput.hasNext()) {
-            if (!takeOwnerWork()) return null;
+            if (!takeOwnerWork()) return BudgetResult.YIELDED;
             var transaction = entry.participantInput.next();
             if (!entry.participantIdentities.add(transaction))
                 throw new IllegalArgumentException("Repeated additional business acquisition");
             entry.participants.add(transaction);
         }
-        entry.participantAccepted = true;
+        entry.participantAccepted = BudgetResult.ACCEPTED;
         entry.participantInput = null;
-        return true;
+        return BudgetResult.ACCEPTED;
     }
 
     /**
@@ -659,7 +660,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                         workYielded |= work.remaining() == 0;
                         return false;
                     }
-                    if (entry.participantStarted && captureParticipants(entry) == null) return false;
+                    if (entry.participantStarted && captureParticipants(entry) == BudgetResult.YIELDED) return false;
                     if (!entry.stage.transferable()) return false;
                     cleanupTransferable.add(entry);
                 }
@@ -1479,8 +1480,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         private boolean acquired;
         private boolean participantStarted;
         private boolean participantUnknown;
-        @Nullable
-        private Boolean participantAccepted;
+        private BudgetResult participantAccepted = BudgetResult.YIELDED;
         @Nullable
         private Iterator<? extends ReversibleTransaction> participantInput;
 

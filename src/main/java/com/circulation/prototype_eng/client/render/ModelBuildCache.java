@@ -7,13 +7,12 @@ import com.circulation.prototype_eng.client.render.gecko.GeckoModelBaker;
 import com.circulation.prototype_eng.client.render.gecko.GeckoModelBuildTask;
 import com.circulation.prototype_eng.client.render.gecko.GeckoRenderRequest;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
-import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -63,27 +62,30 @@ public class ModelBuildCache implements AutoCloseable {
     public BuiltModelBuffers.@Nullable Lease request(GeckoRenderRequest request) {
         client.requireOwner();
         if (closed || request.owner().retired() || request.resourceEpoch() != assets.epoch()) return null;
-        var locations = new ObjectArrayList<ResourceLocation>();
-        locations.add(request.binding().geo());
-        locations.add(request.binding().texture());
-        if (request.binding().animation() != null) locations.add(request.binding().animation());
-        try {
-            assets.select(locations);
-        } catch (IOException failure) {
-            throw new UncheckedIOException(failure);
-        }
-        var parts = owners.computeIfAbsent(request.owner(), ignored -> new Object2ObjectOpenHashMap<>());
+        var parts = owners.get(request.owner());
         var key = new PartMode(request.part(), request.mode());
-        var slot = parts.get(key);
+        var slot = parts == null ? null : parts.get(key);
         if (slot != null && !slot.current.request().sameBase(request)) {
             retire(slot);
             parts.remove(key);
             slot = null;
         }
         if (slot == null) {
+            var binding = request.binding();
+            try {
+                assets.select(binding.animation() == null
+                    ? List.of(binding.geo(), binding.texture())
+                    : List.of(binding.geo(), binding.texture(), binding.animation()));
+            } catch (IOException failure) {
+                throw new UncheckedIOException(failure);
+            }
             var instance = new GeckoGeoModelInstances.Instance(request, assets, createBaker());
             var task = createTask(request, instance);
             slot = new Slot(instance, task);
+            if (parts == null) {
+                parts = new Object2ObjectOpenHashMap<>();
+                owners.put(request.owner(), parts);
+            }
             parts.put(key, slot);
             try {
                 executor.submit(task);

@@ -232,7 +232,7 @@ public interface ResourceStorage {
                 }
                 phase = 1;
                 if (amount == 0) {
-                    result = new ReservationResult(ReservationResult.Status.INSUFFICIENT, null);
+                    result = ReservationResult.INSUFFICIENT;
                     return true;
                 }
             }
@@ -338,7 +338,7 @@ public interface ResourceStorage {
                 cancelled = true;
             }
             amount = 0;
-            result = new ReservationResult(ReservationResult.Status.INSUFFICIENT, null);
+            result = ReservationResult.INSUFFICIENT;
             return true;
         }
     }

@@ -56,6 +56,8 @@ machine.register("v1");
 | `executionMode(mode)`                           | 设置机器调度方式，与上述配方执行策略分别生效。                                                              |
 | `network(configuration)`                        | 给机器添加对应网络角色、身份及网络配方组件。                                                                |
 | `requiresNetwork(required)`                     | 显式覆盖普通控制器的联网门限；省略时遵循 `controllers.cfg` 的默认值（false）及显式角色声明。 |
+| `networkEvent(callback)`                        | 为本类型安装网络设备事件，修改本次候选资源、并发、速率和耗能倍率。 |
+| `computerInputRecipe(recipe)`                   | 为默认计算机添加按普通时长及 START/TICK/END 执行的纯输入配方。 |
 | `controllerModel(modelId)`                      | 绑定控制器模型声明，不会改变机器的结构或配方。                                                              |
 
 机器 API 不会替调用者创建对应的配方池和结构；这些定义必须在其它阶段注册。`MachineComponent` 只接收 Java addon 已经创建的组件，脚本没有无 codec 地生成任意 Java 组件的入口。
@@ -66,7 +68,7 @@ machine.register("v1");
 
 `ComponentData.create()` 和 `ComponentData.from(data)` 创建可编辑的独立数据对象。成员访问、键索引及 `getInt/setInt` 等方法负责读写它自身的 NBT。普通 ZS 对象不会自动关联世界中的机器；只有 `componentData()` 安装的机器组件或 API 回调的 `context.data` 才由对应保存配置管理。
 
-`getInt/getLong/getDouble/getBool/getString(key, defaultValue)` 在键缺失时返回给定默认值，对应 `set...` 写入确定类型。`has/remove/clear` 检查或删除键。`asIData()` 返回独立数据，修改它不会反向修改原组件；`merge(data)` 则把输入内容写入当前对象。需要保存进程局部数据时，必须使用进程 codec 已包含的数据组件，机器的 `componentData()` 不会代替这项设置。
+`getInt/getLong/getDouble/getBool/getString(key, defaultValue)` 在键缺失时返回给定默认值，对应 `set...` 写入确定类型。`has/remove/clear` 检查或删除键。`asIData()` 返回当前快照的只读 IData 包装，快照未变时复用包装；`merge(data)` 把输入内容写入当前对象。需要保存进程局部数据时，必须使用进程 codec 已包含的数据组件，机器的 `componentData()` 不会代替这项设置。
 
 ## 创建配方与配方池
 
@@ -161,9 +163,9 @@ var atMostTwo = ParallelismSelection.create(function(suggested as int) {
 
 `SelectiveModifier.speedAddition(...)` 添加速度属性，`speedMultiplier(...)` 使用直接倍率，例如 `1.25` 表示速度乘 1.25。`create(id, callback)` 允许通过 `SelectiveContext` 添加属性修改或 patch 需求。
 
-`OverlayModifier.create(...)` 为需求层创建命名修饰器，必须在需要应用它的 Java addon 流程中显式使用。`putResourcePatch` 和 `putEnergyPatch` 修改目标需求字段，patch 中的 null 表示保持原值，空资源数组表示清除该项。`putOverlay` 连接 Java addon 创建的需求覆盖对象。目标必须是当前配方定义中实际使用的需求对象。
+`OverlayModifier.create(...)` 为需求层创建命名修饰器，必须在需要应用它的 Java addon 流程中显式使用。`putResourcePatch` 和 `putEnergyPatch` 修改目标需求字段，资源数组为 null 时保留原值，空数组清空该项；FE 数量用 long 的 -1 保留原值，0 明确清零。两种 patch 的 `voidExcessOutputs` 使用 int：-1 保留、0 禁止、1 允许。`putOverlay` 连接 Java addon 创建的需求覆盖对象。目标必须是当前配方定义中实际使用的需求对象。
 
-选择上下文的 `candidateIndex` 从 0 开始，`selectionId` 标识本次选择；`modifierId/modifierOrdinal` 标识当前修饰器。`addProcessSpeed(id, amount)` 平加速度，`mulProcessSpeed(id, factor)` 乘直接倍率；`putAttribute` 使用前述 operation 规则。`putResourceIO` 设置完整四阶段资源，`putEnergyRates` 设置两个 FE tick 数值；只有对应 patch 方法允许部分参数为 null。
+选择上下文的 `candidateIndex` 从 0 开始，`selectionId` 标识本次选择；`modifierId/modifierOrdinal` 标识当前修饰器。`addProcessSpeed(id, amount)` 平加速度，`mulProcessSpeed(id, factor)` 乘直接倍率；`putAttribute` 使用前述 operation 规则。`putResourceIO` 设置完整四阶段资源，`putEnergyRates` 设置两个 FE tick 数值，二者的过量丢弃参数仍为 boolean。部分修改使用 `putResourcePatch(target, layerId, inputs, inputsPerTick, outputsPerTick, outputs, int option)` 或 `putEnergyPatch(target, layerId, long inputPerTick, long outputPerTick, int option)`，FE 数量及过量丢弃选项不能再传 null。
 
 这些回调可能异步运行，也可能因库存变化和扫描重试而再次调用。必须只根据传入参数和不可变定义计算；不能修改世界、玩家背包或脚本全局状态。`context.data` 是进程数据，但直接修改它不自动加入需求层的撤销处理。
 
@@ -246,9 +248,15 @@ ParallelController.create("example:parallel_module", "tile.example.parallel_modu
 
 ## 研究与奖励
 
-`ResearchFormula.create()` 创建网络资源公式。`.constant(type, total)` / `.affine(type, base, slope)` 定义总量，`.perTick(type, limit)` / `.affinePerTick(type, base, slope)` 定义单站每 tick 上限。总量与上限按研究时间换算，等级增长使用阶段内偏移，double 数量不取整。只接受网络资源，不接受计算机内部资源或并发额度。各项独立累计，实际推进还受站点自身速率限制。
+`ResearchFormula.create()` 创建网络资源公式。`.constant(type, total)` / `.affine(type, base, slope)` 添加总量；`.perTick(type, limit)` / `.affinePerTick(type, base, slope)` 添加单站每 tick 上限。对于研究时间 T，总量 R 与上限 u 按 `R = u × T`、`u = R / T` 换算，数量为 double，不取整。`affine` 的实际值为 `base + slope × (目标等级 - 本段首级)`。同一资源的多次添加相加，包括混用总量与 tick 定义；合计总量除以 T 得到最终单站上限。只接受网络资源，手动研究禁止网络资源需求。
 
-`ResearchStage.create(first, last, tier, durationTicks, formula)` 创建连续等级段，durationTicks 为正 long，表示单站基准工作量。`.prerequisite(...)`、`.mutex(...)` 添加前置及互斥，`.material(requirement)` 仅接受静态总量资源输入，`.reward(level, reward)` 添加奖励。各 stage 必须完整且无重叠地覆盖 `1..maxLevel`。同种 AEKey 合并，普通资源逐种付款并按各项支付比例等权累计；手动研究只允许物品且禁止网络资源。
+`ResearchStage.create(first, last, tier, durationTicks, formula)` 创建连续等级段。`durationTicks` 为正 long，单位为单站基准 tick；两台实际工作站在条件充足时可每服务器 tick 合计推进 2 tick。各 stage 必须完整且无重叠地覆盖 `1..maxLevel`。必须先完成 formula 定义，再传给 stage，后续禁止修改该 formula。
+
+`.material(requirement)` 只接受静态总量输入，例如 `Requirement.resources(id, inputs, [])`。禁止逐 tick 输入、输出、概率、模糊或动态输入以及自定义来源分配；手动研究只接受物品。同种 AEKey 合并为一种材料，数量使用 long。材料逐种支付，每次实际支付都减少该种剩余需求；不要求各材料同时凑齐。开放进度比例按 `Σ(已付量 / 总量) / 材料种类数` 计算，没有材料要求时为 1。例如 A×2、B×10、C×100，支付 A×1 开放 1/6，缺少 A 可以先支付 B 或 C。
+
+时间和每项网络资源在已支付材料开放的比例内独立累计。网络增量取普通设备结算后余额、各参与站 `min(研究单站 tick 上限, 本站资源速率)` 之和、剩余总量及已支付材料开放的额度中的最小值。网络不足时允许部分推进；时间到达 T 后仍需等待全部材料和网络资源满足。每台实际工作站占 1 并发并支付工作 FE；只有材料付款、尚不足以开放一个完整时间 tick 时，也会由一台站承担这次工作费用。
+
+进度归队伍的 `(研究 ID, 目标等级)` 所有。队列最多 5 项，只推进队首；切换、重排、移出队列和站点卸载均保留已付材料、累计网络资源和时间，重新入队继续。多站可跨维度共同研究，研究站在普通设备工作后使用剩余并发和资源，优先级最低。GUI 显示百分比时间条、当前研究的网络占用和队列；材料为 `当前可用 / 剩余需求`，当前可用汇总本队合格研究站的输入，并限制为不超过剩余需求。
 
 first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表示研究站阶数。`prerequisite(id, minimumLevel)` 要求前置研究达到指定等级，`mutex(id, minimumLevel)` 则在对应研究达到该等级时阻止这一阶段。奖励方法的 level 是研究的实际等级，必须位于本段范围内。
 
@@ -256,7 +264,7 @@ first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表�
 
 `Research.alwaysAllowed()` 表示资格函数不增加额外条件，实际权限仍会由服务器规则检查。自定义资格函数读取 `targetLevel`、`networkCenterLevel`、`sharedLevel(researchId)` 和 `available(resource)` 等捕获事实，返回 bool；它不能修改资源或把当前数量当作后续工作已经预留的数量。`unlock(effectId, targetId, level)` 声明达到指定等级后的解锁效果，必须在研究定义被注册前完成。
 
-`Research.display(translationKey, icon)` 必须在 `register()` 前设置，icon 为 IItemStack。研究站显示内容与目标进度自动同步；材料不再作为配方进程执行，原 `materialPersistence(...)` 已移除。
+`Research.display(translationKey, icon)` 必须在 `register()` 前设置，icon 为 IItemStack。研究站显示内容与目标进度自动同步；材料按总量直接结算。
 
 `ResearchServer.permissions(callback)` 设置服务端权限回调。回调的 action 和返回值使用 Java 对应枚举的字符串名称；不添加特例时调用 `context.standardDecision(action)`。在启动阶段注册，否则研究服务可能已完成初始化。
 
@@ -264,33 +272,86 @@ first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表�
 
 `ResearchDownloads.register(material, callback)` 将一种消耗材料与输出函数配对。输出函数只返回有效 `IItemStack`，材料、研究等级和物品交付均由研究流程处理。
 
-## 计算资源与机器网络角色
+## 网络资源与显示
 
-默认计算机使用 `MachineType.computer(id, translationKey, structureId, maximumThreads, resourceLimits, recipes)`；未列资源不增加本机限额。`ComputerRecipe.create(id, Resource[] inputsPerTick, ComputingResources provided)` 定义供给配方。内部类型由 `ComputingResource.computer(id, translationKey, pattern)` 创建，无资源注册。组件Item由Java实现，费用不足时全部组件停摆，能运行配方独立继续，见[计算机](docs/computers.md)。
+`ComputingResource.network(id, translationKey, pattern)` 创建网络资源；`.computer(...)` 创建本机内部资源。库不预置资源，也不要求注册资源实例。`id` 和 `internal` 是只读属性，`pattern` 为 Java 浮点格式，例如 `%.2f FLOP/t`。资源数量和研究速率使用 double，并发为独立 long，不能加入资源数量表。
 
-默认数据库使用 `MachineType.dataCenter(id, translationKey, structureId, level, capacity).register(revision)`，level为非负整数，capacity为正整数，按不同研究条目数计数。工厂组合 `DataCenterController`、现有持久存储和DATA_CENTER角色，不安装普通配方工位；活动库占1份优先并发，内容、自动升级、下载与磁盘导入规则保持。默认控制器可继承，Java亦可通过 `DataCenter` 接口提供独立存储实现。GUI继续延缓，见[数据库](docs/data-centers.md#默认控制器2026-11-13)。
+资源表为 `Reference2DoubleMap<NetworkResourceType>`，直接按对象身份处理。必须创建一次并复用同一对象；相同 ID 的第二次创建会得到不同的资源键。跨 loader 需要由 Java addon 返回包装同一 `NetworkResourceType` 的 `ZenComputingResource`；`Bindings` 只共享配方声明，不保存计算资源。库不检查单例身份或重复 ID。
 
-运算仓四级为1/2/3/4槽，物品每槽1件，非物品每槽1000/4000/16000/64000；只接受组件物品及任意非物品，支持外部双向IO，无自动IO。计算机、研究站、活动数据库优先申请并发；计算机不能以自身待生效供给启动，中心无需并发。默认控制器可继承，计算机GUI暂缓。
+`ComputingResources.create().add(resource, amount)` 累加非负有限数量，`amount(resource)` 查询当前值，缺项为 0。底层累加使用 `addTo`。必须完成数量表后再交给控制器、组件、研究站或换算定义，交付后禁止修改。`ComputingModifier.create().flat(resource, amount)` 添加固定修饰，`.multiplierPpm(resource, amount)` 添加百万分比增量，`500000` 表示额外 50%。
 
-专用控制器在 preinit 用 `MachineType.networkCenter(id, translationKey, structureId, level, threadCapacity, energyPerTick)` 或 `MachineType.researchStation(id, translationKey, structureId, level, rates, energyPerTick)` 创建，随后 `register(revision)`。中心的 threadCapacity 为逻辑并发额度；`rates` 为 `ComputingResources`，按资源设置研究站每 tick 速率；最后参数是 FE/t。中心只在生效时贡献供给并扣费，站点只在实际推进成功时扣费，同 tick 不重复。中心旧入口省略的线程额度为0，省略 energyPerTick 时免费。二者使用专用 Java 运行时，不调用 `processing` 或添加工作槽；接口与完整示例见 [API](api.md#研究与计算网络)。
+Java 自定义资源实现 `NetworkResourceType`，包含 `id()`、`internal()`、`packetType()`、客户端 `displayName()` 和 `format(double)`，并实现 AE 的 `PacketWritable.writeToPacket(ByteBuf)`。自定义包布局在两侧初始化时通过 `NetworkResourcePackets.register(packetType, decoder)` 提供解码器；默认格式资源已内置解码器。这里只注册包布局，不逐项注册资源。
 
-普通控制器的 `.requiresNetwork(true/false)` 优先于 `config/prototype_eng/controllers.cfg` 中 `network.defaultRequiresNetwork`（默认 false）。显式 `.network(...)` 仍表示选择网络角色；显式 false 只豁免共同配方门限，保留自定义配方的资源/研究条件。专用网络中心、研究站保留各自角色。
+网络中心首次显示某资源时发送固定展示包和占用、上限初值；后续仅发送变化行索引、字段标记和变化的 double，资源归零发送移除索引。客户端用固定展示对象生成名称与数值文本，滑块本地滚动；稳定时不发送更新。默认中心 GUI 无玩家背包，宽 384、高 162～242，资源超过 5 行时启用滑块。内部资源不进入网络供给表。
 
-`ComputingResource.network(id, translationKey, pattern)` / `.computer(...)` 创建外部/本机资源单例，无register、默认资源或logicalConcurrency属性。pattern是数量格式，例如 `%.2f FLOP/t`；任意自定义Java资源可通过 `ZenComputingResource` 包装器提供。数值和速率均为double，并发在控制器/组件中单独定义为long。复用同一资源对象，跨loader经Bindings或Java共享，见[网络资源](docs/network-resources.md)。
+## 默认网络设备
 
-`ComputingResources.create()` 创建资源数量表，链式 `add(resource, amount)` 累加供应量，`amount(resource)` 查询数值。`ComputingModifier` 用 `flat` 添加固定量，用 `multiplierPpm` 表示百万分比增量，`500000` 为额外 50%。
+在 `#loader preinit` 中调用下列工厂，再调用 `register(revision)`。四种默认 Java 控制器均可继承，专用角色也保留接口实现方式。
 
-`NetworkRequirements.create()` 创建配方网络要求。链式 `research(id, minimumLevel)` 添加研究门槛，`resource(resource, amountPerWorkUnit)` 添加每工作单位消耗的计算资源，`bind(recipe, priority)` 将规则绑定到传入的 Recipe 对象。重新创建相同 ID 的 Recipe 后，需要为新对象重新绑定。
+| 工厂 | 参数及行为 |
+| --- | --- |
+| `MachineType.networkCenter(id, translationKey, structureId, level, threadCapacity, energyPerTick)` | 正整数网络等级、非负 long 并发和 FE/t；活动中心提供等级与并发，实际生效时扣 FE。 |
+| `MachineType.researchStation(id, translationKey, structureId, level, rates, energyPerTick)` | 正整数研究站等级、`ComputingResources` 速率表和非负 long FE/t；缺项速率为 0，实际参与研究时扣 FE。 |
+| `MachineType.computer(id, translationKey, structureId, concurrencyLimit, resourceLimits, recipes)` | 非负 long 总并发上限、`ComputingResources` 资源上限及 `ComputerRecipe[]` 换算定义；未列资源没有额外控制器上限。 |
+| `MachineType.dataCenter(id, translationKey, structureId, level, capacity)` | 非负整数等级、正整数容量；容量按不同研究条目数计数，内容及回执由持久存储组件保存。 |
 
-`NetworkConfiguration.create(id, roleName, level, supply, modifier, dataCenterCapacity, defaults)` 为机器配置网络。id 用来生成这套网络组件的 ID；roleName 使用 `NETWORK_CENTER`、`COMPUTER`、`RESEARCH_STATION`、`DATA_CENTER` 或 `DEVICE`；level 是对应等级，supply 是固定供应量，modifier 是供给修饰，defaults 是机器默认配方需求。只有数据中心填写正 dataCenterCapacity，其它角色必须填 0；网络中心和研究站的 level 必须为正。
+中心还提供 `(id, translationKey, structureId, level)` 和 `(id, translationKey, structureId, level, energyPerTick)` 两个重载，省略的并发为 0，省略的 FE 为 0。这些工厂不需要 `processing` 或普通配方工作槽。计算机只在声明纯输入配方时执行所属线程 tick，本体不收 FE；组件决定其工作 FE。
 
-将返回配置传给 `MachineType.network(...)` 后，库会安装所有者、角色和网络配方组件；COMPUTER 增加计算组件栏，DATA_CENTER 增加数据库存储及保存配置。只有真实服务器拥有的机器实例可以提供网络资源；脚本声明不能替代服务器所有者校验。
+中心不占并发。计算机启动前必须由中心或其他已获准设备先提供 1 份并发，不能用自己的待生效供给启动。活动数据库占 1 份；计算机和数据库优先于普通设备。研究站在普通设备后使用剩余并发，实际工作时每站占 1 份。条件相同时使用持久 UUID，准入不依赖加载顺序。
 
-`NetworkRecipes.register(priority, callback)` 在配方目录发布时按优先级修改网络需求，数值小的优先执行，同优先级保持注册顺序。回调读取声明中的 Recipe，不查询运行机器。`ComputerComponent.fixed(resources).register(item)` 给计算机组件栏中的物品声明固定供给，不会把该物品本身变成机器。
+默认计算机只从运算仓采集组件。四级运算仓分别为 1/2/3/4 槽，物品每槽 1 件，非物品每槽容量为 1000/4000/16000/64000。物品的 `Item` 必须实现 Java `NetworkComputerComponent`；非物品接受已注册的任意 AEKey 类型。允许外部插入和抽取，没有自动输入或输出。组件缓存由运算仓组成变化事件更新。
+
+网络中心、计算机和研究站正式 GUI 已实现；计算机保留概览和组件两页，配方由 JEI 展示。数据库 GUI 仍延缓。数据库完成队伍研究后不会自动加入新条目，首次需要下载或导入；自动同步只升级库内已有的合格多等级研究，配方查询当前活动物理库，多个库的内容不合并。
+
+普通控制器使用 `.requiresNetwork(true/false)` 覆盖 `config/prototype_eng/controllers.cfg` 的 `network.defaultRequiresNetwork`，默认 false。未显式覆盖时，配置默认值和已声明网络角色决定共同工作门限。显式 false 只取消共同联网门限，保留配方自身的网络资源和研究要求；四种默认专用控制器始终保留其网络角色。
+
+## 计算机组件与配方
+
+组件物品由 Java 实现 `NetworkComputerComponent.capture(item, computer)`，返回 `Capture(concurrencyPerItem, resourcesPerItem, requiredResources, energyPerTick, current)`。单件物品的并发和资源没有固有上限；供给、消耗的资源表均为 double/R2D，并发和 FE 为 long。全部组件的消耗必须完整满足；任一种资源或组件 FE 不足时，全部组件供给归零，不扣组件 FE，已经支付的完整换算份数仍保留。
+
+`ComputerComponent.fixed(resources).register(item)` 为已有物品身份登记固定适配，固定供给的并发为 0、FE 为 0、需求为空。默认运算仓仍要求物品自身实现组件接口，登记适配不会改变运算仓的接收规则；接口实现优先于适配表。需要脚本使用动态供给、并发或消耗时，由 Java addon 创建并提供对应 `ZenComputerComponent`。
+
+`ComputerRecipe.create(id, Resource[] unitInputs, ComputingResources unitResources)` 定义一份材料换算。组件结算时按缺口计算 `ceil(缺口 / 每份产出)`，多产出取各资源所需份数的最大值，多个定义按声明顺序补足剩余缺口；无缺口不扣材料。例如 1 mB 水换 1 冷却，2500 冷却消耗 2500 mB；3 mB 换 3 冷却时消耗 2502 mB。
+
+材料不足时尽量支付已有完整份数；一份多输入必须全部满足，不足一份不消耗、不按比例产出。换算仅供本机组件使用，即使定义的资源类型为网络资源，换算余量也不向网络提供、不跨 tick 累计。对外资源由满足消耗的组件提供。定义清单同时自动进入计算机 JEI 分类，材料和资源按“每份”展示。
+
+`ComputerInputRecipe.create(id, revision, int duration, Requirement[] inputs, callback)` 定义普通时长的纯输入配方，再用 `.computerInputRecipe(recipe)` 加入计算机声明。它使用普通 START/TICK/END、等待及保存机制，每个定义独立运行一个进程，共用计算机已取得的 1 份并发。输入需求禁止物料和 FE 输出；普通静态、模糊、动态输入及来源分配可继续使用。
+
+结束时的一次输入使用 `ComputerInputRecipe.endInput(requirement)` 包装只声明 START 输入的需求，例如 `endInput(Requirement.resources(id, inputs, []))`。回调没有固定输出参数，通过 `event.values` 修改资源、并发、需求或能耗倍率。成功阶段的修改用于下一服务器 tick 的供给结算；失败撤回该阶段修改，已成功支付的 START 不重付，未继续工作时不延用旧效果。组件停供不会取消纯输入进程。输入定义和阶段状态自动保存，修改定义、顺序、输入或回调时必须更新装配及配方 revision。
+
+## 网络设备与纯输入事件
+
+`Events.onDevice(callback)` 注册全局监听，`.networkEvent(callback)` 注册机器类型监听。两种入口的类型均为 `mods.prototype_eng.network.DeviceEvent`，回调在服务器所属线程执行，公开 `network`、`values` 和 `machineType`。全局监听先于类型监听；一次 tick 可以重复发布，必须只修改本次 `values`，禁止直接扣材料、修改其他设备或累加外部持久状态。
+
+`event.network` 是 `Data`：`teamId`、`tick`、`devices` 为只读属性，`hasDevice(typeId)` 查找本队本次捕获中已经成型的指定类型。`devices` 包含同队全部已加载、身份有效的设备，也包括未成型和未获准设备；每项 `Device` 提供 `type/id/owner/role/level/formed/dimension`。需要遍历时先保存 `devices` 数组，再按索引读取。快照来自事件及费用结算之前，不能当作修改后的最终供给，也不能保留到后续发布。
+
+`event.values` 是 `Values`，包含 `resources`、`required`、`researchRates` 三个 `ResourceMap` 和可读写的 `concurrency`、`energyMultiplier`。`ResourceMap.get(type)` 查询，`set(type, amount)` 替换，`add(type, amount)` 用 `addTo` 累加，`remove(type)` 删除；`add` 可用负数扣减，但结果必须为非负有限值。资源键仍必须复用同一单例。修改完成后禁止保留并继续操作这些对象。
+
+纯输入回调参数为 `mods.prototype_eng.network.ComputerRecipeEvent`，同样提供 `network`、`values`，另有 `stage`（`START/TICK/END`）、`progress`（double）和 `duration`（int）。每个工作 tick 从组件基础值重建候选值，连续效果应在 TICK 阶段修改。
+
+```zenscript
+import mods.prototype_eng.network.Events;
+import mods.prototype_eng.network.DeviceEvent;
+
+Events.onDevice(function(event as DeviceEvent) {
+    if (event.network.hasDevice("example:efficiency_module"))
+        event.values.energyMultiplier = event.values.energyMultiplier * 0.9;
+});
+```
+
+## 普通配方的网络要求
+
+`NetworkRequirements.create().research(id, minimumLevel)` 添加当前活动数据库的研究门槛，`.resource(resource, amountPerWorkUnit)` 添加每个有效工作单位的数值消耗。`.bind(recipe, priority)` 绑定准确的 Recipe 对象，重新创建相同 ID 的配方也需要重新绑定；定义后禁止再修改该需求对象。正时长配方在成功 TICK 消耗，零时长配方在 START 消耗，END 重新核对权限。临时失去网络条件会等待，保留进度。
+
+`NetworkRecipes.register(priority, callback)` 在目录发布时追加要求，数值小的优先，同优先级保持注册顺序。回调参数为 `(NetworkRecipeContext, NetworkRequirements)`；上下文提供 `id/durationTicks/maxConcurrentThreads/requirements`，以及 `matches(recipe)` 和 `inGroup(groupId)`。它处理配方声明，不读取运行机器。
+
+`NetworkConfiguration.create(id, roleName, level, supply, modifier, dataCenterCapacity, defaults)` 安装普通控制器的所有权、角色和网络配方组件。`roleName` 为 `NETWORK_CENTER/COMPUTER/RESEARCH_STATION/DATA_CENTER/DEVICE`；只有 DATA_CENTER 使用正容量，其他角色容量为 0，中心和研究站等级为正。COMPUTER 加入组件采集器，DATA_CENTER 加入持久存储。该方法没有并发参数，也不创建上述专用控制器；需要默认设备行为时使用对应的 `MachineType` 工厂。
+
+资源、配方、事件和研究的完整脚本见 [网络演示机器](run/scripts/16_pe_run_network_demo_machines.zs) 与 [研究定义](run/scripts/30_pe_run_network.zs)。Java 接口和保存规则见[计算机](docs/computers.md)、[研究站](docs/research-stations.md)、[数据库](docs/data-centers.md)及[网络资源](docs/network-resources.md)。
 
 ## 客户端渲染与 JEI
 
-`RenderBindings.gecko()` 创建 Gecko 绑定 builder，设置 geo、texture 和可选 animation 后，调用 `bindGeckoToMachineType(machineId, binding)`、`bindGeckoToComponentType(componentId, binding)` 或 `bindGeckoToStructure(machineId, structureId, binding)` 提交。调用时会保存当前配置，之后修改 builder 不改变已经绑定的模型。这些 ZS 方法只登记资源声明，可放在普通脚本中；实际模型读取和渲染由客户端处理。
+`RenderBindings.gecko()` 创建 Gecko 绑定 builder，设置 geo、texture 和可选 animation 后，调用 `bindGeckoToMachineType(machineId, binding)`、`bindGeckoToComponentType(componentId, binding)` 或 `bindGeckoToStructure(machineId, structureId, binding)` 提交。登记后必须停止修改该 builder；动画层列表由声明和派生缓存只读借用，禁止追加或修改已有层。这些 ZS 方法只登记资源声明，可放在普通脚本中；实际模型读取和渲染由客户端处理。
 
 `geo/texture/animation` 接受资源路径，前两项必填。`defaultAnimation` 选择默认动画，`animationLayer` 按顺序增加动画层，`animationStateKey/animationLayersStateKey` 从普通数据读取动画名或以逗号分隔的动画层。`modelOffset` 与 `yOffset` 调整模型位置；`pass` 接受 `default`、`transparent`、`bloom`、`bloom_transparent`；`sliceMode` 选择切片每段绘制或整个结构只绘制一次。
 

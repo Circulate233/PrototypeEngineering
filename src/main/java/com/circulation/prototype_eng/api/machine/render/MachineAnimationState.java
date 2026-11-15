@@ -59,8 +59,9 @@ public class MachineAnimationState {
 
     /**
      * Called in the machine's current execution context; changing state never calls TE/World.
-     * The supplied layer list is borrowed and must stay unchanged until replaced; snapshot readers
-     * must not modify it. The list must fit MAX_LAYERS.
+     * The supplied layer list is borrowed by the current state and every retained snapshot.
+     * Producers and readers must leave it unchanged while any such reference remains, including
+     * after state replacement. The list must fit MAX_LAYERS.
      */
     public void setLayers(List<String> layers) {
         if (!layers.equals(state.layers()))

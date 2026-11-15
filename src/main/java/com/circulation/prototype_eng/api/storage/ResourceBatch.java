@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.api.storage;
 
+import com.circulation.prototype_eng.api.recipe.requirement.BudgetResult;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.transaction.ReservedTransaction;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
@@ -1048,9 +1049,6 @@ public final class ResourceBatch {
         }
     }
 
-    private record Step<T>(@Nullable T result, boolean spent) {
-    }
-
     private record CallbackTransaction(Runnable commitAction, Runnable completeAction,
                                        Runnable rollbackAction) implements ReversibleTransaction {
         @Override
@@ -1295,22 +1293,22 @@ public final class ResourceBatch {
                             return true;
                         }
                         var participant = pending;
-                        Boolean accepted;
+                        BudgetResult accepted;
                         if (legacy) {
-                            accepted = phase == 2 ? participant.transaction.prepareCommit() : phase == 4 ? participant.transaction.validateCommit() : Boolean.TRUE;
+                            accepted = BudgetResult.of(phase == 2 ? participant.transaction.prepareCommit() : phase != 4 || participant.transaction.validateCommit());
                             if (phase == 3) {
                                 participant.transaction.commit();
                             }
                         } else {
                             accepted = phase == 2 ? participant.transaction.prepareCommitWithinBudget(budget)
                                 : phase == 4 ? participant.transaction.validateCommitWithinBudget(budget)
-                                : participant.transaction.commitWithinBudget(budget) ? Boolean.TRUE : null;
+                                : participant.transaction.commitWithinBudget(budget) ? BudgetResult.ACCEPTED : BudgetResult.YIELDED;
                         }
-                        if (accepted == null) {
+                        if (accepted == BudgetResult.YIELDED) {
                             workYielded = true;
                             return false;
                         }
-                        if (!accepted) {
+                        if (accepted == BudgetResult.REJECTED) {
                             decide(Decision.ROLLBACK);
                             return true;
                         }
@@ -1344,7 +1342,7 @@ public final class ResourceBatch {
         private int resolvingFirst;
         private Decision resolvingDecision;
         private SourceState state = SourceState.RESERVED;
-        private boolean workYielded, pendingExpose, fullyConfirmed;
+        private boolean workYielded, pendingExpose, fullyConfirmed, stepSpent;
         private @Nullable Token checking;
         private @Nullable Token applying;
         private @Nullable Throwable failure;
@@ -1404,11 +1402,12 @@ public final class ResourceBatch {
             return applyWithinBudget(unlimited(), true);
         }
 
-        private <T> Step<T> sourceStep(RecipeWorkBudget budget, Function<RecipeWorkBudget, T> action) {
+        private <T> T sourceStep(RecipeWorkBudget budget, Function<RecipeWorkBudget, T> action) {
             var child = budget.allocate(1);
             try {
                 T result = fence.sourceAccess(context, () -> action.apply(child));
-                return new Step<>(result, child.remaining() == 0);
+                stepSpent = child.remaining() == 0;
+                return result;
             } finally {
                 // The physical scope and callback have actually exited before reclaiming unused work.
                 budget.reclaim(child);
@@ -1462,19 +1461,18 @@ public final class ResourceBatch {
                         checking = tokens.get(checkedTokens);
                     }
                     var checked = checking;
-                    Boolean accepted;
+                    BudgetResult accepted;
                     if (legacy) {
-                        accepted = fence.sourceAccess(context, checked.token::canApply);
+                        accepted = BudgetResult.of(fence.sourceAccess(context, checked.token::canApply));
                     } else {
                         if (budget.remaining() == 0) {
                             workYielded = true;
                             outcome = SourceState.RESERVED;
                             return true;
                         }
-                        var step = sourceStep(budget, checked.token::canApplyWithinBudget);
-                        accepted = step.result;
-                        if (accepted == null) {
-                            if (step.spent && budget.remaining() != 0) {
+                        accepted = sourceStep(budget, checked.token::canApplyWithinBudget);
+                        if (accepted == BudgetResult.YIELDED) {
+                            if (stepSpent && budget.remaining() != 0) {
                                 continue;
                             }
                             workYielded = true;
@@ -1482,7 +1480,7 @@ public final class ResourceBatch {
                             return true;
                         }
                     }
-                    if (!accepted) {
+                    if (accepted == BudgetResult.REJECTED) {
                         outcome = SourceState.REJECTED;
                         return false;
                     }
@@ -1515,9 +1513,10 @@ public final class ResourceBatch {
                             outcome = SourceState.RESERVED;
                             return true;
                         }
-                        var step = sourceStep(budget, pendingExpose ? applied.token::exposeAppliedWithinBudget : applied.token::applyWithinBudget);
-                        if (!Boolean.TRUE.equals(step.result)) {
-                            if (step.spent && budget.remaining() != 0) {
+                        var step = sourceStep(budget, work -> (pendingExpose ? applied.token.exposeAppliedWithinBudget(work) : applied.token.applyWithinBudget(work))
+                            ? BudgetResult.ACCEPTED : BudgetResult.YIELDED);
+                        if (step == BudgetResult.YIELDED) {
+                            if (stepSpent && budget.remaining() != 0) {
                                 continue;
                             }
                             workYielded = true;
@@ -1621,10 +1620,9 @@ public final class ResourceBatch {
                                     workYielded = true;
                                     return false;
                                 }
-                                var step = sourceStep(budget, token.token::resolutionWithinBudget);
-                                resolution = step.result;
+                                resolution = sourceStep(budget, token.token::resolutionWithinBudget);
                                 if (resolution == null) {
-                                    if (step.spent && budget.remaining() != 0) {
+                                    if (stepSpent && budget.remaining() != 0) {
                                         continue;
                                     }
                                     workYielded = true;
@@ -1669,9 +1667,10 @@ public final class ResourceBatch {
                                 workYielded = true;
                                 return false;
                             }
-                            var step = sourceStep(budget, settling == Decision.COMPLETE ? token.token::completeWithinBudget : token.token::rollbackWithinBudget);
-                            if (!Boolean.TRUE.equals(step.result)) {
-                                if (step.spent && budget.remaining() != 0) {
+                            var step = sourceStep(budget, work -> (settling == Decision.COMPLETE ? token.token.completeWithinBudget(work) : token.token.rollbackWithinBudget(work))
+                                ? BudgetResult.ACCEPTED : BudgetResult.YIELDED);
+                            if (step == BudgetResult.YIELDED) {
+                                if (stepSpent && budget.remaining() != 0) {
                                     continue;
                                 }
                                 workYielded = true;

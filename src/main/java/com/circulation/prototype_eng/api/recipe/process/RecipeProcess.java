@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.api.recipe.process;
 
+import com.circulation.prototype_eng.api.recipe.requirement.BudgetResult;
+
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.component.ComponentMap;
@@ -1388,7 +1390,7 @@ public final class RecipeProcess {
         }
 
         @Override
-        public @Nullable Boolean prepareCommitWithinBudget(RecipeWorkBudget budget) {
+        public BudgetResult prepareCommitWithinBudget(RecipeWorkBudget budget) {
             if (closed || intendedTerminal != null || commitAttempted || queryExecuting || validating || preparationAttempted && !budgetPreparation) {
                 throw new IllegalStateException("Cannot replay prepared requirement work");
             }
@@ -1397,8 +1399,8 @@ public final class RecipeProcess {
             preparing = true;
             try {
                 var result = scopedBudget(budget, () -> delegate.prepareCommitWithinBudget(budget));
-                if (result != null) {
-                    preparationAccepted = result;
+                if (result != BudgetResult.YIELDED) {
+                    preparationAccepted = result == BudgetResult.ACCEPTED;
                     budgetPreparation = false;
                 }
                 return result;
@@ -1430,7 +1432,7 @@ public final class RecipeProcess {
         }
 
         @Override
-        public @Nullable Boolean validateCommitWithinBudget(RecipeWorkBudget budget) {
+        public BudgetResult validateCommitWithinBudget(RecipeWorkBudget budget) {
             if (closed || intendedTerminal != null || !commitAttempted || commitPending || queryExecuting || preparing
                 || validationAttempted && !budgetValidation)
                 throw new IllegalStateException("Cannot replay validated requirement work");
@@ -1439,7 +1441,7 @@ public final class RecipeProcess {
             validating = true;
             try {
                 var result = scopedBudget(budget, () -> delegate.validateCommitWithinBudget(budget));
-                if (result != null) budgetValidation = false;
+                if (result != BudgetResult.YIELDED) budgetValidation = false;
                 return result;
             } catch (RuntimeException | Error failure) {
                 budgetValidation = false;

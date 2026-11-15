@@ -69,12 +69,19 @@ public final class ResearchRegistry {
         if (frozen != null) {
             throw new IllegalStateException("Research registry already frozen");
         }
+        var ordered = new ObjectArrayList<ResearchDefinition>(registrations.size());
+        var remaining = new Object2IntOpenHashMap<ResourceLocation>();
+        var dependants = new Object2ObjectOpenHashMap<ResourceLocation, ObjectArrayList<ResourceLocation>>();
+        var ready = new ObjectArrayList<ResourceLocation>();
         for (var definition : registrations.values()) {
+            ordered.add(definition);
+            var prerequisites = new ObjectOpenHashSet<ResourceLocation>();
             var elements4 = definition.stages();
             for (int index4 = 0; index4 < elements4.size(); index4++) {
                 var stage = elements4.get(index4);
                 for (var prerequisite : stage.prerequisites().object2IntEntrySet()) {
                     validateReference(definition, prerequisite.getKey(), prerequisite.getIntValue(), "prerequisite");
+                    prerequisites.add(prerequisite.getKey());
                 }
                 var elements3 = stage.mutexRules();
                 for (int index3 = 0; index3 < elements3.size(); index3++) {
@@ -83,12 +90,15 @@ public final class ResearchRegistry {
                     validateSymmetricMutex(definition, stage, counterpart, mutex);
                 }
             }
+            remaining.put(definition.id(), prerequisites.size());
+            if (prerequisites.isEmpty()) ready.add(definition.id());
+            for (var prerequisite : prerequisites)
+                dependants.computeIfAbsent(prerequisite, _ -> new ObjectArrayList<>()).add(definition.id());
         }
-        validatePrerequisiteGraph();
-        var definitions = registrations;
-        var orderedById = new ObjectArrayList<>(definitions.values());
+        validatePrerequisiteGraph(remaining, dependants, ready, ordered.size());
+        var orderedById = new ObjectArrayList<>(ordered);
         orderedById.sort(Comparator.comparing(ResearchDefinition::id));
-        frozen = new Frozen(definitions, new ObjectArrayList<>(definitions.values()), orderedById);
+        frozen = new Frozen(registrations, ordered, orderedById);
     }
 
     public ResearchDefinition require(ResourceLocation id) {
@@ -124,25 +134,9 @@ public final class ResearchRegistry {
     /**
      * Kahn's traversal avoids recursive stack growth on long research dependency chains.
      */
-    private void validatePrerequisiteGraph() {
-        var remaining = new Object2IntOpenHashMap<ResourceLocation>();
-        var dependants = new Object2ObjectOpenHashMap<ResourceLocation, ObjectArrayList<ResourceLocation>>();
-        var ready = new ObjectArrayList<ResourceLocation>();
-        for (var definition : registrations.values()) {
-            var prerequisites = new ObjectOpenHashSet<ResourceLocation>();
-            var elements = definition.stages();
-            for (int index1 = 0; index1 < elements.size(); index1++) {
-                var stage = elements.get(index1);
-                prerequisites.addAll(stage.prerequisites().keySet());
-            }
-            remaining.put(definition.id(), prerequisites.size());
-            if (prerequisites.isEmpty()) {
-                ready.add(definition.id());
-            }
-            for (var prerequisite : prerequisites) {
-                dependants.computeIfAbsent(prerequisite, _ -> new ObjectArrayList<>()).add(definition.id());
-            }
-        }
+    private static void validatePrerequisiteGraph(Object2IntOpenHashMap<ResourceLocation> remaining,
+                                                  Object2ObjectOpenHashMap<ResourceLocation, ObjectArrayList<ResourceLocation>> dependants,
+                                                  ObjectArrayList<ResourceLocation> ready, int size) {
         int visited = 0;
         while (visited < ready.size()) {
             var id = ready.get(visited++);
@@ -157,7 +151,7 @@ public final class ResearchRegistry {
                 }
             }
         }
-        if (visited != registrations.size()) {
+        if (visited != size) {
             throw new IllegalArgumentException("Research prerequisite graph contains a cycle");
         }
     }

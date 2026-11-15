@@ -362,12 +362,12 @@ class FixedIoScanConstraintTest {
         assertSame(ProcessResult.SUCCESS, CONSTRAINT.test(projected));
         var overlays = RecipeOverlays.getOrCreate(projected);
         overlays.put(target, "fixed_patch", RecipeOverlayTypes.RESOURCE_IO,
-            new ResourceRequirementPatch(null, null, null, stacks(PRODUCT, 4), null)).complete();
+            new ResourceRequirementPatch(null, null, null, stacks(PRODUCT, 4), -1)).complete();
         var saved = overlays.snapshot();
         assertInstanceOf(ProcessResult.Blocked.class, CONSTRAINT.test(projected));
         assertEquals(saved, overlays.snapshot());
         overlays.put(target, "fixed_patch", RecipeOverlayTypes.RESOURCE_IO,
-            new ResourceRequirementPatch(null, null, null, stacks(PRODUCT, 2), null)).complete();
+            new ResourceRequirementPatch(null, null, null, stacks(PRODUCT, 2), -1)).complete();
         assertSame(ProcessResult.SUCCESS, CONSTRAINT.test(projected));
         overlayEnv.assertReleased();
     }

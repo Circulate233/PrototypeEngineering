@@ -170,14 +170,14 @@ class ZenAdvancedRecipeBridgeTest {
                 [Requirement.energy("advanced_bridge:optional", 0, 0, 0, 0, false)],
                 [SelectiveModifier.create("advanced_bridge:select", function(context) {
                     context.putAttribute("prototype_eng:process_parallelism", "total", 1.0, "MULTIPLY_TOTAL");
-                    context.putEnergyPatch(energy, "rates", 0, null, null);
-                    context.putResourcePatch(outputs, "inherit", [], null, null, null, null);
+                    context.putEnergyPatch(energy, "rates", 0, -1, -1);
+                    context.putResourcePatch(outputs, "inherit", [], null, null, null, -1);
                 })]);
             AdvancedHarness.captureRecipe(Recipe.create("advanced_bridge:recipe", "advanced", 1,
                 [attribute, selection, outputs, energy]));
             AdvancedHarness.captureOverlay(OverlayModifier.create("advanced_bridge:overlay", function(context) {
-                context.putResourcePatch(outputs, "clear", null, null, null, [], null);
-                context.putEnergyPatch(energy, "inherit", null, null, null);
+                context.putResourcePatch(outputs, "clear", null, null, null, [], -1);
+                context.putEnergyPatch(energy, "inherit", -1, -1, -1);
             }));
             """, "weighted_partial.zs");
         var output = hatch(HatchMode.OUTPUT);

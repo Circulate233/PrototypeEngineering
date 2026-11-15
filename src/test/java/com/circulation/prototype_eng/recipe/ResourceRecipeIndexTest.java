@@ -171,7 +171,7 @@ class ResourceRecipeIndexTest {
         // A definition input is not proof: the undeclared recipe's actual overlay changes the key.
         var modified = new RecipeProcess(machine, externallyModified, 17);
         RecipeOverlays.getOrCreate(modified).put(mutableInput, "external", RecipeOverlayTypes.RESOURCE_IO,
-            new ResourceRequirementPatch(List.of(new GenericStack(A, 1)), null, null, null, null)).complete();
+            new ResourceRequirementPatch(List.of(new GenericStack(A, 1)), null, null, null, -1)).complete();
         assertSame(ProcessResult.SUCCESS, RecipeStageExecutor.probeStart(modified));
         assertEquals(3, first.amount(A));
         assertEquals(1, first.amount(C));

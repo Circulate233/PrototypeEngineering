@@ -1,5 +1,19 @@
 # 实施进度
 
+## 2026-11-15 API 复核与文档更新
+
+按 `6862850` 后的当前源码重新核对 API 与调用点，修正残留的可空原始类型包装。预算接受判断统一为共享 `BudgetResult.YIELDED/ACCEPTED/REJECTED`；FE patch 数量使用 long 的 -1 继承，布尔覆盖与普通控制器联网覆盖使用 int 的 -1/0/1，属性基础值使用 double 的 NaN 表示未设置。命令开关也移除 Boolean 包装；依赖 Gecko 接口要求的 Integer 保留。
+
+模型缓存命中不再选取资源、建立临时列表和 Map，基准比较逐字段执行；删除动画层空转 Snapshot，预览复用已有模式和层设置。ResourceBatch 删除逐次回调的 Step 对象，无令牌拒绝结果使用三个共享常量。属性读取合并父链查找，单层直接借用既有 modifier Map，仅真实父子覆盖时建立工作表；三种 operation 的固定执行顺序保留。研究注册首次验证时同步收集列表和前置图，奖励资格只在真实变化时建立新状态。世界保存删除前后整表比较及对应违约 writer 测试，writer 的只读要求写入 Javadoc，写入失败继续保留同一 pendingSave 并在后续修改前重试。
+
+更新 [Java 与 ZS API](../api.md) 和 [ZS 参考](../api-zs-reference.md)：同步资源单例/R2D/PacketWritable、独立 long 并发、四种默认网络控制器、单位转换、纯输入配方和设备事件、研究时间与多站进度；修正 ReservationResult、组件 codec validate、结构查询线程窗口、运行目录替换结果和数据借用期限。Java 文档示例改用 BlockPos2ObjectMap，并删除已知初始化值的重复非空断言。ZS Gecko builder 登记后停止修改动画层，旧请求、快照和缓存仍保留时也必须只读。
+
+最终完整 Gradle build、Spotless、1727 项行为测试/269 suites 和 IDEA MCP 构建通过，失败、错误及跳过均为 0。IDEA 格式化后首次 Spotless 检查发现22份文件换行符不一致，已按仓库规则统一；最终编译和打包通过。59份改动 Java 已逐文件 errorsOnly:false 检查，58份错误、警告和弱警告均为0，1份文档 Java 示例被 IDEA 排除，使用实际 Java 25/AE/Forge SDK 编译通过。最后只读 Javadoc 修订后重新编译与打包，沿用此前完整行为结果。
+
+27份 run Java addon、15份 run ZS、2份文档 Java 示例和3份文档 ZS 示例均通过真实 SDK 编译，既有核心 API 检查通过；addon 生成但未安装。当前生产源码845份，新增代码注释没有中文。两份 API 文档的40个本地链接及17个代码块核对正常。实机注册、GUI和资源重载继续由用户完整重启复验。
+
+本轮证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261115/`：`api-final-inspections-complete.json`、`api-final-build-normalized.log`、`api-final-doc-comment-build.log`、`api-final-test-counts.json`、`api-final-idea-build.json`、`api-final-source-manifest.json`、`api-final-run-prepare.log`、`api-final-run-verification/` 和 `api-examples-sdk/`。阶段本地英文提交，保留用户 AGENTS.md 修改。
+
 ## 2026-11-15 全项目复审与 Mixin 简化
 
 从 `6300da1` 的工作树复审851份生产 Java，删除5个 Mixin 和2个失去消费者的辅助类，当前生产源码844份。清理构造参数、已知载荷和原生加载调用上的重复非空断言；集合、数组及 NBT 按 Javadoc 直接交付。ComponentData 按 revision 缓存顶层快照，机器数据按对象/版本复用；组件排序、生命周期参与者、定义索引和装配信息避免重复生成。研究、网络、仓室、渲染与脚本包装合并重复遍历，移除临时 codec、路径副本、逐元素 Word 和无用包装。

@@ -10,7 +10,7 @@ import java.util.List;
 
 /**
  * Frozen CPU input. Owner and epoch tokens carry identity, never a World/TE callback.
- * The layer list is borrowed read-only until the build completes.
+ * Layer lists and occurrence paths are borrowed read-only while this request or a derived cache key is retained.
  */
 public record GeckoRenderRequest(Owner owner, StructureRenderAnchors.Part part, Epoch bindingEpoch, Epoch resourceEpoch,
                                  GeckoModelBinding binding, List<String> layers, GeckoModelBaker.BakeMode mode,
@@ -33,7 +33,11 @@ public record GeckoRenderRequest(Owner owner, StructureRenderAnchors.Part part, 
      * Sampling time alone may change while a completed previous frame remains drawable.
      */
     public boolean sameBase(GeckoRenderRequest other) {
-        return baseKey().equals(other.baseKey());
+        return owner == other.owner && part.equals(other.part) && bindingEpoch == other.bindingEpoch
+            && resourceEpoch == other.resourceEpoch && binding.equals(other.binding) && mode == other.mode
+            && (mode == GeckoModelBaker.BakeMode.PERMANENT_STATIC_ONLY || layers.equals(other.layers))
+            && position.equals(other.position) && origin.equals(other.origin) && orientation.equals(other.orientation)
+            && localOffset.equals(other.localOffset);
     }
 
     public BaseKey baseKey() {

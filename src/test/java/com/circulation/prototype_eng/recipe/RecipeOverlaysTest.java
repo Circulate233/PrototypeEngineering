@@ -92,9 +92,9 @@ class RecipeOverlaysTest {
         var overlays = RecipeOverlays.getOrCreate(process);
         var replacement = new ObjectArrayList<>(List.of(stack(LIQUID, 4)));
         overlays.put(target, "start_end", RecipeOverlayTypes.RESOURCE_IO,
-            new ResourceRequirementPatch(replacement, null, null, List.of(stack(PRODUCT, 6)), null)).complete();
+            new ResourceRequirementPatch(replacement, null, null, List.of(stack(PRODUCT, 6)), -1)).complete();
         overlays.put(target, "tick", RecipeOverlayTypes.RESOURCE_IO,
-            new ResourceRequirementPatch(null, List.of(stack(LIQUID, 3)), List.of(stack(MATERIAL, 2)), null, null)).complete();
+            new ResourceRequirementPatch(null, List.of(stack(LIQUID, 3)), List.of(stack(MATERIAL, 2)), null, -1)).complete();
         assertSame(ProcessResult.SUCCESS, process.tick());
         assertEquals(10, input.amount(MATERIAL));
         assertEquals(13, input.amount(LIQUID));
@@ -127,7 +127,7 @@ class RecipeOverlaysTest {
         var target = RecipeRequirements.RESOURCES.requirement(id("advanced"), payload);
         var process = process(1, new MachineHatches(List.of(inputHatch, outputHatch), List.of(), List.of()), target);
         RecipeOverlays.getOrCreate(process).put(target, "clear_fixed", RecipeOverlayTypes.RESOURCE_IO,
-            new ResourceRequirementPatch(List.of(), List.of(), List.of(), List.of(), null)).complete();
+            new ResourceRequirementPatch(List.of(), List.of(), List.of(), List.of(), -1)).complete();
         assertSame(ProcessResult.SUCCESS, process.tick());
         assertEquals(0, input.amount(LIQUID));
         assertEquals(0, input.amount(MATERIAL));
@@ -145,7 +145,7 @@ class RecipeOverlaysTest {
         var target = RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(3, 20, 30, 8, false));
         var process = process(1, new MachineHatches(List.of(), List.of(input), List.of(output)), target);
         RecipeOverlays.getOrCreate(process).put(target, "rates", RecipeOverlayTypes.ENERGY_RATES,
-            new EnergyRequirementPatch(0L, 4L, true)).complete();
+            new EnergyRequirementPatch(0L, 4L, 1)).complete();
         assertSame(ProcessResult.SUCCESS, process.tick());
         assertEquals(0, input.storedEnergy());
         assertEquals(10, output.storedEnergy());
@@ -233,9 +233,9 @@ class RecipeOverlaysTest {
         var process = process(0, new MachineHatches(List.of(hatch), List.of(), List.of()), first, second);
         var overlays = RecipeOverlays.getOrCreate(process);
         overlays.put(child, child.path(first.path(null)), "amount", RecipeOverlayTypes.RESOURCE_IO,
-            new ResourceRequirementPatch(List.of(stack(MATERIAL, 4)), null, null, null, null)).complete();
+            new ResourceRequirementPatch(List.of(stack(MATERIAL, 4)), null, null, null, -1)).complete();
         overlays.put(child, child.path(second.path(null)), "amount", RecipeOverlayTypes.RESOURCE_IO,
-            new ResourceRequirementPatch(List.of(stack(MATERIAL, 1)), null, null, null, null)).complete();
+            new ResourceRequirementPatch(List.of(stack(MATERIAL, 1)), null, null, null, -1)).complete();
         assertSame(ProcessResult.SUCCESS, process.tick());
         assertEquals(0, input.amount(MATERIAL));
     }

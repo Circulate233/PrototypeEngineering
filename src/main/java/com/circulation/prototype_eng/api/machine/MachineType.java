@@ -43,8 +43,7 @@ public final class MachineType {
     private final Object2DoubleMap<ResourceLocation> defaultAttributeBases;
     private final ExecutionMode executionMode;
     private final boolean explicitExecutionMode;
-    @Nullable
-    private final Boolean requiresNetwork;
+    private final int requiresNetwork;
     @Nullable
     private final ControllerExecutionPolicy executionPolicy;
     @Nullable
@@ -149,9 +148,9 @@ public final class MachineType {
     }
 
     /**
-     * Null follows the runtime's role and server default; explicit values override ordinary controllers.
+     * Returns -1 for the runtime role/server default, 0 for offline operation, or 1 for required networking.
      */
-    public @Nullable Boolean networkRequirement() {
+    public int networkRequirement() {
         return requiresNetwork;
     }
 
@@ -198,8 +197,7 @@ public final class MachineType {
         private final Object2DoubleLinkedOpenHashMap<ResourceLocation> attributes = new Object2DoubleLinkedOpenHashMap<>();
         private ExecutionMode executionMode = ExecutionMode.CONCURRENT;
         private boolean explicitExecutionMode;
-        @Nullable
-        private Boolean requiresNetwork;
+        private int requiresNetwork = -1;
         @Nullable
         private ControllerExecutionPolicy executionPolicy;
         @Nullable
@@ -263,7 +261,7 @@ public final class MachineType {
         }
 
         public Builder requiresNetwork(boolean required) {
-            requiresNetwork = required;
+            requiresNetwork = required ? 1 : 0;
             return this;
         }
 

@@ -158,7 +158,7 @@ class MachineRecipeRequirementsTest {
                 modifierCalls[0]++;
                 context.putProcessAttributeModifier(SCORE, new NumericAttributeModifier("bonus", 3, AttributeModifier.Operation.ADDITION));
                 context.putRequirementOverlay(leaf, leaf.path(context.selectionPath()), "rate", RecipeOverlayTypes.ENERGY_RATES,
-                    new EnergyRequirementPatch(2L, null, null));
+                    new EnergyRequirementPatch(2L, -1, -1));
             }))));
         var recipe = new MachineRecipe(id("recipe"), 2, List.of());
         var owner = owner(List.of(selection));

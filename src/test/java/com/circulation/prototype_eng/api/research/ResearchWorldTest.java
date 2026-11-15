@@ -26,7 +26,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -270,24 +269,6 @@ class ResearchWorldTest {
             world.close(5);
             assertEquals(saves, writes.size());
         }
-    }
-
-    @Test
-    void writerCallbackReentryIsRejectedWithoutPoisoningTheClosingFlag() {
-        var reference = new AtomicReference<ResearchWorld>();
-        var callbacks = new AtomicInteger();
-        var world = fixture(ResearchStartCondition.ALWAYS_ALLOWED).world(snapshot -> {
-            callbacks.incrementAndGet();
-            var owner = reference.get();
-            assertThrows(IllegalStateException.class, () -> owner.playerLogin(BOB, snapshot.serverTime()));
-            assertThrows(IllegalStateException.class, () -> owner.player(ALICE));
-            assertThrows(IllegalStateException.class, () -> owner.close(snapshot.serverTime()));
-        });
-        reference.set(world);
-        world.playerLogin(ALICE, 1);
-        world.playerLogin(BOB, 2);
-        assertEquals(2, callbacks.get());
-        assertEquals(2, world.snapshot().players().size());
     }
 
     @Test

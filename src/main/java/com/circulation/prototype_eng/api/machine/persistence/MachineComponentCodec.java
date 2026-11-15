@@ -8,7 +8,9 @@ import net.minecraft.nbt.NBTTagCompound;
  * state; world/registry effects belong to lifecycle onLoaded. Restore may mutate its fresh component
  * or return an immutable replacement, but cannot mutate other components, owner attributes or the
  * component graph. All saved components exist before dependency-ordered restoration begins.
- * Encode and validate are pure. Encoding returns an independent tag; restore must not modify or retain mutable input tags.
+ * Encode and validate are pure. Encoded tags are read-only captures independent of later mutable
+ * state and may be reused for one revision. Consumers must not modify them. Restore must not modify
+ * input tags; borrowed child tags remain read-only, while later mutable state must be separately owned.
  */
 public interface MachineComponentCodec<C> {
     NBTTagCompound encode(MachineInstance owner, C component);

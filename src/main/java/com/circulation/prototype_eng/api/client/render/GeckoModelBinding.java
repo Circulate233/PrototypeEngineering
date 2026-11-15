@@ -11,6 +11,7 @@ import java.util.List;
 
 /**
  * Resource declarations only; each later render owner creates its own mutable Gecko instance.
+ * Layer lists are borrowed read-only and must remain unchanged while the binding or a build retains them.
  * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public record GeckoModelBinding(ResourceLocation geo, ResourceLocation texture, @Nullable ResourceLocation animation,
@@ -19,8 +20,6 @@ public record GeckoModelBinding(ResourceLocation geo, ResourceLocation texture, 
                                 MachineRenderPass pass, boolean forceGlobalRenderer,
                                 @Nullable String animationStateKey, @Nullable String animationLayersStateKey) {
     public GeckoModelBinding {
-        layers = new MachineAnimationState.Snapshot(0, layers).layers();
-        if (defaultAnimationName != null) new MachineAnimationState.Snapshot(0, List.of(defaultAnimationName));
         animationStateKey = key(animationStateKey);
         animationLayersStateKey = key(animationLayersStateKey);
         if (!Double.isFinite(offsetX) || !Double.isFinite(offsetY) || !Double.isFinite(offsetZ) || !Double.isFinite(yOffset))
@@ -63,10 +62,10 @@ public record GeckoModelBinding(ResourceLocation geo, ResourceLocation texture, 
                     var trimmed = name.trim();
                     if (!trimmed.isEmpty()) parsed.add(trimmed);
                 }
-                if (!parsed.isEmpty()) return new MachineAnimationState.Snapshot(0, parsed).layers();
+                if (!parsed.isEmpty()) return parsed;
             }
             if (animationStateKey != null && values.getTag(animationStateKey) instanceof NBTTagString name && !name.getString().isBlank())
-                return new MachineAnimationState.Snapshot(0, List.of(name.getString().trim())).layers();
+                return List.of(name.getString().trim());
         }
         if (!layers.isEmpty()) return layers;
         return defaultAnimationName == null ? List.of() : List.of(defaultAnimationName);

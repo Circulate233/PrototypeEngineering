@@ -416,7 +416,7 @@ class RecipePoolStrategiesTest {
             RecipeProcessFactory factory = (owner, recipe, seed, tuning) -> {
                 var process = new RecipeProcess(owner, recipe, seed, tuning);
                 RecipeOverlays.getOrCreate(process).put(requirement, "make_optional", RecipeOverlayTypes.RESOURCE_IO,
-                    new ResourceRequirementPatch(List.of(), null, null, null, null)).complete();
+                    new ResourceRequirementPatch(List.of(), null, null, null, -1)).complete();
                 return process;
             };
             var custom = machine instanceof CrossRecipeController

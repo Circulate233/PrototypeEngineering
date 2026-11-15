@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.structure;
 
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.recipe.requirement.BudgetResult;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.math.BlockPos;
@@ -206,34 +207,33 @@ public final class StructureSnapshot {
      * Failed rechecks request a fresh match: the changed branch may no longer visit that failure.
      */
     boolean equivalent(StructureSnapshot other, StructureReadPlan used) {
-        return Boolean.TRUE.equals(equivalent(other, used, new RecipeWorkBudget(Long.MAX_VALUE)));
+        return equivalent(other, used, new RecipeWorkBudget(Long.MAX_VALUE)) == BudgetResult.ACCEPTED;
     }
 
     /**
      * This complete proof occupies one owner window; an incomplete prefix grants no authority.
      */
-    @Nullable
-    Boolean equivalent(StructureSnapshot other, StructureReadPlan used, RecipeWorkBudget work) {
+    BudgetResult equivalent(StructureSnapshot other, StructureReadPlan used, RecipeWorkBudget work) {
         var elements6 = used.areas();
         for (int index6 = 0; index6 < elements6.size(); index6++) {
             var bounds = elements6.get(index6);
-            if (!work.take()) return null;
+            if (!work.take()) return BudgetResult.YIELDED;
             var first = areas.get(bounds);
             var second = other.areas.get(bounds);
             if (first == null || second == null || first.failure() != null || second.failure() != null
                 || !Objects.equals(first.value(), second.value())) {
-                return false;
+                return BudgetResult.REJECTED;
             }
         }
         var elements = used.reads();
         for (int index3 = 0; index3 < elements.size(); index3++) {
             var read = elements.get(index3);
-            if (!work.take()) return null;
+            if (!work.take()) return BudgetResult.YIELDED;
             if (!equivalentRead(other, read)) {
-                return false;
+                return BudgetResult.REJECTED;
             }
         }
-        return true;
+        return BudgetResult.ACCEPTED;
     }
 
     @SuppressWarnings("unchecked") // Query identity binds both stored values to T.

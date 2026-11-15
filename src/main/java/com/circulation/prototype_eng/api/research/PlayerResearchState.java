@@ -8,7 +8,6 @@ import it.unimi.dsi.fastutil.ints.IntSets;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
@@ -125,26 +124,26 @@ public final class PlayerResearchState {
             levels.put(id, targetLevel);
         }
         if (rewardEligibilityLevels.isEmpty())
-            return acquire(id, null, new Snapshot(playerUuid, levels, state.rewardClaims()), raised, false);
-        var claims = new Object2ObjectLinkedOpenHashMap<RewardClaim.Key, RewardClaim>();
+            return acquire(id, null, raised ? new Snapshot(playerUuid, levels, state.rewardClaims()) : state, raised, false);
+        var eligible = new IntOpenHashSet();
         var elements = state.rewardClaims();
         for (int index1 = 0; index1 < elements.size(); index1++) {
             var claim = elements.get(index1);
-            claims.put(claim.key(), claim);
+            if (claim.key().researchId().equals(id)) eligible.add(claim.key().level());
         }
         var unique = new IntOpenHashSet(rewardEligibilityLevels.size());
-        boolean eligibility = false;
+        ObjectArrayList<RewardClaim> claims = null;
         for (int level : rewardEligibilityLevels) {
             if (level < 1 || level > targetLevel || !unique.add(level))
                 throw new IllegalArgumentException("Invalid reward eligibility level");
-            var key = new RewardClaim.Key(playerUuid, id, level);
-            if (!claims.containsKey(key)) {
-                claims.put(key, RewardClaim.unclaimed(key, eligibleAtWorldTime));
-                eligibility = true;
+            if (!eligible.contains(level)) {
+                if (claims == null) claims = new ObjectArrayList<>(state.rewardClaims());
+                claims.add(RewardClaim.unclaimed(new RewardClaim.Key(playerUuid, id, level), eligibleAtWorldTime));
             }
         }
-        return acquire(id, null, new Snapshot(playerUuid, levels,
-            eligibility ? new ObjectArrayList<>(claims.values()) : state.rewardClaims()), raised, eligibility);
+        boolean eligibility = claims != null;
+        return acquire(id, null, raised || eligibility
+            ? new Snapshot(playerUuid, levels, eligibility ? claims : state.rewardClaims()) : state, raised, eligibility);
     }
 
     /**
@@ -181,6 +180,7 @@ public final class PlayerResearchState {
         if (afterLevel < 0 || afterLevel > expectedBeforeLevel
             || state.completedLevels().getInt(id) != expectedBeforeLevel)
             throw new IllegalArgumentException("Invalid source level transition");
+        if (afterLevel == expectedBeforeLevel) return acquire(id, operationId, state, false, false);
         var levels = new Object2IntOpenHashMap<>(state.completedLevels());
         if (afterLevel == 0) levels.removeInt(id);
         else levels.put(id, afterLevel);
@@ -381,8 +381,10 @@ public final class PlayerResearchState {
                 requireOwner();
                 if (!replacement.key().equals(key)) throw new IllegalArgumentException("Reward claim identity changed");
                 if (index < 0) throw new IllegalStateException("Reward eligibility disappeared");
+                var current = owner.state.rewardClaims().get(index);
+                if (current == replacement) return;
+                current.requireTransitionTo(replacement);
                 var claims = new ObjectArrayList<>(owner.state.rewardClaims());
-                claims.get(index).requireTransitionTo(replacement);
                 claims.set(index, replacement);
                 owner.state = new Snapshot(owner.playerUuid, owner.state.completedLevels(), claims);
             }

@@ -1,17 +1,17 @@
 package com.circulation.prototype_eng.api.recipe.overlay;
 
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
-import org.jetbrains.annotations.Nullable;
 
 
 /**
- * Immutable tick-rate overrides; null inherits the base, and zero explicitly disables that rate.
+ * Tick-rate overrides use -1 to inherit and zero to disable a rate.
+ * The output option uses -1 to inherit, 0 for false, and 1 for true.
  */
-public record EnergyRequirementPatch(@Nullable Long inputsPerTick, @Nullable Long outputsPerTick,
-                                     @Nullable Boolean voidExcessOutputs) {
+public record EnergyRequirementPatch(long inputsPerTick, long outputsPerTick,
+                                     int voidExcessOutputs) {
     public EnergyRequirementPatch {
-        if (inputsPerTick != null && inputsPerTick < 0 || outputsPerTick != null && outputsPerTick < 0) {
-            throw new IllegalArgumentException("Energy overlay rates must be nonnegative");
+        if (inputsPerTick < -1 || outputsPerTick < -1) {
+            throw new IllegalArgumentException("Energy overlay rates must be nonnegative or -1 to inherit");
         }
     }
 
@@ -19,11 +19,11 @@ public record EnergyRequirementPatch(@Nullable Long inputsPerTick, @Nullable Lon
      * START input and END output retain their original values.
      */
     public EnergyRequirement apply(EnergyRequirement base) {
-        if (inputsPerTick == null && outputsPerTick == null && voidExcessOutputs == null) {
+        if (inputsPerTick == -1 && outputsPerTick == -1 && voidExcessOutputs == -1) {
             return base;
         }
-        return new EnergyRequirement(base.input(), inputsPerTick == null ? base.inputPerTick() : inputsPerTick,
-            outputsPerTick == null ? base.outputPerTick() : outputsPerTick, base.output(),
-            voidExcessOutputs == null ? base.voidExcessOutputs() : voidExcessOutputs, base.inputAllocation());
+        return new EnergyRequirement(base.input(), inputsPerTick == -1 ? base.inputPerTick() : inputsPerTick,
+            outputsPerTick == -1 ? base.outputPerTick() : outputsPerTick, base.output(),
+            voidExcessOutputs == -1 ? base.voidExcessOutputs() : voidExcessOutputs == 1, base.inputAllocation());
     }
 }

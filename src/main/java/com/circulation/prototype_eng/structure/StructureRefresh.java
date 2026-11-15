@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.energy.EnergyOutput;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.recipe.requirement.BudgetResult;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.structure.MachineStructureHost;
 import com.circulation.prototype_eng.api.structure.StructureAssembly;
@@ -386,8 +387,8 @@ public final class StructureRefresh {
         var assembly = operation.result();
         if (assembly == null) return null;
         var proof = evaluation.isCurrent(host, work);
-        if (proof == null) return null;
-        if (!proof) {
+        if (proof == BudgetResult.YIELDED) return null;
+        if (proof == BudgetResult.REJECTED) {
             var verified = fresh(evaluation.plan(), work, worker);
             if (verified != null) diagnostics = verified.failures();
             return null;

@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.recipe;
 
+import com.circulation.prototype_eng.api.recipe.requirement.BudgetResult;
+
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
@@ -2207,7 +2209,7 @@ public final class RecipeStageExecutor {
             }
 
             @Override
-            public @Nullable Boolean canApplyWithinBudget(RecipeWorkBudget budget) {
+            public BudgetResult canApplyWithinBudget(RecipeWorkBudget budget) {
                 synchronousStarted = true;
                 return token.canApplyWithinBudget(budget);
             }

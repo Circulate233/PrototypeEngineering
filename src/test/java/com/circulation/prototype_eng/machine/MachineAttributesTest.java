@@ -141,7 +141,7 @@ class MachineAttributesTest {
         var child = new MachineAttributes(parent, 1);
         var modifiers = new Object2ObjectLinkedOpenHashMap<String, AttributeModifier>();
         modifiers.put("add", new NumericAttributeModifier("add", 2, ADDITION));
-        var saved = new MachineAttributes.LocalAttribute(null, modifiers);
+        var saved = new MachineAttributes.LocalAttribute(Double.NaN, modifiers);
         var input = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAttributes.LocalAttribute>();
         input.put(SPEED, saved);
         child.restoreLocal(input);

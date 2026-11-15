@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.recipe.requirement;
 
+import com.circulation.prototype_eng.api.recipe.requirement.BudgetResult;
+
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.attribute.AttributeModifier;
 import com.circulation.prototype_eng.api.machine.attribute.RenamedAttributeModifier;
@@ -504,12 +506,12 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         }
 
         @Override
-        public @Nullable Boolean prepareCommitWithinBudget(RecipeWorkBudget work) {
+        public BudgetResult prepareCommitWithinBudget(RecipeWorkBudget work) {
             return group.prepareCommitWithinBudget(work);
         }
 
         @Override
-        public @Nullable Boolean validateCommitWithinBudget(RecipeWorkBudget work) {
+        public BudgetResult validateCommitWithinBudget(RecipeWorkBudget work) {
             return group.validateCommitWithinBudget(work);
         }
 
@@ -750,12 +752,12 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         }
 
         @Override
-        public @Nullable Boolean prepareCommitWithinBudget(RecipeWorkBudget work) {
+        public BudgetResult prepareCommitWithinBudget(RecipeWorkBudget work) {
             return child.prepareCommitWithinBudget(work);
         }
 
         @Override
-        public @Nullable Boolean validateCommitWithinBudget(RecipeWorkBudget work) {
+        public BudgetResult validateCommitWithinBudget(RecipeWorkBudget work) {
             return child.validateCommitWithinBudget(work);
         }
 
@@ -855,12 +857,12 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         }
 
         @Override
-        public @Nullable Boolean prepareCommitWithinBudget(RecipeWorkBudget work) {
+        public BudgetResult prepareCommitWithinBudget(RecipeWorkBudget work) {
             return group.prepareCommitWithinBudget(work);
         }
 
         @Override
-        public @Nullable Boolean validateCommitWithinBudget(RecipeWorkBudget work) {
+        public BudgetResult validateCommitWithinBudget(RecipeWorkBudget work) {
             return group.validateCommitWithinBudget(work);
         }
 
@@ -1062,12 +1064,12 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         }
 
         @Override
-        public @Nullable Boolean prepareCommitWithinBudget(RecipeWorkBudget work) {
+        public BudgetResult prepareCommitWithinBudget(RecipeWorkBudget work) {
             return group.prepareCommitWithinBudget(work);
         }
 
         @Override
-        public @Nullable Boolean validateCommitWithinBudget(RecipeWorkBudget work) {
+        public BudgetResult validateCommitWithinBudget(RecipeWorkBudget work) {
             return group.validateCommitWithinBudget(work);
         }
 

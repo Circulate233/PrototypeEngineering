@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.api.storage;
 
+import com.circulation.prototype_eng.api.recipe.requirement.BudgetResult;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
@@ -168,7 +170,7 @@ public final class ResourceInputReceipts {
         }
 
         @Override
-        public @Nullable Boolean canApplyWithinBudget(RecipeWorkBudget budget) {
+        public BudgetResult canApplyWithinBudget(RecipeWorkBudget budget) {
             return delegate.canApplyWithinBudget(budget);
         }
 

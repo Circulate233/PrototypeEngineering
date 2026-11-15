@@ -90,12 +90,12 @@ public final class SchedulerCommand extends CommandBase {
         boolean strategy = operation.equals("strategy");
         String toggle = arguments.length == 2 ? arguments[1].toLowerCase(Locale.ROOT) : "";
         var requestedStrategy = strategy && arguments.length == 2 ? SchedulerConfig.WorkerStrategy.fromName(arguments[1]) : null;
-        Boolean loggingEnabled = switch (toggle) {
-            case "on", "true", "1", "enable", "enabled" -> true;
-            case "off", "false", "0", "disable", "disabled" -> false;
-            default -> null;
+        int loggingEnabled = switch (toggle) {
+            case "on", "true", "1", "enable", "enabled" -> 1;
+            case "off", "false", "0", "disable", "disabled" -> 0;
+            default -> -1;
         };
-        if (metrics ? arguments.length != 2 || loggingEnabled == null
+        if (metrics ? arguments.length != 2 || loggingEnabled < 0
             : strategy ? arguments.length != 2 || requestedStrategy == null
             : arguments.length != 1 || !operation.equals("status") && !operation.equals("report") && !operation.equals("reload")) {
             sender.sendMessage(SchedulerText.Usage.text());
@@ -121,7 +121,7 @@ public final class SchedulerCommand extends CommandBase {
                 case "metrics" -> {
                     var base = current.pendingSettings();
                     if (base == null) base = current.effectiveSettings();
-                    var requested = base.withMetricsEnabled(loggingEnabled);
+                    var requested = base.withMetricsEnabled(loggingEnabled == 1);
                     current.requestSettings(requested);
                     sender.sendMessage(SchedulerText.MetricsRequested.text(requested.metricsEnabled()));
                     settings(sender, SchedulerText.Pending, requested);

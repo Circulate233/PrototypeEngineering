@@ -105,15 +105,15 @@ var selection = Requirement.selective("pe_run_tests:core_selective",
      Requirement.energy("pe_run_tests:core_optional", 0, 0, 0, 0, false)],
     [SelectiveModifier.create("pe_run_tests:core_select_patch", function(context) {
         NativeChecks.check("core_selective_second_candidate", context.candidateIndex == 1);
-        context.putResourcePatch(stageResources, "partial", [], null, null, [], null);
-        context.putEnergyPatch(stageEnergy, "partial", 0, null, null);
+        context.putResourcePatch(stageResources, "partial", [], null, null, [], -1);
+        context.putEnergyPatch(stageEnergy, "partial", 0, -1, -1);
         context.data.selectionSeen = true;
     })]);
 CoreCases.capture("selective", Recipe.create("pe_run_tests:core_selected", "run-v1", 1,
     [selection, stageResources, stageEnergy]));
 var partial = OverlayModifier.create("pe_run_tests:core_partial", function(context) {
-    context.putResourcePatch(stageResources, "partial", [], null, null, [], null);
-    context.putEnergyPatch(stageEnergy, "partial", 0, null, null);
+    context.putResourcePatch(stageResources, "partial", [], null, null, [], -1);
+    context.putEnergyPatch(stageEnergy, "partial", 0, -1, -1);
     context.data.overlaySeen = true;
 });
 CoreCases.overlay("partial", partial);

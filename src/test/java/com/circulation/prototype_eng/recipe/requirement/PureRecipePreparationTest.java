@@ -159,7 +159,7 @@ class PureRecipePreparationTest {
         var slots = host(warehouse);
         var process = process(slots, 0, requirement);
         var overlays = RecipeOverlays.getOrCreate(process);
-        overlays.put(requirement, "io", RecipeOverlayTypes.RESOURCE_IO, new ResourceRequirementPatch(null, null, null, null, true)).complete();
+        overlays.put(requirement, "io", RecipeOverlayTypes.RESOURCE_IO, new ResourceRequirementPatch(null, null, null, null, 1)).complete();
         assertSame(requirement.payload().inputs(), overlays.resolve(requirement).payload().inputs());
         assertSame(requirement.payload().fuzzyInputs(), overlays.resolve(requirement).payload().fuzzyInputs());
         try (var backend = new Backend()) {
@@ -167,7 +167,7 @@ class PureRecipePreparationTest {
             first.workPerAdvance(1);
             assertTrue(finish(first) > 256);
             assertEquals(RecipeProcess.Lifecycle.NEW, process.state().lifecycle());
-            overlays.put(requirement, "io", RecipeOverlayTypes.RESOURCE_IO, new ResourceRequirementPatch(null, null, null, null, true)).complete();
+            overlays.put(requirement, "io", RecipeOverlayTypes.RESOURCE_IO, new ResourceRequirementPatch(null, null, null, null, 1)).complete();
             assertSame(requirement.payload().inputs(), overlays.resolve(requirement).payload().inputs());
             var unchanged = new PlannedRecipeCoordinator(backend.tasks, List.of(slots), deadline(), new PlannedCancellationToken(), () -> true);
             unchanged.workPerAdvance(1);
@@ -177,7 +177,7 @@ class PureRecipePreparationTest {
             for (int index = 0; index < 256; index++) {
                 replacement.add(new GenericStack(currentKey, 1));
             }
-            var patch = new ResourceRequirementPatch(replacement, null, null, null, true);
+            var patch = new ResourceRequirementPatch(replacement, null, null, null, 1);
             overlays.put(requirement, "io", RecipeOverlayTypes.RESOURCE_IO, patch).complete();
             assertSame(patch.inputs(), overlays.resolve(requirement).payload().inputs());
             var changed = new PlannedRecipeCoordinator(backend.tasks, List.of(slots), deadline(), new PlannedCancellationToken(), () -> true);

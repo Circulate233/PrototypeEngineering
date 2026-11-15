@@ -41,10 +41,6 @@ public final class UnboundedResourceBuffer implements ResourceStorage {
         });
     }
 
-    private static ReservationResult reject(ReservationResult.Status status) {
-        return new ReservationResult(status, null);
-    }
-
     private static void add(AEKey2LongMap map, AEKey key, long delta) {
         long next = Math.addExact(map.getLong(key), delta);
         if (next < 0) throw new IllegalStateException("Negative output resource balance");
@@ -153,11 +149,11 @@ public final class UnboundedResourceBuffer implements ResourceStorage {
         if (amount <= 0) throw new IllegalArgumentException("A reservation needs a positive amount");
         context.lock();
         try {
-            if (!context.isValid()) return reject(ReservationResult.Status.INVALID_STORAGE);
+            if (!context.isValid()) return ReservationResult.INVALID_STORAGE;
             if (snapshot != null && (snapshot.context() != context || !context.current(snapshot.revision())))
-                return reject(ReservationResult.Status.STALE_SNAPSHOT);
+                return ReservationResult.STALE_SNAPSHOT;
             if (amount > (insert ? room(key) : totals.getLong(key) - extractHolds.getLong(key)))
-                return reject(ReservationResult.Status.INSUFFICIENT);
+                return ReservationResult.INSUFFICIENT;
             if (reservations == Integer.MAX_VALUE) throw new IllegalStateException("Too many output reservations");
             context.requireChange(3);
             var token = new Reservation(key, amount, insert);

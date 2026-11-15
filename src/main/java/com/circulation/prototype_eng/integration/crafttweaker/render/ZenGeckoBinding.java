@@ -12,7 +12,8 @@ import stanhebben.zenscript.annotations.ZenMethod;
 import java.util.Locale;
 
 /**
- * Parameter conversion only; each registration freezes the public Java resource declaration.
+ * Registration borrows the completed animation layers. Stop modifying this builder after registration,
+ * while its declaration, requests or derived cache keys are retained.
  */
 @ZenRegister
 @ZenClass("mods.prototype_eng.render.GeckoBinding")

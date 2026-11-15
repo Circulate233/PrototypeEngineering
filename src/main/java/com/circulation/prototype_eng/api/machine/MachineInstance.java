@@ -94,7 +94,8 @@ public class MachineInstance implements PlannedMachineTask {
      * Explicit type override, then explicit role attachment, then the server's ordinary default.
      */
     public boolean requiresNetwork() {
-        if (type != null && type.networkRequirement() != null) return type.networkRequirement();
+        int required = type == null ? -1 : type.networkRequirement();
+        if (required != -1) return required == 1;
         return networkDevice != null && !networkDevice.automatic() || type != null && ControllerConfig.defaultRequiresNetwork();
     }
 

@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.api.transaction;
 
+import com.circulation.prototype_eng.api.recipe.requirement.BudgetResult;
+
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import org.jetbrains.annotations.Nullable;
 
@@ -50,22 +52,22 @@ public interface ReversibleTransaction {
     }
 
     /**
-     * Resumes preparation on this exact transaction and caller scope. Null means work yield,
-     * false is the original known rejection, and true is completed preparation. A yield is neither
+     * Resumes preparation on this exact transaction and caller scope. YIELDED pauses work,
+     * REJECTED is the original known rejection, and ACCEPTED is completed preparation. A yield is neither
      * failure nor UNKNOWN and must resume the same instance without replaying completed effects.
      * The default charges one cooperative legacy callback; owned implementations meter their loops.
      */
-    default @Nullable Boolean prepareCommitWithinBudget(RecipeWorkBudget budget) {
-        return budget.take() ? prepareCommit() : null;
+    default BudgetResult prepareCommitWithinBudget(RecipeWorkBudget budget) {
+        return budget.take() ? BudgetResult.of(prepareCommit()) : BudgetResult.YIELDED;
     }
 
     /**
-     * Resumes read-only validation on the same committed transaction. Null means work yield;
-     * false rejects the original batch normally; true certifies completed validation. No result
+     * Resumes read-only validation on the same committed transaction. YIELDED pauses work;
+     * REJECTED rejects the original batch normally; ACCEPTED certifies completed validation. No result
      * grants a new authority, acquisition, commit attempt, or callback scope.
      */
-    default @Nullable Boolean validateCommitWithinBudget(RecipeWorkBudget budget) {
-        return budget.take() ? validateCommit() : null;
+    default BudgetResult validateCommitWithinBudget(RecipeWorkBudget budget) {
+        return budget.take() ? BudgetResult.of(validateCommit()) : BudgetResult.YIELDED;
     }
 
     /**

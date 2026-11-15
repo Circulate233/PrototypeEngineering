@@ -23,7 +23,6 @@ import org.lwjgl.opengl.GL15;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -40,7 +39,7 @@ public final class PreviewBlockModels implements AutoCloseable {
     private StructurePreviewModel bakingModel;
     private PreviewBlockAccess sceneAccess;
     private Object sceneToken;
-    private Integer sceneLayer;
+    private StructurePreviews.Projection sceneInput;
     private boolean closed;
 
     public PreviewBlockModels(StructurePreviews previews) {
@@ -165,20 +164,23 @@ public final class PreviewBlockModels implements AutoCloseable {
         requireOwner();
         var model = view.model();
         if (model == null || !access.ready() || !current(model)) return;
-        Integer layer = view.threeDimensional ? null : view.layer;
-        if (sceneToken != view.token() || !Objects.equals(sceneLayer, layer) || sceneAccess != access) {
+        var previousLayer = sceneInput == null ? null : sceneInput.options().layer();
+        boolean threeDimensional = view.threeDimensional;
+        if (sceneToken != view.token() || (previousLayer == null) != threeDimensional
+            || previousLayer != null && previousLayer.y() != view.layer || sceneAccess != access) {
             invalidate();
             sceneToken = view.token();
-            sceneLayer = layer;
             sceneAccess = access;
+            var options = new StructureProjectionOptions(StructureProjectionOptions.Style.BLOCK_MODEL, false,
+                threeDimensional ? null : new StructurePreviewModel.Layer(view.layer), 2048, 0, 4096, Double.MAX_VALUE, 4096, 96, 128);
+            sceneInput = new StructurePreviews.Projection(model.structureId(), model.settings(), BlockPos.ORIGIN, options);
         }
         var token = sceneToken;
         BooleanSupplier valid = () -> !closed && token == view.token() && access.current() && current(model);
-        var options = new StructureProjectionOptions(StructureProjectionOptions.Style.BLOCK_MODEL, false,
-            layer == null ? null : new StructurePreviewModel.Layer(layer), 2048, 0, 4096, Double.MAX_VALUE, 4096, 96, 128);
-        var intent = new StructurePreviews.Projection(model.structureId(), model.settings(), BlockPos.ORIGIN, options);
+        var intent = sceneInput;
+        var options = intent.options();
         PreviewBlockModelCache.Ready ready = null;
-        if (layer == null) {
+        if (threeDimensional) {
             bakingModel = model;
             try {
                 ready = cache.advance(model, options.blockModelBuildVisitsPerFrame());

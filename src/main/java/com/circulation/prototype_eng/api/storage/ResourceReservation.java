@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.api.storage;
 
+import com.circulation.prototype_eng.api.recipe.requirement.BudgetResult;
+
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import org.jetbrains.annotations.Nullable;
 
@@ -59,10 +61,10 @@ public interface ResourceReservation {
     }
 
     /**
-     * Null is ordinary work yield; false is a completed rejection.
+     * YIELDED pauses work; REJECTED is a completed rejection.
      */
-    default @Nullable Boolean canApplyWithinBudget(RecipeWorkBudget budget) {
-        return budget.take() ? canApply() : null;
+    default BudgetResult canApplyWithinBudget(RecipeWorkBudget budget) {
+        return budget.take() ? BudgetResult.of(canApply()) : BudgetResult.YIELDED;
     }
 
     /**

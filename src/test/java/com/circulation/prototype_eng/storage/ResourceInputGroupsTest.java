@@ -489,7 +489,7 @@ class ResourceInputGroupsTest {
         var recipe = new MachineRecipe(id("resolved_receipt"), 1, List.of(io));
         var process = new RecipeProcess(fixture.machine, recipe, 9);
         RecipeOverlays.getOrCreate(process).put(io, "actual", RecipeOverlayTypes.RESOURCE_IO,
-            new ResourceRequirementPatch(List.of(new GenericStack(PRODUCT, 2)), null, null, null, null)).complete();
+            new ResourceRequirementPatch(List.of(new GenericStack(PRODUCT, 2)), null, null, null, -1)).complete();
         process.selectInputGroup(ResourceInputGroups.capture(MachineHatches.get(fixture.machine)).groups().getFirst());
         assertEquals(ProcessResult.SUCCESS, RecipeStageExecutor.probeStart(process));
         assertTrue(red.receipts.isEmpty());

@@ -18,23 +18,23 @@ public final class BuiltinOverlayCodecs {
         @Override
         public NBTTagCompound encode(EnergyRequirementPatch value) {
             var tag = new NBTTagCompound();
-            if (value.inputsPerTick() != null) {
+            if (value.inputsPerTick() != -1) {
                 tag.setLong("InputsPerTick", value.inputsPerTick());
             }
-            if (value.outputsPerTick() != null) {
+            if (value.outputsPerTick() != -1) {
                 tag.setLong("OutputsPerTick", value.outputsPerTick());
             }
-            if (value.voidExcessOutputs() != null) {
-                tag.setBoolean("VoidExcessOutputs", value.voidExcessOutputs());
+            if (value.voidExcessOutputs() != -1) {
+                tag.setBoolean("VoidExcessOutputs", value.voidExcessOutputs() == 1);
             }
             return tag;
         }
 
         @Override
         public EnergyRequirementPatch decode(NBTTagCompound tag) {
-            return new EnergyRequirementPatch(tag.hasKey("InputsPerTick") ? tag.getLong("InputsPerTick") : null,
-                tag.hasKey("OutputsPerTick") ? tag.getLong("OutputsPerTick") : null,
-                tag.hasKey("VoidExcessOutputs") ? tag.getBoolean("VoidExcessOutputs") : null);
+            return new EnergyRequirementPatch(tag.hasKey("InputsPerTick") ? tag.getLong("InputsPerTick") : -1,
+                tag.hasKey("OutputsPerTick") ? tag.getLong("OutputsPerTick") : -1,
+                tag.hasKey("VoidExcessOutputs") ? tag.getBoolean("VoidExcessOutputs") ? 1 : 0 : -1);
         }
     };
 
@@ -50,8 +50,8 @@ public final class BuiltinOverlayCodecs {
                 write(tag, "InputsPerTick", value.inputsPerTick());
                 write(tag, "OutputsPerTick", value.outputsPerTick());
                 write(tag, "Outputs", value.outputs());
-                if (value.voidExcessOutputs() != null) {
-                    tag.setBoolean("VoidExcessOutputs", value.voidExcessOutputs());
+                if (value.voidExcessOutputs() != -1) {
+                    tag.setBoolean("VoidExcessOutputs", value.voidExcessOutputs() == 1);
                 }
                 return tag;
             }
@@ -59,7 +59,7 @@ public final class BuiltinOverlayCodecs {
             @Override
             public ResourceRequirementPatch decode(NBTTagCompound tag) {
                 return new ResourceRequirementPatch(read(tag, "Inputs"), read(tag, "InputsPerTick"), read(tag, "OutputsPerTick"),
-                    read(tag, "Outputs"), tag.hasKey("VoidExcessOutputs") ? tag.getBoolean("VoidExcessOutputs") : null);
+                    read(tag, "Outputs"), tag.hasKey("VoidExcessOutputs") ? tag.getBoolean("VoidExcessOutputs") ? 1 : 0 : -1);
             }
 
             private void write(NBTTagCompound tag, String field, @Nullable List<GenericStack> stacks) {

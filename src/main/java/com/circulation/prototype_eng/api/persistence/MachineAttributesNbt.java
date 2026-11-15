@@ -30,7 +30,7 @@ public final class MachineAttributesNbt implements NbtCodec<Map<ResourceLocation
             var tag = new NBTTagCompound();
             tag.setString("Id", id.toString());
             tag.setBoolean("InheritModifiers", state.inheritModifiers());
-            if (state.baseOverride() != null) {
+            if (!Double.isNaN(state.baseOverride())) {
                 tag.setDouble("Base", state.baseOverride());
             }
             var modifierList = new NBTTagList();
@@ -56,7 +56,7 @@ public final class MachineAttributesNbt implements NbtCodec<Map<ResourceLocation
         for (int index = 0; index < entries.tagCount(); index++) {
             var entry = entries.getCompoundTagAt(index);
             var id = new ResourceLocation(entry.getString("Id"));
-            Double base = entry.hasKey("Base") ? entry.getDouble("Base") : null;
+            double base = entry.hasKey("Base") ? entry.getDouble("Base") : Double.NaN;
             boolean inheritModifiers = entry.getBoolean("InheritModifiers");
             var modifierList = entry.getTagList("Modifiers", Constants.NBT.TAG_COMPOUND);
             var localModifiers = new Object2ObjectLinkedOpenHashMap<String, AttributeModifier>(modifierList.tagCount());

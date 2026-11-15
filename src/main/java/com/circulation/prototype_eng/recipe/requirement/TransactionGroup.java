@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.recipe.requirement;
 
+import com.circulation.prototype_eng.api.recipe.requirement.BudgetResult;
+
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import org.jetbrains.annotations.Nullable;
@@ -280,7 +282,7 @@ final class TransactionGroup implements ReversibleTransaction {
     }
 
     @Override
-    public @Nullable Boolean prepareCommitWithinBudget(RecipeWorkBudget budget) {
+    public BudgetResult prepareCommitWithinBudget(RecipeWorkBudget budget) {
         requireIdle();
         if (commitAttempted || decision != null || preparationAttempted && !budgetPrepare)
             throw new IllegalStateException("Cannot replay composite preparation");
@@ -289,19 +291,19 @@ final class TransactionGroup implements ReversibleTransaction {
         executing = true;
         try {
             while (prepareCursor < transactions.size()) {
-                if (!selectChild(budget)) return null;
+                if (!selectChild(budget)) return BudgetResult.YIELDED;
                 var accepted = transactions.get(prepareCursor).prepareCommitWithinBudget(budget);
-                if (accepted == null) return null;
+                if (accepted == BudgetResult.YIELDED) return BudgetResult.YIELDED;
                 childSelected = false;
-                if (!accepted) {
+                if (accepted == BudgetResult.REJECTED) {
                     budgetPrepare = false;
-                    return false;
+                    return BudgetResult.REJECTED;
                 }
                 prepareCursor++;
             }
             preparationAccepted = true;
             budgetPrepare = false;
-            return true;
+            return BudgetResult.ACCEPTED;
         } catch (RuntimeException | Error failure) {
             budgetPrepare = false;
             throw failure;
@@ -336,7 +338,7 @@ final class TransactionGroup implements ReversibleTransaction {
     }
 
     @Override
-    public @Nullable Boolean validateCommitWithinBudget(RecipeWorkBudget budget) {
+    public BudgetResult validateCommitWithinBudget(RecipeWorkBudget budget) {
         requireIdle();
         if (decision != null || !commitAttempted || budgetCommit || validationAttempted && !budgetValidate)
             throw new IllegalStateException("Cannot replay composite validation");
@@ -345,18 +347,18 @@ final class TransactionGroup implements ReversibleTransaction {
         executing = true;
         try {
             while (validateCursor < transactions.size()) {
-                if (!selectChild(budget)) return null;
+                if (!selectChild(budget)) return BudgetResult.YIELDED;
                 var accepted = transactions.get(validateCursor).validateCommitWithinBudget(budget);
-                if (accepted == null) return null;
+                if (accepted == BudgetResult.YIELDED) return BudgetResult.YIELDED;
                 childSelected = false;
-                if (!accepted) {
+                if (accepted == BudgetResult.REJECTED) {
                     budgetValidate = false;
-                    return false;
+                    return BudgetResult.REJECTED;
                 }
                 validateCursor++;
             }
             budgetValidate = false;
-            return true;
+            return BudgetResult.ACCEPTED;
         } catch (RuntimeException | Error failure) {
             budgetValidate = false;
             throw failure;

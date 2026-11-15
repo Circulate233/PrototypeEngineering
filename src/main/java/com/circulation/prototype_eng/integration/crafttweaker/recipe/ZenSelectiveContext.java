@@ -68,16 +68,17 @@ public final class ZenSelectiveContext {
     @ZenMethod
     public void putResourceIO(ZenRequirement target, String layerId, ZenResource[] inputs, ZenResource[] inputsPerTick,
                               ZenResource[] outputsPerTick, ZenResource[] outputs, boolean voidExcessOutputs) {
-        putResourcePatch(target, layerId, inputs, inputsPerTick, outputsPerTick, outputs, voidExcessOutputs);
+        putResourcePatch(target, layerId, inputs, inputsPerTick, outputsPerTick, outputs, voidExcessOutputs ? 1 : 0);
     }
 
     /**
-     * Null inherits a field; an empty resource array explicitly clears it.
+     * Null inherits a resource list; an empty array clears it. The output option uses -1 to
+     * inherit, 0 for false, and 1 for true.
      */
     @ZenMethod
     public void putResourcePatch(ZenRequirement target, String layerId, @Nullable ZenResource[] inputs,
                                  @Nullable ZenResource[] inputsPerTick, @Nullable ZenResource[] outputsPerTick,
-                                 @Nullable ZenResource[] outputs, @Nullable Boolean voidExcessOutputs) {
+                                 @Nullable ZenResource[] outputs, int voidExcessOutputs) {
         context.putRequirementOverlay(target.resource(), layerId, RecipeOverlayTypes.RESOURCE_IO,
             new ResourceRequirementPatch(ZenRecipeSupport.optionalStacks(inputs), ZenRecipeSupport.optionalStacks(inputsPerTick),
                 ZenRecipeSupport.optionalStacks(outputsPerTick), ZenRecipeSupport.optionalStacks(outputs), voidExcessOutputs));
@@ -85,12 +86,12 @@ public final class ZenSelectiveContext {
 
     @ZenMethod
     public void putEnergyRates(ZenRequirement target, String layerId, long inputPerTick, long outputPerTick, boolean voidExcessOutputs) {
-        putEnergyPatch(target, layerId, inputPerTick, outputPerTick, voidExcessOutputs);
+        putEnergyPatch(target, layerId, inputPerTick, outputPerTick, voidExcessOutputs ? 1 : 0);
     }
 
     @ZenMethod
-    public void putEnergyPatch(ZenRequirement target, String layerId, @Nullable Long inputPerTick,
-                               @Nullable Long outputPerTick, @Nullable Boolean voidExcessOutputs) {
+    public void putEnergyPatch(ZenRequirement target, String layerId, long inputPerTick,
+                               long outputPerTick, int voidExcessOutputs) {
         context.putRequirementOverlay(target.energy(), layerId, RecipeOverlayTypes.ENERGY_RATES,
             new EnergyRequirementPatch(inputPerTick, outputPerTick, voidExcessOutputs));
     }

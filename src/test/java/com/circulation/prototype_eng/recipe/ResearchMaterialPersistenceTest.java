@@ -123,7 +123,7 @@ class ResearchMaterialPersistenceTest {
                     modifierApplications[0]++;
                     context.putProcessAttributeModifier(SCORE, add("selector", 3));
                     context.putRequirementOverlay(io, "selector_output", RecipeOverlayTypes.RESOURCE_IO,
-                        new ResourceRequirementPatch(null, null, null, stacks(PRODUCT, 4), null));
+                        new ResourceRequirementPatch(null, null, null, stacks(PRODUCT, 4), -1));
                 }))));
             var attribute = RecipeRequirements.ATTRIBUTES.requirement(id("attribute"), new AttributeRequirement(SCORE, add("requirement", 2)));
             var observer = observer((process, phase) -> {
@@ -141,7 +141,7 @@ class ResearchMaterialPersistenceTest {
             cycle.attributes().setResolvedBase(SCORE, 10);
             cycle.attributes().addModifier(SCORE, add("foreign", 5));
             RecipeOverlays.getOrCreate(cycle).put(io, "foreign_output", RecipeOverlayTypes.RESOURCE_IO,
-                new ResourceRequirementPatch(null, null, null, stacks(PRODUCT, 6), null)).complete();
+                new ResourceRequirementPatch(null, null, null, stacks(PRODUCT, 6), -1)).complete();
             assertInstanceOf(ProcessResult.Blocked.class, cycle.tick());
             assertEquals(List.of(RecipeStage.START, RecipeStage.TICK, RecipeStage.END), phases);
             assertEquals(List.of(new RecipeProcess.Tick(0, speed, 0, 1)), clocks);

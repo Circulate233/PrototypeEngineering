@@ -244,7 +244,7 @@ class MachineAssemblyTest {
                                               assertEquals(19, owner.attributes().value(factoryBase));
                                               assertEquals(2, owner.attributes().value(missing));
                                               assertEquals(3, owner.attributes().value(modifierOnly));
-                                              assertNull(Objects.requireNonNull(owner.attributes().localSnapshot().get(modifierOnly)).baseOverride());
+                                              assertTrue(Double.isNaN(Objects.requireNonNull(owner.attributes().localSnapshot().get(modifierOnly)).baseOverride()));
                                               return super.restore(owner, fresh, tag);
                                           }
                                       })
@@ -259,7 +259,7 @@ class MachineAssemblyTest {
         assertEquals(19, restored.attributes().value(factoryBase));
         assertEquals(2, restored.attributes().value(missing));
         assertEquals(3, restored.attributes().value(modifierOnly));
-        assertNull(Objects.requireNonNull(restored.attributes().localSnapshot().get(modifierOnly)).baseOverride());
+        assertTrue(Double.isNaN(Objects.requireNonNull(restored.attributes().localSnapshot().get(modifierOnly)).baseOverride()));
     }
 
 

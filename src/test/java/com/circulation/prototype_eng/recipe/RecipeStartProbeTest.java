@@ -240,7 +240,7 @@ class RecipeStartProbeTest {
                     assertEquals(requirement.path(null), owner.requirementPath());
                     assertTrue(owner.attributes().addModifier(SCORE, modifier("early", 3)));
                     var change = RecipeOverlays.getOrCreate(owner).put(resources, "probe", RecipeOverlayTypes.RESOURCE_IO,
-                        new ResourceRequirementPatch(List.of(new GenericStack(MATERIAL, 3), new GenericStack(EXTRA, 2)), null, null, null, null));
+                        new ResourceRequirementPatch(List.of(new GenericStack(MATERIAL, 3), new GenericStack(EXTRA, 2)), null, null, null, -1));
                     return transaction(owner, "early", List.of(), ProcessResult.SUCCESS, () -> {
                         change.rollback();
                         assertTrue(owner.attributes().removeModifier(SCORE, "early"));
@@ -279,7 +279,7 @@ class RecipeStartProbeTest {
                     metrics.descriptorApplications++;
                     context.putProcessAttributeModifier(SCORE, modifier("selector", 999));
                     context.putRequirementOverlay(resources, "selector", RecipeOverlayTypes.RESOURCE_IO,
-                        new ResourceRequirementPatch(null, null, null, stacks(PRODUCT, 999), null));
+                        new ResourceRequirementPatch(null, null, null, stacks(PRODUCT, 999), -1));
                 }))));
             var attribute = RecipeRequirements.ATTRIBUTES.requirement(id("attribute"), new AttributeRequirement(SCORE, modifier("attribute", 4)));
             var energy = RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(5, 7, 0, 11, false));
@@ -315,7 +315,7 @@ class RecipeStartProbeTest {
             process = new RecipeProcess(env.machine, recipe, 17);
             process.attributes().addModifier(SCORE, modifier("foreign", 1));
             RecipeOverlays.getOrCreate(process).put(resources, "foreign", RecipeOverlayTypes.RESOURCE_IO,
-                new ResourceRequirementPatch(null, null, null, stacks(PRODUCT, 6), null)).complete();
+                new ResourceRequirementPatch(null, null, null, stacks(PRODUCT, 6), -1)).complete();
             initialState = process.state();
             initialAttributes = process.attributes().localSnapshot();
             initialLayers = RecipeOverlays.getOrCreate(process).snapshot();

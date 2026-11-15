@@ -16,8 +16,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.*;
 import com.circulation.prototype_eng.api.recipe.scanning.*;
 import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
 import com.circulation.prototype_eng.api.structure.*;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
+import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
@@ -71,8 +70,8 @@ public final class ExampleMachines {
 
     @SubscribeEvent
     public static void recipes(RecipeRegistrationEvent event) {
-        var input = new GenericStack(Objects.requireNonNull(AEItemKey.of(new ItemStack(Items.IRON_INGOT))), 2);
-        var output = new GenericStack(Objects.requireNonNull(AEItemKey.of(new ItemStack(Items.GOLD_INGOT))), 1);
+        var input = new GenericStack(AEItemKey.of(new ItemStack(Items.IRON_INGOT)), 2);
+        var output = new GenericStack(AEItemKey.of(new ItemStack(Items.GOLD_INGOT)), 1);
         var io = RecipeRequirements.RESOURCES.requirement(id("items"),
             new ResourceRequirement(ObjectList.of(input), ObjectList.of(output)));
         var energy = RecipeRequirements.ENERGY.requirement(id("power"),
@@ -85,26 +84,30 @@ public final class ExampleMachines {
 
     @SubscribeEvent
     public static void runtime(MachineRuntimeRegistrationEvent event) {
-        var cells = new Object2ObjectLinkedOpenHashMap<BlockPos, StructurePredicate>();
-        cells.put(new BlockPos(-1, 0, 0), block("prototype_eng:input_hatch_1"));
-        cells.put(new BlockPos(1, 0, 0), block("prototype_eng:output_hatch_1"));
-        cells.put(new BlockPos(0, 0, 1), block("prototype_eng:energy_input_hatch_1"));
+        var cells = new BlockPos2ObjectMap<StructurePredicate>();
+        cells.put(BlockPos2ObjectMap.toLong(-1, 0, 0), block("prototype_eng:input_hatch_1"));
+        cells.put(BlockPos2ObjectMap.toLong(1, 0, 0), block("prototype_eng:output_hatch_1"));
+        cells.put(BlockPos2ObjectMap.toLong(0, 0, 1), block("prototype_eng:energy_input_hatch_1"));
+        var capCells = new BlockPos2ObjectMap<StructurePredicate>(1);
+        capCells.put(BlockPos.ORIGIN, block("minecraft:gold_block"));
+        var columnCells = new BlockPos2ObjectMap<StructurePredicate>(1);
+        columnCells.put(BlockPos.ORIGIN, block("minecraft:iron_block"));
         var cap = StructureDefinitions.template(id("smelter_cap"), BlockOrientation.NORTH_UP,
             new BlockPos(0, 1, 0), false,
-            new StructurePattern(Object2ObjectMaps.singleton(BlockPos.ORIGIN, block("minecraft:gold_block"))),
+            new StructurePattern(capCells),
             ObjectList.of(), ObjectList.of());
         var column = StructureDefinitions.slice(id("smelter_column"), BlockOrientation.NORTH_UP,
             new BlockPos(0, 1, 0), false,
-            new StructurePattern(Object2ObjectMaps.singleton(BlockPos.ORIGIN, block("minecraft:iron_block"))), 1, 4,
+            new StructurePattern(columnCells), 1, 4,
             new BlockPos(0, 1, 0), ObjectList.of(), ObjectList.of(cap));
         var shape = StructureDefinitions.template(SHAPE, BlockOrientation.NORTH_UP, BlockPos.ORIGIN,
             false, new StructurePattern(cells), ObjectList.of(), ObjectList.of(column));
-        event.definition(new StructureDefinition(cap, Text.CAP.getTranslationKey(), Object2ObjectMaps.emptyMap()));
-        event.definition(new StructureDefinition(column, Text.COLUMN.getTranslationKey(), Object2ObjectMaps.emptyMap()));
-        event.definition(new StructureDefinition(shape, Text.SHAPE.getTranslationKey(), Object2ObjectMaps.emptyMap()));
-        var assembly = MachineAssembly.builder(Objects.requireNonNull(type), "machine-v1")
+        event.definition(new StructureDefinition(cap, Text.CAP.getTranslationKey(), BlockPos2ObjectMap.emptyMap()));
+        event.definition(new StructureDefinition(column, Text.COLUMN.getTranslationKey(), BlockPos2ObjectMap.emptyMap()));
+        event.definition(new StructureDefinition(shape, Text.SHAPE.getTranslationKey(), BlockPos2ObjectMap.emptyMap()));
+        var assembly = MachineAssembly.builder(type, "machine-v1")
                                       .instanceFactory(MultithreadController::new)
-                                      .workSlots(new MachineWorkSlotsNbt("slots-v1", ObjectList.of(Objects.requireNonNull(recipeCodec))))
+                                      .workSlots(new MachineWorkSlotsNbt("slots-v1", ObjectList.of(recipeCodec)))
                                       .recreated(SCANNER)
                                       .build();
         event.assembly(assembly);

@@ -452,11 +452,11 @@ class InputAllocationTest {
             var second = input(12);
             var base = new ResourceRequirement(List.of(new GenericStack(MATERIAL, 1)), List.of())
                 .withInputAllocation(InputAllocation.SINGLE_SOURCE);
-            var payload = new ResourceRequirementPatch(List.of(new GenericStack(MATERIAL, 3)), null, null, null, null).apply(base);
+            var payload = new ResourceRequirementPatch(List.of(new GenericStack(MATERIAL, 3)), null, null, null, -1).apply(base);
             var firstEnergy = energy(6, 100);
             var secondEnergy = energy(12, 100);
             var energyBase = new EnergyRequirement(0, 1, 0, 0, false).withInputAllocation(InputAllocation.SINGLE_SOURCE);
-            var energyPayload = new EnergyRequirementPatch(3L, null, null).apply(energyBase);
+            var energyPayload = new EnergyRequirementPatch(3L, -1, -1).apply(energyBase);
             var process = process(new MachineHatches(List.of(first, second), List.of(firstEnergy, secondEnergy), List.of()), 1,
                 resource(payload), RecipeRequirements.ENERGY.requirement(id("energy"), energyPayload));
             process.attributes().setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, 3);

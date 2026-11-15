@@ -102,7 +102,7 @@ class NbtPersistenceTest {
         restored.restoreLocal(codec.decode(saved));
         assertEquals(25, restored.value(id));
         assertEquals(List.of("before", "outer"), List.copyOf(restored.localSnapshot().get(id).modifiers().keySet()));
-        assertNull(restored.localSnapshot().get(id).baseOverride());
+        assertTrue(Double.isNaN(restored.localSnapshot().get(id).baseOverride()));
         parent.setBase(id, 3);
         assertEquals(36, restored.value(id));
         assertEquals(source.value(id), restored.value(id));
@@ -193,21 +193,21 @@ class NbtPersistenceTest {
     void overlayCodecsPreserveAbsentAndExplicitEmptyFieldsAndRejectMalformedQuantities() {
         var resources = new ResourceKeyNbt(_ -> TYPE);
         var codec = BuiltinOverlayCodecs.resourceIo(resources);
-        var patch = new ResourceRequirementPatch(null, List.of(), null, List.of(new GenericStack(new Key(TYPE, "material"), 3)), false);
+        var patch = new ResourceRequirementPatch(null, List.of(), null, List.of(new GenericStack(new Key(TYPE, "material"), 3)), 0);
         var saved = codec.encode(patch);
         var restored = codec.decode(saved);
         assertNull(restored.inputs());
         assertEquals(List.of(), restored.inputsPerTick());
         assertEquals(patch.outputs(), restored.outputs());
-        assertEquals(Boolean.FALSE, restored.voidExcessOutputs());
+        assertEquals(0, restored.voidExcessOutputs());
         saved.getTagList("Outputs", 10).getCompoundTagAt(0).setLong("Quantity", 0);
         assertThrows(IllegalArgumentException.class, () -> codec.decode(saved));
         assertEquals(3, Objects.requireNonNull(restored.outputs()).getFirst().amount());
 
         var energy = BuiltinOverlayCodecs.ENERGY_RATES;
-        assertEquals(new EnergyRequirementPatch(null, 0L, false), energy.decode(energy.encode(new EnergyRequirementPatch(null, 0L, false))));
-        var invalid = energy.encode(new EnergyRequirementPatch(1L, null, null));
-        invalid.setLong("InputsPerTick", -1);
+        assertEquals(new EnergyRequirementPatch(-1, 0L, 0), energy.decode(energy.encode(new EnergyRequirementPatch(-1, 0L, 0))));
+        var invalid = energy.encode(new EnergyRequirementPatch(1L, -1, -1));
+        invalid.setLong("InputsPerTick", -2);
         assertThrows(IllegalArgumentException.class, () -> energy.decode(invalid));
     }
 

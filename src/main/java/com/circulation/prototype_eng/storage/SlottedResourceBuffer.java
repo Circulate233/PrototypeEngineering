@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.storage;
 
+import com.circulation.prototype_eng.api.recipe.requirement.BudgetResult;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
@@ -99,10 +101,6 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         if (amount < 0) {
             throw new IllegalArgumentException("Negative resource amount");
         }
-    }
-
-    private static ReservationResult rejected(ReservationResult.Status status) {
-        return new ReservationResult(status, null);
     }
 
     /**
@@ -400,18 +398,18 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         context.lock();
         try {
             if (!context.isValid()) {
-                return rejected(ReservationResult.Status.INVALID_STORAGE);
+                return ReservationResult.INVALID_STORAGE;
             }
             if (snapshot != null && (snapshot.context() != context || !context.current(snapshot.revision()))) {
-                return rejected(ReservationResult.Status.STALE_SNAPSHOT);
+                return ReservationResult.STALE_SNAPSHOT;
             }
             if (insert && amount > insertionHeadroom(key)) {
-                return rejected(ReservationResult.Status.INSUFFICIENT);
+                return ReservationResult.INSUFFICIENT;
             }
             Allocation allocation = onlySlot < 0 ? allocate(key, amount, insert)
                 : new Allocation(new int[]{onlySlot}, new long[]{amount}, slotTransferable(onlySlot, key, amount, insert));
             if (allocation.total != amount) {
-                return rejected(ReservationResult.Status.INSUFFICIENT);
+                return ReservationResult.INSUFFICIENT;
             }
             if (activeReservations == Integer.MAX_VALUE) {
                 throw new IllegalStateException("Too many active storage reservations");
@@ -917,7 +915,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         private void reject(ReservationResult.Status status) {
             rejection = status;
             cancelling = true;
-            result = rejected(status);
+            result = ReservationResult.rejected(status);
             capturedAmount = 0;
             // Forward refusal is complete. Its installed prefix remains in this exact inventory
             // until the original ACTIVE source actually cancels it.
@@ -1136,7 +1134,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
                     return false;
                 }
             }
-            result = rejected(rejection);
+            result = ReservationResult.rejected(rejection);
             capturedAmount = 0;
             phase = 8;
             cancelled = true;
@@ -1149,7 +1147,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             if (transferred) return true;
             cancelling = true;
             if (token != null && token.initialized && token.state != State.ROLLED_BACK) token.rollback();
-            result = rejected(rejection);
+            result = ReservationResult.rejected(rejection);
             capturedAmount = 0;
             phase = 8;
             cancelled = true;
@@ -1234,9 +1232,9 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         }
 
         @Override
-        public @Nullable Boolean canApplyWithinBudget(RecipeWorkBudget budget) {
+        public BudgetResult canApplyWithinBudget(RecipeWorkBudget budget) {
             context.requireLock();
-            return budget.take() ? canApply() : null;
+            return budget.take() ? BudgetResult.of(canApply()) : BudgetResult.YIELDED;
         }
 
         @Override

@@ -69,16 +69,44 @@ public final class MachineAttributes {
      */
     public double value(ResourceLocation id, double fallback) {
         finite(fallback, "fallback");
-        if (!contains(id)) {
-            return fallback;
+        double base = defaultBase;
+        boolean defined = false;
+        boolean baseFound = false;
+        boolean inheritModifiers = true;
+        boolean borrowed = true;
+        Object2ObjectLinkedOpenHashMap<String, AttributeModifier> modifiers = null;
+        for (var attributes = this; attributes != null; attributes = attributes.parent) {
+            var state = attributes.local.get(id);
+            if (state == null) continue;
+            defined = true;
+            if (!baseFound) {
+                base = Double.isNaN(state.baseOverride) ? attributes.defaultBase : state.baseOverride;
+                baseFound = !Double.isNaN(state.baseOverride);
+            }
+            if (inheritModifiers) {
+                if (!state.modifiers.isEmpty()) {
+                    if (modifiers == null) {
+                        modifiers = state.modifiers;
+                    } else {
+                        if (borrowed) {
+                            modifiers = new Object2ObjectLinkedOpenHashMap<>(modifiers);
+                            borrowed = false;
+                        }
+                        var keys = state.modifiers.keySet().iterator(state.modifiers.lastKey());
+                        while (keys.hasPrevious()) {
+                            var key = keys.previous();
+                            var replacement = modifiers.get(key);
+                            modifiers.putAndMoveToFirst(key, replacement == null ? state.modifiers.get(key) : replacement);
+                        }
+                    }
+                }
+                inheritModifiers = state.inheritModifiers;
+            }
+            if (baseFound && !inheritModifiers) break;
         }
-        double base = base(id);
-        if (!hasModifiers(id)) {
-            return base;
-        }
+        if (!defined) return fallback;
+        if (modifiers == null) return base;
         double current = base;
-        var modifiers = new Object2ObjectLinkedOpenHashMap<String, AttributeModifier>();
-        collectModifiers(id, modifiers);
         for (var operation : AttributeModifier.Operation.VALUES) {
             for (var modifier : modifiers.values()) {
                 if (modifier.operation() == operation) {
@@ -135,10 +163,10 @@ public final class MachineAttributes {
 
     public boolean clearBase(ResourceLocation id) {
         var state = local.get(id);
-        if (state == null || state.baseOverride == null) {
+        if (state == null || Double.isNaN(state.baseOverride)) {
             return false;
         }
-        state.baseOverride = null;
+        state.baseOverride = Double.NaN;
         state.inheritModifiers = true;
         prune(id, state);
         changed();
@@ -191,7 +219,7 @@ public final class MachineAttributes {
     }
 
     /**
-     * Validates and copies the entire snapshot before replacement; rejection leaves this layer intact.
+     * Restores owned mutable state from the borrowed snapshot.
      */
     public void restoreLocal(Map<ResourceLocation, LocalAttribute> snapshot) {
         var replacement = new Object2ObjectLinkedOpenHashMap<ResourceLocation, LocalState>(snapshot.size());
@@ -202,24 +230,10 @@ public final class MachineAttributes {
             state.baseOverride = saved.baseOverride();
             state.inheritModifiers = saved.inheritModifiers();
             state.modifiers.putAll(saved.modifiers());
-            if (replacement.putIfAbsent(id, state) != null) {
-                throw new IllegalArgumentException("Duplicate attribute ID: " + id);
-            }
+            replacement.put(id, state);
         }
         local = replacement;
         changed();
-    }
-
-    private boolean contains(ResourceLocation id) {
-        return local.containsKey(id) || parent != null && parent.contains(id);
-    }
-
-    private double base(ResourceLocation id) {
-        var state = local.get(id);
-        if (state != null && state.baseOverride != null) {
-            return state.baseOverride;
-        }
-        return parent != null && parent.contains(id) ? parent.base(id) : defaultBase;
     }
 
     /**
@@ -231,18 +245,8 @@ public final class MachineAttributes {
             || (state == null || state.inheritModifiers) && parent != null && parent.hasModifiers(id);
     }
 
-    private void collectModifiers(ResourceLocation id, Object2ObjectLinkedOpenHashMap<String, AttributeModifier> result) {
-        var state = local.get(id);
-        if (parent != null && (state == null || state.inheritModifiers)) {
-            parent.collectModifiers(id, result);
-        }
-        if (state != null) {
-            result.putAll(state.modifiers);
-        }
-    }
-
     private void prune(ResourceLocation id, LocalState state) {
-        if (state.baseOverride == null && state.modifiers.isEmpty()) {
+        if (Double.isNaN(state.baseOverride) && state.modifiers.isEmpty()) {
             local.remove(id);
         }
     }
@@ -270,18 +274,18 @@ public final class MachineAttributes {
 
     /**
      * A local save entry. Its modifier map and modifier objects are borrowed read-only and must
-     * remain unchanged for the entry lifetime.
+     * remain unchanged for the entry lifetime. NaN means no local base override.
      */
-    public record LocalAttribute(@Nullable Double baseOverride, Map<String, AttributeModifier> modifiers,
+    public record LocalAttribute(double baseOverride, Map<String, AttributeModifier> modifiers,
                                  boolean inheritModifiers) {
-        public LocalAttribute(@Nullable Double baseOverride, Map<String, AttributeModifier> modifiers) {
+        public LocalAttribute(double baseOverride, Map<String, AttributeModifier> modifiers) {
             this(baseOverride, modifiers, true);
         }
     }
 
     private static final class LocalState {
         private final Object2ObjectLinkedOpenHashMap<String, AttributeModifier> modifiers = new Object2ObjectLinkedOpenHashMap<>();
-        private @Nullable Double baseOverride;
+        private double baseOverride = Double.NaN;
         private boolean inheritModifiers = true;
     }
 
@@ -319,7 +323,7 @@ public final class MachineAttributes {
                 layers.add(new LayerValue(attributes, state, attributes.localMarker));
                 if (state != null) {
                     defined = true;
-                    if (!baseFound && state.baseOverride != null) {
+                    if (!baseFound && !Double.isNaN(state.baseOverride)) {
                         base = state.baseOverride;
                         baseFound = true;
                     } else if (!baseFound) base = attributes.defaultBase;

@@ -238,7 +238,7 @@ class RecipeProcessPersistenceTest {
                 applications[0]++;
                 context.putProcessAttributeModifier(SCORE, new NumericAttributeModifier("bonus", 3, AttributeModifier.Operation.ADDITION));
                 context.putRequirementOverlay(resource, "output", RecipeOverlayTypes.RESOURCE_IO,
-                    new ResourceRequirementPatch(null, null, null, stacks(PRODUCT, 4), null));
+                    new ResourceRequirementPatch(null, null, null, stacks(PRODUCT, 4), -1));
             }))));
         var recipe = recipe(2, selection, resource, energy(5, 7, 11));
         var codec = codec(recipe);
@@ -246,10 +246,10 @@ class RecipeProcessPersistenceTest {
         original.attributes().addModifier(SCORE, new NumericAttributeModifier("foreign", 5, AttributeModifier.Operation.ADDITION));
         var overlays = RecipeOverlays.getOrCreate(original);
         overlays.put(resource, "foreign_before", RecipeOverlayTypes.RESOURCE_IO,
-            new ResourceRequirementPatch(null, null, null, stacks(PRODUCT, 6), null)).complete();
+            new ResourceRequirementPatch(null, null, null, stacks(PRODUCT, 6), -1)).complete();
         assertSame(ProcessResult.SUCCESS, original.tick());
         overlays.put(resource, "foreign_after", RecipeOverlayTypes.RESOURCE_IO,
-            new ResourceRequirementPatch(null, stacks(MATERIAL, 3), null, null, null)).complete();
+            new ResourceRequirementPatch(null, stacks(MATERIAL, 3), null, null, -1)).complete();
         var restored = codec.decode(env.machine, codec.encode(original));
         assertEquals(1, applications[0]);
         assertEquals(20, restored.attributes().value(SCORE));

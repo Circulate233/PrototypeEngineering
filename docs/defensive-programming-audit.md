@@ -79,3 +79,13 @@ Snapshot、手动材料凭据、发布数据、网络分片及缓存 getter 中�
 生产源码仅剩 `ControllerRotatedModel` 在烘焙时复制共享基础模型顶点的一处 clone，24种朝向直接读烘焙缓存。网络分片、重组和原生数组合并仍需生成其实际数据表示；异步任务、资源重载、事务预留和来源替换仍有真实版本边界。
 
 完整Gradle build、Spotless、1728项测试/269 suites、IDEA MCP构建、27份Java addon和15份真实ZS验证通过。最后删除无消费者AT后重新编译和打包通过，未重复执行已通过的行为测试。520份Java格式化及全级检查中，503份零诊断，CTM文件保留5条IDE依赖ERROR及1条弱警告，16份run被排除。详细限制、原始证据和复验入口见[实施进度](implementation-status.md)。
+
+## 2026-11-15 API 与调用点复核
+
+预算三态、FE patch、属性基础值和联网覆盖移除可空原始类型包装，分别使用共享 BudgetResult、long/int 的 -1 和 double 的 NaN。ResourceBatch 删除逐次 Step 分配，资源拒绝结果共享常量，ReservationResult 不再复验调用方状态配对。属性查找只遍历一次父链，单层直接读取已有 Map，父子 modifier 覆盖才建立工作表；固定 operation 顺序仍按原规则执行。
+
+模型缓存命中不再建立资源列表、空 owner Map 或源捕获 Map，sameBase 直接比较字段。动画层不再构造 Snapshot 后立即取回原列表，二维层和三维模式复用已有配置。研究注册验证与前置图收集合并，奖励资格避免整表 Map→List 转换，无变化状态复用原 Snapshot。世界保存前后整表比较及对应违约 writer 测试已删除，保存失败仍先重试原快照。
+
+保留的研究副本用于注册顺序与 ID 排序、可逆事务 before/after 和历史保存版本，不能原地覆盖这些正在使用的数据。生产数组 clone 仍只有烘焙时的一处，用于旋转共享基础模型顶点并建立24种朝向缓存；运行时直接读取缓存。借用动画层、NBT和列表的期限已同步到 Javadoc 与 API 文档。
+
+最终完整构建、1727项现有测试和实际 Java/ZS SDK 示例通过，没有新增测试。59份改动Java经本机IDEA格式化和全级检查，58份零诊断，1份文档示例被IDE排除并单独编译。证据与文档入口见[实施进度](implementation-status.md)和[API](../api.md)。

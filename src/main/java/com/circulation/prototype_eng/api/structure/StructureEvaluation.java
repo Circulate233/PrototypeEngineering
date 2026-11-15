@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.structure;
 
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.recipe.requirement.BudgetResult;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -46,12 +47,11 @@ public final class StructureEvaluation {
     }
 
     /**
-     * Null explicitly denotes an incomplete proof; prefixes from different ticks never prove current.
+     * YIELDED denotes an incomplete proof; prefixes from different ticks never prove current.
      */
-    @Nullable
-    public Boolean isCurrent(StructureReadSource source, RecipeWorkBudget work) {
+    public BudgetResult isCurrent(StructureReadSource source, RecipeWorkBudget work) {
         var captured = StructureSnapshot.capture(used, source, work);
-        return captured == null ? null : snapshot.equivalent(captured, used, work);
+        return captured == null ? BudgetResult.YIELDED : snapshot.equivalent(captured, used, work);
     }
 
     public StructurePlan plan() {

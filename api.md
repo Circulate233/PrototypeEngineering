@@ -12,17 +12,19 @@ Java 公开 API 位于 `src/main/java/com/circulation/prototype_eng/api`。ZS �
 
 物品、流体以及 addon 资源都用 AE2 的 `AEKey` 表示种类，用 `GenericStack` 携带数量。多个资源的数量表使用 `AEKey2LongMap`，累加和扣减优先使用 `addTo`。带原始类型的集合字段、参数和返回值必须使用 fastutil 专用接口，例如 `Reference2LongMap<AEKeyType>` 和 `IntList`；只有纯对象集合可以用标准 JDK 集合接口对外暴露。并发、位集合等特殊语义可以使用相应实现，必须说明实际需要的语义。
 
-本库缺值统一返回带有 `@Nullable` 标注的对象，调用方必须判空。禁止在本库字段、参数或返回值中使用 `Optional`、`OptionalInt`、`OptionalLong`、`OptionalDouble`；只有依赖接口要求的类型保留。原始类型优先使用其业务范围之外的值表示缺失，例如非负奖励时间使用 `long` 的 `-1`；禁止仅为表示缺失而装箱。队首、推进计划、内容和存档等对象不存在时返回 `null`。
+本库对象缺值返回带有 `@Nullable` 标注的 `null`，调用方必须判空。禁止在本库字段、参数或返回值中使用 `Optional`、`OptionalInt`、`OptionalLong`、`OptionalDouble`；只有依赖接口要求的类型保留。原始类型使用其业务范围之外的值表示缺失，例如非负奖励时间使用 `long` 的 `-1`；禁止仅为表示缺失而装箱。预算控制的接受判断使用共享 `BudgetResult`：`YIELDED` 暂停，`ACCEPTED` 完成并接受，`REJECTED` 完成并拒绝。
 
 未标注 `@Nullable`、且未明确允许缺值的参数、集合元素和工厂结果必须非空。调用方必须满足这些要求，禁止通过反复 `requireNonNull` 或逐元素检查补偿错误调用。真实的资源缺失、权限变化、溢出、存档格式和事务预检仍按对应接口处理。
 
-`StructureOperation<T>`、`StructureQuery<T>` 与结构读取接口通过泛型类型参数表示可空结果。自定义操作或查询允许返回 `null` 时，必须使用 `StructureOperation<@Nullable T>` 或 `StructureQuery<@Nullable T>`；只有操作完成后才能读取 `result()`。内置 `TILE_NBT` 为可空查询，数值和状态查询完成后返回实际值。
+`StructureOperation<T>`、`StructureQuery<T>` 与结构读取接口通过泛型类型参数表示可空结果。自定义操作或查询允许返回 `null` 时，必须使用 `StructureOperation<@Nullable T>` 或 `StructureQuery<@Nullable T>`；只有操作完成且实际工作线程退出后才能读取 `result()`。`advance(work)` 返回 false 时必须保留同一游标继续推进；`StructureOperation<@Nullable Void>` 完成后返回 null，不能用这个返回值判断是否完成。内置 `TILE_NBT` 为可空查询，数值和状态查询完成后返回实际值。
 
 所有 List 参数和返回值，包括嵌套列表，必须支持常数时间索引访问。使用 ArrayList、ObjectArrayList、List.of 或符合该要求的自定义实现；禁止传入 LinkedList。内部按索引遍历，不通过复制列表修正调用方的实现选择。
 
 集合和 NBT 的所有权按对应 Javadoc 处理。定义构建器交付完成的数据后不得再修改；只读访问直接返回已有对象。`ResourceKeyNbt.INSTANCE` 使用 AE 默认类型解析器，自定义解析器创建一次 codec 后复用；`AttributeModifierNbt.INSTANCE` 和 `MachineAttributesNbt.INSTANCE` 提供默认属性编码器。资源类型必须复用单例，R2DMap 按对象身份索引，累加使用 `addTo`。
 
-`ComponentType` 的 systems 使用支持常数时间索引的 List，dependencies 使用 Set，两个参数均直接借用，声明后不得修改。配方池、研究快照和结构显示数据按只读方式交付；为 JEI 更改分类时复用已建立的输入索引。`ComponentData.set/merge/replace` 借用不可再修改的子标签；快照按 revision 复用，仅保留独立顶层索引，使后续正常写入不改变已发布快照。`ResourceKeyNbt.decode(id, data)` 的类型加载器只读取自己的字段，不修改输入，允许输入同时包含库存元数据。
+`ComponentType` 的 systems 使用支持常数时间索引的 List，dependencies 使用 Set，两个参数均直接借用，声明后不得修改。配方池、研究快照和结构显示数据按只读方式交付；为 JEI 更改分类时复用已建立的输入索引。`ComponentData.set/merge/replace` 借用不可再修改的子标签；快照按 revision 复用，仅保留独立顶层索引，使后续正常写入不改变已发布快照。`DataComponents` 的 codec 直接返回该只读快照，调用方必须通过 `set/merge/replace/remove/clear` 修改数据，否则 revision 和同步结果不会更新。`ResourceKeyNbt.decode(id, data)` 的类型加载器只读取自己的字段，不修改输入，允许输入同时包含库存元数据。
+
+fastutil 的 `fastIterator()` 可以复用同一个 Entry；必须在下一次 `next()` 或 `remove()` 前读取需要保留的键和值。移除后禁止再次读取该 Entry；需要后续释放资源时先保存其值，不复制整个 Map。
 
 RecipeOverlays 的 NBT 通过静态函数编解码，进程的固定需求图由 `RecipeProcess.definitionIndex()` 按需建立一次并复用。快照、下载输出和手动材料凭据的数组/NBT 按 Javadoc 只读交付；创建方在实际需要独立可修改状态时建立一次副本，禁止在 getter 或 DTO 构造器中重复复制。
 
@@ -66,7 +68,7 @@ public final class ExampleRecipeRegistration {
 
 ### 创建能运行配方的机器
 
-`MachineType.builder(id, displayName, structureId)` 描述一种机器：它叫什么、匹配哪个结构、能够使用哪些配方池、安装哪些组件。`build()` 产生不可变定义；`event.registry().register(type)` 让库注册该类型。
+`MachineType.builder(id, displayName, structureId)` 描述一种机器：它叫什么、匹配哪个结构、能够使用哪些配方池、安装哪些组件。`build()` 交付完成的只读定义，之后必须停止修改 builder 及其借用数据；`event.registry().register(type)` 让库注册该类型。
 
 机器类型常用的设置如下：
 
@@ -87,7 +89,7 @@ public final class ExampleRecipeRegistration {
 
 格子从左到右、从上到下开放。未开放格子覆盖半透明白色，普通点击、拖动、双击、数字键及Shift移动都必须通过相同的服务端开放状态检查。关闭格子保留其中物品，重新开放后恢复访问；全部物品随控制器保存，拆除控制器时参与正常物品掉落。
 
-`MachineAssembly.builder(type, revision)` 规定怎样创建和恢复这个类型的实际机器。`instanceFactory(MultithreadController::new)` 创建多线程控制器，`instanceFactory(CrossRecipeController::new)` 创建跨配方并行控制器。`component(type, codec)` 为有状态组件绑定保存方式，`recreated(type)` 则在恢复时重新创建不需要保存的组件。codec 是把组件写入 NBT、检查 NBT 并恢复组件的对象。
+`MachineAssembly.builder(type, revision)` 规定怎样创建和恢复这个类型的实际机器。`instanceFactory(MultithreadController::new)` 创建多线程控制器，`instanceFactory(CrossRecipeController::new)` 创建跨配方并行控制器。`component(type, codec)` 为有状态组件绑定保存方式，`recreated(type)` 则在恢复时重新创建不需要保存的组件。codec 负责把组件编码为 NBT、恢复组件，以及在全部组件恢复后检查组件状态。
 
 配方机器需要工作槽、扫描器和工作槽保存配置。先在类型中添加 `MachineWorkSlots.TYPE`，再添加 `RecipeScanning.component(...)` 创建的扫描组件；随后在装配中调用 `workSlots(...)`，让存档能够恢复运行中的配方。`RecipeScanning.component` 的 `ScanLimits` 限制一次扫描处理的候选数和尝试次数，用于把较大的扫描分到多次执行。
 
@@ -146,7 +148,7 @@ network {
 }
 ```
 
-未显式设置的普通控制器默认不需要网络；改成 `true` 后要求逻辑 FTB 队伍网络。Java 的 `MachineType.Builder.requiresNetwork(true/false)` 和 ZS 的 `MachineType.requiresNetwork(true/false)` 优先于该默认值。显式安装 `MachineNetworkDevice` 角色本身也表示选择接网；普通控制器显式 `false` 可关闭共同配方门限，但不会取消额外声明的 `NetworkRecipeWork` 研究或资源需求。
+未显式设置的普通控制器默认不需要网络；改成 `true` 后要求逻辑 FTB 队伍网络。Java 的 `MachineType.Builder.requiresNetwork(true/false)` 和 ZS 的 `MachineType.requiresNetwork(true/false)` 优先于该默认值。`MachineType.networkRequirement()` 返回 int：`-1` 使用已声明角色及服务器默认值，`0` 不要求网络，`1` 要求网络。显式安装 `MachineNetworkDevice` 角色本身也表示选择接网；普通控制器显式 `false` 可关闭共同配方门限，但不会取消额外声明的 `NetworkRecipeWork` 研究或资源需求。
 
 需要网络且未自定义角色时，装配自动添加等级 0、无资源供给的 `DEVICE` 及所有权组件，不必逐个控制器重复接线。缺少活动中心或失去许可时暂停配方，恢复后继续。网络中心和研究站保留专用角色，不受普通控制器默认开关控制。此处网络为逻辑队伍网络，不要求 ME 电缆或距离连通。
 
@@ -171,6 +173,8 @@ var recipe = new MachineRecipe(
 需要每 tick 消耗或产出时，使用完整的 `ResourceRequirement(inputs, inputsPerTick, outputsPerTick, outputs, voidExcessOutputs)`。四个列表依次表示开始消耗、每 tick 消耗、每 tick 产出和完成产出。`EnergyRequirement` 使用相同次序的四个 long 数值；例如 `new EnergyRequirement(0, 8, 0, 0, false)` 表示每个成功工作 tick 消耗 8 FE。
 
 所有数量都按一次配方填写，执行时再乘最终并行数。`voidExcessOutputs` 允许丢弃输出仓装不下的余量，但仍需要有效输出目标。`FuzzyInputGroup` 允许在列出的资源中选料；`DynamicInputGroup` 根据匹配器在库存中找料。两者在开始阶段确定本次具体使用的资源。`ResourceChance` 设置概率，`RandomOutputPool` 则从带权重的候选输出中抽取产物。
+
+阶段列表、输入候选、选择分支及 modifier 列表都是借用的定义数据，发布后必须保持列表和元素不变。修改配方时必须发布新定义，禁止修改已发布列表。`RandomOutputPool` 仅在移除非正权重时建立过滤列表。
 
 ### 配方池与库存匹配
 
@@ -201,13 +205,13 @@ var recipe = new MachineRecipe(
 
 ### 模板、子结构与可变长度结构
 
-`StructurePattern` 保存相对坐标及该位置的方块条件。`StructurePredicates.state(...)` 要求精确方块状态，`blocks(...)` 接受给定方块集合，组合条件可表达同时满足或满足任一条件。
+`StructurePattern` 使用 `com.circulation.prototype_eng.util.BlockPos2ObjectMap<StructurePredicate>` 保存相对坐标及方块条件。表直接借用且必须保持只读；用 `put(BlockPos, predicate)` 或 `put(BlockPos2ObjectMap.toLong(x, y, z), predicate)` 写入声明，后者不创建坐标对象。遍历使用 `fastIterator()` 的 long 键或原始 long 回调，禁止使用对象 keySet/entrySet/forEach 视图。`StructurePredicates.state(...)` 要求精确方块状态，`blocks(...)` 接受给定方块集合，组合条件可表达同时满足或满足任一条件。
 
 `StructureDefinitions.template(...)` 创建固定形状，`slice(...)` 创建可重复部分。两者接收结构 ID、基准朝向、相对偏移、预览设置、pattern、整体条件和子结构列表。切片另外接收最少/最多重复次数及每次重复的坐标步进。
 
 `NORTH_UP` 下，X 正方向为右，Y 为上，Z 负方向为机器正前方。子结构偏移相对父结构计算。切片会重复自己的 pattern，子结构只连接到最后一次重复处，因此可以用一个切片表示机身，再用子结构表示随长度移动的顶盖。[Java 示例](docs/api-examples/java/ExampleMachines.java)展示了 1 至 4 层铁块和一次性金块顶盖。
 
-通过 `event.definition(new StructureDefinition(shape, titleKey, displays))` 提交结构。明确方块条件能自动提供预览材料；自定义布尔条件需要通过 `withDisplay(...)` 或显式 displays 提供代表材料，否则匹配可以成功，预览和构造器仍无法知道该放什么。
+通过 `event.definition(new StructureDefinition(shape, titleKey, displays))` 提交结构，displays 使用 `BlockPos2ObjectMap<StructureDisplay>`，没有额外显示声明时用 `BlockPos2ObjectMap.emptyMap()`。明确方块条件能自动提供预览材料；自定义布尔条件需要通过 `withDisplay(...)` 或显式 displays 提供代表材料，否则匹配可以成功，预览和构造器仍无法知道该放什么。
 
 ### 并行控制器
 
@@ -225,7 +229,7 @@ Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 
 
 普通搬运可以调用 `ResourceStorage.insert/extract`，传 `Actionable.SIMULATE` 先计算可处理数量，传 `MODULATE` 实际修改。配方执行使用需求系统的快照和预留，以保证多个需求或多台机器共享仓室时不会重复占用。
 
-内置输入仓、输出仓和混合仓都支持在 GUI 插入 AE 资源包，按包内资源的真实种类和数量存储。未能存入的数量保留在资源包中，已经预留的空间不可占用。这个手动解包操作不改变机器和自动化的输入、输出方向，操作规则见[仓室指南](docs/hatches.md#AE-资源包插入)。
+内置输入仓、输出仓和混合仓都支持在 GUI 插入 AE 资源包，按包内资源的真实种类和数量存储。未能存入的数量保留在资源包中，已经预留的空间不可占用。这个手动解包操作不改变机器和自动化的输入、输出方向，操作规则见[仓室指南](docs/hatches.md#ae-资源包插入)。
 
 `me_input_assembly`、`me_output_assembly`、`me_interface` 和 `me_pattern_assembly` 是通用 ME 资源组件，不按物品、流体或气体拆分。输入总成与接口的标记表示期望保有量，由 ME 补足；输入槽数在 `me_assemblies.cfg` 的 `resources.inputSlots` 配置，默认 18。输出按真实 `AEKey` 缓存动态显示，每种资源支持到 `Long.MAX_VALUE`，不设种类上限。ME 资源总成只通过 ME 和机器事务转移实际缓存。
 
@@ -239,15 +243,15 @@ Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 
 
 `ResearchDefinition.builder(id)` 创建研究，`.displayName(LocalizationEnum)` 与 `.icon(AEKey)` 指定显示内容。`ResearchLevelStage.builder(first, last)` 必须设置 `.durationTicks(long)`、研究阶数和网络资源公式，多个阶段完整覆盖 `1..maxLevel`。时间为单站基准 tick，多站可加速。阶数 0 使用玩家手动研究且禁止网络资源；正阶由研究站推进。`.material(AEKey, long)` 添加普通资源总量，`.materialRequirement(...)` 只接受固定静态输入。
 
-`ResearchResourceFormula.builder().constant(type, total)` / `.affine(type, base, slope)` 定义网络资源总量，`.perTick(type, limit)` / `.affinePerTick(type, base, slope)` 定义单站 tick 上限。等级增长使用 `当前等级 - 阶段首级`，总量与上限按研究时间 T 换算，数量为 double。站点自身速率与研究 tick 上限共同限制本次增量。`DATABASE_AND_ITEM` 允许个人研究写入数据库或下载成物品；`ITEM_ONLY` 普通完成量归队伍并通过物品下载交付。
+`ResearchResourceFormula.builder().constant(type, total)` / `.affine(type, base, slope)` 定义网络资源总量，`.perTick(type, limit)` / `.affinePerTick(type, base, slope)` 定义单站 tick 上限。等级增长使用 `当前等级 - 阶段首级`，总量与上限按研究时间 T 换算，数量为 double。同一资源重复添加及混用总量/tick 定义会相加，最终总量除以 T 得到单站上限。公式直接借用 builder 完成的 Map，交付后必须停止修改。站点自身速率与研究 tick 上限共同限制本次增量。`DATABASE_AND_ITEM` 允许个人研究写入数据库或下载成物品；`ITEM_ONLY` 普通完成量归队伍并通过物品下载交付。
 
-计算网络资源由使用方实现并复用 `NetworkResourceType` 单例，不需要资源注册，库没有默认资源。提供资源的物品实现 `NetworkComputerComponent`；已有显式物品适配仍可用组件注册事件。机器用 `MachineOwnership` 保存所有者，`MachineNetworkDevice` 声明角色，`NetworkRecipeWork` 处理研究和数值需求。
+计算网络资源由使用方实现并复用 `NetworkResourceType` 单例，不需要资源注册，库没有默认资源。提供资源的物品实现 `NetworkComputerComponent`；已有显式物品适配仍可用组件注册事件，但登记适配不会使普通物品符合默认运算仓的插入条件。物品接口定义优先于适配表。机器用 `MachineOwnership` 保存所有者，`MachineNetworkDevice` 声明角色，`NetworkRecipeWork` 处理研究和数值需求。
 
 默认 `NetworkCenterController(type, level, threadCapacity, energyPerTick)` 提供网络等级和线程额度；默认 `ResearchStationController(type, level, rates, energyPerTick)` 提供研究等级、各资源每 tick 推进速率及 FE 消耗。二者直接继承 `MachineInstance`，不安装配方工位或机器业务 tick。中心通过网络发布服务工作，研究站通过共享研究服务工作。中心旧的两参数/三参数构造器保留，省略的线程额度为 0，两参数时耗能也为 0。
 
 只有活动中心的供给计入队伍，并与计算机和外部参与者相加。并发是独立整数限制，中心不占用，其他工作机器共用整机租约。`NetworkCenter.providedConcurrency()` 提供并发；`networkResources()` 提供double资源表，默认控制器的资源表为空，自定义中心可提供自己的资源。
 
-资源实现 `NetworkResourceType extends PacketWritable`，资源表、速率及研究需求均用 `Reference2DoubleMap<NetworkResourceType>`，按对象身份处理，复用单例并用addTo累加。数量为非负有限double，保留真实算术溢出预检；并发单独使用long，不注册为资源。默认便利入口 `NetworkResourceType.network(id, name, pattern)` / `.computer(...)`。详见[网络资源与展示包](docs/network-resources.md)。
+资源实现 `NetworkResourceType extends PacketWritable`，资源表、速率及研究需求均用 `Reference2DoubleMap<NetworkResourceType>`，按对象身份处理，复用单例并用 `addTo` 累加。数量为非负有限 double，保留真实算术溢出预检；并发单独使用 long，不注册为资源。默认便利入口 `NetworkResourceType.network(id, name, pattern)` / `.computer(...)`。Java addon 跨 ZS loader 暴露资源时必须包装同一个单例为 `ZenComputingResource`，禁止按相同 ID 重新创建；`Bindings` 只保存配方声明，不存取计算资源。详见[网络资源与展示包](docs/network-resources.md)。
 
 Java 分别给类型声明 `MachineOwnership.TYPE` 和 `NetworkCenter.DEVICE` / `ResearchStation.DEVICE`，给装配指定实例工厂并将对应 `DEVICE` 标为 `recreated`。例如研究站装配：
 
@@ -261,6 +265,8 @@ MachineAssembly.builder(type, "research-station-v1")
 `rates` 是 `Reference2DoubleMap<NetworkResourceType>`，未列资源速率为0；定义后按只读要求借用，不复制。速率由开发者定义，等级与非负FE在加载代固定。自定义运行时可直接实现 `NetworkCenter` 或 `ResearchStation`，无业务tick的实现返回 `requiresTick() = false`。
 
 普通资源各自已支付比例等权累计开放进度，例如 A×2、B×10、C×100，支付 A×1 开放 1/6；缺少一种材料可先支付其他种类。时间和各项网络资源在开放比例内独立累计，网络增量同时受普通设备结算后余额、各站有效速率和剩余总量限制。每台实际工作站占 1 并发并支付 FE，材料、FE、网络量、进度共同提交；付款不足以形成 1 tick 时也按工作收费。中心只对生效者收费，同设备同 tick 不重复扣费。详细计算见[研究站](docs/research-stations.md)。
+
+`ResearchWorld` 的 writer 只保存传入的只读快照，禁止修改研究源或重入研究操作。写入失败会保留 pendingSave，后续状态修改前先重试同一快照，禁止在 writer 内修改快照或重新推进业务。
 
 完整 Java 示例见[NetworkCenterExamples.java](run/visual-examples/src/main/java/pe/visual/examples/NetworkCenterExamples.java)和[ResearchStationExamples.java](run/visual-examples/src/main/java/pe/visual/examples/ResearchStationExamples.java)。网络中心与研究站正式 GUI 均已接入。研究站队列操作和增量同步见[研究 GUI](docs/research-gui.md)。
 
@@ -280,7 +286,7 @@ MachineAssembly.builder(type, "research-station-v1")
 
 组件返回 `new NetworkComputerComponent.Capture(concurrencyPerItem, provided, requiredResources, energyPerTick, currentProof)`。资源或FE不足时全部组件供给停摆，不扣组件FE。`ComputerRecipe(id, unitInputs, unitResources)` 按组件缺口向上取整计算所需份数；已有完整份数即使不足也支付，不满一份的余料不参与。转换仅供本机组件使用，不直接输出网络资源。`unitInputs()`、`unitResources()` 提供只读单位定义，`installedComponents()` 返回安装组件身份与定义。
 
-`ComputerInputRecipe(id, revision, duration, inputs, callback)` 通过 `.computerInputRecipe(recipe)` 接入普通START/TICK/END输入、时长、暂停与保存；END一次输入用静态 `endInput(requirement)` 包装只声明START支付的需求。事件直接修改资源、并发、需求和能耗倍率，没有固定输出定义。阶段成功结果用于下一服务器tick的供给结算。Java完整示例、ZS签名及保存规则见[网络设备事件](docs/network-events.md)。
+`ComputerInputRecipe(id, revision, duration, inputs, callback)` 通过 `.computerInputRecipe(recipe)` 接入普通 START/TICK/END 输入、时长、暂停与保存，duration 使用 int；研究时间使用 long。END 一次输入用静态 `endInput(requirement)` 包装只声明 START 支付的需求。事件直接修改资源、并发、需求和能耗倍率，没有固定输出定义。阶段成功结果用于下一服务器 tick 的供给结算。Java完整示例、ZS签名及保存规则见[网络设备事件](docs/network-events.md)。
 
 `NetworkResourceType.computer(id, name, pattern)` 或自定义internal资源声明本机资源，只在计算机内产生和占用，不进入队伍网络。具体控制器的并发/资源上限不构成类型固有限制。
 
@@ -290,17 +296,25 @@ Java 装配必须用 `MachineAssembly.Builder.computerRecipes(recipes)` 提供�
 
 ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, recipes)`；单位转换用 `ComputerRecipe.create(id, Resource[] unitInputs, ComputingResources unitResources)`；资源用 `ComputingResource.network(id, translationKey, pattern)` / `.computer(...)`。自定义Java资源可经 `ZenComputingResource` 包装器交给脚本。计算机GUI保留概览与组件两页，配方展示统一使用JEI，见[计算机](docs/computers.md)。
 
-所有接网控制器支持 `MachineType.Builder.networkEvent(callback)`，Java全局事件用 `NetworkDeviceEvents.register(callback)`，ZS全局事件用 `Events.onDevice(callback)`。事件公开同队全部已加载设备快照，允许修改本设备资源、并发、研究站速率和FE输入倍率。完整调用顺序、快照范围、只读要求及禁止外部副作用的说明见[网络设备事件](docs/network-events.md)。
+所有接网控制器支持 `MachineType.Builder.networkEvent(callback)`，Java全局事件用 `NetworkDeviceEvents.register(callback)`，ZS全局事件用 `Events.onDevice(callback)`。全局事件先于类型事件。事件公开同队全部已加载设备快照，允许修改本设备资源、并发、研究站速率和 FE 输入倍率；资源表通过 `get/set/add/remove` 修改，`add` 使用 `addTo`。ZS 的 `DeviceEvent` 暴露 `network/values/machineType`，`ComputerRecipeEvent` 另提供 `stage/progress/duration`；`network` 提供 `teamId/tick/devices/hasDevice(typeId)`，`values` 提供 `resources/required/researchRates/concurrency/energyMultiplier`。完整调用顺序、设备字段及禁止外部副作用的说明见[网络设备事件](docs/network-events.md)。
 
 默认数据库使用 `DataCenterController(type, storageComponent)`，`storageComponent` 是已声明的 `DataCenterStorage` 组件类型。等级、容量与内容由存储组件定义，控制器直接使用现有持久化、下载及自动升级能力，无配方工位或独立业务tick，并可继承。类型声明 `MachineOwnership.TYPE`、存储组件和 `DataCenter.DEVICE`；装配为存储配置codec，只将网络角色标为recreated。自定义控制器也可直接实现 `DataCenter`，通过 `dataCenterStorage()` 提供实际存储组件。活动数据库沿既有规则占1份优先并发，GUI继续延缓。Java/ZS完整入口见[默认数据库控制器](docs/data-centers.md#默认控制器2026-11-13)。
 
 ### GUI、模型与 JEI
 
-`MachineRenderRegistrationEvent` 为机器或结构绑定 Gecko 模型。`MachineGuiRegistry` 注册公共侧容器，`MachineScreenRegistry` 注册客户端屏幕。必须把屏幕、模型和 JEI 类的加载限制在客户端，否则专用服务器可能因缺少客户端类而启动失败。
+`MachineGuiRegistry.register(typeId, factory)` 在双方初始化时注册公共侧容器；客户端用 `MachineScreenRegistry.register(typeId, containerClass, factory)` 注册匹配屏幕。容器直接继承 `AEBaseContainer`，屏幕直接继承 `AEBaseGui`。默认普通机器、中心、计算机和研究站已经使用对应容器与屏幕，自定义界面只注册需要覆盖的类型。
 
-普通配方池由库提供 JEI 页面，单输入池使用专用单输入布局。`withExistingJeiPage(uid)` 让机器使用其他模组已有的分类入口；有效的外部分类不会重复生成本池页面。
+`MachineRenderRegistrationEvent` 在客户端 postInit 派发，`bindMachine/bindComponent/bindStructure` 分别绑定机器、实际组件和结构；提前声明可用 `ClientRenderDeclarations.register`。返回的 `Registration` 可以关闭绑定，旧句柄不能删除后续替换的新绑定。`view()` 的 Map 只读，使用 `current(view)` 检查实际视图身份。必须把屏幕、原生渲染器、GL 调用和 JEI 类限制在客户端加载。
 
-`StructurePreviews.client().request(id, settings)` 请求生成结构预览，调用者分次 `advance(...)` 推进，状态为 `READY` 后才能使用完整模型。`StructurePreviewScreens` 打开库的预览界面，`project(...)` 在世界中显示投影。模型取自服务端已同步的结构目录，后续使用前应检查该模型仍属于当前目录。
+`GeckoModelBinding.layers` 和 `MachineAnimationState` 发布的层列表在请求、快照或派生缓存仍被保留期间必须保持不变。未提供 animation 资源时不应用动画层；否则选择顺序为层列表非空的 `MachineAnimationState`、数据多层键、数据单层键、声明 layers、默认动画名，后面的层覆盖冲突骨骼通道。模型 offset 随机器朝向变换，yOffset 沿世界 Y 添加。`MachineRenderSnapshot`、预览模型的 cells/BOM/occurrences 和 occurrence 路径只读交付，禁止在构造器、getter 或每帧重复复制。
+
+`PackedVertexDataWriter.write(data, offset, length)` 必须在回调内同步读取指定跨度，禁止保留或修改数组，下一次输出会复用 scratch。独立实体可继承 `MachineControllerRenderer<T>` 并在客户端 `register()`；默认 renderer 已注册，普通调用只提交模型，库在原生 TESR `drawBatch` 后统一绘制。当前模型缓存只在创建新条目时选择资源，控制器24种朝向预先烘焙；Mixin 与资源读取依据见 [mixins.md](docs/mixins.md)。
+
+普通配方池由库提供 JEI 页面，单输入池使用专用单输入布局。配方池的 `withExistingJeiPage(uid)` 返回带外部分类入口的新池，必须保留并注册该返回值。目标分类实际存在时只补充控制器入口，不重复生成本池页面。
+
+`StructurePreviews.client().request(id, settings)` 从服务端已同步的目录请求预览，缺少条目时返回 null。非空请求分次 `advance(maxSteps)`，`READY` 后才能取得完整 `model()`；`STALE` 必须重新请求，`FAILED` 保存实际错误。已完成模型使用 `StructurePreviews.current(model)` 检查当前目录。`StructurePreviewScreens.open(...)` 打开预览，`panel(...)` 为自定义 JEI 页面提供面板，`project(...)` 设置世界投影。
+
+`StructurePreviewSettings` 借用 sliceCounts、displayOptions、cellOptions，改变选择时建立新配置；`explicitOption(cell)` 的 `-1` 表示没有显式选择。`StructureProjectionOptions.layer()` 的 null 表示三维模式，层号为相对 Y 坐标且允许负数。`StructurePreviewModel.Builder.freeze(bounds)` 直接交付完成列表，调用后必须停止使用 builder。
 
 ### 运行中替换配方与保存版本
 
@@ -308,15 +322,19 @@ ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, 
 
 需要跟随运行中目录替换时，扫描器与工作槽应共用 `RecipeProcessCodecs`，并调用 `RecipeRegistry.bindProcessCodecs(...)` 和扫描器的 `follow(...)`。目录替换只影响新扫描，已经开始的进程继续使用原配方和原 codec。客户端也必须有相应的新定义，才能正确显示更新后的配方。初始化期的 `register(...)` 不能用来修改运行中的目录。
 
+`RecipeDefinitionUpdates.forServer(server).replace(expectedSession, expectedSnapshot, definitions, codecs)` 在服务器工作线程退出后的边界准备并发布新目录；请求集合及元素必须保持不变直到 future 完成。已由同一发布入口准备的目录可用 `submit(expectedSession, prepared)` 提交。结果必须同时检查 `status()` 和 `published()`：`NOTIFICATION_FAILED` 表示安装后通知失败，`INSTALLATION_FAILED` 也可能已经安装，禁止仅按失败状态重复提交。
+
 ## Java：添加自己的行为
 
 ### 自定义机器组件
 
 组件把每台机器的状态和每 tick 的工作分开。`ComponentType<E,C>` 描述组件 ID、创建函数、依赖和系统；`ComponentSystem<E,C>` 提供 Pre、Normal、Post 回调。机器组件通常使用 `MachineSystem<C>`。
 
+创建函数可以用 `Function<E,C>`，也可以用 `BiFunction<E,ComponentType<E,C>,C>`。后一种在创建时直接收到 owner 和当前 type，组件需要保存自身绑定时使用该参数，禁止为取得 type 重复创建定义或借助可变数组保存引用。
+
 `runBefore/runAfter` 按系统 ID 指定顺序，组件依赖则使用实际的 `ComponentType` 对象。系统实例会被多台机器共用，必须把计数器、缓存等可变状态放在组件中，不能放在共享系统实例里。
 
-有持久状态的组件实现 `MachineComponentCodec<C>`，再用 `assembly.component(type, codec)` 绑定。`encode` 写 NBT，`validate` 检查保存数据，`restore` 把数据恢复到尚未发布的新组件。无状态且可重建的组件使用 `recreated(type)`。这些设置必须与机器类型声明的组件一致，否则保存或恢复校验会拒绝该装配。
+有持久状态的组件实现 `MachineComponentCodec<C>`，再用 `assembly.component(type, codec)` 绑定。`encode(owner, component)` 返回独立于后续可变状态的只读 NBT，可复用版本快照；调用方禁止修改返回标签。`restore(owner, component, saved)` 在全部组件创建后按依赖顺序恢复尚未发布的新组件，允许返回替换组件。`validate(owner, component)` 在全部恢复完成后检查组件状态，不接收保存 NBT。输入标签只读，恢复时可借用只读子标签；需要继续修改的数据必须建立自己的状态。无状态且可重建的组件使用 `recreated(type)`。组件保存配置必须与机器类型声明一致。
 
 ### 自定义配方条件和效果
 
@@ -337,13 +355,19 @@ ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, 
 
 `RequirementTransaction` 让一组需求能够共同成功或撤销。取得阶段先准备效果和资源预留，执行器检查全部需求后才提交。`commit` 应用业务效果，`rollback` 撤销已经取得或提交的效果，`complete` 在整组成功后释放补偿信息。必须能撤销部分提交，禁止在 `complete` 中再扣材料或进行可能拒绝业务的操作；否则其他需求失败时无法完整撤回。
 
+`prepareCommitWithinBudget`、`validateCommitWithinBudget` 和资源令牌的预算验证返回 `BudgetResult`。收到 `YIELDED` 后必须继续推进同一个事务，禁止重新取得资源或重放已完成效果；`REJECTED` 按整组撤销处理。仅表示操作是否完成的 `advance/commitWithinBudget/rollbackWithinBudget` 继续返回 boolean；结果查询 `resolutionWithinBudget` 返回 null 表示查询暂停，`UNKNOWN` 表示该次效果尚未确认。结构快照的预算比较与有效性判断也使用 `BudgetResult`，无预算重载仍返回 boolean。
+
+`MachineAttributes.LocalAttribute.baseOverride()` 使用原始 double，`Double.NaN` 表示未设置，必须用 `Double.isNaN` 判断；实际基础值、默认值和计算结果必须有限。`EnergyRequirementPatch(long inputsPerTick, long outputsPerTick, int voidExcessOutputs)` 的数量以 `-1` 保留原值、`0` 清零。它与 `ResourceRequirementPatch` 的布尔覆盖均使用 int，`-1` 保留、`0` 关闭、`1` 开启；调用方必须使用这三个选项值。对象字段继续用 null 保留，空资源列表清空。
+
 大计算可通过 `prepare(process, requirement, stage)` 捕获不可变输入并返回纯计算任务，把计算交给工作线程。`prepare` 本身不能扣料或修改世界；需要保留主线程的需求仍应声明 `requiresOwnerThread()`。如果自定义需求还访问结构仓室之外的物理存储，必须用 `storageContexts(...)` 提前声明完整范围，让执行器统一协调这些存储；禁止开始取得资源后再临时添加未声明的存储。
 
 资源不足返回 `ProcessResult.Blocked`，不可恢复的业务失败返回 `ProcessResult.Failure`。没有逐 tick IO 的需求可让 `crossRecipeTickIo` 返回 `null`；有 IO 时，只有相同返回值确实表示相同单位输入输出，才能允许合批。需要随批次时间重分配 IO 的扩展，还必须正确实现重计量规则，才可声明 `crossRecipeRetimesTickIo`。
 
+`PlannedExecution.cancel(reason)` 撤销后续执行权限，已接受的异步工作仍须实际退出。`awaitExit()` 等待执行退出，`finished()` 表示资源、回调与所有权责任已经处理完成，两项都满足后才能丢弃执行对象。取消后的新 cleanup deadline 只能继续原取消与补偿，不能重新获得前向执行权限。
+
 ### 自定义配方查找
 
-实现 `RecipePool` 可为大型或特殊配方集提供自己的查找方式。`recipes()` 提供池内配方，`match(...)` 处理库存匹配，`beginMatch(...)` 和 `beginCandidates(...)` 允许把较大的查找分次推进。`freeze(recipes, machines)` 在目录冻结或替换时生成新池，必须保留传入配方对象及顺序，并保留原池自己的查找策略。
+实现 `RecipePool` 可为大型或特殊配方集提供自己的查找方式。`recipes()` 提供池内配方，`match(...)` 处理库存匹配，`beginMatch(...)` 和 `beginCandidates(...)` 允许把较大的查找分次推进。`freeze(recipes, machines)` 在目录冻结或替换时生成新池，必须保留传入对象及顺序、池 ID、标题、JEI 元数据和查找策略。两份列表在定义生命周期内只读借用，自定义池必须遵守 `RecipePool.freeze` 的参数和返回值要求。
 
 匹配只能读取传入的快照与已经捕获的机器信息。必须让结果包含所有仍可能成功的候选，禁止在查找时扣料、执行 START 或访问世界。候选索引返回 `null` 表示不筛选，空集合表示没有候选，两者的含义不同。
 
@@ -351,13 +375,17 @@ ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, 
 
 ### 自定义结构条件与形状
 
-单格条件实现 `StructurePredicate`。需要生物群系、方块 NBT 或 addon 数据时，用 `StructureQuery` 声明采样，由主线程读取并复制结果，再让匹配回调读取 `StructureFacts`。必须提前声明所有会读取的位置，禁止异步验证器直接访问 `World` 或 TileEntity；否则匹配时与安装前看到的事实可能不同。
+单格条件实现 `StructurePredicate`。需要生物群系、方块 NBT 或 addon 数据时，用 `StructureQuery` 声明采样。普通 reader 在服务器主线程读取；copier 只在捕获时分离一次可变数据，不可变数据可直接返回原对象。匹配回调通过 `StructureFacts` 只读访问结果。显式 block-only `workerReader` 仅能在服务器主线程实际等待该任务完成的读取窗口内访问预先捕获的已加载方块引用。必须提前声明所有读取位置，禁止异步验证器直接访问 `World`、TileEntity 或强制加载区块。
+
+reader 已建立独立数据时可用 identity copier，内置 `TILE_NBT` 直接交付新标签。`StructureSnapshot.read` 的合法空值由查询类型定义，未声明、未加载或采样失败按相应错误处理。`StructureReadSource.beginWorkerRead` 返回 null 表示位置在借用前失效，非空窗口仍可返回合法 null；窗口必须在原创建线程关闭。结构有效性检查必须在同一个宿主执行窗口内完成，预算不足后禁止拼接不同 tick 的检查前缀。
 
 需要全新形状时实现 `MachineStructure`。`transform` 同时变换坐标、谓词、验证器和子结构；`collectReads` 声明读取范围；`match` 根据快照产生独立的匹配树，失败返回 `null`。只有几何和读取声明终身不变时才能启用 `planReusable`，每次请求的游标与临时状态仍须独立。
 
 ### 自定义仓室与共享存储
 
-`ResourceStorage` 实现需要支持普通读写、数量快照、revision 和预留。`reserveExtract/reserveInsert` 在成功时返回资源令牌，在库存不足、快照过期或存储无效时返回明确拒绝结果；令牌负责占用、提交和回滚。
+`ResourceStorage` 实现需要支持普通读写、数量快照、revision 和预留。`reserveExtract/reserveInsert` 返回 `ReservationResult`，必须在 `status() == ACCEPTED` 后读取 `reservation()`；`INVALID_STORAGE`、`STALE_SNAPSHOT`、`INSUFFICIENT` 表示真实拒绝，令牌为空。令牌负责占用、提交和回滚。
+
+`StorageSnapshot.available()` 是只读规划数量表，修改它不会扣取实际库存；原存储版本或范围失效后必须重新捕获。大批量预留用 `beginReserveExtract/beginReserveInsert`：`advance(budget)` 完成后才能读取 `result()`，成功读取把令牌清理责任交给调用方。未转交且 `hasObligations()` 的捕获必须完成 `cancel(budget)`；返回 false 时必须继续清理。`ResourceReservation` 的状态方法在原 `StorageContext` 锁内执行，完整批次通过 `ResourceBatch` fence 协调。`UNKNOWN` 不允许重放原提交或终态回调，必须保留原事务直到结果明确。
 
 同一物理余额必须返回同一个 `StorageContext` 和一致的存储 identity，包括资源和 FE 适配器。这样库才能去除重复来源并协调共享仓室。禁止为同一库存创建多个互不关联的 context；否则并行判断会把一份库存计算多次。输入输出确实独立的混合仓应分别提供 context。
 
@@ -373,7 +401,9 @@ ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, 
 
 `NetworkRecipeExtension` 在目录发布时为配方追加网络需求，`NetworkParticipant` 为实际网络提供资源。参与者必须由服务器登记并在失效时关闭。`OwnerTeamResolver` 可替换团队来源，返回当前成员的独立快照。
 
-`RecipePoolJeiPage` 实现自己的 JEI 布局和输入处理。支持目录替换时，用 `prepareUpdate` 生成待应用数据，再由 `apply` 切换。点击、拖拽和转移前必须检查 wrapper 的 `isCurrent()`，禁止让旧窗口操作替换前的配方。
+`MachineNetworkDevice.capturedComponent` 的 `current` 必须检查实际读取的后端身份与版本；组件或存储替换后旧捕获必须失效。禁止用组件列表副本或列表对象身份代替后端检查，默认数据库直接绑定其存储组件。
+
+`RecipePoolJeiPage` 实现自己的 JEI 布局和输入处理。支持目录替换时，`prepareUpdate(target, displays)` 生成稳定的 wrapper 与 ingredients，null 表示不支持该次替换；`PreparedUpdate.apply()` 只使用一次，切换已准备的数据，禁止调用外部回调或重新生成布局。自定义 `RecipePoolJeiRecipe.drawInfo` 必须调用 `super.drawInfo`，库据此记录实际绘制区域并转发滚轮。点击、拖拽和转移前必须检查 wrapper 的 `isCurrent()`，禁止让旧窗口操作替换前的配方。
 
 ## ZS：调用已有功能
 
@@ -491,7 +521,7 @@ MachineType.researchStation("example:station", "example.station", "example:stati
 
 中心在等级后填写并发、FE/t；研究站最后一项为FE/t。资源用 `ComputingResource.network(id, translationKey, pattern)` / `.computer(...)`，无需注册。普通机器可显式 `.requiresNetwork(true/false)`，省略时遵循配置默认false；专用角色保留。
 
-资源由开发者定义单例，`ComputingResources` 累加double，`ComputingModifier` 设置修饰。`NetworkConfiguration.create(...)` 组合角色、等级、独立并发、供给和配方需求；库不预置thread/compute/qubit。
+资源由开发者定义单例，`ComputingResources` 累加 double，`ComputingModifier` 设置修饰。`NetworkConfiguration.create(id, roleName, level, supply, modifier, dataCenterCapacity, defaults)` 为普通控制器组合网络角色、等级、供给和配方需求；该入口不创建默认网络控制器，没有并发参数。并发由设备工厂、组件或事件定义，库不预置 thread/compute/qubit。
 
 `RenderBindings.gecko()` 设置 geo、纹理和动画，再绑定到机器、组件或结构。`Options.create(...)` 设置 JEI 概率标记和材料候选显示；`pool.jeiOptions(...)` 返回带显示设置的新池。具体参数和示例见 [ZS 使用参考](api-zs-reference.md)。
 
@@ -513,7 +543,7 @@ MachineType.researchStation("example:station", "example.station", "example:stati
 
 ### 扩展回调的边界
 
-`InputAllocation.create(...)` 返回输入如何分到各来源。份额使用本次 `sources` 的索引，数量必须为正且总和等于请求量。`SelectiveContext` 和 `OverlayContext` 的 patch 方法修改本次进程的需求层；`null` 保留原字段，空数组清空该资源项。直接写 `context.data` 不会自动随事务回滚。
+`InputAllocation.create(...)` 返回输入如何分到各来源。份额使用本次 `sources` 的索引，数量必须为正且总和等于请求量。`SelectiveContext` 和 `OverlayContext` 的 patch 方法修改本次进程的需求层：资源数组 null 保留原值，空数组清空；FE 数量使用 long 的 `-1` 保留、`0` 清零；过量丢弃使用 int 的 `-1` 保留、`0` 禁止、`1` 允许。完整设置入口 `putResourceIO(..., boolean)`、`putEnergyRates(..., boolean)` 保持 boolean，部分覆盖入口 `putResourcePatch(..., int)`、`putEnergyPatch(..., long, long, int)` 禁止对原始数值传 null。直接写 `context.data` 不会自动随事务回滚。
 
 `ResearchServer.permissions(...)` 返回研究操作的权限决定；需要默认权限时调用 `context.standardDecision(action)`。奖励函数返回 `APPLIED`、`ALREADY_APPLIED` 或 `RETRY_LATER`，必须按事件身份去重。下载输出函数只构造输出物品，材料扣除和交付由库处理。
 
@@ -525,6 +555,6 @@ MachineType.researchStation("example:station", "example.station", "example:stati
 
 Java 示例位于 [ExampleMachines.java](docs/api-examples/java/ExampleMachines.java)，自定义需求位于 [ExampleRequirements.java](docs/api-examples/java/ExampleRequirements.java)。它们编入已有 Forge addon，addon 自己提供 `@Mod` 入口。
 
-ZS 示例由 [00_machine.zs](docs/api-examples/zs/00_machine.zs)、[10_content.zs](docs/api-examples/zs/10_content.zs) 和 [20_extensions.zs](docs/api-examples/zs/20_extensions.zs) 组成，可放入整合包的 `scripts`。Java 和 ZS 示例注册相同 ID，必须选择一种安装，禁止同时注册。
+ZS 示例由机器声明 [00_machine.zs](docs/api-examples/zs/00_machine.zs)、结构声明 [10_content.zs](docs/api-examples/zs/10_content.zs) 和配方及回调 [20_extensions.zs](docs/api-examples/zs/20_extensions.zs) 组成，三份一起放入整合包的 `scripts`。Java 与 ZS 示例注册相同 ID，必须选择一种安装。
 
 中文名称见 [zh_cn.lang](docs/api-examples/zh_cn.lang)。Java addon 放入 `assets/example/lang/zh_cn.lang`；资源包也使用该路径，根目录必须有 `pack.mcmeta`，Minecraft 1.12.2 的 `pack_format` 为 3。缺少该文件会使语言资源不能按资源包正确加载。

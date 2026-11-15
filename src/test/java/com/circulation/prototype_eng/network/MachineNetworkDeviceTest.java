@@ -110,7 +110,7 @@ class MachineNetworkDeviceTest {
 
     @Test
     void explicitOfflinePolicyAllowsRealRecipeWorkWithoutNetworkPermission() {
-        try (var fixture = new Fixture(false)) {
+        try (var fixture = new Fixture(0)) {
             var machine = fixture.create();
             machine.owner.onSchedule();
             assertEquals(1, machine.process("first").state().successfulTicks());
@@ -207,7 +207,7 @@ class MachineNetworkDeviceTest {
         private final ComponentType<MachineInstance, RecipeScanner> scannerType = RecipeScanning.component(id("scanner"),
             host -> new RecipeScanner(host, catalog, () -> 17), SCAN, _ -> true);
         private final ComponentType<MachineInstance, int[]> ordinaryType = new ComponentType<>(id("ordinary"), _ -> new int[1],
-            List.of(new MachineSystem<int[]>() {
+            List.of(new MachineSystem<>() {
                 @Override
                 public ResourceLocation id() {
                     return MachineNetworkDeviceTest.id("ordinary_tick");
@@ -223,10 +223,10 @@ class MachineNetworkDeviceTest {
         private boolean rejected;
 
         private Fixture() {
-            this(null);
+            this(-1);
         }
 
-        private Fixture(@Nullable Boolean requiresNetwork) {
+        private Fixture(int requiresNetwork) {
             network.beginTick(0);
             networkType = MachineNetworkDevice.component(id("network"),
                 ownershipType, (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER,
@@ -237,7 +237,7 @@ class MachineNetworkDeviceTest {
                                      .component(scannerType).component(ordinaryType).recipePool(id("recipes"))
                                      .workSlot(new WorkSlotDefinition("first")).workSlot(new WorkSlotDefinition("second"))
                                      .attribute(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 2);
-            if (requiresNetwork != null) builder.requiresNetwork(requiresNetwork);
+            if (requiresNetwork != -1) builder.requiresNetwork(requiresNetwork == 1);
             var type = builder.build();
             var codec = new MachineWorkSlotsNbt("slots-v1", List.of(
                 RecipeProcessNbt.builder(firstRecipe, "recipe-v1").build(),

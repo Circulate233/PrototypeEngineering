@@ -105,6 +105,10 @@ public final class ResearchWorld {
     @Nullable
     private TeamOwnedResearch.Completion activeTeamLevel;
 
+    /**
+     * The writer must synchronously save the supplied read-only checkpoint without modifying research sources
+     * or reentering this world. A thrown failure retains the checkpoint for the next save attempt.
+     */
     public ResearchWorld(ResearchRegistry registry,
                          ResearchPermissionPolicy permissions, Consumer<ResearchWorldSnapshot> writer) {
         this.registry = registry;
@@ -756,12 +760,13 @@ public final class ResearchWorld {
         return operate(time, false, () -> {
             var result = new ObjectArrayList<ResearchDownloadResult>();
 
-            var elements3 = new ObjectArrayList<>(downloads.values());
+            var elements3 = new ObjectArrayList<ResearchDownloadOperation>();
+            for (var operation : downloads.values())
+                if (operation.intent().playerId().equals(player)) elements3.add(operation);
             for (int index3 = 0; index3 < elements3.size(); index3++) {
                 var operation = elements3.get(index3);
-                if (operation.intent().playerId().equals(player))
-                    result.add(advanceDownload(operation.id(), inventory, delivery,
-                        () -> authorized.test(downloads.get(operation.id())), actorCurrent));
+                result.add(advanceDownload(operation.id(), inventory, delivery,
+                    () -> authorized.test(downloads.get(operation.id())), actorCurrent));
             }
 
             for (var receipt : downloadReceipts.values())
@@ -1861,35 +1866,31 @@ public final class ResearchWorld {
 
     private ResearchWorldSnapshot snapshotState(@Nullable PlayerResearchState.RewardSession reward) {
         var playerSnapshots = new ObjectArrayList<PlayerResearchState.Snapshot>(players.size());
-        for (var player : players.values()) {
-            if (activePlayerLevel != null && activePlayerLevel.owns(player)) {
-                playerSnapshots.add(activePlayerLevel.snapshot());
-                continue;
-            }
-            if (activeDownload != null && activeDownload.owns(player)) {
-                playerSnapshots.add(activeDownload.snapshot(player));
-                continue;
-            }
-            if (reward != null && reward == activeReward && reward.owns(player, reward.requireCurrent().key())) {
-                playerSnapshots.add(reward.snapshot());
-                continue;
-            }
-            if (player.busy()) {
-                throw new IllegalStateException("Cannot snapshot a research source owned by another transaction");
-            }
-            playerSnapshots.add(player.snapshot());
-        }
+        for (var player : players.values()) playerSnapshots.add(playerSnapshot(player, reward));
         var teamSnapshots = new ObjectArrayList<ResearchWorldSnapshot.Team>(teams.size());
         for (var team : teams.values()) {
-            boolean changedLevel = activeTeamLevel != null && activeTeamLevel.owns(team.research);
-            boolean downloaded = activeDownload != null && activeDownload.owns(team.research);
-            if (team.research.busy() && !downloaded && !changedLevel) {
-                throw new IllegalStateException("Cannot snapshot a pending team research mutation");
-            }
             teamSnapshots.add(new ResearchWorldSnapshot.Team(team.id, team.knownMembers, team.blacklistSnapshot(),
-                changedLevel ? activeTeamLevel.snapshot() : downloaded ? activeDownload.snapshot(team.research) : team.research.snapshot(), team.queue.snapshot(), team.manual.sessions()));
+                teamResearchSnapshot(team), team.queue.snapshot(), team.manual.sessions()));
         }
         return new ResearchWorldSnapshot(serverTime, playerSnapshots, teamSnapshots, new ObjectArrayList<>(downloads.values()), new ObjectArrayList<>(downloadReceipts.values()), new ObjectArrayList<>(diskImports.values()));
+    }
+
+    private PlayerResearchState.Snapshot playerSnapshot(PlayerResearchState player, @Nullable PlayerResearchState.RewardSession reward) {
+        if (activePlayerLevel != null && activePlayerLevel.owns(player)) return activePlayerLevel.snapshot();
+        if (activeDownload != null && activeDownload.owns(player)) return activeDownload.snapshot(player);
+        if (reward != null && reward == activeReward && reward.owns(player, reward.requireCurrent().key()))
+            return reward.snapshot();
+        if (player.busy())
+            throw new IllegalStateException("Cannot snapshot a research source owned by another transaction");
+        return player.snapshot();
+    }
+
+    private TeamOwnedResearch.Snapshot teamResearchSnapshot(TeamProgress team) {
+        boolean changedLevel = activeTeamLevel != null && activeTeamLevel.owns(team.research);
+        boolean downloaded = activeDownload != null && activeDownload.owns(team.research);
+        if (team.research.busy() && !downloaded && !changedLevel)
+            throw new IllegalStateException("Cannot snapshot a pending team research mutation");
+        return changedLevel ? activeTeamLevel.snapshot() : downloaded ? activeDownload.snapshot(team.research) : team.research.snapshot();
     }
 
     private void persist() {
@@ -1901,24 +1902,14 @@ public final class ResearchWorld {
             throw new IllegalStateException("Previous world checkpoint still owns its snapshot");
         }
         pendingSave = snapshotState(reward);
-        flushPending(reward);
+        flushPending();
     }
 
     private void flushPending() {
-        flushPending(null);
-    }
-
-    private void flushPending(@Nullable PlayerResearchState.RewardSession reward) {
         if (pendingSave == null) {
             return;
         }
-        if (!pendingSave.equals(snapshotState(reward))) {
-            throw new IllegalStateException("Pending research save lost its exact world state");
-        }
         writer.accept(pendingSave);
-        if (!pendingSave.equals(snapshotState(reward))) {
-            throw new IllegalStateException("Research writer changed the world it was saving");
-        }
         pendingSave = null;
         dirty = false;
         checkpointRequested = false;

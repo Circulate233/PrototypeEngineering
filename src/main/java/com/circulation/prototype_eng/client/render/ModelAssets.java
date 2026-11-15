@@ -63,16 +63,17 @@ public class ModelAssets implements IResourceManager, AutoCloseable {
      */
     public void select(List<ResourceLocation> locations) throws IOException {
         client.requireOwner();
-        Map<ResourceLocation, Source> captured = new Object2ObjectOpenHashMap<>(locations.size());
+        Map<ResourceLocation, Source> captured = null;
         try {
             for (int index = 0; index < locations.size(); index++) {
                 var location = locations.get(index);
                 synchronized (this) {
                     if (retired) throw new IOException("Model resource epoch retired");
-                    if (sources.containsKey(location) || captured.containsKey(location)) continue;
+                    if (sources.containsKey(location) || captured != null && captured.containsKey(location)) continue;
                 }
                 var selected = selectSource(location);
                 try {
+                    if (captured == null) captured = new Object2ObjectOpenHashMap<>(locations.size());
                     captured.put(location, selected);
                 } catch (RuntimeException | Error failure) {
                     try {
@@ -85,18 +86,20 @@ public class ModelAssets implements IResourceManager, AutoCloseable {
             }
             synchronized (this) {
                 if (retired) throw new IOException("Model resource epoch retired during source selection");
-                sources.putAll(captured);
+                if (captured != null) sources.putAll(captured);
             }
         } catch (IOException | RuntimeException | Error failure) {
-            synchronized (this) {
-                for (var entry : captured.entrySet()) sources.remove(entry.getKey(), entry.getValue());
-            }
-            for (var selected : captured.values())
-                try {
-                    selected.retire();
-                } catch (IOException | RuntimeException | Error exception) {
-                    failure.addSuppressed(exception);
+            if (captured != null) {
+                synchronized (this) {
+                    for (var entry : captured.entrySet()) sources.remove(entry.getKey(), entry.getValue());
                 }
+                for (var selected : captured.values())
+                    try {
+                        selected.retire();
+                    } catch (IOException | RuntimeException | Error exception) {
+                        failure.addSuppressed(exception);
+                    }
+            }
             throw failure;
         }
     }

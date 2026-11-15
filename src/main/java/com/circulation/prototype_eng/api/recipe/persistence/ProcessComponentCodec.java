@@ -8,8 +8,10 @@ import net.minecraft.nbt.NBTTagCompound;
  * instances after every saved component has been created, in declared component dependency order.
  * Encode and validation must be pure. Restoration may only modify its fresh component; factories
  * and codecs must not change assembly, execute stages, publish world effects, mutate the owner or
- * the old process. Encoding returns an independent tag; restore must not modify or retain input tags.
- * Decoded mutable state belongs to the new process. Dependencies on other restored state must be declared.
+ * the old process. Encoded tags are read-only captures independent of later mutable state and may be
+ * reused for one revision. Consumers must not modify them. Restore must not modify input tags;
+ * Borrowed child tags remain read-only. Decoded mutable state belongs to the new process.
+ * Dependencies on other restored components must be declared.
  */
 public interface ProcessComponentCodec<C> {
     NBTTagCompound encode(RecipeProcess process, C component);
