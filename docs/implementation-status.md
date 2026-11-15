@@ -1,5 +1,11 @@
 # 实施进度
 
+## 2026-11-15 提交署名清理
+
+检查全部 Git 引用可达的 226 个提交，发现 4 个本地提交附加了 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`，作者与提交者均为 Circulate233。这些提交未进入 `origin/main`。按用户要求删除全部 4 条署名，并重写对应提交及 3 个后续提交，主分支从 `b33ceb8` 更新为 `a54e905`；预览提交从 `2fb121e` 更新为 `424e281`，下方正式界面记录已同步引用。
+
+逐个读取原始 Git 提交对象，校验 7 个提交的文件树、作者、提交者、作者时间与提交时间完全一致；4 个目标提交只删除署名，其余 3 个提交信息原样保留。其他 Git 引用、暂存区及工作区内容逐字节一致，用户的 AGENTS.md 修改完整保留。重新检查全部引用历史，提交信息与作者、提交者字段中的 Claude/Anthropic 匹配为 0。原提交增量 bundle 已验证可恢复，映射和验证证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261115/commit-attribution-cleanup/` 的 `history-before.bundle`、`rewrite-report.json` 及原工作区、暂存区记录。清理记录本地提交。
+
 ## 2026-11-15 旧演示包导致启动链接失败
 
 用户提供的 20:44:37 启动日志显示，`NativeRunCases.<clinit>` 调用 `ComponentType(ResourceLocation, Function, Collection)` 时发生 `NoSuchMethodError`。当前源码构造器参数已改为 `List`；`run/mods/pe_visual_examples-1.0.0-dev.jar` 仍是 11 月 14 日的旧版本。上一轮 `run/prepare-tests.ps1 -SkipInstall` 已编译当前 addon，但没有安装到运行目录。
@@ -22,7 +28,7 @@
 
 ## 2026-11-15 三设备正式界面改版
 
-按本地提交 `2fb121e` 的三份预览和 [设备界面改版](device-gui-redesign.md) 完成研究站、网络中心与计算机正式界面。共用 `DeviceGuiDraw` 绘制 AE 配色的面板、状态标签、进度条和卡片，并统一名称截断与数值右对齐。
+按本地提交 `424e281` 的三份预览和 [设备界面改版](device-gui-redesign.md) 完成研究站、网络中心与计算机正式界面。共用 `DeviceGuiDraw` 绘制 AE 配色的面板、状态标签、进度条和卡片，并统一名称截断与数值右对齐。
 
 研究站材料改为五列图标格，数量在图标下方，缺料标红，悬停显示名称和完整数量。顶部合并工作量与参与站数，队列用卡片、队首绿色竖条和原生上下移图标按钮。队列图标列按改版说明允许的方案省略，`QueueEntry` 未增加字段。新增 AE `GuiSync(4)` 同步实际 FTB 队名；资源包及队列行为沿现有实现。可见列表直接计算滚动后的起止索引，材料简写、百分比、等级和状态文字按变化缓存。
 
