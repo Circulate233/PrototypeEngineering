@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-15 演示包启动异常已处理：用户日志中的 `ComponentType(..., Collection)` 缺失来自 run/mods 内 11 月 14 日的旧 addon；上一轮使用 `-SkipInstall` 编译，没有替换运行包。本轮执行 `run/prepare-tests.ps1`，27 Java 重新编译并成功安装，安装包与产物 SHA-256 一致，字节码调用当前 `List` 构造器。入口：[实施记录](implementation-status.md)。下一步用户完整启动客户端复验；本轮未修改 Java 或启动游戏。
+
 - 2026-11-15 数据库下载与导入修订完成：右侧共用持久输入、输出槽并切换操作，默认存盘按物品接口直接处理、不注册；JEI 只生成自定义下载与自定义导入页面。空盘下载支付来源 1 级并编码 1 级，导入每份累加 1 级并返回空盘，费用按队伍实际下降显示，云端写库保留独立 API。完整构建、1742 测试/271 suites、Spotless、IDEA MCP 构建通过；59 Java 已格式化，57 项目 Java 和 2 语言文件全级零诊断，2 run Java 被 IDE 排除并通过真实 SDK 编译，27 Java addon/15 ZS 通过。世界保存为 V7，不读取旧 V6。入口：[预览](previews/data-center.html)、[GUI 要求](research-gui.md#数据库界面)、[下载与导入](research-downloads.md)、[实施记录](implementation-status.md)。下一步用户审核数据库 GUI，再实现正式界面；本地英文提交。
 
 - 2026-11-15 三设备正式界面改版完成：研究站采用材料五列图标格、顶部工作量和参与站数、状态标签及队列卡片；网络中心采用数字框、16格并发条和资源利用率条；计算机采用异常提示条、三张数据卡、文字页签和组件卡片。9Java已IDEA格式化、全级零诊断、定向编译和Spotless通过。全仓构建受其他会话研究下载JEI改动影响，完整结果未通过。入口：[改版说明](device-gui-redesign.md)、[研究站](previews/research-station.html)、[网络中心](previews/network-center.html)、[计算机](previews/computer.html)、[实施记录](implementation-status.md)。下一步用户完整重启复验画面、滚动、悬停和按钮；本地英文提交，保留其他工作区修改。

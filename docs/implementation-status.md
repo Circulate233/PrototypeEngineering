@@ -1,5 +1,11 @@
 # 实施进度
 
+## 2026-11-15 旧演示包导致启动链接失败
+
+用户提供的 20:44:37 启动日志显示，`NativeRunCases.<clinit>` 调用 `ComponentType(ResourceLocation, Function, Collection)` 时发生 `NoSuchMethodError`。当前源码构造器参数已改为 `List`；`run/mods/pe_visual_examples-1.0.0-dev.jar` 仍是 11 月 14 日的旧版本。上一轮 `run/prepare-tests.ps1 -SkipInstall` 已编译当前 addon，但没有安装到运行目录。
+
+通过 `javap` 对比确认，旧运行包引用 `Collection`，已编译的新包引用 `List`。本轮执行 `run/prepare-tests.ps1`，当前主源码及 27 份 addon Java 编译成功，`installed=true`。安装后的包与本次产物 SHA-256 完全一致，重新读取安装包字节码确认两处 `ComponentType` 构造调用均使用 `List`。未修改 Java、未添加兼容重载或测试，也未启动游戏。证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261115/addon-linkage/`，包括安装前后字节码、构建安装日志及哈希结果。下一步由用户完整启动客户端复验。
+
 ## 2026-11-15 数据库下载与导入修订
 
 数据库预览右侧复用材料槽、箭头、输出槽，通过按钮切换研究下载与研究导入，底部保留完整背包。删除下载来源、下载等级及等级选择，返回按钮使用 AE `Icon.BACK`。费用按服务端本次付款导致的队伍可见等级下降显示，未下降显示“无”；无匹配配方或回调无输出不报错。云端写库继续通过独立 API 调用。
