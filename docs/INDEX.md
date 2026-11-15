@@ -4,6 +4,10 @@
 
 ## 当前检查点
 
+- 2026-11-15 GUI 文档与源码核对：当前共有 13 个直接继承 AEBaseGui 的正式界面类；研究站、网络中心、计算机已接入专用容器与默认入口，计算机仅概览/组件两页。数据库已有预览、操作后台和自定义下载/导入 JEI，专用 GUI 与研究总览尚未实现；其余研究页面继续延缓。旧四列材料预览、计算机三页及数据库后台待实现记录按历史时点阅读。入口：[当前核对表](implementation-status.md#2026-11-15-gui-文档与源码核对)、[机器 GUI](machine-gui.md)、[研究 GUI](research-gui.md)。下一步仍为中心“每格”说明、计算机更换组件后的 FE 状态处理和游戏内复验；数据库正式界面待预览审核。本次 8 Java 的 IDEA MCP 均拒绝分析，错误/警告/弱警告未知，未作游戏验收。五份文档已更新，暂存因 `.git/index.lock` 写权限被拒而失败，尚未本地提交。
+
+- 2026-11-15 存档与内部同步清理完成：移除固定 Version/Schema 的读写和拒绝分支、普通 Map/Set 重复键检查、机器数据同步的临时去重集合及渲染分片 Count。30 生产 Java、13 测试 Java 已 IDEA 格式化并全级零诊断，1738 tests/271 suites、Spotless、完整构建和 MCP 构建通过。入口：[审查](defensive-programming-audit.md)、[API](../api.md)、[实施记录](implementation-status.md)。此前 V7/V6 的数字限制已删除，未增加历史字段迁移。下一步处理用户追加的中心每格说明与计算机更换组件后的 FE 状态问题。
+
 - 2026-11-15 服务端调用客户端方法的问题已修复：五种物品名称改用公共侧翻译，机器槽位操作改用实际开放状态，群系名称直接读取 AT 公开字段；补齐 GUI、JEI、预览、数据包接收和演示展示入口的客户端限定。完整 `build`、1739 tests/271 suites、Spotless 与 IDEA MCP 构建通过；29 主 Java 全级零诊断，3 run Java 被 IDE 排除并通过 27 Java 演示包编译。入口：[调用规则](../api.md)、[实施记录](implementation-status.md)。下一步由用户重跑独立服务端启动，并复验物品名称、槽位操作和群系条件。
 
 - 2026-11-15 结构控制器测试偶发失败已修复：测试夹具的时间片与整体超时对齐，由工作量决定让出，避免默认 5 毫秒时间片打断发布状态断言。临时延迟对照完成，原库存保持、下一 tick 重试及预算断言保留。完整默认 `build`、1739 tests/271 suites、Spotless 与 IDEA MCP 构建通过，修改的 Java 全级零诊断。入口：[实施记录](implementation-status.md)、[结构控制器测试](../src/test/java/com/circulation/prototype_eng/machine/ControllerStructureUpdatesTest.java)。下一步继续内部 FE 场景的游戏复验。
@@ -194,6 +198,8 @@
 
 ## 下一步
 
+- GUI：处理已登记的网络中心“每格”说明和计算机更换组件后的 FE 状态反馈；由用户完整重启复验现有正式界面。数据库按最新下载/导入预览审核后实现专用容器、界面和研究总览选择入口，其余研究页面继续延缓。当前范围和验证限制见[核对表](implementation-status.md#2026-11-15-gui-文档与源码核对)。
+
 - 用户重启复验跨配方不同原时长但相同TICK输入/输出的统一批次：短配方不提前出料，运行时不补入，全部完成后一起结算；更换逐TICK材料量或输出后应留到其它批次。复验FE/材料总量、缺电/输出堵塞共同暂停、退出重进后的时间和尾差。源码/事务/真实executor验证入口[批次说明](cross-recipe-batches.md)，未自行启动游戏。
 
 - 用户重启复验本轮配方线程策略：新控制器默认FULL_ASYNC，事件需主线程的声明选择ASYNC_SCAN或SYNCHRONOUS；作者Java/CT四策略配置、旧Mode存档恢复、混合池来源/JEI与主线程准入、运行完成后的每工位优先重试及跨配方轮转均可观察。策略不展示在玩家GUI。PN permit/预算保持owner，外部requiresOwnerThread声明要覆盖结构children。单元/Compiler/真实Executor证据不代替World/自定义事件实际线程安全，具体入口[策略说明](recipe-execution-policy.md)。
@@ -287,6 +293,6 @@
 
 ## 本地源码
 
-PE `F:/new/PrototypeEngineering`；PM `F:/clone/PrototypeMachinery`；PN `F:/new/PrototypeNetwork`；AE2S `F:/clone/Applied-Energistics-2`；MMCE `F:/clone/ModularMachinery-Community-Edition`。PM存储入口 `src/main/kotlin/{api,impl}/storage`，planned入口 `impl/scheduler/planned`；PE按专题进入 `src/main/java/com/circulation/prototype_eng/{api,machine,recipe,scheduler,structure,research,integration}`。
+PE 当前工作区 `F:/NovaEng/PrototypeEngineering`；PM `F:/clone/PrototypeMachinery`；PN `F:/new/PrototypeNetwork`；AE2S `F:/clone/Applied-Energistics-2`；MMCE `F:/clone/ModularMachinery-Community-Edition`。PM存储入口 `src/main/kotlin/{api,impl}/storage`，planned入口 `impl/scheduler/planned`；PE按专题进入 `src/main/java/com/circulation/prototype_eng/{api,machine,recipe,scheduler,structure,research,integration}`。
 
 索引不替代源码审查。精简前完整索引只作恢复审计，保留于 `build/staging/controller-shared-parallel/exact-commit/index-before-compaction.md`；历史事实及证据按实施进度/专题查阅。

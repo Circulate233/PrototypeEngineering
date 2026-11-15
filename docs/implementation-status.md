@@ -36,6 +36,31 @@ ForgeEnergyPort 与 HatchAutoTransfer 对外部请求应用接收和提取限速
 
 最终证据位于 C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261115/internal-energy/：idea-verified.json、idea-build.json、gradle-build-verified.log、verification-summary.json 和 regression-fixed.log；预览语法记录在同级 device-energy-display/preview-syntax.json。本地英文提交，保留用户 AGENTS.md 修改。未启动游戏，实际界面和连续外部供电由用户完整重启后复验。
 
+## 2026-11-15 GUI 文档与源码核对
+
+核对基线为 `f4c051b`，开始时工作区及暂存区干净。按开发索引阅读 GUI 需求、最新专题和实施记录，并检查正式类、容器、两侧注册入口及数据库操作后台。下表表示当前源码接入情况，游戏内画面和交互仍待用户复验。
+
+| 范围 | 当前实现 | 入口或剩余工作 |
+| --- | --- | --- |
+| 普通机器 | `GuiMachine` / `ContainerMachine` 已接入默认入口，提供真实状态、线程或配方列表、控制器库存及玩家背包。 | [机器 GUI](machine-gui.md)；原生交互待复验。 |
+| 研究站 | 专用 GUI 与容器已接入，384×288，无背包；五列材料、工作量和参与站数、网络累计进度、五项共享队列及排序/设为当前/移出按钮。 | [改版说明](device-gui-redesign.md#研究站)、[研究 GUI](research-gui.md#正式界面)。 |
+| 网络中心 | 专用 GUI 与容器已接入，384×162～242，无背包；等级框、16 格并发条、资源利用率条，超过五行使用 AE 滑块。 | [改版说明](device-gui-redesign.md#网络中心)；“每格”说明反馈仍待处理。 |
+| 计算机 | 专用 GUI 与容器已接入，384×242，无背包；异常提示、三张数据卡，以及概览/组件两个页签。供给配方列表已从 GUI 移除，交由 JEI 展示。 | [计算机](computers.md#计算机界面)；更换组件后的 FE 状态反馈仍待处理。 |
+| 仓室、ME 与并行控制器 | `GuiResourceHatch`、`GuiEnergyHatch`、`GuiMEResourceHatch`、`GuiMEPatternAssembly`、`GuiParallelController` 均有正式入口；运算仓复用资源仓的紧凑布局。ME 样板镜像按设计没有 GUI。 | [方块与 GUI](block-registration.md)、[运算仓](computers.md#运算仓)。 |
+| 结构工具 | 扫描器、构建器、构建器升级配置及独立结构预览均有正式类和入口，分别为 `GuiScannerInstrument`、`GuiBuilderInstrument`、`GuiBuilderUpgrades`、`GuiStructurePreview`。 | [结构工具](structure-tools.md)；世界交互、预览与投影待实机复验。 |
+| 数据库 | 最新 HTML 预览、下载/导入与移出后台、持久输入/输出两槽、自定义下载/导入 JEI 已有实现。尚无专用 GUI/容器及研究总览选择入口；没有外部自定义绑定时走通用机器 GUI。 | [数据库要求](research-gui.md#数据库界面)、[预览](previews/data-center.html)；待审核后接入正式界面。 |
+| 其余研究页面 | 研究目录/总览、独立队列、奖励、遗忘和管理员页面于 2026-11-13 删除后仍未恢复；研究站内的共享队列已另行实现。 | [研究 GUI](research-gui.md)；继续延缓。 |
+
+正式 screen 类共 13 个，全部直接继承 `AEBaseGui`。机器默认分派由 `MachineGuiRegistry.create` 和 `MachineScreenRegistry.create` 接通网络中心、计算机、研究站与普通机器；其他仓室和工具由 `CommonProxy` / `ClientProxy` 接通。数据库移出在 `DataCenterResearchAccess` / `ResearchDataCenter`，操作槽在 `DataCenterTransferInventory`，随 `MachineDataCenterStorage` 保存；`ResearchDownloadJeiRegistration` 已分别生成自定义下载和导入页面。
+
+本轮修正文档中的计算机“三页”描述、缺失的研究站默认入口及注册检查的旧说明；将 `GuiResearch`、数据库旧 GUI 分页测试和结构界面“待迁移”说明标清历史范围。索引中的四列材料预览、旧数据库“不提供导入”及其后台待实现条目由后续五列正式界面和下载/导入修订取代，不作为当前待办。此前 1742 项和最近 1738 项测试通过是各自阶段的历史构建记录。
+
+本次本机 IDEA MCP 对以下 8 Java 逐文件调用 `get_file_problems(errorsOnly:false)`：三个设备 GUI、三个对应容器、`MachineGuiRegistry` 和 `MachineScreenRegistry`。全部返回 `File cannot be analyzed: File is outside project content roots or in an excluded directory`，因此每份文件的错误、警告和弱警告均为未知。MCP 能列出当前项目及 main/test 模块和源码目录，但没有完成这些文件的诊断；未修改 IDE 设置。原始结果保存在 `build/reports/gui-status-audit/idea-inspections.json`。
+
+文档增量通过 `git diff --check`，新增或调整行中的 32 个相对链接目标均存在。检查五份文档的全部相对链接时发现 15 个历史 IDEA 报告在当前工作区缺失，这些引用均已存在于核对基线；保留历史引用并记录本机无法读取。核对结果保存在 `build/reports/gui-status-audit/document-verification.json`。核对期间出现的 `AGENTS.md` 外部修改已读取，本轮修改了五份 GUI 相关文档。
+
+本轮只修正文档，未修改 Java、运行构建或测试，也未启动 Minecraft 客户端/服务端。后续按索引处理两项已登记反馈、数据库预览审核与正式接入，并由用户完成游戏内验收。尝试仅暂存五份文档时，`git add` 返回 `fatal: Unable to create 'F:/NovaEng/PrototypeEngineering/.git/index.lock': Permission denied`；当前 `.git` 写权限限制阻止本地提交，文档保留在工作区，未推送。
+
 ## 2026-11-15 存档与内部同步清理
 
 删除研究世界、玩家和队伍研究、队列、手动会话、研究下载、来源计划、存盘及回执、数据库、机器装配、工位、配方进程、控制器和动画中的固定 Version/Schema 写入与读取检查。结构目录、渲染快照和配方声明的内部二进制同步也删除固定版本整数，直接按当前字段布局解码。已有 NBT 的版本字段不参与读取，本轮没有增加历史字段迁移。

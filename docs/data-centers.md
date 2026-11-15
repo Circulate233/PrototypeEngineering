@@ -84,7 +84,9 @@ ZS使用 `MachineType.dataCenter(id, translationKey, structureId, level, capacit
 
 ## 验证与剩余范围
 
-行为验证覆盖当前成员与权限、只读捕获、失效证明、外部存储绑定、连续下载、同 tick 预算、升级过滤、失败后的内容与发布状态，以及 GUI 分页和动作编解码。完整构建 1093 tests / 143 suites 全通过，本阶段 21 个 Java（含生成 Tags）IDEA MCP 全级零诊断，build_project 成功。证据为 build/reports/idea/datacenter-download-final.json，详见 [实施进度](implementation-status.md)。
+以下构建数量与测试范围属于对应历史阶段。旧数据库 GUI、分页同步和专用测试已于 2026-11-13 删除；2026-11-15 已完成操作后台修订，数据库专用 GUI 仍未接入，当前状态见[核对表](implementation-status.md#2026-11-15-gui-文档与源码核对)。
+
+早期行为验证覆盖成员与权限、只读捕获、失效证明、外部存储绑定、连续下载、同 tick 预算、升级过滤、失败后的内容与发布状态，以及当时的 GUI 分页和动作编解码。该阶段完整构建 1093 tests / 143 suites 全通过，21 个 Java（含生成 Tags）IDEA MCP 全级零诊断，build_project 成功。证据为 build/reports/idea/datacenter-download-final.json，详见 [实施进度](implementation-status.md)。
 
 当前磁盘阶段新增数据库侧 12 项行为测试，集中覆盖原子内容／回执发布、dirty 后失败、明确拒绝零效果、普通后续写入保留回执、清理失败重试、原物理恢复与复制／搬迁拒绝，以及真实 Anvil 文件中宿主／owner／位置／存储绑定／完整回执被替换或缺失。与 World 的 23 项行为共同验证后，完整 build 为 1214 tests / 156 suites，零失败、错误或跳过，assemble/Spotless/test/check 全通过；29 个 Java 本机 IDEA MCP `errorsOnly:false` 全级零诊断、无超时，源码构建前后 SHA 一致。证据 `build/staging/research-disk-workflow/full-build-final-result.json`、`full-build-final-test-results/` 和 `build/reports/idea/research-disk-inspections-final.json`。独立审计确认数据库 State／receipt、原物理捕获和真实 Anvil 回读无剩余阻断；当前三种 Jar 也已核对无内置盘类、模型或专有 item 文案残留。
 
