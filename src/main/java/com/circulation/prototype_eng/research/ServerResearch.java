@@ -1336,6 +1336,17 @@ public final class ServerResearch {
         return team.accepted() ? team.teamId() : null;
     }
 
+    /**
+     * Display title of a team identity returned by {@link #stationTeam}; the identity must exist in this server's FTB universe.
+     */
+    public static String teamTitle(EntityPlayerMP actor, String teamId) {
+        var current = actorSession(actor);
+        var team = levelTeam(current, teamId);
+        if (team == null)
+            throw new IllegalStateException("Research station team " + teamId + " is not a current FTB team");
+        return team.getTitle().getUnformattedText();
+    }
+
     public static void requestQueueAction(EntityPlayerMP actor, String expectedTeam, long entryId, ResearchStationView.Action action,
                                           BooleanSupplier ownerCurrent, Consumer<Boolean> result, Runnable finalized) {
         var current = actorSession(actor);

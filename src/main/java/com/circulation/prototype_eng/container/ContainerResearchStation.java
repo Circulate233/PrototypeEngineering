@@ -6,7 +6,6 @@ import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.view.ResearchStationView;
 import com.circulation.prototype_eng.research.ServerResearch;
-import com.feed_the_beast.ftblib.lib.data.Universe;
 import it.unimi.dsi.fastutil.shorts.ShortSet;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.player.InventoryPlayer;
@@ -81,7 +80,7 @@ public final class ContainerResearchStation extends AEBaseContainer {
             var captured = ServerResearch.stationView((EntityPlayerMP) getPlayer(), host);
             if (captured == null) return;
             teamId = captured.teamId();
-            teamName = teamId.isEmpty() ? "" : Universe.get().getTeam((short) Integer.parseInt(teamId, 16)).getTitle().getUnformattedText();
+            teamName = teamId.isEmpty() ? "" : ServerResearch.teamTitle((EntityPlayerMP) getPlayer(), teamId);
             visible = captured.visible();
             canManage = captured.canManage() && !actionPending;
             elapsedTicks = captured.progress() == null ? 0 : captured.progress().elapsedTicks();

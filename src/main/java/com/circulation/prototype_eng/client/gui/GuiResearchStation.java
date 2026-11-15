@@ -26,20 +26,23 @@ import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.*;
 
 public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
     private static final ResourceLocation BACKGROUND = GuiAtlas.texture("gui_research_station");
-    private static final int LIST_X = 18, LIST_Y = 89, LIST_HEIGHT = 180;
-    private static final int MATERIAL_COLUMNS = 5, MATERIAL_WIDTH = 32, MATERIAL_HEIGHT = 30;
-    private static final int QUEUE_X = 212, QUEUE_Y = 105, QUEUE_ROW = 22, QUEUE_WIDTH = 156;
+    private static final int HERO_X = 12, HERO_Y = 28, HERO_WIDTH = 360, HERO_HEIGHT = 50;
+    private static final int LIST_X = 18, LIST_Y = 90, LIST_HEIGHT = 180, LIST_SCROLL_X = 185;
+    private static final int MATERIAL_COLUMNS = 5, MATERIAL_WIDTH = 33, MATERIAL_HEIGHT = 30, RESOURCE_HEIGHT = 32;
+    private static final int SECTION_HEIGHT = 12, SECTION_GAP = 8, EMPTY_HEIGHT = 14;
+    private static final int QUEUE_X = 212, QUEUE_Y = 104, QUEUE_ROW = 22, QUEUE_CARD = 20, QUEUE_WIDTH = 154, QUEUE_SIZE = 5;
+    private static final int ACTION_Y = 254;
     private static final String[] QUEUE_NUMBERS = {"1", "2", "3", "4", "5"};
     private final GuiButton[] actions = new GuiButton[4];
     private final Scrollbar scrollbar = new Scrollbar(Scrollbar.SMALL);
     private final DecimalFormat percentFormat = new DecimalFormat("0.#'%'");
-    private long selected, knownSelected = -1, knownElapsed = -1;
-    private int selectionIndex = -1, knownStations = -1, scaleFactor;
+    private long selected, knownElapsed = -1;
+    private int knownStations = -1, scaleFactor;
     private ResearchStationPacket.Definition knownDefinition;
-    private List<ResearchStationPacket.QueueEntry> knownQueue = List.of();
+    private List<ResearchStationPacket.QueueEntry> knownQueue;
     private ResearchStationGuiText knownState;
-    private String percent = "0%", level = "", workload = "", title = "", queueCount = "0 / 5", statusText = "";
-    private String materialsLabel, materialHint, networkLabel, networkHint, queueLabel, emptyResearch, emptyQueue;
+    private String percent = "", level = "", workload = "", queueCount = "", statusText = "";
+    private String title, materialsLabel, materialHint, networkLabel, networkHint, queueLabel, emptyResearch, denied, emptyQueue;
     private String noMaterials, noNetworkResources, completedLabel;
 
     public GuiResearchStation(ContainerResearchStation container, InventoryPlayer player) {
@@ -50,14 +53,15 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
             () -> container.manage(selected, ResearchStationView.Action.UP));
         actions[1] = new SimpleIconButton(Icon.ARROW_DOWN, ResearchStationGuiText.Down.text(),
             () -> container.manage(selected, ResearchStationView.Action.DOWN));
-        actions[2] = new AE2Button(0, 0, 58, 18, ResearchStationGuiText.SelectCurrent.text(),
+        actions[2] = new AE2Button(0, 0, 60, 18, ResearchStationGuiText.SelectCurrent.text(),
             () -> container.manage(selected, ResearchStationView.Action.CURRENT));
-        actions[3] = new AE2Button(0, 0, 58, 18, ResearchStationGuiText.Remove.text(),
+        actions[3] = new AE2Button(0, 0, 60, 18, ResearchStationGuiText.Remove.text(),
             () -> container.manage(selected, ResearchStationView.Action.REMOVE));
-        int[] positions = {213, 234, 251, 312};
-        for (int index = 0; index < actions.length; index++)
-            widgets.add("researchAction" + index, actions[index], new Point(positions[index], 255));
-        scrollbar.setPosition(new Point(185, LIST_Y));
+        widgets.add("researchUp", actions[0], new Point(QUEUE_X, ACTION_Y + 1));
+        widgets.add("researchDown", actions[1], new Point(QUEUE_X + 18, ACTION_Y + 1));
+        widgets.add("researchCurrent", actions[2], new Point(QUEUE_X + 36, ACTION_Y));
+        widgets.add("researchRemove", actions[3], new Point(QUEUE_X + 98, ACTION_Y));
+        scrollbar.setPosition(new Point(LIST_SCROLL_X, LIST_Y));
         scrollbar.setHeight(LIST_HEIGHT);
         scrollbar.setCaptureMouseWheel(false);
         widgets.add("researchResources", scrollbar);
@@ -69,9 +73,10 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
         super.initGui();
         container.view.invalidateText();
         knownDefinition = null;
+        knownQueue = null;
+        knownState = null;
         knownElapsed = -1;
         knownStations = -1;
-        knownState = null;
         title = container.getGuiTitle().getFormattedText();
         materialsLabel = ResearchStationGuiText.Resources.getLocal();
         materialHint = ResearchStationGuiText.AvailableRemaining.getLocal();
@@ -79,6 +84,7 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
         networkHint = ResearchStationGuiText.OccupiedLimit.getLocal();
         queueLabel = ResearchStationGuiText.Queue.getLocal();
         emptyResearch = ResearchStationGuiText.Empty.getLocal();
+        denied = ResearchStationGuiText.Denied.getLocal();
         emptyQueue = ResearchStationGuiText.EmptyQueue.getLocal();
         noMaterials = ResearchStationGuiText.NoMaterials.getLocal();
         noNetworkResources = ResearchStationGuiText.NoNetworkResources.getLocal();
@@ -86,16 +92,31 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
         scaleFactor = new ScaledResolution(mc).getScaleFactor();
     }
 
+    private int materialRows() {
+        return (container.view.materials.size() + MATERIAL_COLUMNS - 1) / MATERIAL_COLUMNS;
+    }
+
     private int materialHeight() {
-        return Math.max(14, (container.view.materials.size() + MATERIAL_COLUMNS - 1) / MATERIAL_COLUMNS * MATERIAL_HEIGHT);
+        return container.view.materials.isEmpty() ? EMPTY_HEIGHT : materialRows() * MATERIAL_HEIGHT;
+    }
+
+    private int resourceHeight() {
+        return container.view.resources.isEmpty() ? EMPTY_HEIGHT : container.view.resources.size() * RESOURCE_HEIGHT;
+    }
+
+    /**
+     * Offset from the materials section top to the first network resource row.
+     */
+    private int resourcesOffset() {
+        return SECTION_HEIGHT + materialHeight() + SECTION_GAP + SECTION_HEIGHT;
     }
 
     private int contentHeight() {
-        return 12 + materialHeight() + 8 + 12 + Math.max(14, container.view.resources.size() * 32);
+        return resourcesOffset() + resourceHeight();
     }
 
     private int listWidth() {
-        return contentHeight() > LIST_HEIGHT ? 162 : 174;
+        return contentHeight() > LIST_HEIGHT ? 164 : 174;
     }
 
     @Override
@@ -111,7 +132,7 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
         if (definition != null && (knownElapsed != container.elapsedTicks || knownStations != container.workingStations)) {
             knownElapsed = container.elapsedTicks;
             knownStations = container.workingStations;
-            percent = percentFormat.format(100D * container.elapsedTicks / definition.duration());
+            percent = percentFormat.format(100D * Math.min(container.elapsedTicks, definition.duration()) / definition.duration());
             workload = ResearchStationGuiText.Workload.getLocal(GuiNumbers.grouped(container.elapsedTicks),
                 GuiNumbers.grouped(definition.duration()), GuiNumbers.grouped(container.workingStations));
         }
@@ -120,21 +141,20 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
             knownState = currentState;
             statusText = currentState.getLocal();
         }
-        if (knownQueue != container.view.queue || knownSelected != selected) {
+        if (knownQueue != container.view.queue) {
             knownQueue = container.view.queue;
-            queueCount = knownQueue.size() + " / 5";
-            selectionIndex = -1;
-            for (int index = 0; index < knownQueue.size(); index++) {
-                if (knownQueue.get(index).entryId() == selected) {
-                    selectionIndex = index;
-                    break;
-                }
+            queueCount = knownQueue.size() + " / " + QUEUE_SIZE;
+        }
+        int selectionIndex = -1;
+        for (int index = 0; index < knownQueue.size(); index++) {
+            if (knownQueue.get(index).entryId() == selected) {
+                selectionIndex = index;
+                break;
             }
-            if (selectionIndex < 0 && !knownQueue.isEmpty()) {
-                selected = knownQueue.getFirst().entryId();
-                selectionIndex = 0;
-            }
-            knownSelected = selected;
+        }
+        if (selectionIndex < 0 && !knownQueue.isEmpty()) {
+            selected = knownQueue.getFirst().entryId();
+            selectionIndex = 0;
         }
         actions[0].enabled = container.canManage && selectionIndex > 0;
         actions[1].enabled = container.canManage && selectionIndex >= 0 && selectionIndex + 1 < knownQueue.size();
@@ -148,18 +168,10 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
     @Override
     public void drawBG(int x, int y, int mouseX, int mouseY, float partialTicks) {
         GuiAtlas.draw(BACKGROUND, x, y, 0, 0, xSize, ySize, xSize, ySize);
-        panel(x + 12, y + 29, 360, 48);
+        panel(x + HERO_X, y + HERO_Y, HERO_WIDTH, HERO_HEIGHT);
         panel(x + 12, y + 82, 186, 194);
         panel(x + 206, y + 82, 166, 194);
-        if (contentHeight() > LIST_HEIGHT) rect(x + 184, y + LIST_Y, 9, LIST_HEIGHT, LINE);
-    }
-
-    private void text(String value, int x, int y, int width, int color) {
-        DeviceGuiDraw.text(fontRenderer, value, x, y, width, color);
-    }
-
-    private void right(String value, int right, int y, int width, int color) {
-        DeviceGuiDraw.right(fontRenderer, value, right, y, width, 10, color);
+        if (scrollbar.isVisible()) GuiAtlas.inset(x + LIST_SCROLL_X - 1, y + LIST_Y - 1, 9, LIST_HEIGHT + 2);
     }
 
     private ResearchStationGuiText state() {
@@ -171,50 +183,36 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
         return !container.visible ? Tone.BAD : container.manual || container.workingStations == 0 ? Tone.WAIT : Tone.GOOD;
     }
 
+    private int titleWidth() {
+        return Math.min(220, fontRenderer.getStringWidth(title));
+    }
+
+    private int teamX() {
+        return 18 + titleWidth() + 8;
+    }
+
+    private int statusX() {
+        return 366 - statusWidth(fontRenderer, statusText);
+    }
+
+    private int levelWidth() {
+        return fontRenderer.getStringWidth(level) + 6;
+    }
+
     private int researchNameWidth() {
-        return 366 - statusWidth(fontRenderer, statusText) - fontRenderer.getStringWidth(level) - 58;
+        return statusX() - 42 - levelWidth() - 12;
     }
 
     private int queueNameWidth(int index) {
-        return QUEUE_WIDTH - fontRenderer.getStringWidth(container.view.queueLevel(index)) - 24;
+        return QUEUE_WIDTH - 24 - fontRenderer.getStringWidth(container.view.queueLevel(index)) - 6;
     }
 
     @Override
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        int titleWidth = Math.min(200, fontRenderer.getStringWidth(title));
-        text(title, 18, 12, titleWidth, TEXT);
-        text(container.teamName, 18 + titleWidth + 8, 12, 340 - titleWidth, SOFT);
-        var definition = container.view.definition;
-        if (definition == null)
-            GuiLabel.drawCentered(fontRenderer, emptyResearch, 18, 35, 348, 36, SOFT, false);
-        else {
-            slot(18, 36);
-            if (definition.icon() != null) AEKeyRendering.drawInGui(mc, 19, 37, definition.icon());
-            int nameWidth = researchNameWidth();
-            text(container.view.name(), 42, 36, nameWidth, TEXT);
-            int levelX = 42 + Math.min(nameWidth, fontRenderer.getStringWidth(container.view.name())) + 5;
-            int levelWidth = fontRenderer.getStringWidth(level) + 6;
-            rect(levelX, 36, levelWidth, 10, LINE);
-            GuiLabel.drawCentered(fontRenderer, level, levelX, 36, levelWidth, 10, LIGHT, false);
-            status(fontRenderer, statusText, 366 - statusWidth(fontRenderer, statusText), 36, stateTone());
-            text(workload, 42, 48, 324, SOFT);
-            progress(18, 64, 312, 5, (double) container.elapsedTicks / definition.duration(),
-                container.elapsedTicks >= definition.duration() ? GOOD : DARK);
-            right(percent, 366, 61, 30, TEXT);
-        }
-        text(queueLabel, QUEUE_X, 90, 110, TEXT);
-        right(queueCount, 368, 90, 40, SOFT);
-        for (int index = 0; index < container.view.queue.size(); index++) {
-            int top = QUEUE_Y + index * QUEUE_ROW;
-            boolean hover = isPointInRegion(QUEUE_X, top, QUEUE_WIDTH, 20, mouseX, mouseY);
-            card(QUEUE_X, top, QUEUE_WIDTH, 20, container.view.queue.get(index).entryId() == selected, hover);
-            if (index == 0) rect(QUEUE_X, top + 1, 2, 18, GOOD);
-            text(QUEUE_NUMBERS[index], QUEUE_X + 4, top + 5, 10, SOFT);
-            text(container.view.queueName(index), QUEUE_X + 18, top + 5, queueNameWidth(index), TEXT);
-            right(container.view.queueLevel(index), 364, top + 5, QUEUE_WIDTH - 22, index == 0 ? GOOD : SOFT);
-        }
-        if (container.view.queue.isEmpty())
-            GuiLabel.drawCentered(fontRenderer, emptyQueue, QUEUE_X, QUEUE_Y, QUEUE_WIDTH, 110, SOFT, false);
+        text(fontRenderer, title, 18, 11, titleWidth(), TEXT);
+        text(fontRenderer, container.teamName, teamX(), 11, 366 - teamX(), SOFT);
+        drawHero();
+        drawQueue(mouseX, mouseY);
         GL11.glPushAttrib(GL11.GL_SCISSOR_BIT);
         try {
             GL11.glEnable(GL11.GL_SCISSOR_TEST);
@@ -226,64 +224,118 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
         }
     }
 
-    private void drawResources() {
-        int top = LIST_Y - scrollbar.getCurrentScroll(), width = listWidth();
-        text(materialsLabel, LIST_X, top, 34, TEXT);
-        right(materialHint, LIST_X + width, top, width - 38, SOFT);
-        top += 12;
-        int firstMaterial = Math.min(container.view.materials.size(),
-            Math.max(0, Math.floorDiv(LIST_Y - top, MATERIAL_HEIGHT)) * MATERIAL_COLUMNS);
-        int lastMaterial = Math.min(container.view.materials.size(),
-            (LIST_Y + LIST_HEIGHT - top + MATERIAL_HEIGHT - 1) / MATERIAL_HEIGHT * MATERIAL_COLUMNS);
-        for (int index = firstMaterial; index < lastMaterial; index++) {
-            var material = container.view.materials.get(index);
-            int cellX = LIST_X + index % MATERIAL_COLUMNS * MATERIAL_WIDTH;
-            int cellY = top + index / MATERIAL_COLUMNS * MATERIAL_HEIGHT;
-            slot(cellX + 7, cellY);
-            AEKeyRendering.drawInGui(mc, cellX + 8, cellY + 1, material.key);
-            GuiLabel.drawCentered(fontRenderer, material.slotAmounts(), cellX, cellY + 20, MATERIAL_WIDTH, 7,
-                material.available < material.remaining ? BAD : TEXT, false);
+    private void drawHero() {
+        var definition = container.view.definition;
+        if (definition == null) {
+            centered(fontRenderer, container.visible ? emptyResearch : denied, HERO_X, HERO_Y, HERO_WIDTH, HERO_HEIGHT, SOFT);
+            return;
         }
-        if (container.view.materials.isEmpty())
-            text(noMaterials, LIST_X, top + 2, width, SOFT);
-        top += materialHeight() + 8;
-        text(networkLabel, LIST_X, top, 60, TEXT);
-        right(networkHint, LIST_X + width, top, width - 64, SOFT);
-        top += 12;
-        int firstResource = Math.clamp(Math.floorDiv(LIST_Y - top, 32), 0, container.view.resources.size());
-        int lastResource = Math.clamp(Math.floorDiv(LIST_Y + LIST_HEIGHT - top + 31, 32), 0, container.view.resources.size());
-        for (int index = firstResource; index < lastResource; index++) {
-            int rowY = top + index * 32;
-            var resource = container.view.resources.get(index);
+        slot(18, 34);
+        if (definition.icon() != null) AEKeyRendering.drawInGui(mc, 19, 35, definition.icon());
+        String name = container.view.name();
+        int nameWidth = Math.min(researchNameWidth(), fontRenderer.getStringWidth(name));
+        text(fontRenderer, name, 42, 35, nameWidth, TEXT);
+        int levelX = 42 + nameWidth + 5;
+        rect(levelX, 35, levelWidth(), LINE_HEIGHT, LINE);
+        fontRenderer.drawString(level, levelX + 3, 36, LIGHT);
+        status(fontRenderer, statusText, statusX(), 35, stateTone());
+        text(fontRenderer, workload, 42, 46, 324, SOFT);
+        boolean finished = container.elapsedTicks >= definition.duration();
+        progress(18, 63, 310, 6, (double) container.elapsedTicks / definition.duration(), finished ? GOOD : DARK);
+        right(fontRenderer, percent, 366, 61, 34, TEXT);
+    }
+
+    private void drawQueue(int mouseX, int mouseY) {
+        text(fontRenderer, queueLabel, QUEUE_X, 89, 110, TEXT);
+        right(fontRenderer, queueCount, 366, 89, 40, SOFT);
+        var queue = container.view.queue;
+        for (int index = 0; index < queue.size(); index++) {
+            int top = QUEUE_Y + index * QUEUE_ROW;
+            card(QUEUE_X, top, QUEUE_WIDTH, QUEUE_CARD, queue.get(index).entryId() == selected,
+                isPointInRegion(QUEUE_X, top, QUEUE_WIDTH, QUEUE_CARD, mouseX, mouseY));
+            if (index == 0) rect(QUEUE_X, top, 2, QUEUE_CARD, GOOD);
+            fontRenderer.drawString(QUEUE_NUMBERS[index], QUEUE_X + 6, top + 6, SOFT);
+            text(fontRenderer, container.view.queueName(index), QUEUE_X + 18, top + 5, queueNameWidth(index), TEXT);
+            right(fontRenderer, container.view.queueLevel(index), QUEUE_X + QUEUE_WIDTH - 4, top + 5,
+                QUEUE_WIDTH - 22, index == 0 ? GOOD : SOFT);
+        }
+        if (queue.isEmpty())
+            centered(fontRenderer, container.visible ? emptyQueue : denied, QUEUE_X, QUEUE_Y, QUEUE_WIDTH, QUEUE_SIZE * QUEUE_ROW, SOFT);
+    }
+
+    private void drawResources() {
+        int width = listWidth(), top = LIST_Y - scrollbar.getCurrentScroll();
+        text(fontRenderer, materialsLabel, LIST_X, top, 40, TEXT);
+        right(fontRenderer, materialHint, LIST_X + width, top, width - 44, SOFT);
+        int materialTop = top + SECTION_HEIGHT;
+        var materials = container.view.materials;
+        if (materials.isEmpty()) text(fontRenderer, noMaterials, LIST_X, materialTop + 2, width, SOFT);
+        else {
+            int firstRow = Math.max(0, Math.floorDiv(LIST_Y - materialTop, MATERIAL_HEIGHT));
+            int lastRow = Math.min(materialRows(), Math.floorDiv(LIST_Y + LIST_HEIGHT - materialTop - 1, MATERIAL_HEIGHT) + 1);
+            for (int index = firstRow * MATERIAL_COLUMNS; index < Math.min(materials.size(), lastRow * MATERIAL_COLUMNS); index++) {
+                var material = materials.get(index);
+                int cellX = LIST_X + index % MATERIAL_COLUMNS * MATERIAL_WIDTH;
+                int cellY = materialTop + index / MATERIAL_COLUMNS * MATERIAL_HEIGHT;
+                slot(cellX + 7, cellY);
+                AEKeyRendering.drawInGui(mc, cellX + 8, cellY + 1, material.key);
+                GuiLabel.drawCentered(fontRenderer, material.slotAmounts(), cellX, cellY + 20, MATERIAL_WIDTH, 8,
+                    material.available < material.remaining ? BAD : TEXT, false);
+            }
+        }
+        int networkTop = materialTop + materialHeight() + SECTION_GAP;
+        text(fontRenderer, networkLabel, LIST_X, networkTop, 70, TEXT);
+        right(fontRenderer, networkHint, LIST_X + width, networkTop, width - 74, SOFT);
+        int resourceTop = networkTop + SECTION_HEIGHT;
+        var resources = container.view.resources;
+        if (resources.isEmpty()) {
+            text(fontRenderer, noNetworkResources, LIST_X, resourceTop + 2, width, SOFT);
+            return;
+        }
+        int first = Math.clamp(Math.floorDiv(LIST_Y - resourceTop, RESOURCE_HEIGHT), 0, resources.size());
+        int last = Math.clamp(Math.floorDiv(LIST_Y + LIST_HEIGHT - resourceTop - 1, RESOURCE_HEIGHT) + 1, 0, resources.size());
+        for (int index = first; index < last; index++) {
+            int rowY = resourceTop + index * RESOURCE_HEIGHT;
+            var resource = resources.get(index);
             boolean completed = resource.accumulated >= resource.total;
             String value = completed ? completedLabel : resource.amounts();
             int valueWidth = Math.min(width / 2, fontRenderer.getStringWidth(value));
-            text(resource.name(), LIST_X, rowY + 2, width - valueWidth - 6, TEXT);
-            right(value, LIST_X + width, rowY + 2, valueWidth, completed ? GOOD : TEXT);
-            progress(LIST_X, rowY + 15, width, 2, resource.accumulated / resource.total, completed ? GOOD : DARK);
-            text(resource.progress(), LIST_X, rowY + 19, width - 35, SOFT);
-            right(resource.percentage(), LIST_X + width, rowY + 19, 30, SOFT);
-            if (index + 1 < container.view.resources.size()) rect(LIST_X, rowY + 31, width, 1, LINE);
+            text(fontRenderer, resource.name(), LIST_X, rowY + 2, width - valueWidth - 6, TEXT);
+            right(fontRenderer, value, LIST_X + width, rowY + 2, valueWidth, completed ? GOOD : TEXT);
+            progress(LIST_X, rowY + 14, width, 2, resource.accumulated / resource.total, completed ? GOOD : DARK);
+            int percentWidth = fontRenderer.getStringWidth(resource.percentage());
+            text(fontRenderer, resource.progress(), LIST_X, rowY + 19, width - percentWidth - 6, SOFT);
+            right(fontRenderer, resource.percentage(), LIST_X + width, rowY + 19, percentWidth, SOFT);
+            if (index + 1 < resources.size()) rect(LIST_X, rowY + RESOURCE_HEIGHT - 1, width, 1, LINE);
         }
-        if (container.view.resources.isEmpty())
-            text(noNetworkResources, LIST_X, top + 2, width, SOFT);
+    }
+
+    private boolean inList(int mouseX, int mouseY) {
+        return isPointInRegion(LIST_X, LIST_Y, listWidth(), LIST_HEIGHT, mouseX, mouseY);
+    }
+
+    private int queueIndex(int mouseX, int mouseY) {
+        if (!isPointInRegion(QUEUE_X, QUEUE_Y, QUEUE_WIDTH, container.view.queue.size() * QUEUE_ROW, mouseX, mouseY))
+            return -1;
+        int rowY = mouseY - guiTop - QUEUE_Y;
+        return rowY % QUEUE_ROW < QUEUE_CARD ? rowY / QUEUE_ROW : -1;
     }
 
     @Override
     public void handleMouseInput() throws IOException {
         super.handleMouseInput();
         int delta = Mouse.getEventDWheel();
+        if (delta == 0 || !scrollbar.isVisible()) return;
         int mouseX = Mouse.getEventX() * width / mc.displayWidth, mouseY = height - Mouse.getEventY() * height / mc.displayHeight - 1;
-        if (delta != 0 && isPointInRegion(LIST_X, LIST_Y, 176, LIST_HEIGHT, mouseX, mouseY))
-            scrollbar.setCurrentScroll(Math.clamp(scrollbar.getCurrentScroll() - Integer.signum(delta) * 17L, 0,
-                Math.max(0, contentHeight() - LIST_HEIGHT)));
+        if (isPointInRegion(LIST_X, LIST_Y, LIST_SCROLL_X + 7 - LIST_X, LIST_HEIGHT, mouseX, mouseY))
+            scrollbar.setCurrentScroll(scrollbar.getCurrentScroll() - Integer.signum(delta) * 17);
     }
 
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
-        if (button == 0 && isPointInRegion(QUEUE_X, QUEUE_Y, QUEUE_WIDTH, container.view.queue.size() * QUEUE_ROW, mouseX, mouseY)) {
-            int rowY = mouseY - guiTop - QUEUE_Y;
-            if (rowY % QUEUE_ROW < 20) selected = container.view.queue.get(rowY / QUEUE_ROW).entryId();
+        int index = button == 0 ? queueIndex(mouseX, mouseY) : -1;
+        if (index >= 0) {
+            selected = container.view.queue.get(index).entryId();
             return;
         }
         super.mouseClicked(mouseX, mouseY, button);
@@ -292,39 +344,40 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         super.drawScreen(mouseX, mouseY, partialTicks);
-        int titleWidth = Math.min(200, fontRenderer.getStringWidth(title));
-        if (isPointInRegion(18, 12, titleWidth, 10, mouseX, mouseY) && fontRenderer.getStringWidth(title) > titleWidth)
-            drawHoveringText(List.of(title), mouseX, mouseY, fontRenderer);
-        if (isPointInRegion(18 + titleWidth + 8, 12, 340 - titleWidth, 10, mouseX, mouseY)
-            && fontRenderer.getStringWidth(container.teamName) > 340 - titleWidth)
-            drawHoveringText(List.of(container.teamName), mouseX, mouseY, fontRenderer);
-        if (container.view.definition != null && isPointInRegion(42, 48, 324, 10, mouseX, mouseY)
-            && fontRenderer.getStringWidth(workload) > 324)
-            drawHoveringText(List.of(workload), mouseX, mouseY, fontRenderer);
-        if (container.view.definition != null && isPointInRegion(42, 36, researchNameWidth(), 10, mouseX, mouseY)
-            && fontRenderer.getStringWidth(container.view.name()) > researchNameWidth())
-            drawHoveringText(List.of(container.view.name()), mouseX, mouseY, fontRenderer);
-        if (isPointInRegion(QUEUE_X + 18, QUEUE_Y, QUEUE_WIDTH - 18, container.view.queue.size() * QUEUE_ROW, mouseX, mouseY)) {
-            int rowY = mouseY - guiTop - QUEUE_Y;
-            int index = rowY / QUEUE_ROW;
-            if (rowY % QUEUE_ROW < 20 && fontRenderer.getStringWidth(container.view.queueName(index)) > queueNameWidth(index))
-                drawHoveringText(List.of(container.view.queueName(index)), mouseX, mouseY, fontRenderer);
+        var tooltip = tooltip(mouseX, mouseY);
+        if (tooltip != null) drawHoveringText(tooltip, mouseX, mouseY, fontRenderer);
+    }
+
+    private List<String> tooltip(int mouseX, int mouseY) {
+        if (isPointInRegion(18, 11, titleWidth(), LINE_HEIGHT, mouseX, mouseY) && !fits(fontRenderer, title, titleWidth()))
+            return List.of(title);
+        if (isPointInRegion(teamX(), 11, 366 - teamX(), LINE_HEIGHT, mouseX, mouseY)
+            && !fits(fontRenderer, container.teamName, 366 - teamX()))
+            return List.of(container.teamName);
+        if (container.view.definition != null) {
+            String name = container.view.name();
+            if (isPointInRegion(42, 35, researchNameWidth(), LINE_HEIGHT, mouseX, mouseY) && !fits(fontRenderer, name, researchNameWidth()))
+                return List.of(name);
+            if (isPointInRegion(42, 46, 324, LINE_HEIGHT, mouseX, mouseY) && !fits(fontRenderer, workload, 324))
+                return List.of(workload);
         }
-        if (!isPointInRegion(LIST_X, LIST_Y, listWidth(), LIST_HEIGHT, mouseX, mouseY)) return;
-        int rowY = mouseY - guiTop - LIST_Y + scrollbar.getCurrentScroll() - 12;
-        if (rowY >= 0 && rowY < materialHeight()) {
+        int queue = queueIndex(mouseX, mouseY);
+        if (queue >= 0) {
+            String name = container.view.queueName(queue);
+            return fits(fontRenderer, name, queueNameWidth(queue)) ? null : List.of(name);
+        }
+        if (!inList(mouseX, mouseY)) return null;
+        int contentY = mouseY - guiTop - LIST_Y + scrollbar.getCurrentScroll() - SECTION_HEIGHT;
+        if (contentY >= 0 && contentY < materialHeight() && !container.view.materials.isEmpty()) {
             int column = (mouseX - guiLeft - LIST_X) / MATERIAL_WIDTH;
-            int index = rowY / MATERIAL_HEIGHT * MATERIAL_COLUMNS + column;
-            if (column < MATERIAL_COLUMNS && index < container.view.materials.size() && rowY % MATERIAL_HEIGHT < 27) {
-                var material = container.view.materials.get(index);
-                drawHoveringText(List.of(material.name(), material.amounts()), mouseX, mouseY, fontRenderer);
-            }
-            return;
+            int index = contentY / MATERIAL_HEIGHT * MATERIAL_COLUMNS + column;
+            if (column >= MATERIAL_COLUMNS || index >= container.view.materials.size()) return null;
+            var material = container.view.materials.get(index);
+            return List.of(material.name(), material.amounts());
         }
-        rowY -= materialHeight() + 20;
-        if (rowY >= 0 && rowY < container.view.resources.size() * 32) {
-            var resource = container.view.resources.get(rowY / 32);
-            drawHoveringText(List.of(resource.name(), resource.amounts(), resource.progress()), mouseX, mouseY, fontRenderer);
-        }
+        int resourceY = mouseY - guiTop - LIST_Y + scrollbar.getCurrentScroll() - resourcesOffset();
+        if (resourceY < 0 || resourceY >= container.view.resources.size() * RESOURCE_HEIGHT) return null;
+        var resource = container.view.resources.get(resourceY / RESOURCE_HEIGHT);
+        return List.of(resource.name(), resource.amounts(), resource.progress());
     }
 }

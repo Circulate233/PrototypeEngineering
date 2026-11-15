@@ -1,5 +1,19 @@
 # 实施进度
 
+## 2026-11-15 设备界面收尾修复
+
+审查提交 `334a6bd` 的研究站、网络中心与计算机正式界面并修复以下问题。
+
+研究站容器原先在容器里把队伍 ID 按十六进制解析后调用 `Universe.getTeam`，队伍不存在时会读到 FTB 的空队伍。现改为 `ServerResearch.teamTitle` 在当前服务器会话中按准确队伍身份查找，查不到时抛出异常。界面方面：无访问权限时顶部只显示“暂无研究”、队列显示“队列为空”，现统一显示“无访问权限”；材料区和资源区的绘制与悬停使用不同的高度公式（空材料时悬停偏移 6 像素），现共用同一组区段计算；滑块背景未与 AE 滑块对齐，滚轮在没有滑块时也会改动滚动值，现在只在内容超出时显示并响应；四个队列按钮横向重叠（上移 16 像素按钮放在 21 像素间距、设为当前与移出按钮相互覆盖），现重新排布；百分比在时间超过总量后会超过 100%。
+
+网络中心：最低高度原本被 `BASE_HEIGHT` 修改后与 `MIN_HEIGHT` 不一致，行数变化只改 `guiTop` 而不重新布局，导致 AE 控件和背景错位；手写的滚动条和拖动逻辑替换为 AE `Scrollbar.SMALL`；状态色映射改为完整枚举，不再用 default 分支把新状态归为异常。
+
+计算机：页签由手写点击区改为随布局移动的 AE 按钮，提示条出现时页签、滚动条与点击区域一起移动；滚动条改为 `Scrollbar.SMALL` 并在出现时收窄对应列表；组件页点击选中后不再继续传给父类；对外供给标题右侧的“/t”改为本地化文案；备用中心与暂无可用中心改为等待配色；状态文案合并为一个完整的 switch。
+
+共用 `DeviceGuiDraw` 的文字绘制原先在截断后仍按宽度缩小字号，与改版说明冲突，现统一按原字号截断并以省略号结尾，悬停时显示完整文字。删除不再使用的文案常量与语言条目（研究站 `Accumulated`、`Current`、`TargetLevel`、`WorkingStations`，计算机 `Installed`、`Concurrency`、`RequiredPerItem`、`ProvidedPerItem`），新增 `ComputerGuiText.PerTick`。
+
+验证：10 个修改的 Java 与 2 个语言文件经本机 IDEA MCP 格式化，`get_file_problems(errorsOnly:false)` 全部零诊断，MCP `build_project` 成功。暂存其他会话未提交的 50 个文件后执行 `gradlew.bat build`，271 suites / 1742 tests 全部通过，Spotless 通过。其他会话的未提交改动下存在 3 个与本次界面无关的研究持久化测试失败（`ResearchWorldPersistenceTest`、`TeamResearchCompletionTest`、`ManualResearchSessionTest`），已原样恢复给该会话处理。游戏内画面由用户重启客户端复验。
+
 ## 2026-11-15 提交署名清理
 
 检查全部 Git 引用可达的 226 个提交，发现 4 个本地提交附加了 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`，作者与提交者均为 Circulate233。这些提交未进入 `origin/main`。按用户要求删除全部 4 条署名，并重写对应提交及 3 个后续提交，主分支从 `b33ceb8` 更新为 `a54e905`；预览提交从 `2fb121e` 更新为 `424e281`，下方正式界面记录已同步引用。

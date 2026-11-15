@@ -29,21 +29,25 @@ import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.*;
 
 public class GuiComputer extends AEBaseGui<ContainerComputer> {
     private static final ResourceLocation BACKGROUND = GuiAtlas.texture("gui_network_center");
-    private static final int COMPONENT_ROW = 18, RESOURCE_ROW = 18, DETAIL_Y = 202, CONTENT_BOTTOM = 226;
+    private static final int ALERT_Y = 28, ALERT_HEIGHT = 18, STAT_HEIGHT = 30, STAT_WIDTH = 116, TAB_HEIGHT = 14;
+    private static final int PANEL_X = 12, PANEL_WIDTH = 360, PANEL_BOTTOM = 230;
+    private static final int COMPONENT_ROW = 18, RESOURCE_ROW = 18, DETAIL_HEIGHT = 24;
+    private static final int LEFT_X = 20, RIGHT_X = 202, COLUMN_WIDTH = 162, SCROLL_WIDTH = 7;
     private final PageTab[] tabs = new PageTab[2];
-    private final Scrollbar listScroll = new Scrollbar(), demandScroll = new Scrollbar(), outputScroll = new Scrollbar();
-    private int page, selectedComponent, statsY, bodyY, listY, resourceY, componentRows, resourceRows;
+    private final Scrollbar listScroll = new Scrollbar(Scrollbar.SMALL), demandScroll = new Scrollbar(Scrollbar.SMALL),
+        outputScroll = new Scrollbar(Scrollbar.SMALL);
+    private int page, selectedComponent, layoutStatsY = -1, statsY, bodyY, listY, resourceY, detailY, componentRows, resourceRows;
     private List<ComputerDetailsPacket.Component> knownComponents;
     private final ObjectArrayList<ComponentText> componentText = new ObjectArrayList<>();
     private NetworkWorkState knownNetwork;
     private ComputerController.SupplyState knownSupply;
-    private boolean knownFormed;
-    private String stateText, structureText;
+    private boolean knownFormed, stateKnown;
+    private String stateText = "", structureText = "", alertText = "";
     private long knownConcurrency = -1, knownInstalled = -1, knownPaid = -1, knownRequired = -1, knownAvailable = -1;
     private String concurrencyText = "", installedText = "", energyText = "", availableText = "";
-    private String titleText, alertText, concurrencyLabel, installedLabel, demandLabel, demandHint, outputLabel;
+    private String titleText, concurrencyLabel, installedLabel, demandLabel, demandHint, outputLabel, outputHint;
     private String energyLabel, availableLabel, componentLabel, countLabel, concurrencyColumn, energyColumn, stateLabel;
-    private String runningLabel, pausedLabel, emptyComponents, emptyOutput, requiredLabel, providedLabel;
+    private String runningLabel, pausedLabel, emptyComponents, emptyOutput, requiredLabel, providedLabel, noneLabel;
 
     public GuiComputer(ContainerComputer container, InventoryPlayer player) {
         super(container, player);
@@ -52,7 +56,7 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         var labels = new ComputerGuiText[]{ComputerGuiText.Overview, ComputerGuiText.Components};
         for (int index = 0; index < tabs.length; index++) {
             tabs[index] = new PageTab(index, labels[index]);
-            widgets.add("page" + index, tabs[index], new Point(18 + index * 62, 0));
+            widgets.add("page" + index, tabs[index]);
         }
         listScroll.setCaptureMouseWheel(false);
         demandScroll.setCaptureMouseWheel(false);
@@ -72,8 +76,8 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
     public void initGui() {
         super.initGui();
         knownComponents = null;
-        stateText = structureText = null;
-        statsY = 0;
+        stateKnown = false;
+        layoutStatsY = -1;
         knownConcurrency = knownInstalled = knownPaid = knownRequired = knownAvailable = -1;
         titleText = container.getGuiTitle().getFormattedText();
         concurrencyLabel = ComputerGuiText.ConcurrencyLabel.getLocal();
@@ -81,6 +85,7 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         demandLabel = ComputerGuiText.ComponentResources.getLocal();
         demandHint = ComputerGuiText.AvailableDemand.getLocal();
         outputLabel = ComputerGuiText.OutputResources.getLocal();
+        outputHint = ComputerGuiText.PerTick.getLocal();
         energyLabel = ComputerGuiText.EnergyUse.getLocal();
         availableLabel = ComputerGuiText.EnergyAvailable.getLocal();
         componentLabel = ComputerGuiText.Component.getLocal();
@@ -94,6 +99,7 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         emptyOutput = NetworkCenterGuiText.NoResources.getLocal();
         requiredLabel = ComputerGuiText.RequiredPerItemLabel.getLocal();
         providedLabel = ComputerGuiText.ProvidedPerItemLabel.getLocal();
+        noneLabel = ComputerGuiText.None.getLocal();
         for (var tab : tabs) tab.title = tab.label.getLocal();
         container.demandView.invalidateText();
         container.outputView.invalidateText();
@@ -104,25 +110,35 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
             || container.supplyState == ComputerController.SupplyState.ENERGY_SHORTAGE;
     }
 
+    /**
+     * The alert bar only exists while components are short; everything below it moves with it.
+     */
+    private void layout() {
+        statsY = shortage() ? ALERT_Y + ALERT_HEIGHT + 4 : ALERT_Y;
+        if (layoutStatsY == statsY) return;
+        layoutStatsY = statsY;
+        bodyY = statsY + STAT_HEIGHT + 4 + TAB_HEIGHT;
+        detailY = PANEL_BOTTOM - 6 - DETAIL_HEIGHT;
+        listY = bodyY + 18;
+        resourceY = bodyY + 20;
+        componentRows = (detailY - 3 - listY) / COMPONENT_ROW;
+        resourceRows = (PANEL_BOTTOM - 6 - resourceY) / RESOURCE_ROW;
+        for (int index = 0; index < tabs.length; index++) {
+            tabs[index].x = guiLeft + PANEL_X + 6 + index * (PageTab.WIDTH - 1);
+            tabs[index].y = guiTop + bodyY - TAB_HEIGHT;
+        }
+        listScroll.setPosition(new Point(PANEL_X + PANEL_WIDTH - 6 - SCROLL_WIDTH, listY));
+        listScroll.setHeight(componentRows * COMPONENT_ROW);
+        demandScroll.setPosition(new Point(LEFT_X + COLUMN_WIDTH - SCROLL_WIDTH, resourceY));
+        demandScroll.setHeight(resourceRows * RESOURCE_ROW);
+        outputScroll.setPosition(new Point(RIGHT_X + COLUMN_WIDTH - 2 - SCROLL_WIDTH, resourceY));
+        outputScroll.setHeight(resourceRows * RESOURCE_ROW);
+    }
+
     @Override
     protected void updateBeforeRender() {
         super.updateBeforeRender();
-        int nextStatsY = shortage() ? 51 : 30;
-        if (statsY != nextStatsY) {
-            statsY = nextStatsY;
-            bodyY = statsY + 56;
-            listY = bodyY + 20;
-            resourceY = bodyY + 24;
-            componentRows = (DETAIL_Y - listY - 3) / COMPONENT_ROW;
-            resourceRows = (CONTENT_BOTTOM - resourceY) / RESOURCE_ROW;
-            for (var tab : tabs) tab.y = guiTop + bodyY - 14;
-            listScroll.setPosition(new Point(359, listY));
-            listScroll.setHeight(componentRows * COMPONENT_ROW);
-            demandScroll.setPosition(new Point(176, resourceY));
-            demandScroll.setHeight(resourceRows * RESOURCE_ROW);
-            outputScroll.setPosition(new Point(359, resourceY));
-            outputScroll.setHeight(resourceRows * RESOURCE_ROW);
-        }
+        layout();
         configureScroll(listScroll, container.components.size(), componentRows, page != 0);
         configureScroll(demandScroll, container.demandView.rows().size() + 2, resourceRows, page == 0);
         configureScroll(outputScroll, container.outputView.rows().size(), resourceRows, page == 0);
@@ -133,25 +149,23 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
                 var row = knownComponents.get(index);
                 String name = row.item().getDisplayName().getFormattedText();
                 String required = resources(row.required()) + ", FE " + GuiNumbers.grouped(row.energy()) + "/t";
-                String provided = resources(row.provided()) + ", " + concurrencyLabel
-                    + " " + GuiNumbers.grouped(row.concurrency());
-                String requiredFull = ComputerGuiText.RequiredPerItem.getLocal(required);
-                String providedFull = providedLabel + ": " + provided;
+                String provided = resources(row.provided()) + ", " + concurrencyLabel + " " + GuiNumbers.grouped(row.concurrency());
                 componentText.add(new ComponentText(name, "×" + GuiNumbers.grouped(row.count()),
                     GuiNumbers.grouped(Math.multiplyExact(row.count(), row.concurrency())),
                     GuiNumbers.grouped(Math.multiplyExact(row.count(), row.energy())), required, provided,
-                    List.of(name, requiredFull, providedFull), List.of(requiredFull, providedFull)));
+                    List.of(name, requiredLabel + ": " + required, providedLabel + ": " + provided)));
             }
             selectedComponent = Math.clamp(selectedComponent, 0, Math.max(0, componentText.size() - 1));
         }
-        if (stateText == null || knownNetwork != container.networkState || knownSupply != container.supplyState) {
+        if (!stateKnown || knownNetwork != container.networkState || knownSupply != container.supplyState) {
+            stateKnown = true;
             knownNetwork = container.networkState;
             knownSupply = container.supplyState;
-            stateText = status().getLocal();
-            alertText = (container.supplyState == ComputerController.SupplyState.RESOURCE_SHORTAGE
-                ? ComputerGuiText.ResourceShortage : ComputerGuiText.EnergyShortage).getLocal();
+            stateText = stateMessage().getLocal();
+            alertText = container.supplyState == ComputerController.SupplyState.ENERGY_SHORTAGE
+                ? ComputerGuiText.EnergyShortage.getLocal() : ComputerGuiText.ResourceShortage.getLocal();
         }
-        if (structureText == null || knownFormed != container.formed) {
+        if (structureText.isEmpty() || knownFormed != container.formed) {
             knownFormed = container.formed;
             structureText = (container.formed ? MachineGuiText.Formed : MachineGuiText.NotFormed).getLocal();
         }
@@ -179,7 +193,7 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         scrollbar.setVisible(pageVisible && size > visible);
     }
 
-    private static String resources(Reference2DoubleMap<NetworkResourceType> values) {
+    private String resources(Reference2DoubleMap<NetworkResourceType> values) {
         var labels = new StringBuilder();
         for (var entry : values.reference2DoubleEntrySet()) {
             if (entry.getDoubleValue() != 0) {
@@ -187,20 +201,31 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
                 labels.append(entry.getKey().displayName()).append(' ').append(entry.getKey().format(entry.getDoubleValue()));
             }
         }
-        return labels.isEmpty() ? ComputerGuiText.None.getLocal() : labels.toString();
+        return labels.isEmpty() ? noneLabel : labels.toString();
+    }
+
+    private int demandWidth() {
+        return COLUMN_WIDTH - (demandScroll.isVisible() ? SCROLL_WIDTH + 3 : 0);
+    }
+
+    private int outputWidth() {
+        return COLUMN_WIDTH - 2 - (outputScroll.isVisible() ? SCROLL_WIDTH + 3 : 0);
+    }
+
+    private int componentWidth() {
+        return PANEL_WIDTH - 12 - (listScroll.isVisible() ? SCROLL_WIDTH + 3 : 0);
     }
 
     @Override
     public void drawBG(int x, int y, int mouseX, int mouseY, float partialTicks) {
         GuiAtlas.draw(BACKGROUND, x, y, 0, 0, xSize, ySize, 384, 242);
-        if (shortage()) bordered(x + 12, y + 29, 360, 18, Tone.BAD.background, Tone.BAD.border);
-        for (int index = 0; index < 3; index++) panel(x + 12 + index * 122, y + statsY, 116, 32);
-        panel(x + 12, y + bodyY, 360, 230 - bodyY);
-        if (page == 0) rect(x + 192, y + bodyY + 7, 1, 216 - bodyY, LINE);
-        else rect(x + 20, y + DETAIL_Y - 3, 344, 1, LINE);
-        if (listScroll.isVisible()) GuiAtlas.inset(x + 358, y + listY - 1, 14, componentRows * COMPONENT_ROW + 2);
-        if (demandScroll.isVisible()) GuiAtlas.inset(x + 175, y + resourceY - 1, 14, resourceRows * RESOURCE_ROW + 2);
-        if (outputScroll.isVisible()) GuiAtlas.inset(x + 358, y + resourceY - 1, 14, resourceRows * RESOURCE_ROW + 2);
+        if (shortage())
+            bordered(x + PANEL_X, y + ALERT_Y, PANEL_WIDTH, ALERT_HEIGHT, Tone.BAD.background, Tone.BAD.border);
+        for (int index = 0; index < 3; index++)
+            panel(x + PANEL_X + index * (STAT_WIDTH + 6), y + statsY, STAT_WIDTH, STAT_HEIGHT);
+        panel(x + PANEL_X, y + bodyY, PANEL_WIDTH, PANEL_BOTTOM - bodyY);
+        if (page == 0) rect(x + 192, y + bodyY + 6, 1, PANEL_BOTTOM - bodyY - 12, LINE);
+        else rect(x + LEFT_X, y + detailY - 3, PANEL_WIDTH - 16, 1, LINE);
     }
 
     @Override
@@ -211,18 +236,19 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         int mouseX = Mouse.getEventX() * width / mc.displayWidth;
         int mouseY = height - Mouse.getEventY() * height / mc.displayHeight - 1;
         Scrollbar target = null;
-        if (page != 0 && isPointInRegion(18, listY, 338, componentRows * COMPONENT_ROW, mouseX, mouseY))
+        if (page != 0 && isPointInRegion(PANEL_X + 6, listY, PANEL_WIDTH - 12, componentRows * COMPONENT_ROW, mouseX, mouseY))
             target = listScroll;
-        if (page == 0 && isPointInRegion(20, resourceY, demandScroll.isVisible() ? 151 : 162, resourceRows * RESOURCE_ROW, mouseX, mouseY))
+        else if (page == 0 && isPointInRegion(LEFT_X, resourceY, COLUMN_WIDTH, resourceRows * RESOURCE_ROW, mouseX, mouseY))
             target = demandScroll;
-        if (page == 0 && isPointInRegion(203, resourceY, outputScroll.isVisible() ? 151 : 161, resourceRows * RESOURCE_ROW, mouseX, mouseY))
+        else if (page == 0 && isPointInRegion(RIGHT_X, resourceY, COLUMN_WIDTH, resourceRows * RESOURCE_ROW, mouseX, mouseY))
             target = outputScroll;
-        if (target != null) target.setCurrentScroll(target.getCurrentScroll() - Integer.signum(delta));
+        if (target != null && target.isVisible())
+            target.setCurrentScroll(target.getCurrentScroll() - Integer.signum(delta));
     }
 
-    private LocalizationEnum status() {
+    private LocalizationEnum stateMessage() {
         if (container.networkState == null) return NetworkCenterGuiText.NoState;
-        if (container.networkState != NetworkWorkState.ACTIVE_DEVICE) return switch (container.networkState) {
+        return switch (container.networkState) {
             case UNFORMED -> NetworkCenterGuiText.Unformed;
             case OWNER_TEAM_REJECTED -> NetworkCenterGuiText.TeamRejected;
             case NO_ACTIVE_CENTER -> NetworkCenterGuiText.NoActiveCenter;
@@ -230,16 +256,18 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
             case INSUFFICIENT_THREADS -> NetworkCenterGuiText.NoConcurrency;
             case INSUFFICIENT_POWER -> NetworkCenterGuiText.NoPower;
             case SAME_TYPE_CONFLICT -> NetworkCenterGuiText.Standby;
-            default -> NetworkCenterGuiText.Active;
-        };
-        return switch (container.supplyState) {
-            case ACTIVE -> ComputerGuiText.Running;
-            case RESOURCE_SHORTAGE, ENERGY_SHORTAGE -> ComputerGuiText.Stopped;
-            case WAITING -> ComputerGuiText.RecipeWaiting;
+            case ACTIVE_CENTER, ACTIVE_DATA_CENTER -> NetworkCenterGuiText.Active;
+            case ACTIVE_DEVICE -> switch (container.supplyState) {
+                case ACTIVE -> ComputerGuiText.Running;
+                case RESOURCE_SHORTAGE, ENERGY_SHORTAGE -> ComputerGuiText.Stopped;
+                case WAITING -> ComputerGuiText.RecipeWaiting;
+            };
         };
     }
 
     private Tone statusTone() {
+        if (container.networkState == NetworkWorkState.SAME_TYPE_CONFLICT || container.networkState == NetworkWorkState.NO_ACTIVE_CENTER)
+            return Tone.WAIT;
         if (container.networkState != NetworkWorkState.ACTIVE_DEVICE) return Tone.BAD;
         return switch (container.supplyState) {
             case ACTIVE -> Tone.GOOD;
@@ -248,42 +276,45 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         };
     }
 
-    private void label(String value, int x, int y, int width, int color) {
-        text(fontRenderer, value, x, y, width, color);
+    private int statusX() {
+        return 372 - statusWidth(fontRenderer, stateText);
     }
 
-    private void alignRight(String value, int edge, int y, int width, int color) {
-        right(fontRenderer, value, edge, y, width, 10, color);
+    private int structureWidth() {
+        return Math.min(90, fontRenderer.getStringWidth(structureText));
+    }
+
+    private int titleWidth() {
+        return statusX() - 8 - structureWidth() - 8 - 18;
     }
 
     @Override
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        int statusX = 366 - statusWidth(fontRenderer, stateText);
-        int structureWidth = Math.min(85, fontRenderer.getStringWidth(structureText));
-        int structureX = statusX - structureWidth - 8;
-        label(titleText, 16, 12, structureX - 22, TEXT);
-        label(structureText, structureX, 12, structureWidth, SOFT);
-        DeviceGuiDraw.status(fontRenderer, stateText, statusX, 12, statusTone());
+        int titleWidth = Math.min(titleWidth(), fontRenderer.getStringWidth(titleText));
+        text(fontRenderer, titleText, 18, 10, titleWidth, TEXT);
+        text(fontRenderer, structureText, 18 + titleWidth + 8, 10, structureWidth(), SOFT);
+        status(fontRenderer, stateText, statusX(), 10, statusTone());
         if (shortage()) {
-            Icon.INVALID.getBlitter().dest(18, 30, 16, 16).blit();
-            label(alertText, 40, 33, 324, BAD);
+            Icon.INVALID.getBlitter().dest(PANEL_X + 4, ALERT_Y + 1, 16, 16).blit();
+            text(fontRenderer, alertText, PANEL_X + 24, ALERT_Y + 4, PANEL_WIDTH - 30, BAD);
         }
-        stat(concurrencyLabel, concurrencyText, 20, TEXT);
-        stat(installedLabel, installedText, 142, TEXT);
-        stat(energyLabel, energyText, 264, container.energyPaid < container.energyRequired ? BAD : TEXT);
+        stat(concurrencyLabel, concurrencyText, 0, TEXT);
+        stat(installedLabel, installedText, 1, TEXT);
+        stat(energyLabel, energyText, 2, container.energyPaid < container.energyRequired ? BAD : TEXT);
         if (page == 0) drawOverview();
         else drawComponents(mouseX, mouseY);
     }
 
-    private void stat(String title, String value, int x, int color) {
-        label(title, x, statsY + 3, 100, SOFT);
-        GuiLabel.draw(fontRenderer, value, x, statsY + 16, 100, 12, color, false);
+    private void stat(String title, String value, int index, int color) {
+        int x = PANEL_X + index * (STAT_WIDTH + 6) + 7;
+        text(fontRenderer, title, x, statsY + 4, STAT_WIDTH - 14, SOFT);
+        text(fontRenderer, value, x, statsY + 17, STAT_WIDTH - 14, color);
     }
 
     private void pair(String name, String amount, int x, int y, int width, int color) {
         int amountWidth = Math.min(fontRenderer.getStringWidth(amount), width * 3 / 5);
-        label(name, x, y, width - amountWidth - 5, TEXT);
-        alignRight(amount, x + width, y, amountWidth, color);
+        text(fontRenderer, name, x, y, width - amountWidth - 6, TEXT);
+        right(fontRenderer, amount, x + width, y, amountWidth, color);
     }
 
     private static double fraction(double available, double required) {
@@ -291,79 +322,96 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
     }
 
     private void drawOverview() {
-        label(demandLabel, 20, bodyY + 7, 84, TEXT);
-        right(fontRenderer, demandHint, 182, bodyY + 7, 73, 8, SOFT);
+        int headerY = bodyY + 6;
+        text(fontRenderer, demandLabel, LEFT_X, headerY, 80, TEXT);
+        right(fontRenderer, demandHint, LEFT_X + COLUMN_WIDTH, headerY, COLUMN_WIDTH - 86, SOFT);
         var demands = container.demandView.rows();
-        int width = demandScroll.isVisible() ? 151 : 162;
+        int width = demandWidth();
         for (int row = 0, offset = demandScroll.getCurrentScroll(); row < resourceRows && offset + row < demands.size() + 2; row++) {
             int index = offset + row, y = resourceY + row * RESOURCE_ROW;
-            if (row > 0) rect(20, y - 2, width, 1, LINE);
+            if (row > 0) rect(LEFT_X, y - 2, width, 1, LINE);
             if (index < demands.size()) {
                 var value = demands.get(index);
                 boolean satisfied = value.occupied() >= value.capacity();
-                pair(value.name(), value.amountsText(), 20, y, width, satisfied ? TEXT : BAD);
-                progress(20, y + 12, width, 2, fraction(value.occupied(), value.capacity()), satisfied ? GOOD : BAD);
+                pair(value.name(), value.amountsText(), LEFT_X, y, width, satisfied ? TEXT : BAD);
+                progress(LEFT_X, y + 12, width, 2, fraction(value.occupied(), value.capacity()), satisfied ? GOOD : BAD);
             } else if (index == demands.size()) {
                 boolean satisfied = container.energyPaid >= container.energyRequired;
-                pair(energyLabel, energyText, 20, y, width, satisfied ? TEXT : BAD);
-                progress(20, y + 12, width, 2, fraction(container.energyPaid, container.energyRequired), satisfied ? GOOD : BAD);
-            } else pair(availableLabel, availableText, 20, y, width, TEXT);
+                pair(energyLabel, energyText, LEFT_X, y, width, satisfied ? TEXT : BAD);
+                progress(LEFT_X, y + 12, width, 2, fraction(container.energyPaid, container.energyRequired), satisfied ? GOOD : BAD);
+            } else pair(availableLabel, availableText, LEFT_X, y, width, TEXT);
         }
-        label(outputLabel, 203, bodyY + 7, 140, TEXT);
-        right(fontRenderer, "/t", 364, bodyY + 7, 16, 8, SOFT);
+        int outputRight = RIGHT_X + COLUMN_WIDTH - 2;
+        int hintWidth = fontRenderer.getStringWidth(outputHint);
+        text(fontRenderer, outputLabel, RIGHT_X, headerY, COLUMN_WIDTH - hintWidth - 8, TEXT);
+        right(fontRenderer, outputHint, outputRight, headerY, hintWidth, SOFT);
         var output = container.outputView.rows();
-        int outputWidth = outputScroll.isVisible() ? 151 : 161;
+        int outputWidth = outputWidth();
         if (output.isEmpty())
-            GuiLabel.drawCentered(fontRenderer, emptyOutput, 203, resourceY, outputWidth,
-                resourceRows * RESOURCE_ROW, SOFT, false);
+            centered(fontRenderer, emptyOutput, RIGHT_X, resourceY, COLUMN_WIDTH - 2, resourceRows * RESOURCE_ROW, SOFT);
         for (int row = 0, offset = outputScroll.getCurrentScroll(); row < resourceRows && offset + row < output.size(); row++) {
             var value = output.get(offset + row);
             int y = resourceY + row * RESOURCE_ROW;
-            if (row > 0) rect(203, y - 2, outputWidth, 1, LINE);
-            pair(value.name(), value.capacityText(), 203, y, outputWidth, TEXT);
+            if (row > 0) rect(RIGHT_X, y - 2, outputWidth, 1, LINE);
+            pair(value.name(), value.capacityText(), RIGHT_X, y, outputWidth, TEXT);
         }
     }
 
     private void drawComponents(int mouseX, int mouseY) {
+        int width = componentWidth(), left = PANEL_X + 6, right = left + width;
+        int stateRight = right - 4, energyRight = stateRight - 46, concurrencyRight = energyRight - 46, countRight = concurrencyRight - 46;
         int headerY = bodyY + 5;
-        label(componentLabel, 41, headerY, 116, SOFT);
-        alignRight(countLabel, 194, headerY, 32, SOFT);
-        alignRight(concurrencyColumn, 244, headerY, 44, SOFT);
-        alignRight(energyColumn, 290, headerY, 40, SOFT);
-        alignRight(stateLabel, 351, headerY, 45, SOFT);
+        text(fontRenderer, componentLabel, left + 23, headerY, countRight - 36 - left - 23, SOFT);
+        right(fontRenderer, countLabel, countRight, headerY, 36, SOFT);
+        right(fontRenderer, concurrencyColumn, concurrencyRight, headerY, 42, SOFT);
+        right(fontRenderer, energyColumn, energyRight, headerY, 42, SOFT);
+        right(fontRenderer, stateLabel, stateRight, headerY, 42, SOFT);
         boolean running = container.supplyState == ComputerController.SupplyState.ACTIVE;
         String state = running ? runningLabel : pausedLabel;
         int stateWidth = statusWidth(fontRenderer, state);
         for (int row = 0, offset = listScroll.getCurrentScroll(); row < componentRows && offset + row < componentText.size(); row++) {
             var value = componentText.get(offset + row);
             int y = listY + row * COMPONENT_ROW;
-            card(18, y, 338, COMPONENT_ROW - 1, selectedComponent == offset + row,
-                isPointInRegion(18, y, 338, COMPONENT_ROW - 1, mouseX, mouseY));
-            AEKeyRendering.drawInGui(mc, 21, y + 1, container.components.get(offset + row).item());
-            label(value.name, 41, y + 3, 116, TEXT);
-            alignRight(value.count, 194, y + 3, 32, TEXT);
-            alignRight(value.concurrency, 244, y + 3, 44, TEXT);
-            alignRight(value.energy, 290, y + 3, 40, TEXT);
-            DeviceGuiDraw.status(fontRenderer, state, 351 - stateWidth, y + 3, running ? Tone.GOOD : Tone.BAD);
+            card(left, y, width, COMPONENT_ROW - 1, selectedComponent == offset + row,
+                isPointInRegion(left, y, width, COMPONENT_ROW - 1, mouseX, mouseY));
+            AEKeyRendering.drawInGui(mc, left + 3, y, container.components.get(offset + row).item());
+            text(fontRenderer, value.name, left + 23, y + 4, countRight - 36 - left - 27, TEXT);
+            right(fontRenderer, value.count, countRight, y + 4, 36, TEXT);
+            right(fontRenderer, value.concurrency, concurrencyRight, y + 4, 42, TEXT);
+            right(fontRenderer, value.energy, energyRight, y + 4, 42, TEXT);
+            status(fontRenderer, state, stateRight - stateWidth, y + 4, running ? Tone.GOOD : Tone.BAD);
         }
-        if (componentText.isEmpty())
-            GuiLabel.drawCentered(fontRenderer, emptyComponents, 20, listY, 337,
-                componentRows * COMPONENT_ROW, SOFT, false);
-        else {
-            var selected = componentText.get(selectedComponent);
-            int labelWidth = Math.max(fontRenderer.getStringWidth(requiredLabel), fontRenderer.getStringWidth(providedLabel));
-            label(requiredLabel, 20, DETAIL_Y, labelWidth, SOFT);
-            label(providedLabel, 20, DETAIL_Y + 12, labelWidth, SOFT);
-            label(selected.required, 28 + labelWidth, DETAIL_Y, 336 - labelWidth, TEXT);
-            label(selected.provided, 28 + labelWidth, DETAIL_Y + 12, 336 - labelWidth, TEXT);
+        if (componentText.isEmpty()) {
+            centered(fontRenderer, emptyComponents, left, listY, width, componentRows * COMPONENT_ROW, SOFT);
+            return;
         }
+        var selected = componentText.get(selectedComponent);
+        int labelWidth = Math.max(fontRenderer.getStringWidth(requiredLabel), fontRenderer.getStringWidth(providedLabel));
+        text(fontRenderer, requiredLabel, LEFT_X, detailY, labelWidth, SOFT);
+        text(fontRenderer, providedLabel, LEFT_X, detailY + 12, labelWidth, SOFT);
+        text(fontRenderer, selected.required, LEFT_X + labelWidth + 8, detailY, detailTextWidth(labelWidth), TEXT);
+        text(fontRenderer, selected.provided, LEFT_X + labelWidth + 8, detailY + 12, detailTextWidth(labelWidth), TEXT);
+    }
+
+    private int detailTextWidth(int labelWidth) {
+        return PANEL_WIDTH - 16 - labelWidth - 8;
+    }
+
+    private int componentAt(int mouseX, int mouseY) {
+        if (!isPointInRegion(PANEL_X + 6, listY, componentWidth(), componentRows * COMPONENT_ROW, mouseX, mouseY))
+            return -1;
+        int index = listScroll.getCurrentScroll() + (mouseY - guiTop - listY) / COMPONENT_ROW;
+        return index < componentText.size() ? index : -1;
     }
 
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
-        if (button == 0 && page != 0 && isPointInRegion(18, listY, 338, componentRows * COMPONENT_ROW, mouseX, mouseY)) {
-            int selected = listScroll.getCurrentScroll() + (mouseY - guiTop - listY) / COMPONENT_ROW;
-            if (selected < componentText.size()) selectedComponent = selected;
+        if (button == 0 && page != 0) {
+            int index = componentAt(mouseX, mouseY);
+            if (index >= 0) {
+                selectedComponent = index;
+                return;
+            }
         }
         super.mouseClicked(mouseX, mouseY, button);
     }
@@ -371,44 +419,50 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         super.drawScreen(mouseX, mouseY, partialTicks);
-        List<String> tooltip = null;
-        if (page == 0) {
-            if (isPointInRegion(20, resourceY, demandScroll.isVisible() ? 151 : 162, resourceRows * RESOURCE_ROW, mouseX, mouseY)) {
-                int index = demandScroll.getCurrentScroll() + (mouseY - guiTop - resourceY) / RESOURCE_ROW;
-                if (index < container.demandView.rows().size())
-                    tooltip = List.of(container.demandView.rows().get(index).text());
-            }
-            if (isPointInRegion(203, resourceY, outputScroll.isVisible() ? 151 : 161, resourceRows * RESOURCE_ROW, mouseX, mouseY)) {
-                int index = outputScroll.getCurrentScroll() + (mouseY - guiTop - resourceY) / RESOURCE_ROW;
-                if (index < container.outputView.rows().size())
-                    tooltip = List.of(container.outputView.rows().get(index).supplyText());
-            }
-        } else if (isPointInRegion(18, listY, 338, componentRows * COMPONENT_ROW, mouseX, mouseY)) {
-            int index = listScroll.getCurrentScroll() + (mouseY - guiTop - listY) / COMPONENT_ROW;
-            if (index < componentText.size()) tooltip = componentText.get(index).tooltip;
-        } else if (isPointInRegion(20, DETAIL_Y, 344, 24, mouseX, mouseY) && !componentText.isEmpty())
-            tooltip = componentText.get(selectedComponent).details;
-        int statusX = 366 - statusWidth(fontRenderer, stateText);
-        int structureWidth = Math.min(85, fontRenderer.getStringWidth(structureText));
-        int titleWidth = statusX - structureWidth - 30;
-        if (isPointInRegion(16, 12, titleWidth, 10, mouseX, mouseY)) {
-            if (fontRenderer.getStringWidth(titleText) > titleWidth) tooltip = List.of(titleText);
-        } else if (isPointInRegion(statusX, 12, 366 - statusX, 10, mouseX, mouseY)) tooltip = List.of(stateText);
-        else if (shortage() && isPointInRegion(12, 29, 360, 18, mouseX, mouseY)) tooltip = List.of(alertText);
+        var tooltip = tooltip(mouseX, mouseY);
         if (tooltip != null) drawHoveringText(tooltip, mouseX, mouseY, fontRenderer);
     }
 
-    private record ComponentText(String name, String count, String concurrency, String energy, String required,
-                                 String provided, List<String> tooltip, List<String> details) {
+    private List<String> tooltip(int mouseX, int mouseY) {
+        if (isPointInRegion(18, 10, titleWidth(), LINE_HEIGHT, mouseX, mouseY))
+            return fits(fontRenderer, titleText, titleWidth()) ? null : List.of(titleText);
+        if (shortage() && isPointInRegion(PANEL_X, ALERT_Y, PANEL_WIDTH, ALERT_HEIGHT, mouseX, mouseY))
+            return fits(fontRenderer, alertText, PANEL_WIDTH - 30) ? null : List.of(alertText);
+        if (page == 0) {
+            var demands = container.demandView.rows();
+            if (isPointInRegion(LEFT_X, resourceY, demandWidth(), resourceRows * RESOURCE_ROW, mouseX, mouseY)) {
+                int index = demandScroll.getCurrentScroll() + (mouseY - guiTop - resourceY) / RESOURCE_ROW;
+                return index < demands.size() ? List.of(demands.get(index).text()) : null;
+            }
+            var output = container.outputView.rows();
+            if (isPointInRegion(RIGHT_X, resourceY, outputWidth(), resourceRows * RESOURCE_ROW, mouseX, mouseY)) {
+                int index = outputScroll.getCurrentScroll() + (mouseY - guiTop - resourceY) / RESOURCE_ROW;
+                return index < output.size() ? List.of(output.get(index).supplyText()) : null;
+            }
+            return null;
+        }
+        int index = componentAt(mouseX, mouseY);
+        if (index >= 0) return componentText.get(index).tooltip;
+        if (!componentText.isEmpty() && isPointInRegion(LEFT_X, detailY, PANEL_WIDTH - 16, DETAIL_HEIGHT, mouseX, mouseY))
+            return componentText.get(selectedComponent).tooltip.subList(1, 3);
+        return null;
     }
 
+    private record ComponentText(String name, String count, String concurrency, String energy, String required,
+                                 String provided, List<String> tooltip) {
+    }
+
+    /**
+     * Folder tab joined to the page panel; clicking keeps the AE button sound and release handling.
+     */
     private final class PageTab extends AE2Button {
+        private static final int WIDTH = 62;
         private final int target;
         private final ComputerGuiText label;
-        private String title;
+        private String title = "";
 
         private PageTab(int target, ComputerGuiText label) {
-            super(0, 0, 62, 15, label.text(), () -> selectPage(target));
+            super(0, 0, WIDTH, TAB_HEIGHT, label.text(), () -> selectPage(target));
             this.target = target;
             this.label = label;
         }
@@ -418,11 +472,11 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
             if (!visible) return;
             hovered = mouseX >= x && mouseY >= y && mouseX < x + width && mouseY < y + height;
             boolean selected = page == target;
-            int top = y - (selected ? 1 : 0);
-            rect(x, top, width, height + (selected ? 2 : 0), LIGHT);
-            rect(x + 1, top + 1, width - 2, height + (selected ? 1 : -1), selected ? PANEL : hovered ? 0xb6baca : SLOT);
-            GuiLabel.drawCentered(minecraft.fontRenderer, title, x + 4, top + 2,
-                width - 8, 11, selected ? TEXT : SOFT, false);
+            int top = selected ? y - 1 : y + 1;
+            int bottom = selected ? y + height + 1 : y + height;
+            rect(x, top, width, bottom - top, LIGHT);
+            rect(x + 1, top + 1, width - 2, bottom - top - 1, selected ? PANEL : hovered ? HOVER : SLOT);
+            centered(minecraft.fontRenderer, title, x + 4, top + 2, width - 8, LINE_HEIGHT, selected ? TEXT : SOFT);
         }
     }
 }
