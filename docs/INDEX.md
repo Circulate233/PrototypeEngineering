@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-15 结构控制器测试偶发失败已修复：测试夹具的时间片与整体超时对齐，由工作量决定让出，避免默认 5 毫秒时间片打断发布状态断言。临时延迟对照完成，原库存保持、下一 tick 重试及预算断言保留。完整默认 `build`、1739 tests/271 suites、Spotless 与 IDEA MCP 构建通过，修改的 Java 全级零诊断。入口：[实施记录](implementation-status.md)、[结构控制器测试](../src/test/java/com/circulation/prototype_eng/machine/ControllerStructureUpdatesTest.java)。下一步继续内部 FE 场景的游戏复验。
+
 - 2026-11-15 内部 FE 与外部限速分离完成：控制器、计算机、研究站及普通/并行配方按缓存扣能，内部产能按剩余空间写入；Forge 和自动传输保留外部限速。中心删除每格并发说明，计算机需求行显示内部可供 FE，实际消耗单独显示。29 Java、2 语言文件 IDEA MCP 全级零诊断，1739 tests/271 suites、完整构建、Spotless 与 MCP 构建通过。入口：[能源 API](../api.md#仓室读写与容量)、[计算机](computers.md)、[实施记录](implementation-status.md)。下一步用户完整重启，复验一级能源仓缓存足够时双组件 64 FE 扣费及外部限速。
 
 - 2026-11-15 存档与内部同步清理完成：移除固定 Version/Schema 的读写和拒绝分支、普通 Map/Set 重复键检查、机器数据同步的临时去重集合及渲染分片 Count。30 生产 Java、13 测试 Java 已 IDEA 格式化并全级零诊断，1738 tests/271 suites、Spotless、完整构建和 MCP 构建通过。入口：[审查](defensive-programming-audit.md)、[API](../api.md)、[实施记录](implementation-status.md)。此前 V7/V6 的数字限制已删除，未增加历史字段迁移。用户追加的中心说明与计算机 FE 问题已由后续内部能源修订处理。

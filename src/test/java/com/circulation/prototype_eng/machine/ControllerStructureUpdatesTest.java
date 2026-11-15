@@ -38,7 +38,6 @@ import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -107,7 +106,7 @@ class ControllerStructureUpdatesTest {
             longer.host.configuration = new StructureConfiguration(new TemplateStructure(id("longer"), BlockOrientation.NORTH_UP,
                 BlockPos.ORIGIN, false, new StructurePattern(new BlockPos2ObjectMap<>(pattern)), List.of(), List.of()), BlockOrientation.NORTH_UP);
             for (var fixture : List.of(longer, shorter)) {
-                fixture.updates.checkPolicy(new StructureCheckPolicy(1_000_000, Duration.ofSeconds(2), Duration.ofSeconds(5), StructureCheckPolicy.FinalMode.COOPERATIVE));
+                fixture.checkPolicy(1_000_000, StructureCheckPolicy.FinalMode.COOPERATIVE);
                 fixture.host.workerRead = () -> {
                 };
             }
@@ -133,7 +132,6 @@ class ControllerStructureUpdatesTest {
     void queuedTicksOfOneHostNeverDispatchTheSameCaptureCursorTwice() {
         try (var fixture = new Fixture()) {
             fixture.tick(0);
-            fixture.updates.checkPolicy(new StructureCheckPolicy(4096, Duration.ofSeconds(2), Duration.ofSeconds(5), StructureCheckPolicy.FinalMode.COOPERATIVE));
             var reads = new AtomicInteger();
             fixture.host.workerRead = reads::incrementAndGet;
             fixture.updates.enqueueTick(5);
@@ -161,7 +159,6 @@ class ControllerStructureUpdatesTest {
             var matchesExited = new AtomicInteger();
             var observations = new AtomicInteger();
             for (var fixture : List.of(first, second)) {
-                fixture.updates.checkPolicy(new StructureCheckPolicy(4096, Duration.ofSeconds(2), Duration.ofSeconds(5), StructureCheckPolicy.FinalMode.COOPERATIVE));
                 fixture.host.workerRead = () -> {
                     assertNotSame(fixture.owner, Thread.currentThread());
                     reading.countDown();
@@ -245,14 +242,14 @@ class ControllerStructureUpdatesTest {
     @Test
     void strictFirstTickReportsInsufficientWorkAndAChangedAllowanceCanComplete() {
         try (var fixture = new Fixture()) {
-            fixture.updates.checkPolicy(new StructureCheckPolicy(1, Duration.ofSeconds(5), StructureCheckPolicy.FinalMode.STRICT));
+            fixture.checkPolicy(1, StructureCheckPolicy.FinalMode.STRICT);
             fixture.tick(73);
             assertEquals(StructureCheckPolicy.Status.NEEDS_MORE_BUDGET, fixture.updates.checkStatus());
             assertFalse(fixture.lifecycle().formed());
             assertEquals(0, fixture.changes);
             fixture.tick(74);
             assertEquals(0, fixture.changes);
-            fixture.updates.checkPolicy(new StructureCheckPolicy(4096, Duration.ofSeconds(5), StructureCheckPolicy.FinalMode.STRICT));
+            fixture.checkPolicy(4096, StructureCheckPolicy.FinalMode.STRICT);
             fixture.tick(75);
             assertTrue(fixture.lifecycle().formed());
             assertEquals(StructureCheckPolicy.Status.MATCHED, fixture.updates.checkStatus());
@@ -268,7 +265,7 @@ class ControllerStructureUpdatesTest {
                 new StructurePattern(new BlockPos2ObjectMap<>(Map.of(BODY, StructurePredicates.test(MARKER, "body"::equals)))), List.of(), List.of()),
                 BlockOrientation.NORTH_UP);
             var accepted = fixture.lifecycle().structureMatch();
-            fixture.updates.checkPolicy(new StructureCheckPolicy(1, Duration.ofSeconds(5), StructureCheckPolicy.FinalMode.COOPERATIVE));
+            fixture.checkPolicy(1, StructureCheckPolicy.FinalMode.COOPERATIVE);
             long now = 30;
             do {
                 fixture.tick(now++);
@@ -278,7 +275,7 @@ class ControllerStructureUpdatesTest {
             } while (fixture.updates.checkStatus() == StructureCheckPolicy.Status.YIELD && now < 150);
             assertEquals(StructureCheckPolicy.Status.NEEDS_MORE_BUDGET, fixture.updates.checkStatus());
             assertEquals(3, fixture.updates.requiredAtomicUnits());
-            fixture.updates.checkPolicy(new StructureCheckPolicy(3, Duration.ofSeconds(5), StructureCheckPolicy.FinalMode.COOPERATIVE));
+            fixture.checkPolicy(3, StructureCheckPolicy.FinalMode.COOPERATIVE);
             var discoveries = new AtomicInteger();
             var replacement = new ExternalHatch();
             fixture.host.onDiscovery = _ -> {
@@ -593,7 +590,6 @@ class ControllerStructureUpdatesTest {
     @Test
     void currentWorkerFailureAndRejectedSubmissionFaultThroughTheRefreshFailureBoundary() {
         try (var fixture = new Fixture()) {
-            fixture.updates.checkPolicy(new StructureCheckPolicy(4096, Duration.ofSeconds(2), Duration.ofSeconds(5), StructureCheckPolicy.FinalMode.COOPERATIVE));
             fixture.tick(0);
             var failure = new AssertionError("current evaluation failed");
             fixture.host.configuration = configuration(() -> {
@@ -648,6 +644,13 @@ class ControllerStructureUpdatesTest {
                 onChanged.run();
                 changes++;
             });
+            checkPolicy(StructureCheckPolicy.DEFAULT.workUnits(), StructureCheckPolicy.DEFAULT.finalMode());
+        }
+
+        private void checkPolicy(long workUnits, StructureCheckPolicy.FinalMode finalMode) {
+            var timeout = StructureCheckPolicy.DEFAULT.timeout();
+            // Lifecycle assertions yield on work units; the overall deadline bounds stalled workers.
+            updates.checkPolicy(new StructureCheckPolicy(workUnits, timeout, timeout, finalMode));
         }
 
         private MachineInstance machine() {

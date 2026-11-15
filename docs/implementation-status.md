@@ -1,5 +1,15 @@
 # 实施进度
 
+## 2026-11-15 结构控制器测试时间片修正
+
+用户的完整构建在 `unstablePublicationPreservesAcceptedBindingsAndRetriesOnTheVeryNextTick` 中预期 `UNAVAILABLE`，实际得到 `YIELD`。该测试直接使用运行时默认的 5 毫秒时间片，线程调度或执行耗时超过时间片时，结构检查会在发布前让出，断言因此依赖机器负载。
+
+`ControllerStructureUpdatesTest` 的夹具现在将时间片设为与整体超时相同的时长，整体超时仍为默认 5 秒；工作量预算控制让出，严格模式和不足预算测试继续使用各自额度。三个重复的默认策略设置已删除，原有库存保持、发布失效、下一 tick 重试和线程协作断言全部保留。生产代码与运行时预算没有修改，没有新增测试。
+
+临时在读取回调加入 20 毫秒延迟进行对照，旧夹具因时间片耗尽返回 `NEEDS_MORE_BUDGET`，修改后同样延迟下 16 项控制器测试全部通过；临时延迟已移除。最终 `gradlew.bat build --console=plain` 通过，1739 tests/271 suites 的失败、错误、跳过均为 0，Spotless 通过。修改的 Java 已通过 IDEA MCP 格式化，逐文件 `get_file_problems(errorsOnly:false)` 的错误、警告、弱警告均为 0，MCP `build_project` 成功。
+
+证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261115/structure-check-test/`，包括 `original-failure.xml`、`delayed-before.xml`、`delayed-after.xml`、对应日志、`gradle-build.log`、`test-totals.json`、`idea-file.json`、`idea-build.json` 与 `final-controller-tests.xml`。本轮本地英文提交，保留用户的 `AGENTS.md` 修改。
+
 ## 2026-11-15 内部 FE 与外部传输限速分离
 
 用户截图中一级能源仓存有 128000 FE，计算机两个组件合计需求 64 FE，结算却只取得 32。原因是 ControllerEnergy、配方需求分配和 EnergyBuffer 的直接访问及预留都应用了外部提取限速。内部消耗现在通过 EnergyInput 读取未预留电量，内部产能通过 EnergyOutput 使用剩余空间；控制器费用、普通及并行配方、单来源及自定义分配都采用这一规则。降低外部限速或设为 0 不会取消内部预留。
