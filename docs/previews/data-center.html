@@ -6,37 +6,42 @@
     #pe-data-center .dc-stage { display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px 2px 16px; }
     #pe-data-center .dc-states { display:flex; flex-wrap:wrap; justify-content:center; gap:4px; font-size:12px; }
     #pe-data-center .dc-states label { display:flex; align-items:center; gap:3px; padding:0 6px; }
-    #pe-data-center .dc-window { width:100%; max-width:640px; padding:10px 12px 12px; border:7px solid transparent; border-image:var(--dc-frame) 4 / 7px stretch; background:var(--dc-base); display:flex; flex-direction:column; gap:8px; }
+    #pe-data-center .dc-window { position:relative; width:100%; max-width:640px; padding:10px 12px 12px; border:7px solid transparent; border-image:var(--dc-frame) 4 / 7px stretch; background:var(--dc-base); display:flex; flex-direction:column; gap:8px; }
     #pe-data-center .dc-title { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:0 10px; min-width:0; }
     #pe-data-center .dc-title-info { display:flex; gap:12px; align-items:center; white-space:nowrap; }
     #pe-data-center .dc-small { font-size:12px; line-height:20px; }
     #pe-data-center .dc-number { white-space:nowrap; font-variant-numeric:tabular-nums; }
     #pe-data-center .dc-good { color:var(--dc-good); }
     #pe-data-center .dc-bad { color:var(--dc-bad); }
-    #pe-data-center .dc-columns { display:grid; grid-template-columns:1fr 1fr; gap:10px; height:236px; }
+    #pe-data-center .dc-columns { display:grid; grid-template-columns:1fr 1fr; gap:10px; height:262px; }
     #pe-data-center .dc-inset { background:var(--dc-panel); border:2px solid var(--dc-light); }
     #pe-data-center .dc-pane { padding:8px; min-width:0; min-height:0; display:flex; flex-direction:column; gap:4px; }
-    #pe-data-center .dc-heading { display:flex; justify-content:space-between; align-items:center; gap:6px; min-height:20px; }
+    #pe-data-center .dc-heading { display:flex; justify-content:space-between; align-items:center; gap:6px; min-height:22px; }
     #pe-data-center .dc-list { list-style:none; margin:0; padding:0 4px 0 0; flex:1; min-height:0; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#878fa5 var(--dc-panel); }
     #pe-data-center .dc-list li + li { border-top:1px solid var(--dc-line); }
     #pe-data-center .dc-entry { display:grid; grid-template-columns:24px minmax(0,1fr) auto; align-items:center; gap:6px; width:100%; height:32px; border:0; padding:3px 5px; background:transparent; color:inherit; font:inherit; text-align:left; }
     #pe-data-center .dc-entry[aria-pressed=true] { background:var(--dc-slot); }
-    #pe-data-center .dc-entry:hover { background:var(--dc-hover); }
+    #pe-data-center .dc-entry:hover:not(:disabled) { background:var(--dc-hover); }
+    #pe-data-center .dc-entry:disabled { opacity:0.5; cursor:default; }
     #pe-data-center .dc-entry img, #pe-data-center .dc-name img { width:24px; height:24px; image-rendering:pixelated; }
     #pe-data-center .dc-entry-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     #pe-data-center .dc-entry-level { font-size:12px; text-align:right; }
     #pe-data-center .dc-empty { display:flex; align-items:center; justify-content:center; flex:1; min-height:60px; font-size:13px; text-align:center; }
-    #pe-data-center .dc-detail { display:flex; flex-direction:column; gap:2px; flex:1; min-height:0; }
+    #pe-data-center .dc-remove { display:flex; flex-direction:column; gap:4px; padding-top:6px; border-top:1px solid var(--dc-line); }
+    #pe-data-center .dc-remove-buttons { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
     #pe-data-center .dc-name { display:grid; grid-template-columns:24px minmax(0,1fr); align-items:center; gap:8px; min-height:28px; }
     #pe-data-center .dc-name span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    #pe-data-center .dc-name.dc-none { grid-template-columns:minmax(0,1fr); font-size:13px; }
     #pe-data-center .dc-pair { display:flex; justify-content:space-between; align-items:center; gap:8px; min-height:20px; }
     #pe-data-center .dc-separator { height:1px; background:var(--dc-line); flex:none; margin:3px 0; }
     #pe-data-center .dc-stepper { display:flex; align-items:center; gap:6px; }
     #pe-data-center .dc-stepper .dc-number { width:22px; text-align:center; }
-    #pe-data-center .dc-step { display:flex; align-items:center; justify-content:center; width:24px; height:22px; padding:0; font:12px/12px "Microsoft YaHei","Segoe UI",sans-serif; color:var(--dc-light); background:transparent; border:4px solid transparent; border-image:var(--dc-button) 2 / 4px stretch; image-rendering:pixelated; }
-    #pe-data-center .dc-step:hover:not(:disabled) { color:#517497; border-image-source:var(--dc-button-hover); }
-    #pe-data-center .dc-step:disabled { opacity:0.5; cursor:default; }
-    #pe-data-center .dc-transfer { display:flex; align-items:center; justify-content:center; gap:10px; padding:6px 0 2px; }
+    #pe-data-center .dc-action, #pe-data-center .dc-step { display:flex; align-items:center; justify-content:center; min-width:0; font:12px/16px "Microsoft YaHei","Segoe UI",sans-serif; color:var(--dc-light); background:transparent; border:4px solid transparent; border-image:var(--dc-button) 2 / 4px stretch; image-rendering:pixelated; white-space:nowrap; }
+    #pe-data-center .dc-action { height:24px; padding:0 6px; }
+    #pe-data-center .dc-step { width:24px; height:22px; padding:0; }
+    #pe-data-center .dc-action:hover:not(:disabled), #pe-data-center .dc-step:hover:not(:disabled) { color:#517497; border-image-source:var(--dc-button-hover); }
+    #pe-data-center .dc-action:disabled, #pe-data-center .dc-step:disabled { opacity:0.5; cursor:default; }
+    #pe-data-center .dc-transfer { display:flex; align-items:center; justify-content:center; gap:10px; padding:4px 0 0; }
     #pe-data-center .dc-arrow { position:relative; width:44px; height:16px; }
     #pe-data-center .dc-arrow::before { content:""; position:absolute; left:0; right:12px; top:5px; height:6px; background:var(--dc-arrow); }
     #pe-data-center .dc-arrow::after { content:""; position:absolute; right:0; top:0; border-left:13px solid var(--dc-arrow); border-top:8px solid transparent; border-bottom:8px solid transparent; }
@@ -55,6 +60,11 @@
     #pe-data-center .dc-inventory-grid { display:grid; grid-template-columns:repeat(9,minmax(0,30px)); }
     #pe-data-center .dc-inventory-grid .dc-slot { width:auto; height:auto; aspect-ratio:1; }
     #pe-data-center .dc-hotbar { margin-top:6px; }
+    #pe-data-center .dc-overview { position:absolute; inset:0; background:#41405480; display:flex; align-items:center; justify-content:center; padding:16px; }
+    #pe-data-center .dc-overview-window { width:100%; max-width:380px; max-height:100%; display:flex; flex-direction:column; gap:6px; padding:10px; background:var(--dc-base); border:7px solid transparent; border-image:var(--dc-frame) 4 / 7px stretch; }
+    #pe-data-center .dc-overview .dc-list { flex:1 1 auto; max-height:260px; background:var(--dc-panel); border:2px solid var(--dc-light); padding:4px; }
+    #pe-data-center .dc-overview .dc-entry { grid-template-columns:24px minmax(0,1fr) auto; }
+    #pe-data-center .dc-policy { font-size:11px; line-height:14px; text-align:right; white-space:nowrap; }
     #pe-data-center .dc-held { position:fixed; z-index:11; width:24px; height:24px; pointer-events:none; }
     #pe-data-center .dc-held img { width:100%; height:100%; image-rendering:pixelated; }
     #pe-data-center .dc-held .dc-count { right:-3px; bottom:-3px; }
@@ -66,7 +76,7 @@
       #pe-data-center .dc-title { flex-wrap:wrap; }
     }
     @media(pointer:coarse) {
-      #pe-data-center .dc-entry { min-height:44px; }
+      #pe-data-center .dc-entry, #pe-data-center .dc-action { min-height:44px; }
     }
   </style>
   <div class="dc-stage viz-dotted-background">
@@ -74,7 +84,7 @@
       <label><input type="radio" name="dc-state" value="active" checked>活动数据库</label>
       <label><input type="radio" name="dc-state" value="inactive">非活动数据库</label>
       <label><input type="radio" name="dc-state" value="pending">存档待确认</label>
-      <label><input type="radio" name="dc-state" value="readonly">无下载权限</label>
+      <label><input type="radio" name="dc-state" value="readonly">无操作权限</label>
       <label><input type="radio" name="dc-state" value="denied">无查看权限</label>
       <label><input type="radio" name="dc-state" value="empty">数据库为空</label>
     </div>
@@ -87,11 +97,20 @@
         <section class="dc-pane dc-inset" aria-label="已存研究">
           <div class="dc-heading"><span>已存研究</span><span class="dc-small">等级</span></div>
           <ul class="dc-list" id="dc-list"></ul>
+          <div class="dc-remove" id="dc-remove">
+            <div class="dc-small" id="dc-remove-text"></div>
+            <button class="dc-action cursor-interaction" type="button" id="dc-remove-start">移出数据库</button>
+            <div class="dc-remove-buttons" id="dc-remove-confirm" hidden>
+              <button class="dc-action cursor-interaction" type="button" id="dc-remove-yes">确认移出</button>
+              <button class="dc-action cursor-interaction" type="button" id="dc-remove-no">取消</button>
+            </div>
+          </div>
         </section>
         <section class="dc-pane dc-inset" aria-label="研究下载">
-          <div class="dc-detail" id="dc-detail">
-            <div class="dc-name"><img id="dc-icon" alt=""><span id="dc-name"></span></div>
-            <div class="dc-pair dc-small"><span>已存等级</span><span class="dc-number" id="dc-stored"></span></div>
+          <div class="dc-heading"><span>研究下载</span><button class="dc-action cursor-interaction" type="button" id="dc-choose">选择研究</button></div>
+          <div id="dc-download">
+            <div class="dc-name" id="dc-name-row"><img id="dc-icon" alt=""><span id="dc-name"></span></div>
+            <div class="dc-pair dc-small"><span>下载来源</span><span id="dc-source"></span></div>
             <div class="dc-pair dc-small">
               <span>下载等级</span>
               <span class="dc-stepper">
@@ -102,8 +121,6 @@
             </div>
             <div class="dc-pair dc-small"><span>研究阶级</span><span class="dc-number" id="dc-research-tier"></span></div>
             <div class="dc-pair dc-small"><span>等级费用</span><span id="dc-cost"></span></div>
-            <div class="dc-separator"></div>
-            <div class="dc-heading"><span>研究下载</span></div>
             <div class="dc-transfer">
               <div class="dc-slot dc-slot-large cursor-interaction" data-slot="input" role="button" aria-label="下载材料槽"></div>
               <div class="dc-arrow" id="dc-arrow" aria-hidden="true"></div>
@@ -111,7 +128,7 @@
             </div>
             <div class="dc-reason" id="dc-reason" aria-live="polite"></div>
           </div>
-          <div class="dc-empty" id="dc-detail-empty"></div>
+          <div class="dc-empty" id="dc-download-empty"></div>
         </section>
       </div>
       <section class="dc-inventory" aria-label="玩家背包">
@@ -119,6 +136,13 @@
         <div class="dc-inventory-grid" id="dc-main"></div>
         <div class="dc-inventory-grid dc-hotbar" id="dc-hotbar"></div>
       </section>
+      <div class="dc-overview" id="dc-overview" hidden>
+        <section class="dc-overview-window" aria-label="研究总览">
+          <div class="dc-heading"><span>研究总览</span><button class="dc-action cursor-interaction" type="button" id="dc-overview-close">返回</button></div>
+          <div class="dc-small">示意：正式选择由研究总览界面提供，这里只模拟选择结果返回数据库界面。</div>
+          <ul class="dc-list" id="dc-overview-list"></ul>
+        </section>
+      </div>
     </section>
   </div>
   <div class="dc-held" id="dc-held" hidden></div>
@@ -127,16 +151,21 @@
     (() => {
       const root = document.getElementById("pe-data-center");
       const assets = {"calculation": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAALVBMVEVHcEwNDRQiJDMsMUIxSmMZGyaKu++qISs1Qk9HZ4d9qdJETVdYZmvYPDqc0/8s9BJGAAAAAXRSTlMAQObYZgAAAFVJREFUCNdjYMAGGAWgtHgglA4qBQsJKV0KAgtJKCmZKoGEJjYbKyspAhle0sbGFo1ABsvCzTYbJUGK3GQOSpaAGCyJklcSwCa5LUl4AGawODzAZjMA1fsQFfrYadUAAAAASUVORK5CYII=", "logic": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAMFBMVEVHcEwNDRQsMUJ1KAIiJDOqISuyZBE1Qk/61kr99V8ZGyZETVdYZmvYPDrpsRXclhPKMKYIAAAAAXRSTlMAQObYZgAAAFBJREFUCNdjYMAKGAWgtOhCKL0qRABMq1xxcQQyRJQuObkXAhniSkrahWJARuImnY1iwUCGvcxBseAGIIO5UexywwSQdrvHEJqB2WACA14AAFoVEF57IMHWAAAAAElFTkSuQmCC", "engineering": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAALVBMVEVHcEwNDRQiJDMsMUIUXlMZGyaqISsgxbU1Qk8RcnrYPDpETVcaqqdK7dlYZms/ezpLAAAAAXRSTlMAQObYZgAAAGFJREFUCNdjYEAGgjA6VQBKhwVCaC3VpUAhRiUtpaAgRSCjSUlZVUlJgIFTwtjIyKhDgIHl4GZj4x2CExgYfKSNXwtOc2BgYCl8JzjNHaTfXXCWOy+IwVIDoRkYXHgZsAEA2PQRhetk6lAAAAAASUVORK5CYII=", "blank1": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAIVBMVEVHcExBP1RpbYhNTWfLzNStsMTy8vKHj6Wc0//a//99qdJajswBAAAAAXRSTlMAQObYZgAAADlJREFUCNdjYCAOGAtCaOY0FwEww8xJNRDC0GwuhDA0FkMYIs6mjmCGUKiLIpjBqKQE0cUgKIjfHgDenwbFxGmADQAAAABJRU5ErkJggg==", "blank2": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAHlBMVEVHcExNTWdpbYhBP1TLzNTy8vKtsMSc0/99qdLa//9Y71hXAAAAAXRSTlMAQObYZgAAAFZJREFUCNdjYCAKMAoKCoBp0dBQRxBLNERJ0SUZxFCqqFByBsoETRcSmi5iwMDoVCGWVAFkMLsIpgARkKGWoqTk4mTAwGCkZGyspAzUxWzMwGBsgMUiAAv7DMDSmG5MAAAAAElFTkSuQmCC", "blank3": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAIVBMVEVHcExNTWdpbYhBP1TLzNStsMSc0//y8vJ9qdKHj6Xa//9YUsghAAAAAXRSTlMAQObYZgAAAG9JREFUCNdjYEACgoIQmrG8XADMEHdSCYYwtBLBDMYStUZPA7BMkoYISEhETVEILCeiIcDYCGYoTZRUmgxUW7RMrGmZpAEDo1OGkFAGkMHsIhgaIhgCZKiGKCm5OAENMlIyNlZSBupiNmZgMDZgAABnhxJhFtbg5AAAAABJRU5ErkJggg==", "disk1": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAJ1BMVEVHcExNTWctaeFBP1TLzNTe3+Oan7Q4lP9pbYjy8vKHj6WtsMRAwf99HS0HAAAAAXRSTlMAQObYZgAAAGhJREFUCNdjYEACjMJQWsTFAEK7ujhD+CEuICFR11AnJVegkJiSUki5SogBg5hOuar7IaCQmNLxotAajWYGxnTN0MjpWs1ARdUzpy0CijAwZm9JXtEMMlJsS1YzxOjsxQYQy4QNkJ0AAN7dF3/YDeWSAAAAAElFTkSuQmCC", "disk2": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAJ1BMVEVHcEyAl/9NTWdBP1TLzNTe3+Oan7SAyv9pbYjy8vKtsMSHj6WA9/+ci8/5AAAAAXRSTlMAQObYZgAAAGhJREFUCNdjYEACTMpQWsXFAEK7ujhD+CEuICFV11BHQVegkJqgYEi5SIgBg5pMuaj7QaCQmuDxwtAaiWYGpnTJ0Mjp0s1ARVUzp20EijAwZS1J3tEMMlJtSXYzxOiszQYQy5QNkJ0AAOdMF41Ge//aAAAAAElFTkSuQmCC", "disk3": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAJ1BMVEVHcExNTWcisK7LzNRBP1Te3+Oan7QvzLdpbYjy8vKtsMSHj6Vl6MkSTpdnAAAAAXRSTlMAQObYZgAAAGhJREFUCNdjYEACjCJQWtjYAUKbGptA+MHGICFR01AjJVOgkJiSUnC5crADg5hOuar5IaCQmNLxotAajRYGxnTN0Mjp2i1ARVUzp20CijAwZi1O2dECMlJscXYLxOisLQ4Qy0QckJ0AAKJoFxyZCxahAAAAAElFTkSuQmCC", "silicon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAGFBMVEVHcEw1Qk8NDRQsMUIiJDMZGyZETVdYZmsY232GAAAAAXRSTlMAQObYZgAAAEdJREFUCNdjYMAHWENDIYwQQcEAsIBjeqIQmGGYViaoAGIYiyULgxmOhibGIAaTs7CzM4jBoGLiYgJmMLkYO0EMUlJSwGsjAIvICMjitz7TAAAAAElFTkSuQmCC", "certus": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAHlBMVEVHcEw8X4ApQFdskLOs6f99qdL+///a//+c0/+Ku+9zEPfqAAAAAXRSTlMAQObYZgAAAFJJREFUCNdjYMAKBKE0YyGUIeYIFUj3EIAwMqAMplJXKMN1qgJInyCT82RDkHIx4ckR5oFAhniGYbAIiKHpLGgoagRSK6hoJKwA0qXEpKCEZDEAb0MKiHZ6aRkAAAAASUVORK5CYII=", "matter": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAG1BMVEVHcExNTWdpbYitsMTLzNTe3+OHj6Wan7Ty8vI3hmg4AAAAAXRSTlMAQObYZgAAADVJREFUCNdjYCAOKClBaCbXYAUwQ6U5xAjMUDV2KQQzREOcE8EMcediCIOxLE0Aok1QkEh7ANMqBoPAloKNAAAAAElFTkSuQmCC"};
-      const research = [
-        {id:"parallel",name:"并行处理",icon:"calculation",stored:3,max:5,tiers:[1,1,2,2,3],cost:1},
-        {id:"compression",name:"数据压缩",icon:"logic",stored:2,max:3,tiers:[1,2,2],cost:1},
-        {id:"automation",name:"自动化协调",icon:"engineering",stored:1,max:4,tiers:[1,2,2,3],cost:2},
-        {id:"sampling",name:"精密采样",icon:"calculation",stored:1,max:1,tiers:[1],cost:0},
-        {id:"connection",name:"高速连接",icon:"engineering",stored:4,max:4,tiers:[1,1,2,3],cost:1},
-        {id:"signal",name:"信号处理",icon:"logic",stored:2,max:2,tiers:[1,2],cost:1},
-        {id:"analysis",name:"高精度数据分析与长期归档",icon:"calculation",stored:1,max:3,tiers:[2,3,3],cost:1}
+      const catalog = [
+        {id:"parallel",name:"并行处理",icon:"calculation",policy:"both",max:5,tiers:[1,1,2,2,3],cost:1},
+        {id:"compression",name:"数据压缩",icon:"logic",policy:"both",max:3,tiers:[1,2,2],cost:1},
+        {id:"automation",name:"自动化协调",icon:"engineering",policy:"both",max:4,tiers:[1,2,2,3],cost:2},
+        {id:"sampling",name:"精密采样",icon:"calculation",policy:"both",max:1,tiers:[1],cost:0},
+        {id:"connection",name:"高速连接",icon:"engineering",policy:"both",max:4,tiers:[1,1,2,3],cost:1},
+        {id:"signal",name:"信号处理",icon:"logic",policy:"both",max:2,tiers:[1,2],cost:1},
+        {id:"analysis",name:"高精度数据分析与长期归档",icon:"calculation",policy:"both",max:3,tiers:[2,3,3],cost:1},
+        {id:"logistics",name:"物流调度",icon:"engineering",policy:"item",max:3,tiers:[1,2,3],cost:1,team:2},
+        {id:"archive",name:"研究档案",icon:"logic",policy:"item",max:2,tiers:[1,2],cost:0,team:1},
+        {id:"singularity",name:"奇点稳定",icon:"calculation",policy:"special",max:1,tiers:[3],cost:0}
       ];
-      const memberLevels = {parallel:[3,2],compression:[2,2],automation:[1,1],sampling:[0,0],connection:[4,3],signal:[2,1],analysis:[1,1]};
+      const initialStored = {parallel:3,compression:2,automation:1,sampling:1,connection:4,signal:2,analysis:1};
+      let stored = Object.assign({},initialStored);
+      const memberLevels = {parallel:[3,2],compression:[2,2],automation:[1,1],sampling:[0,0],connection:[4,3],signal:[2,1],analysis:[1,1],logistics:[2,2],archive:[1,1]};
       const blank = tier => ({key:"blank" + tier,name:"空白研究盘（" + tier + " 阶）",icon:"blank" + tier,count:1,max:64,material:true,tier});
       const stack = (base,count) => Object.assign({},base,{count});
       const slots = {input:null,output:null};
@@ -149,34 +178,43 @@
       slots.inv30 = {key:"matter",name:"物质球",icon:"matter",count:16,max:64};
       const summary = {level:2,capacity:16};
       let state = "active";
-      let selected = research[0].id;
+      let selectedStored = "parallel";
+      let removing = false;
+      let download = null;
       let target = 1;
       let cursor = null;
       let message = null;
       let mouse = {x:0,y:0};
       const byId = id => root.querySelector("#" + id);
-      const current = () => research.find(entry => entry.id === selected);
-      const listed = () => state === "denied" || state === "empty" ? [] : research;
+      const research = id => catalog.find(entry => entry.id === id);
+      const storedList = () => state === "denied" ? [] : catalog.filter(entry => stored[entry.id]);
       const same = (a,b) => a && b && a.key === b.key;
       const accepts = (slot,item) => slot !== "output" && (slot !== "input" || item.material === true);
+      const operable = () => state !== "pending" && state !== "readonly" && state !== "denied";
 
-      function stateReason() {
-        return {inactive:"只有队伍当前活动数据库可以下载",pending:"世界存档待确认，暂不能下载",readonly:"没有下载权限"}[state];
+      function downloadCap(entry) {
+        if (entry.policy === "item") return entry.team;
+        if (entry.policy === "both") return stored[entry.id] || 0;
+        return 0;
+      }
+      function blockedReason() {
+        return {inactive:"只有队伍当前活动数据库可以下载",pending:"世界存档待确认，暂不能下载",readonly:"没有下载权限",denied:"无查看权限"}[state];
       }
       function downloadOutput() {
-        const entry = listed().length ? current() : null;
+        const entry = download && research(download);
         const input = slots.input;
-        if (stateReason() || !entry || !input || slots.output) return null;
-        if (entry.tiers[target - 1] > input.tier) return null;
+        if (blockedReason() || !entry || !input || slots.output) return null;
+        if (target > downloadCap(entry) || entry.tiers[target - 1] > input.tier) return null;
         return {key:"disk" + input.tier + ":" + entry.id + ":" + target,name:"研究盘 · " + entry.name + " Lv." + target,
           icon:"disk" + input.tier,count:1,max:1,detail:entry.name + " Lv." + target + "\n盘阶级 " + input.tier};
       }
       function reason() {
-        const entry = listed().length ? current() : null;
-        if (stateReason()) return {text:stateReason(),good:false};
+        const entry = download && research(download);
+        if (blockedReason()) return {text:blockedReason(),good:false};
         if (message) return message;
         if (!entry) return {text:"",good:false};
         if (slots.output) return {text:"取出输出物品后才能继续下载",good:false};
+        if (target > downloadCap(entry)) return {text:entry.policy === "both" ? "数据库未存储该研究等级" : "队伍研究等级不足",good:false};
         if (!slots.input) return {text:"放入下载材料",good:false};
         const tier = entry.tiers[target - 1];
         if (tier > slots.input.tier) return {text:"研究阶级 " + tier + " 高于材料阶级 " + slots.input.tier,good:false};
@@ -201,62 +239,110 @@
           count.textContent = shown.count;
           element.append(count);
         }
-        const entry = current();
+        const entry = download && research(download);
         element.dataset.tip = ghost ? ghost.name + "\n点击下载：消耗 1 个" + slots.input.name +
           (entry.cost ? "，每名成员扣除 " + entry.cost + " 级" : "")
           : item.name + (item.count > 1 ? " × " + item.count : "") + (item.detail ? "\n" + item.detail : "");
       }
 
-      function render() {
-        const denied = state === "denied";
-        byId("dc-tier").textContent = denied ? "" : "等级 " + summary.level;
-        byId("dc-capacity").textContent = denied ? "" : "容量 " + listed().length + " / " + summary.capacity;
-        const status = {active:["活动",true],inactive:["未启用",false],pending:["存档待确认",false],readonly:["活动",true],denied:["",false],empty:["活动",true]}[state];
-        byId("dc-state").textContent = status[0];
-        byId("dc-state").className = status[1] ? "dc-good" : "";
+      function entryButton(entry,right,attributes) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "dc-entry cursor-interaction";
+        for (const [key,value] of Object.entries(attributes)) button.dataset[key] = value;
+        button.innerHTML = '<img alt="" src="' + assets[entry.icon] + '"><span class="dc-entry-name">' + entry.name + "</span>" + right;
+        return button;
+      }
+
+      function renderStored() {
         const list = byId("dc-list");
         list.replaceChildren();
-        for (const entry of listed()) {
+        const entries = storedList();
+        if (!entries.some(entry => entry.id === selectedStored)) {
+          selectedStored = entries.length ? entries[0].id : null;
+          removing = false;
+        }
+        for (const entry of entries) {
           const item = document.createElement("li");
-          const button = document.createElement("button");
-          button.type = "button";
-          button.className = "dc-entry cursor-interaction";
-          button.dataset.research = entry.id;
-          button.setAttribute("aria-pressed", String(entry.id === selected));
-          button.dataset.tip = entry.name + "\n已存等级 " + entry.stored + " / 最高 " + entry.max;
-          button.innerHTML = '<img alt="" src="' + assets[entry.icon] + '"><span class="dc-entry-name">' + entry.name +
-            '</span><span class="dc-entry-level dc-number">Lv.' + entry.stored + "</span>";
+          const button = entryButton(entry,'<span class="dc-entry-level dc-number">Lv.' + stored[entry.id] + "</span>",{stored:entry.id});
+          button.setAttribute("aria-pressed", String(entry.id === selectedStored));
+          button.dataset.tip = entry.name + "\n已存等级 " + stored[entry.id] + " / 最高 " + entry.max;
           item.append(button);
           list.append(item);
         }
-        if (!listed().length) {
+        if (!entries.length) {
           const empty = document.createElement("li");
           empty.className = "dc-empty";
-          empty.textContent = denied ? "无查看权限" : "数据库中没有研究";
+          empty.textContent = state === "denied" ? "无查看权限" : "数据库中没有研究";
           list.append(empty);
         }
-        const entry = listed().length ? current() : null;
-        byId("dc-detail").hidden = !entry;
-        byId("dc-detail-empty").hidden = !!entry;
-        byId("dc-detail-empty").textContent = denied ? "" : "未选择研究";
-        if (entry) {
-          byId("dc-icon").src = assets[entry.icon];
-          byId("dc-name").textContent = entry.name;
-          byId("dc-name").dataset.tip = entry.name;
-          byId("dc-stored").textContent = entry.stored + " / " + entry.max;
-          byId("dc-target").textContent = target;
-          byId("dc-research-tier").textContent = entry.tiers[target - 1];
-          byId("dc-cost").textContent = entry.cost === 0 ? "无" : "每名成员 " + entry.cost + " 级";
-          byId("dc-less").disabled = target <= 1;
-          byId("dc-more").disabled = target >= entry.stored;
-          const ghost = downloadOutput();
-          drawSlot(root.querySelector('[data-slot="input"]'),slots.input,null);
-          drawSlot(root.querySelector('[data-slot="output"]'),slots.output,slots.output ? null : ghost);
-          byId("dc-arrow").classList.toggle("dc-ready",!!ghost);
-          const text = reason();
-          byId("dc-reason").textContent = text.text;
-          byId("dc-reason").className = "dc-reason " + (text.good ? "dc-good" : text.text ? "dc-bad" : "");
+        const chosen = selectedStored && research(selectedStored);
+        byId("dc-remove").hidden = !chosen;
+        if (!chosen) return;
+        byId("dc-remove-text").textContent = removing ? "移出后数据库不再保存 " + chosen.name + "，不影响队伍研究等级"
+          : "选中：" + chosen.name + " Lv." + stored[chosen.id];
+        byId("dc-remove-start").hidden = removing;
+        byId("dc-remove-start").disabled = !operable();
+        byId("dc-remove-start").dataset.tip = operable() ? "" : state === "pending" ? "世界存档待确认" : "没有操作权限";
+        byId("dc-remove-confirm").hidden = !removing;
+      }
+
+      function renderDownload() {
+        const denied = state === "denied";
+        const entry = download && research(download);
+        byId("dc-choose").disabled = denied;
+        byId("dc-download").hidden = denied;
+        byId("dc-download-empty").hidden = !denied;
+        byId("dc-download-empty").textContent = "无查看权限";
+        if (denied) return;
+        const nameRow = byId("dc-name-row");
+        nameRow.classList.toggle("dc-none",!entry);
+        byId("dc-icon").hidden = !entry;
+        if (entry) byId("dc-icon").src = assets[entry.icon];
+        byId("dc-name").textContent = entry ? entry.name : "未选择研究，点击右上角选择";
+        byId("dc-name").dataset.tip = entry ? entry.name : "";
+        const cap = entry ? downloadCap(entry) : 0;
+        byId("dc-source").textContent = !entry ? "—" : entry.policy === "item" ? "队伍等级 " + entry.team + "（仅物品）"
+          : "数据库已存 " + (stored[entry.id] || 0);
+        byId("dc-target").textContent = entry ? target : "—";
+        byId("dc-research-tier").textContent = entry ? entry.tiers[target - 1] : "—";
+        byId("dc-cost").textContent = !entry ? "—" : entry.cost === 0 ? "无" : "每名成员 " + entry.cost + " 级";
+        byId("dc-less").disabled = !entry || target <= 1;
+        byId("dc-more").disabled = !entry || target >= Math.max(1,Math.min(entry.max,cap));
+        const ghost = downloadOutput();
+        drawSlot(root.querySelector('[data-slot="input"]'),slots.input,null);
+        drawSlot(root.querySelector('[data-slot="output"]'),slots.output,slots.output ? null : ghost);
+        byId("dc-arrow").classList.toggle("dc-ready",!!ghost);
+        const text = reason();
+        byId("dc-reason").textContent = text.text;
+        byId("dc-reason").className = "dc-reason " + (text.good ? "dc-good" : text.text ? "dc-bad" : "");
+      }
+
+      function renderOverview() {
+        const list = byId("dc-overview-list");
+        list.replaceChildren();
+        for (const entry of catalog) {
+          const item = document.createElement("li");
+          const policy = {both:"数据库 / 物品",item:"仅物品",special:"禁止下载"}[entry.policy];
+          const level = entry.policy === "item" ? "队伍 Lv." + entry.team : entry.policy === "both" ? "已存 Lv." + (stored[entry.id] || 0) : "";
+          const button = entryButton(entry,'<span class="dc-policy">' + policy + "<br>" + level + "</span>",{choose:entry.id});
+          button.disabled = entry.policy === "special";
+          button.setAttribute("aria-pressed", String(entry.id === download));
+          item.append(button);
+          list.append(item);
         }
+      }
+
+      function render() {
+        const denied = state === "denied";
+        byId("dc-tier").textContent = denied ? "" : "等级 " + summary.level;
+        byId("dc-capacity").textContent = denied ? "" : "容量 " + storedList().length + " / " + summary.capacity;
+        const status = {active:["活动",true],inactive:["未启用",false],pending:["存档待确认",false],readonly:["活动",true],denied:["",false],empty:["活动",true]}[state];
+        byId("dc-state").textContent = status[0];
+        byId("dc-state").className = status[1] ? "dc-good" : "";
+        renderStored();
+        renderDownload();
+        if (!byId("dc-overview").hidden) renderOverview();
         for (const [id,from] of [["dc-main",9],["dc-hotbar",0]]) {
           const grid = byId(id);
           if (!grid.children.length) for (let index = 0; index < (from ? 27 : 9); index++) {
@@ -279,10 +365,10 @@
 
       function insert(item,order) {
         for (const slot of order) {
-          const target = slots[slot];
-          if (!same(target,item) || target.count >= target.max) continue;
-          const moved = Math.min(item.count,target.max - target.count);
-          target.count += moved;
+          const existing = slots[slot];
+          if (!same(existing,item) || existing.count >= existing.max) continue;
+          const moved = Math.min(item.count,existing.max - existing.count);
+          existing.count += moved;
           item.count -= moved;
           if (!item.count) return true;
         }
@@ -294,9 +380,10 @@
         return false;
       }
       const range = (from,to) => Array.from({length:to - from},(value,index) => "inv" + (from + index));
+      const toPlayer = () => [...range(0,9).reverse(),...range(9,36).reverse()];
 
-      function download() {
-        const entry = current();
+      function performDownload() {
+        const entry = research(download);
         const output = downloadOutput();
         if (memberLevels[entry.id].some(level => level < entry.cost)) {
           message = {text:"成员研究等级不足，需每人 " + entry.cost + " 级",good:false};
@@ -313,11 +400,11 @@
         const item = slots[slot];
         if (slot === "output") {
           if (!item) {
-            if (button === 0 && downloadOutput()) download();
+            if (button === 0 && downloadOutput()) performDownload();
             return;
           }
           if (shift) {
-            if (insert(item,[...range(0,9).reverse(),...range(9,36).reverse()])) slots.output = null;
+            if (insert(item,toPlayer())) slots.output = null;
           } else if (!cursor) {
             cursor = item;
             slots.output = null;
@@ -327,7 +414,7 @@
         }
         if (shift) {
           if (!item) return;
-          const order = slot === "input" ? [...range(0,9).reverse(),...range(9,36).reverse()]
+          const order = slot === "input" ? toPlayer()
             : item.material && !slots.input || same(slots.input,item) ? ["input"]
             : Number(slot.slice(3)) < 9 ? range(9,36) : range(0,9);
           if (insert(item,order)) slots[slot] = null;
@@ -379,29 +466,47 @@
         moveTooltip(event);
       });
       root.addEventListener("click", event => {
-        const entry = event.target.closest("[data-research]");
-        if (entry) {
-          if (selected !== entry.dataset.research) {
-            selected = entry.dataset.research;
-            target = 1;
-            message = null;
-          }
+        const storedEntry = event.target.closest("[data-stored]");
+        if (storedEntry) {
+          if (selectedStored !== storedEntry.dataset.stored) removing = false;
+          selectedStored = storedEntry.dataset.stored;
+          render();
+          return;
+        }
+        const chosen = event.target.closest("[data-choose]");
+        if (chosen && !chosen.disabled) {
+          if (download !== chosen.dataset.choose) target = 1;
+          download = chosen.dataset.choose;
+          message = null;
+          byId("dc-overview").hidden = true;
           render();
           return;
         }
         const button = event.target.closest("button");
         if (!button || button.disabled) return;
-        if (button.id === "dc-less") target--;
-        else if (button.id === "dc-more") target++;
-        else return;
-        message = null;
+        switch (button.id) {
+          case "dc-less": target--; message = null; break;
+          case "dc-more": target++; message = null; break;
+          case "dc-choose": byId("dc-overview").hidden = false; break;
+          case "dc-overview-close": byId("dc-overview").hidden = true; break;
+          case "dc-remove-start": removing = true; break;
+          case "dc-remove-no": removing = false; break;
+          case "dc-remove-yes":
+            delete stored[selectedStored];
+            removing = false;
+            message = null;
+            break;
+          default: return;
+        }
         render();
       });
       root.addEventListener("change", event => {
         if (event.target.name !== "dc-state") return;
         state = event.target.value;
+        stored = state === "empty" ? {} : Object.assign({},initialStored);
+        removing = false;
         message = null;
-        target = 1;
+        byId("dc-overview").hidden = true;
         render();
       });
       const tooltip = byId("dc-tooltip");
