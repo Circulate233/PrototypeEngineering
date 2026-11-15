@@ -2,7 +2,7 @@
 
 ## 默认控制器（2026-11-13）
 
-`DataCenterController` 是可继承的默认数据库控制器，直接继承 `MachineInstance`，实现 `DataCenter` 网络角色接口。它组合已有 `DataCenterStorage` 组件，等级、容量、研究内容及导入回执保存在该组件中，不在控制器另存一份。没有普通配方工位或独立业务 tick；下载和自动同步由共享研究服务推进，GUI 已进入设计核对，正式界面等待审核。
+`DataCenterController` 是可继承的默认数据库控制器，直接继承 `MachineInstance`，实现 `DataCenter` 网络角色接口。它组合已有 `DataCenterStorage` 组件，等级、容量、研究内容及导入回执保存在该组件中，不在控制器另存一份。没有普通配方工位或独立业务 tick；下载和自动同步由共享研究服务推进，专用 GUI 已按确认预览接入，选择研究按钮暂不执行操作。
 
 Java先定义存储组件，再声明机器与装配：
 
@@ -76,7 +76,7 @@ ZS使用 `MachineType.dataCenter(id, translationKey, structureId, level, capacit
 
 ## 界面与配方操作
 
-数据库页使用 [最新 HTML](previews/data-center.html) 核对，正式 GUI 等待用户审核。左侧列出已存研究并支持二次确认移出；右侧通过按钮切换研究下载和物品导入，同一材料槽、箭头和输出槽供两种模式使用，底部有完整背包。下载来源和下载等级不占界面行，研究费用在本次付款不使队伍掉级时显示“无”。返回采用 AE `Icon.BACK`。完整设计见 [research-gui.md](research-gui.md#数据库界面)。
+数据库页已按 [确认的 HTML](previews/data-center.html) 实现，正式尺寸为 384×290。左侧列出已存研究并支持二次确认移出；右侧通过按钮切换研究下载和物品导入，同一材料槽、箭头和输出槽供两种模式使用，底部有完整背包。下载来源和下载等级不占界面行，研究费用在本次付款不使队伍掉级时显示“无”。选择研究按钮当前点击无操作，研究总览及 AE `Icon.BACK` 返回流程等待后续实现。完整设计见 [research-gui.md](research-gui.md#数据库界面)。
 
 默认物理数据库的操作库存与材料、交付回执保存到 `MachineDataCenterStorage` 的同一组件。输入槽 0、输出槽 1，切换模式或关闭窗口不清空。服务端生成候选输出，执行时重新捕获权限、原输入和物理目标。预览与直接执行均通过交付适配检查实际输出及数量能否容纳，检查必须早于材料扣取和研究写入。实际付款及交付继续使用唯一研究世界的恢复流程。
 
@@ -84,7 +84,7 @@ ZS使用 `MachineType.dataCenter(id, translationKey, structureId, level, capacit
 
 ## 验证与剩余范围
 
-以下构建数量与测试范围属于对应历史阶段。旧数据库 GUI、分页同步和专用测试已于 2026-11-13 删除；2026-11-15 已完成操作后台修订，数据库专用 GUI 仍未接入，当前状态见[核对表](implementation-status.md#2026-11-15-gui-文档与源码核对)。
+以下构建数量与测试范围属于对应历史阶段。旧数据库 GUI、分页同步和专用测试已于 2026-11-13 删除；2026-11-16 已接入数据库专用 GUI，选择研究入口按用户要求延缓。当前状态见[实施记录](implementation-status.md#2026-11-16-数据库正式界面)。
 
 早期行为验证覆盖成员与权限、只读捕获、失效证明、外部存储绑定、连续下载、同 tick 预算、升级过滤、失败后的内容与发布状态，以及当时的 GUI 分页和动作编解码。该阶段完整构建 1093 tests / 143 suites 全通过，21 个 Java（含生成 Tags）IDEA MCP 全级零诊断，build_project 成功。证据为 build/reports/idea/datacenter-download-final.json，详见 [实施进度](implementation-status.md)。
 

@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-16 数据库正式界面完成：384×290 的已存列表、滚动与二次确认移出、下载/导入共用操作槽和完整背包已接入，使用 AE 按钮及既有灰紫配色。选择研究按钮按要求点击无操作，研究总览与选择返回待后续实现。完整构建、1740 tests/272 suites、Spotless 与 IDEA MCP 构建通过；9 Java、2 语言文件全级零诊断，1858 class 服务端调用检查零发现。入口：[数据库 GUI](research-gui.md#数据库界面)、[默认数据库](data-centers.md)、[实施记录](implementation-status.md#2026-11-16-数据库正式界面)。下一步用户复验实际画面与槽位操作；本轮本地英文提交，保留 AGENTS.md。
+
 - 2026-11-15 GUI 文档与源码核对：当前共有 13 个直接继承 AEBaseGui 的正式界面类；研究站、网络中心、计算机已接入专用容器与默认入口，计算机仅概览/组件两页。数据库已有预览、操作后台和自定义下载/导入 JEI，专用 GUI 与研究总览尚未实现；其余研究页面继续延缓。旧四列材料预览、计算机三页及数据库后台待实现记录按历史时点阅读。入口：[当前核对表](implementation-status.md#2026-11-15-gui-文档与源码核对)、[机器 GUI](machine-gui.md)、[研究 GUI](research-gui.md)。下一步仍为中心“每格”说明、计算机更换组件后的 FE 状态处理和游戏内复验；数据库正式界面待预览审核。本次 8 Java 的 IDEA MCP 均拒绝分析，错误/警告/弱警告未知，未作游戏验收。五份文档已更新，暂存因 `.git/index.lock` 写权限被拒而失败，尚未本地提交。
 
 - 2026-11-15 存档与内部同步清理完成：移除固定 Version/Schema 的读写和拒绝分支、普通 Map/Set 重复键检查、机器数据同步的临时去重集合及渲染分片 Count。30 生产 Java、13 测试 Java 已 IDEA 格式化并全级零诊断，1738 tests/271 suites、Spotless、完整构建和 MCP 构建通过。入口：[审查](defensive-programming-audit.md)、[API](../api.md)、[实施记录](implementation-status.md)。此前 V7/V6 的数字限制已删除，未增加历史字段迁移。下一步处理用户追加的中心每格说明与计算机更换组件后的 FE 状态问题。
@@ -293,6 +295,6 @@
 
 ## 本地源码
 
-PE 当前工作区 `F:/NovaEng/PrototypeEngineering`；PM `F:/clone/PrototypeMachinery`；PN `F:/new/PrototypeNetwork`；AE2S `F:/clone/Applied-Energistics-2`；MMCE `F:/clone/ModularMachinery-Community-Edition`。PM存储入口 `src/main/kotlin/{api,impl}/storage`，planned入口 `impl/scheduler/planned`；PE按专题进入 `src/main/java/com/circulation/prototype_eng/{api,machine,recipe,scheduler,structure,research,integration}`。
+PE 当前工作区 `F:/new/PrototypeEngineering`；PM `F:/clone/PrototypeMachinery`；PN `F:/new/PrototypeNetwork`；AE2S `F:/clone/Applied-Energistics-2`；MMCE `F:/clone/ModularMachinery-Community-Edition`。PM存储入口 `src/main/kotlin/{api,impl}/storage`，planned入口 `impl/scheduler/planned`；PE按专题进入 `src/main/java/com/circulation/prototype_eng/{api,machine,recipe,scheduler,structure,research,integration}`。
 
 索引不替代源码审查。精简前完整索引只作恢复审计，保留于 `build/staging/controller-shared-parallel/exact-commit/index-before-compaction.md`；历史事实及证据按实施进度/专题查阅。

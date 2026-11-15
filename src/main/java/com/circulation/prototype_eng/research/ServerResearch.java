@@ -4,6 +4,9 @@ import ae2.api.stacks.AEItemKey;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.network.MachineDataCenterStorage;
+import com.circulation.prototype_eng.api.network.DataCenter;
+import com.circulation.prototype_eng.api.network.NetworkWorkState;
+import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.research.DataCenterResearchAccess;
 import com.circulation.prototype_eng.api.research.DataCenterStorage;
@@ -1326,6 +1329,39 @@ public final class ServerResearch {
         var target = new ResearchPermissionContext(actor.getUniqueID(), ownPermission.actorTeamId(), null, expectedTeam,
             ownPermission.teamLeader(), ownPermission.teamModerator(), ownPermission.serverOperator());
         return current.world.stationView(target, current.stations, operationTime(current));
+    }
+
+    /**
+     * Reads the opened physical database at its owner boundary, including inactive databases.
+     */
+    public static @Nullable DataCenterView dataCenterView(EntityPlayerMP actor, MachineControllerHost host) {
+        var current = actorSession(actor);
+        if (current.world.busy()) return null;
+        var machine = host.machine();
+        if (!(machine instanceof DataCenter database)) return null;
+        var own = viewPermission(current, actor, current.resolver.resolve(actor.getUniqueID()));
+        if (own == null) return null;
+        var identity = host.savedIdentity();
+        var ownerTeam = identity == null ? null : current.resolver.resolve(identity.ownerId());
+        String teamId = ownerTeam != null && ownerTeam.accepted() ? ownerTeam.teamId() : null;
+        var target = new ResearchPermissionContext(actor.getUniqueID(), own.actorTeamId(), null, teamId,
+            own.teamLeader(), own.teamModerator(), own.serverOperator());
+        var device = machine.networkDevice();
+        var network = device == null ? null : device.view();
+        var state = network == null ? null : network.state();
+        boolean visible = current.permissions.can(ResearchPermissionPolicy.Action.REQUEST_DATA_CENTER_STATE, target)
+            == ResearchPermissionPolicy.Decision.ALLOWED;
+        boolean editable = visible && !current.world.savePending() && teamId != null && teamId.equals(own.actorTeamId());
+        boolean remove = editable && current.permissions.can(ResearchPermissionPolicy.Action.REMOVE_DATA_CENTER_RESEARCH, target)
+            == ResearchPermissionPolicy.Decision.ALLOWED;
+        boolean transfer = editable && current.permissions.can(ResearchPermissionPolicy.Action.DOWNLOAD_RESEARCH_TO_DATA_CENTER, target)
+            == ResearchPermissionPolicy.Decision.ALLOWED;
+        return new DataCenterView(teamId == null ? "" : teamId, database.dataCenterStorage().snapshot(), state,
+            visible, remove, transfer, current.world.savePending());
+    }
+
+    public record DataCenterView(String teamId, DataCenterResearchSnapshot contents, @Nullable NetworkWorkState state,
+                                 boolean visible, boolean canRemove, boolean canTransfer, boolean savePending) {
     }
 
     public static @Nullable String stationTeam(EntityPlayerMP actor, MachineControllerHost host) {

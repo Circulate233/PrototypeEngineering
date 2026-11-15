@@ -21,8 +21,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.UUID;
 
 /**
- * Physical database input/output slots and durable transfer evidence. Stack references are borrowed
- * read-only; the host persists this inventory in its own component payload. Pending effects lock the
+ * Physical database input/output slots and durable transfer evidence. Native edits to borrowed stacks
+ * must call sendChangeNotification; the host persists this inventory in its own component payload. Pending effects lock the
  * slots until their world checkpoint permits cleanup. All access belongs to the host owner thread.
  */
 public final class DataCenterTransferInventory implements InternalInventory {
@@ -35,6 +35,7 @@ public final class DataCenterTransferInventory implements InternalInventory {
     private @Nullable ResearchDownloadMaterial material;
     private @Nullable ItemDeliveryFragment delivery;
     private boolean delivered;
+    private long revision;
 
     public DataCenterTransferInventory(Runnable ownerCheck, Runnable changed, Runnable persist) {
         this.ownerCheck = ownerCheck;
@@ -42,6 +43,7 @@ public final class DataCenterTransferInventory implements InternalInventory {
         this.persist = persist;
     }
 
+    @SuppressWarnings("ReturnOfInnerClass")
     public Adapter forPlayer(UUID player) {
         ownerCheck.run();
         return new Adapter(player);
@@ -50,6 +52,22 @@ public final class DataCenterTransferInventory implements InternalInventory {
     public boolean locked() {
         ownerCheck.run();
         return material != null || delivery != null;
+    }
+
+    public long revision() {
+        return revision;
+    }
+
+    @Override
+    @SuppressWarnings("UnstableApiUsage")
+    public void sendChangeNotification(int slot) {
+        ownerCheck.run();
+        changed();
+    }
+
+    private void changed() {
+        revision++;
+        changed.run();
     }
 
     @Override
@@ -74,7 +92,7 @@ public final class DataCenterTransferInventory implements InternalInventory {
         if (locked()) throw new IllegalStateException("Database transfer slots have a pending operation");
         if (slotIndex == INPUT) input = stack;
         else output = stack;
-        changed.run();
+        changed();
     }
 
     @Override
@@ -90,7 +108,7 @@ public final class DataCenterTransferInventory implements InternalInventory {
                 input = stack.copy();
                 input.setCount(accepted);
             } else input.grow(accepted);
-            changed.run();
+            changed();
         }
         if (accepted == stack.getCount()) return ItemStack.EMPTY;
         var remainder = stack.copy();
@@ -113,11 +131,11 @@ public final class DataCenterTransferInventory implements InternalInventory {
         if (extracted == stack.getCount()) {
             if (slot == INPUT) input = ItemStack.EMPTY;
             else output = ItemStack.EMPTY;
-            changed.run();
+            changed();
             return stack;
         }
         var result = stack.splitStack(extracted);
-        changed.run();
+        changed();
         return result;
     }
 

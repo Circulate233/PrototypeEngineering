@@ -4,7 +4,7 @@
 
 ## 打开与默认显示
 
-`MachineControllerBlock.onBlockActivated` 在玩家未潜行、手持物品不是方向工具且目标为控制器 TE 时打开 GUI 0。手持方向工具的交互由物品处理。PreInit 注册 `CommonProxy` 为 Forge `IGuiHandler`；common 端按准确 TE 创建容器，客户端代理再创建对应 screen。
+`MachineControllerBlock.onBlockActivated` 在玩家未潜行、手持物品不是方向工具且目标为控制器 TE 时打开 GUI 0。手持方向工具的交互由物品处理。PreInit 注册 `CommonProxy` 为 Forge `IGuiHandler`；common 端按准确 TE 创建容器，客户端代理再创建对应 screen。声明 `NetworkCenter.DEVICE`、`ComputerController.DEVICE`、`ResearchStation.DEVICE` 或 `DataCenter.DEVICE` 的机器自动进入对应专用界面，显式自定义 GUI 绑定优先。默认数据库界面直接使用 `MachineDataCenterStorage` 的持久操作槽，其他存储实现必须绑定对应 GUI；布局及选择按钮范围见[研究 GUI](research-gui.md#数据库界面)。
 
 默认界面只在顶部显示一次机器声明的本地化标题，正文显示结构未成型/已成型、运行状态、运行线程/容量或运行配方数，以及全机并行占用/上限，并保留玩家主背包和快捷栏。结构名称不在正文重复；结构状态始终按正式formed值显示，不把周期刷新时的processing gate渲染成检查中提示或切换状态。执行模式/策略属于作者的内部调度选择，不在玩家GUI或tooltip中显示。参考 MMCE 的 `GuiMachineController`/`GuiFactoryController` 的结构、状态、线程与并行信息；本库尚无对应事实的蓝图、红石及耗时统计不作虚构显示。
 

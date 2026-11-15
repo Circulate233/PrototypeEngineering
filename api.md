@@ -322,7 +322,7 @@ ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, 
 
 所有接网控制器支持 `MachineType.Builder.networkEvent(callback)`，Java全局事件用 `NetworkDeviceEvents.register(callback)`，ZS全局事件用 `Events.onDevice(callback)`。全局事件先于类型事件。事件公开同队全部已加载设备快照，允许修改本设备资源、并发、研究站速率和 FE 输入倍率；资源表通过 `get/set/add/remove` 修改，`add` 使用 `addTo`。ZS 的 `DeviceEvent` 暴露 `network/values/machineType`，`ComputerRecipeEvent` 另提供 `stage/progress/duration`；`network` 提供 `teamId/tick/devices/hasDevice(typeId)`，`values` 提供 `resources/required/researchRates/concurrency/energyMultiplier`。完整调用顺序、设备字段及禁止外部副作用的说明见[网络设备事件](docs/network-events.md)。
 
-默认数据库使用 `DataCenterController(type, storageComponent)`，`storageComponent` 是已声明的 `DataCenterStorage` 组件类型。等级、容量、研究和操作库存由存储组件保存，控制器组合使用持久化、下载及自动升级，无配方工位或独立业务 tick，并可继承。类型声明 `MachineOwnership.TYPE`、存储组件和 `DataCenter.DEVICE`；装配为存储配置 codec，将网络角色标为 recreated。自定义控制器也可直接实现 `DataCenter`，通过 `dataCenterStorage()` 提供实际存储组件。活动数据库占 1 份优先并发，正式 GUI 等待设计审核。Java/ZS 入口见[默认数据库控制器](docs/data-centers.md#默认控制器2026-11-13)。
+默认数据库使用 `DataCenterController(type, storageComponent)`，`storageComponent` 是已声明的 `DataCenterStorage` 组件类型。等级、容量、研究和操作库存由存储组件保存，控制器组合使用持久化、下载及自动升级，无配方工位或独立业务 tick，并可继承。类型声明 `MachineOwnership.TYPE`、存储组件和 `DataCenter.DEVICE`；装配为存储配置 codec，将网络角色标为 recreated。自定义控制器也可直接实现 `DataCenter`，通过 `dataCenterStorage()` 提供实际存储组件。活动数据库占 1 份优先并发。默认 GUI 已接入 384×290 的已存列表、二次确认移出、下载/导入操作区及完整玩家背包，选择研究按钮暂不执行操作。专用容器使用 `MachineDataCenterStorage.transfers()`；采用其他 `DataCenterStorage` 实现的控制器必须通过 `MachineGuiRegistry` 和 `MachineScreenRegistry` 绑定对应容器与界面。Java/ZS 入口见[默认数据库控制器](docs/data-centers.md#默认控制器2026-11-13)。
 
 ### GUI、模型与 JEI
 

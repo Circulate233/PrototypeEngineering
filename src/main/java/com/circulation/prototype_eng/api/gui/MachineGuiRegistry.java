@@ -7,6 +7,8 @@ import com.circulation.prototype_eng.container.ContainerComputer;
 import com.circulation.prototype_eng.container.ContainerMachine;
 import com.circulation.prototype_eng.container.ContainerNetworkCenter;
 import com.circulation.prototype_eng.container.ContainerResearchStation;
+import com.circulation.prototype_eng.container.ContainerDataCenter;
+import com.circulation.prototype_eng.api.network.DataCenter;
 import com.circulation.prototype_eng.api.research.station.ResearchStation;
 import com.circulation.prototype_eng.api.network.NetworkCenter;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -37,7 +39,8 @@ public final class MachineGuiRegistry {
         return factory == null ? (tile.type().componentTypes().contains(NetworkCenter.DEVICE)
             ? new ContainerNetworkCenter(player, tile) : tile.type().componentTypes().contains(ComputerController.DEVICE)
             ? new ContainerComputer(player, tile) : tile.type().componentTypes().contains(ResearchStation.DEVICE)
-            ? new ContainerResearchStation(player, tile) : new ContainerMachine(player, tile))
+            ? new ContainerResearchStation(player, tile) : tile.type().componentTypes().contains(DataCenter.DEVICE)
+            ? new ContainerDataCenter(player, tile) : new ContainerMachine(player, tile))
             : factory.apply(player, tile);
     }
 }
