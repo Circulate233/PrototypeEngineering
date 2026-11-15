@@ -4,7 +4,7 @@
 
 ## 当前检查点
 
-- 2026-11-15 设备界面改版预览：研究站、网络中心、计算机三份预览已覆盖为新设计，统一状态标签、进度条、卡片行与 AE 图标按钮。三份预览全部演示状态已在无界面浏览器检查，无脚本异常或横向溢出。入口：[改版说明](device-gui-redesign.md)、[研究站](previews/research-station.html)、[网络中心](previews/network-center.html)、[计算机](previews/computer.html)。下一步由其他对话按改版说明实现正式 Java 界面并完成 IDEA MCP 检查；本地英文提交，保留其他工作区修改。
+- 2026-11-15 三设备正式界面改版完成：研究站采用材料五列图标格、顶部工作量和参与站数、状态标签及队列卡片；网络中心采用数字框、16格并发条和资源利用率条；计算机采用异常提示条、三张数据卡、文字页签和组件卡片。9Java已IDEA格式化、全级零诊断、定向编译和Spotless通过。全仓构建受其他会话研究下载JEI改动影响，完整结果未通过。入口：[改版说明](device-gui-redesign.md)、[研究站](previews/research-station.html)、[网络中心](previews/network-center.html)、[计算机](previews/computer.html)、[实施记录](implementation-status.md)。下一步用户完整重启复验画面、滚动、悬停和按钮；本地英文提交，保留其他工作区修改。
 
 - 2026-11-15 数据库界面重新设计：旧预览已删除。新预览左侧显示已存研究，选中后二次确认移出；右侧研究下载通过“选择研究”打开研究总览选择目标（DATABASE_AND_ITEM / ITEM_ONLY 可选，specialOnly 不可选），材料槽、箭头和输出槽完成下载，附完整玩家背包。不提供下载到数据库、云端等级对比或研究盘导入。736/320px、总览选择、移出、槽位交互和六种状态已检查，无脚本异常或横向溢出。入口：[预览](previews/data-center.html)、[GUI要求](research-gui.md#数据库界面)、[验证记录](implementation-status.md)。下一步用户核对；正式实现前需补数据库移出写入与权限、确定槽位归属并提供研究总览入口；本地英文提交，保留 AGENTS.md 用户修改。
 

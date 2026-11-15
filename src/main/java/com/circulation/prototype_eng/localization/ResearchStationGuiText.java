@@ -6,7 +6,7 @@ import com.circulation.prototype_eng.Tags;
 public enum ResearchStationGuiText implements LocalizationEnum {
     Resources, AvailableRemaining, NetworkResources, OccupiedLimit, Accumulated, Queue, Current, TargetLevel,
     WorkingStations, Up, Down, SelectCurrent, Remove, Empty, EmptyQueue, NoMaterials, NoNetworkResources,
-    Running, Waiting, Manual, Denied;
+    Running, Waiting, Manual, Denied, Workload, InProgress, Completed;
 
     @Override
     public String getTranslationKey() {

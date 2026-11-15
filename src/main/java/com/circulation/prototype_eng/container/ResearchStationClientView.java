@@ -4,23 +4,27 @@ import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AmountFormat;
 import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
+import com.circulation.prototype_eng.localization.ResearchStationGuiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.Nullable;
 
+import java.text.DecimalFormat;
 import java.util.List;
 
 /**
  * Updates rows by index and formats names and amounts only when their definitions or values change.
  */
 public final class ResearchStationClientView {
+    private static final DecimalFormat PERCENT_FORMAT = new DecimalFormat("0.#'%'");
     public @Nullable ResearchStationPacket.Definition definition;
     public List<ResearchStationPacket.QueueEntry> queue = List.of();
     public final ObjectArrayList<Material> materials = new ObjectArrayList<>();
     public final ObjectArrayList<Resource> resources = new ObjectArrayList<>();
     private String name;
     private final ObjectArrayList<String> queueNames = new ObjectArrayList<>();
+    private final ObjectArrayList<String> queueLevels = new ObjectArrayList<>();
 
     public void receive(ResearchStationPacket packet) {
         if (packet.reset()) {
@@ -44,6 +48,7 @@ public final class ResearchStationClientView {
         if (packet.queue() != null) {
             queue = packet.queue();
             queueNames.clear();
+            queueLevels.clear();
         }
         var elements6 = packet.materials();
         for (int index6 = 0; index6 < elements6.size(); index6++) {
@@ -52,6 +57,7 @@ public final class ResearchStationClientView {
             if ((change.fields() & ResearchStationPacket.FIRST) != 0) row.available = change.available();
             if ((change.fields() & ResearchStationPacket.SECOND) != 0) row.remaining = change.remaining();
             row.amounts = null;
+            row.slotAmounts = null;
         }
         var elements7 = packet.resources();
         for (int index7 = 0; index7 < elements7.size(); index7++) {
@@ -59,25 +65,32 @@ public final class ResearchStationClientView {
             var row = resources.get(change.index());
             if ((change.fields() & ResearchStationPacket.FIRST) != 0) row.occupied = change.occupied();
             if ((change.fields() & ResearchStationPacket.SECOND) != 0) row.capacity = change.capacity();
-            if ((change.fields() & ResearchStationPacket.THIRD) != 0) row.accumulated = change.accumulated();
-            row.amounts = null;
-            row.progress = null;
+            if ((change.fields() & ResearchStationPacket.THIRD) != 0) {
+                row.accumulated = change.accumulated();
+                row.progress = null;
+                row.percentage = null;
+            }
+            if ((change.fields() & (ResearchStationPacket.FIRST | ResearchStationPacket.SECOND)) != 0)
+                row.amounts = null;
         }
     }
 
     public void invalidateText() {
         name = null;
         queueNames.clear();
+        queueLevels.clear();
         for (int index1 = 0; index1 < materials.size(); index1++) {
             var row = materials.get(index1);
             row.name = null;
             row.amounts = null;
+            row.slotAmounts = null;
         }
         for (int index2 = 0; index2 < resources.size(); index2++) {
             var row = resources.get(index2);
             row.name = null;
             row.amounts = null;
             row.progress = null;
+            row.percentage = null;
         }
     }
 
@@ -100,14 +113,21 @@ public final class ResearchStationClientView {
             var entry = queue.get(index3);
             LocalizationEnum localized = entry::name;
             queueNames.add(localized.getLocal());
+            queueLevels.add((index3 == 0 ? ResearchStationGuiText.InProgress.getLocal() + " · " : "") + "Lv." + entry.level());
         }
         return queueNames.get(index);
+    }
+
+    @SideOnly(Side.CLIENT)
+    public String queueLevel(int index) {
+        if (queueNames.isEmpty()) queueName(index);
+        return queueLevels.get(index);
     }
 
     public static final class Material {
         public final AEKey key;
         public long available, remaining;
-        private String name, amounts;
+        private String name, amounts, slotAmounts;
 
         private Material(AEKey key) {
             this.key = key;
@@ -125,13 +145,20 @@ public final class ResearchStationClientView {
                 amounts = key.formatAmount(available, AmountFormat.FULL) + " / " + key.formatAmount(remaining, AmountFormat.FULL);
             return amounts;
         }
+
+        @SideOnly(Side.CLIENT)
+        public String slotAmounts() {
+            if (slotAmounts == null)
+                slotAmounts = key.formatAmount(available, AmountFormat.SLOT) + "/" + key.formatAmount(remaining, AmountFormat.SLOT);
+            return slotAmounts;
+        }
     }
 
     public static final class Resource {
         public final NetworkResourceType type;
         public final double total;
         public double occupied, capacity, accumulated;
-        private String name, amounts, progress;
+        private String name, amounts, progress, percentage;
 
         private Resource(NetworkResourceType type, double total) {
             this.type = type;
@@ -154,6 +181,12 @@ public final class ResearchStationClientView {
         public String progress() {
             if (progress == null) progress = type.format(accumulated) + " / " + type.format(total);
             return progress;
+        }
+
+        @SideOnly(Side.CLIENT)
+        public String percentage() {
+            if (percentage == null) percentage = PERCENT_FORMAT.format(100 * accumulated / total);
+            return percentage;
         }
     }
 }

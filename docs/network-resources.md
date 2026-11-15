@@ -19,7 +19,7 @@ static final NetworkResourceType COOLING = NetworkResourceType.computer(
 
 ## 网络中心增量显示
 
-2026-11-15 网络中心界面布局改版待按 [设备界面改版](device-gui-redesign.md) 实现，资源同步方式不变。
+2026-11-15 网络中心正式界面已按 [设备界面改版](device-gui-redesign.md) 实现：标题右侧显示状态标签，等级使用深色数字框，并发占用使用16格分段条。资源行分别对齐名称和占用/产出，并绘制利用率细条；资源同步方式沿用现有实现。
 
 容器直接遍历网络R2D供给表，隐藏产出为0的资源。首次显示/新增资源发送固定展示包和初始占用、上限；随后 `NetworkCenterResourcePacket implements PacketWritable` 只发送变化资源的索引、字段标记与对应double。只变占用不重复发送上限，只变上限不重复发送占用。资源归零时发送移除索引，新AE容器监听者取得完整基线；没有变化不创建更新包或行列表。
 
