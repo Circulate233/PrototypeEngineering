@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-15 设备界面改版预览：研究站、网络中心、计算机三份预览已覆盖为新设计，统一状态标签、进度条、卡片行与 AE 图标按钮。三份预览全部演示状态已在无界面浏览器检查，无脚本异常或横向溢出。入口：[改版说明](device-gui-redesign.md)、[研究站](previews/research-station.html)、[网络中心](previews/network-center.html)、[计算机](previews/computer.html)。下一步由其他对话按改版说明实现正式 Java 界面并完成 IDEA MCP 检查；本地英文提交，保留其他工作区修改。
+
 - 2026-11-15 数据库界面重新设计：旧预览已删除。新预览左侧显示已存研究，选中后二次确认移出；右侧研究下载通过“选择研究”打开研究总览选择目标（DATABASE_AND_ITEM / ITEM_ONLY 可选，specialOnly 不可选），材料槽、箭头和输出槽完成下载，附完整玩家背包。不提供下载到数据库、云端等级对比或研究盘导入。736/320px、总览选择、移出、槽位交互和六种状态已检查，无脚本异常或横向溢出。入口：[预览](previews/data-center.html)、[GUI要求](research-gui.md#数据库界面)、[验证记录](implementation-status.md)。下一步用户核对；正式实现前需补数据库移出写入与权限、确定槽位归属并提供研究总览入口；本地英文提交，保留 AGENTS.md 用户修改。
 
 - 2026-11-15 研究站材料网格预览已更新：固定四列图标，右下角显示当前可用/剩余需求，悬停显示名称及完整数量；其余区域沿现状。736/320px、队首切换和多行滚动已检查，无脚本异常或横向溢出。入口：[预览](previews/research-station.html)、[GUI要求](research-gui.md)、[验证记录](implementation-status.md)。下一步用户核对后接入正式 Java 材料区、简写缓存和悬停索引；本地英文提交，保留 AGENTS.md 用户修改。
@@ -227,6 +229,7 @@
 | 普通数据库下载/自动升级/真实物理授权/数据库 GUI | [data-centers.md](data-centers.md) |
 | 普通物品转换/材料和来源费用/nonce与原生输出恢复/分级盘边界 | [research-downloads.md](research-downloads.md) |
 | 研究站 GUI 与其余延缓界面 | [research-gui.md](research-gui.md) |
+| 研究站/网络中心/计算机界面改版要求 | [device-gui-redesign.md](device-gui-redesign.md) |
 | 研究定义/资格/入队/队列/完成传播/奖励与服务器缺口 | [research-features.md](research-features.md)、[pn-research-execution-audit.md](pn-research-execution-audit.md) |
 | 研究站时间/逐项材料支付/网络累计/共同提交 | [research-stations.md](research-stations.md) |
 | 服务器研究 owner/单一存档/FTB/玩家事件/手动入口 | [server-research.md](server-research.md) |
