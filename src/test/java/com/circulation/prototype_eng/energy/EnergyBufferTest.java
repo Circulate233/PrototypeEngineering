@@ -41,26 +41,26 @@ class EnergyBufferTest {
     }
 
     @Test
-    void transferLimitsApplyToEachOperationAndInvalidationRetainsOnlySavedBalance() {
+    void externalTransferLimitsAndInvalidationRetainOnlySavedBalance() {
         int[] notifications = {0};
         var buffer = new EnergyBuffer(100, 11, 7, () -> notifications[0]++);
-        assertEquals(11, buffer.receiveEnergy(100, Actionable.SIMULATE));
-        assertEquals(11, buffer.receiveEnergy(100, Actionable.MODULATE));
-        assertEquals(11, buffer.receiveEnergy(100, Actionable.MODULATE));
-        assertEquals(7, buffer.extractEnergy(100, Actionable.SIMULATE));
-        assertEquals(7, buffer.extractEnergy(100, Actionable.MODULATE));
+        var port = new ForgeEnergyPort(buffer, HatchMode.MIXED);
+        assertEquals(11, port.receiveEnergy(100, true));
+        assertEquals(11, port.receiveEnergy(100, false));
+        assertEquals(11, port.receiveEnergy(100, false));
+        assertEquals(7, port.extractEnergy(100, true));
+        assertEquals(7, port.extractEnergy(100, false));
         assertEquals(15, buffer.storedEnergy());
         assertEquals(3, notifications[0]);
 
         buffer.setTransferLimits(3, 2);
-        assertEquals(3, buffer.receiveEnergy(100, Actionable.MODULATE));
-        assertEquals(2, buffer.extractEnergy(100, Actionable.MODULATE));
+        assertEquals(3, port.receiveEnergy(100, false));
+        assertEquals(2, port.extractEnergy(100, false));
         buffer.invalidate();
-        assertEquals(0, buffer.receiveEnergy(100, Actionable.MODULATE));
-        assertEquals(0, buffer.extractEnergy(100, Actionable.MODULATE));
+        assertEquals(0, port.receiveEnergy(100, false));
+        assertEquals(0, port.extractEnergy(100, false));
         assertEquals(0, buffer.storedEnergy());
         assertEquals(16, buffer.savedEnergy());
-        // Changed availability (limits and invalidation) also publishes the save/sync signal.
         assertEquals(7, notifications[0]);
     }
 }

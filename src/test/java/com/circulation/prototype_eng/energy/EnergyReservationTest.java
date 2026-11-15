@@ -56,30 +56,33 @@ class EnergyReservationTest {
     }
 
     @Test
-    void lowerLimitsCancelPendingWorkAndLongBoundaryTransfersKeepCompensationExact() {
+    void externalLimitsDoNotRestrictPendingMachineWorkAndCompensation() {
         var energy = new EnergyBuffer(Long.MAX_VALUE, () -> {
         });
         energy.restore(Long.MAX_VALUE - 3);
         var stale = energy.energySnapshot();
         var give = accepted(energy.reserveReceiveEnergy(stale, 3));
         assertEquals(0, energy.receiveEnergy(Long.MAX_VALUE, Actionable.MODULATE));
-        energy.setTransferLimits(2, Long.MAX_VALUE);
-        assertFalse(ResourceTransactions.commit(List.of(give)));
-        assertEquals(Long.MAX_VALUE - 3, energy.storedEnergy());
+        energy.setTransferLimits(0, 0);
+        assertTrue(ResourceTransactions.commit(List.of(give)));
+        assertEquals(Long.MAX_VALUE, energy.storedEnergy());
         assertEquals(ReservationResult.Status.STALE_SNAPSHOT, energy.reserveReceiveEnergy(stale, 1).status());
         assertEquals(ReservationResult.Status.INSUFFICIENT,
             energy.reserveReceiveEnergy(energy.energySnapshot(), 3).status());
-
+        var port = new ForgeEnergyPort(energy, HatchMode.MIXED);
+        assertEquals(0, port.extractEnergy(100, false));
         var take = accepted(energy.reserveExtractEnergy(energy.energySnapshot(), Long.MAX_VALUE - 3));
-        // Replenishing the unreserved space does not invalidate an already held input quantity.
-        assertEquals(2, energy.receiveEnergy(Long.MAX_VALUE, Actionable.MODULATE));
         assertTrue(ResourceTransactions.commit(List.of(take)));
-        assertEquals(2, energy.storedEnergy());
-        var invalidated = accepted(energy.reserveExtractEnergy(energy.energySnapshot(), 2));
+        assertEquals(3, energy.storedEnergy());
+        assertEquals(0, port.receiveEnergy(100, false));
+        var refunded = accepted(energy.reserveReceiveEnergy(energy.energySnapshot(), Long.MAX_VALUE - 3));
+        ResourceTransactions.rollback(List.of(refunded));
+        assertEquals(3, energy.storedEnergy());
+        var invalidated = accepted(energy.reserveExtractEnergy(energy.energySnapshot(), 3));
         energy.invalidate();
         assertFalse(ResourceTransactions.commit(List.of(invalidated)));
         assertEquals(0, energy.extractEnergy(10, Actionable.MODULATE));
-        assertEquals(2, energy.savedEnergy());
+        assertEquals(3, energy.savedEnergy());
         assertThrows(IllegalStateException.class, () -> energy.restore(10));
     }
 

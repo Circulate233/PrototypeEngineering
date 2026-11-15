@@ -43,9 +43,9 @@ class ForgeEnergyPortTest {
         });
         var outputPort = new ForgeEnergyPort(output, HatchMode.OUTPUT);
         assertEquals(0, outputPort.receiveEnergy(100, false));
-        assertEquals(30, output.receiveEnergy(100, Actionable.MODULATE));
+        assertEquals(100, output.receiveEnergy(100, Actionable.MODULATE));
         assertEquals(20, outputPort.extractEnergy(100, false));
-        assertEquals(10, output.storedEnergy());
+        assertEquals(80, output.storedEnergy());
     }
 
     @Test

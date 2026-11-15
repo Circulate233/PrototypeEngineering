@@ -46,7 +46,8 @@ public final class ForgeEnergyPort implements IEnergyStorage {
             if (!input.isValid()) {
                 return 0;
             }
-            return checkedTransfer(input.receiveEnergy(amount, simulate ? Actionable.SIMULATE : Actionable.MODULATE), amount);
+            int limited = (int) Math.min(amount, input.externalReceiveLimit());
+            return checkedTransfer(input.receiveEnergy(limited, simulate ? Actionable.SIMULATE : Actionable.MODULATE), limited);
         } finally {
             context.unlock();
         }
@@ -63,7 +64,8 @@ public final class ForgeEnergyPort implements IEnergyStorage {
             if (!output.isValid()) {
                 return 0;
             }
-            return checkedTransfer(output.extractEnergy(amount, simulate ? Actionable.SIMULATE : Actionable.MODULATE), amount);
+            int limited = (int) Math.min(amount, output.externalExtractLimit());
+            return checkedTransfer(output.extractEnergy(limited, simulate ? Actionable.SIMULATE : Actionable.MODULATE), limited);
         } finally {
             context.unlock();
         }
@@ -93,7 +95,7 @@ public final class ForgeEnergyPort implements IEnergyStorage {
         var context = output.context();
         context.lock();
         try {
-            return output.isValid() && output.energySnapshot().maxExtract() > 0;
+            return output.isValid() && output.externalExtractLimit() > 0;
         } finally {
             context.unlock();
         }
@@ -105,7 +107,7 @@ public final class ForgeEnergyPort implements IEnergyStorage {
         var context = input.context();
         context.lock();
         try {
-            return input.isValid() && input.energySnapshot().maxReceive() > 0;
+            return input.isValid() && input.externalReceiveLimit() > 0;
         } finally {
             context.unlock();
         }

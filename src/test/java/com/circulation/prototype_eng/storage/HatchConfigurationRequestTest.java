@@ -109,7 +109,7 @@ class HatchConfigurationRequestTest {
             rejectForeign(() -> energy.requestConfiguration(energyTarget));
             rejectForeign(() -> energy.requestConfiguration(null));
             assertEquals(8, Objects.requireNonNull(originalResource.input()).extract(KEY, 8, Actionable.MODULATE));
-            assertEquals(32, originalEnergy.extractEnergy(60, Actionable.MODULATE));
+            assertEquals(32, originalEnergy.extractEnergy(32, Actionable.MODULATE));
             assertEquals(68, originalEnergy.storedEnergy());
             energy.update();
             assertEquals(HatchReconfigurationStatus.BLOCKED_CAPACITY, energy.configurationStatus());

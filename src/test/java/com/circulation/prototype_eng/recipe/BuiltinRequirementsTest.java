@@ -134,7 +134,7 @@ class BuiltinRequirementsTest {
     }
 
     @Test
-    void oneEnergySourceContributesOnlyItsOperationLimitEvenThroughMultipleAliases() {
+    void energyAliasesShareUnreservedBalanceWithoutExternalRateLimits() {
         var first = new EnergyBuffer(100, 100, 6, () -> {
         });
         var second = new EnergyBuffer(100, () -> {
@@ -143,12 +143,12 @@ class BuiltinRequirementsTest {
         var hatches = new MachineHatches(List.of(),
             List.of(new EnergyAlias(first), new EnergyAlias(first), second), List.of());
         var process = process(hatches, List.of(RecipeRequirements.ENERGY.requirement(id("power"),
-            new EnergyRequirement(7, 0, 0, 0, false))));
+            new EnergyRequirement(11, 0, 0, 0, false))));
         assertInstanceOf(ProcessResult.Blocked.class, RecipeStageExecutor.execute(process, RecipeStage.START));
         assertEquals(10, first.energySnapshot().availableEnergy());
         second.receiveEnergy(1, Actionable.MODULATE);
         assertSame(ProcessResult.SUCCESS, RecipeStageExecutor.execute(process, RecipeStage.START));
-        assertEquals(4, first.storedEnergy());
+        assertEquals(0, first.storedEnergy());
         assertEquals(0, second.storedEnergy());
     }
 

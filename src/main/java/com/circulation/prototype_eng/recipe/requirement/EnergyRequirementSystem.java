@@ -95,7 +95,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                     return RecipeText.StorageChanged.blocked();
                 }
                 var snapshot = source.energySnapshot();
-                long portion = Math.min(remaining, Math.min(snapshot.availableEnergy(), snapshot.maxExtract()));
+                long portion = Math.min(remaining, snapshot.availableEnergy());
                 if (portion == 0) {
                     continue;
                 }
@@ -136,7 +136,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                     return RecipeText.StorageChanged.blocked();
                 }
                 var snapshot = target.energySnapshot();
-                long portion = Math.min(remaining, Math.min(snapshot.availableCapacity(), snapshot.maxReceive()));
+                long portion = Math.min(remaining, snapshot.availableCapacity());
                 if (portion == 0) {
                     continue;
                 }
@@ -269,8 +269,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                                 }
                                 var snapshot = inputSource != null ? inputSource.energySnapshot() : outputSource.energySnapshot();
                                 long portion = Math.min(remaining, inputSource != null
-                                    ? Math.min(snapshot.availableEnergy(), snapshot.maxExtract())
-                                    : Math.min(snapshot.availableCapacity(), snapshot.maxReceive()));
+                                    ? snapshot.availableEnergy() : snapshot.availableCapacity());
                                 if (portion == 0) {
                                     continue;
                                 }
@@ -387,7 +386,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                     var snapshot = input.energySnapshot();
                     if (snapshot.context() != context || !context.current(snapshot.revision())) return changed();
                     facts.add(new InputAllocation.Source(sources.size(), snapshot.revision(),
-                        Math.min(snapshot.availableEnergy(), snapshot.maxExtract()), InputAllocationPlan.NO_RESOURCES,
+                        snapshot.availableEnergy(), InputAllocationPlan.NO_RESOURCES,
                         snapshot.availableEnergy(), snapshot.maxExtract()));
                     sources.add(input);
                     snapshots.add(snapshot);

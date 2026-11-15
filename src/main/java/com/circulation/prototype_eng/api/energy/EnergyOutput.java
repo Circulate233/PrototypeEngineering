@@ -13,12 +13,13 @@ public interface EnergyOutput {
     EnergySnapshot energySnapshot();
 
     /**
-     * Returns FE accepted under context's lock, within the request, current operation limit and unreserved capacity.
+     * Returns machine-produced FE accepted under context's lock, within the request and unreserved capacity.
+     * External transfer limits do not apply.
      */
     long receiveEnergy(long amount, Actionable mode);
 
     /**
-     * Reserves one exact receipt within the current per-operation limit.
+     * Reserves exact machine production within unreserved capacity, without external transfer limits.
      */
     ReservationResult reserveReceiveEnergy(EnergySnapshot snapshot, long amount);
 

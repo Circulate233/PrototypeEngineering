@@ -44,13 +44,13 @@
 
 `api.energy.EnergyInput` 表达机器取能职责，`EnergyOutput` 表达机器交付能量的职责，`EnergyHatch` 同时实现两者并提供容量接口。外部实现可以只提供需要的职责。`EnergyBuffer` 用 long 余额与输入/输出 holds 保存数量，在共享 StorageContext 锁下访问；模拟不修改余额或通知。EnergySnapshot 包含 context、revision、未预留余额/空间及 maxReceive/maxExtract；reserveExtractEnergy/reserveReceiveEnergy 取得精确令牌，与资源和业务需求共同应用、完成或补偿。真实 planned lane 和生命周期集成仍须后续完成。
 
-默认能源输入仓允许外部充入、机器消耗；输出仓允许机器产出、外部抽取。能源交互仓按用户最新要求分别创建输入/输出EnergyBuffer与StorageContext，每侧沿用该阶容量和原操作限额；机器的EnergyInput/EnergyOutput capability分别返回对应余额，不能相互借用。ForgeEnergyPort(input, output)接收只访问输入，抽取只访问输出；Forge单表查询提供两侧信息性汇总并饱和到Integer.MAX_VALUE，操作仍返回实际数量。旧ForgeEnergyPort(storage, mode)构造保留供明确共享单缓存的外部适配使用。
+默认能源输入仓允许外部充入、机器消耗；输出仓允许机器产出、外部抽取。能源交互仓按用户最新要求分别创建输入/输出EnergyBuffer与StorageContext，每侧沿用该阶容量和外部传输限额；机器的EnergyInput/EnergyOutput capability分别返回对应余额，不能相互借用。ForgeEnergyPort(input, output)接收只访问输入，抽取只访问输出；Forge单表查询提供两侧信息性汇总并饱和到Integer.MAX_VALUE，操作仍返回实际数量。旧ForgeEnergyPort(storage, mode)构造保留供明确共享单缓存的外部适配使用。
 
 能源GUI宿主增加inputStorage()/outputStorage()，默认方法兼容既有单storage外部实现；内置实体覆写为真实独立侧。原storage()在交互仓指输入侧，单输出仓指其唯一输出侧。GuiSync分别传输输入/输出电量和容量；两根电池、两行数量、两个tooltip各读自己的侧。NBT双侧写InputEnergy/OutputEnergy，并在有序双锁内保存/失效；旧单Energy仅迁入输入，不复制。
 
-能源实体已接入模式、等级、输入/输出限额及自动标志，并写入 NBT 的 `Mode`、`Tier`、`MaxInRate`、`MaxOutRate`、`AutoInput`、`AutoOutput`。每次操作限额同时约束机器与 Forge，修改后会动态更新机器访问视图；设置为零恢复配置默认限额。PM 的 EnergyStorageImpl 也按每次操作限制 maxReceive/maxExtract，旧配置的 FE/t 标签不构成累计 tick 预算。PM 自动标志尚未找到邻居 tick 传输调用链；本项目保留标志的设置/保存，不据此宣称已实现邻居自动传输。
+能源实体将模式、等级、外部输入/输出限额和自动标志保存到 `Mode`、`Tier`、`MaxInRate`、`MaxOutRate`、`AutoInput`、`AutoOutput`。限额只作用于 Forge 接口和仓室自动传输；-1 使用配置默认值，0 关闭对应外部方向。机器消耗和产能直接使用缓存的未预留电量或空间，不受这些限额约束。外部限额按单次操作应用，不作为累计 tick 预算。
 
-`storageIdentity()` 默认返回真实余额的 StorageContext，所有适配视图必须沿用同一 context，供机器避免重复预算。降低限额会重新验证待应用令牌，精确补偿不受新限额裁剪。活动令牌或失效 context 不允许 restore，保存仍能读取失效余额；恢复/限额/失效会推进版本并置脏。能源 TileEntity 也通过共享 VarHandle 接收工作线程脏信号，在服务端 tick、卸载或失效回调冲刷。Applied-Flux 接入当前暂缓。
+`storageIdentity()` 默认返回真实余额的 StorageContext，所有适配视图必须沿用同一 context，供机器避免重复预算。外部限额变化不取消内部待应用令牌，精确补偿不受限额裁剪。活动令牌或失效 context 不允许 restore，保存仍能读取失效余额；恢复/限额/失效会推进版本并置脏。能源 TileEntity 也通过共享 VarHandle 接收工作线程脏信号，在服务端 tick、卸载或失效回调冲刷。Applied-Flux 接入当前暂缓。
 
 ## 外部实现
 
@@ -100,9 +100,9 @@ AE2S 的 ConfigGuiInventory 构造参数和 delegate 固定为 GenericStackInv�
 
 ## 开发默认值与资源来源
 
-`config/prototype_eng/hatches.cfg` 在初始化时读取，按 `tier1`–`tier10` 配置槽数、混合仓每侧槽数、物品/流体每槽容量、能源容量与操作限额；槽数允许 1–81。十阶槽数/物品容量源自 PM `ItemHatchConfig` / `ItemIOHatchConfig`，流体每槽容量源自 `FluidHatchConfig`，能源源自 `EnergyHatchConfig`。
+`config/prototype_eng/hatches.cfg` 在初始化时读取，按 `tier1`–`tier10` 配置槽数、混合仓每侧槽数、物品/流体每槽容量、能源容量与外部操作限额；槽数允许 1–81。十阶槽数/物品容量源自 PM `ItemHatchConfig` / `ItemIOHatchConfig`，流体每槽容量源自 `FluidHatchConfig`，能源源自 `EnergyHatchConfig`。
 
-| 等级 | 输入/输出槽数 | 混合仓每侧槽数 | 物品每槽 | 流体每槽（mB） | 能源容量（FE） | 能源每次操作限额（FE） |
+| 等级 | 输入/输出槽数 | 混合仓每侧槽数 | 物品每槽 | 流体每槽（mB） | 能源容量（FE） | 能源外部单次限额（FE） |
 | ---- | ------------: | -------------: | -------: | -------------: | -------------: | ---------------------: |
 | 1    |             1 |              1 |       64 |         16,000 |        128,000 |                     32 |
 | 2    |             2 |              1 |      128 |         32,000 |        512,000 |                    128 |

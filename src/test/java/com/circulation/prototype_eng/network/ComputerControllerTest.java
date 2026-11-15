@@ -135,6 +135,28 @@ class ComputerControllerTest {
     }
 
     @Test
+    void replacingComponentsConsumesBufferedEnergyBeyondExternalTransferLimits() {
+        try (var fixture = new Fixture(1)) {
+            fixture.power.setTransferLimits(10, 10);
+            fixture.power.restore(100);
+            fixture.hatch.install(1);
+            fixture.hatch.buffer.insert(WATER, 5_000, Actionable.MODULATE);
+            assertTrue(fixture.network.refresh());
+            assertEquals(ComputerController.SupplyState.ACTIVE, fixture.computer.supplyState());
+            assertEquals(90, fixture.power.storedEnergy());
+
+            fixture.hatch.install(2);
+            fixture.nextTick();
+            assertTrue(fixture.network.refresh());
+            assertEquals(ComputerController.SupplyState.ACTIVE, fixture.computer.supplyState());
+            assertEquals(20, fixture.computer.energyPaid());
+            assertEquals(70, fixture.power.storedEnergy());
+            assertTrue(fixture.network.refresh());
+            assertEquals(70, fixture.power.storedEnergy());
+        }
+    }
+
+    @Test
     void noConcurrencyRollsBackRecipeInputsAndComponentPowerBeforePublication() {
         try (var fixture = new Fixture(0)) {
             fixture.hatch.install(1);

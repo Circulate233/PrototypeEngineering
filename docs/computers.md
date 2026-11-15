@@ -101,4 +101,6 @@ MachineType.computer("example:computer", "example.computer", "example:computer_s
 
 服务端在网络工作完成后的所属线程边界采集。组件固定定义随组成变化发送，资源数量沿原double增量包；不再收集或同步GUI配方列表、状态与进度。界面只读实际事务结果，禁止为显示重新执行配方条件、预留材料或消耗FE。
 
+FE 需求行显示本次可供量 / 当前组件需求，上限为需求值。可供量包含本 tick 已支付的 FE，并在原有能源仓遍历中按未预留剩余电量补足，内部取能不受外部限速约束；可用 FE 单独显示仓内剩余量。顶部实际消耗卡片只在服务端结算确认为能源不足时标红，组件因其他资源不足未扣 FE 不表示缺电。组件更换后，需求直接读取当前组件集合和设备能耗倍率，不沿用上一轮结算的旧需求。
+
 Java自定义容器与screen继续使用MachineGuiRegistry和MachineScreenRegistry。NetworkComputer接口仍只暴露并发和外部资源。默认控制器显示读取方法必须在所属线程边界调用；返回的声明列表与资源Map必须按只读方式使用。

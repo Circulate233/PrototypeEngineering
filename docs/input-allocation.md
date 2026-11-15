@@ -39,7 +39,7 @@ var payload = new ResourceRequirement(inputs, outputs).withInputAllocation(alloc
 
 回调和其捕获状态必须在定义存续期间不可变；它是 owner 上的一次合作回调，不能访问世界、执行 START、预留或改变存储。扫描探针、概率预检及以后重新尝试均可能再次调用它。回调返回正数分配，总额必须准确等于本投影需求；空列表、部分结果、重复/不存在的来源、超出余额/需求或算术溢出会明确报错。普通总量不足在回调前返回既有受阻结果。
 
-`Context` 暴露阶段、投影序号、资源键（FE 为 null）、有效数量与不可变来源列表。每来源包含本次来源下标、首次快照 revision、当前投影剩余可提量、首次投影前的完整 AEKey 余额，以及独立 FE 的原余额/操作上限。完整资源表由 `beginQuantityCapture` 和后续预算化复制得到，不能通过回调修改；前面投影的预留不会改写首次快照，只影响后面投影的剩余量。来源下标仅用于本次分配返回；实际预留仍使用获取游标持有的 StorageContext 和快照。
+`Context` 暴露阶段、投影序号、资源键（FE 为 null）、有效数量与不可变来源列表。每来源包含本次来源下标、首次快照 revision、当前投影剩余可提量、首次投影前的完整 AEKey 余额，以及独立 FE 的原余额与外部传输上限；FE 可分配量只取未预留电量，maxExtract 仅提供外部端口信息。完整资源表由 `beginQuantityCapture` 和后续预算化复制得到，不能通过回调修改；前面投影的预留不会改写首次快照，只影响后面投影的剩余量。来源下标仅用于本次分配返回；实际预留仍使用获取游标持有的 StorageContext 和快照。
 
 数量表直接使用 AEKey2LongMap。`ImmutableResourceAmounts` 现仅为原生map构建帮助类，build 按契约移交已完成表，不再创建自定义防写map、逐条Entry副本或关闭builder；生产者和消费者都不得再修改交接后的表。`StorageSnapshot` 不在构造时再次复制已经捕获的数据，真实库存快照仍由存储在其读取边界构建。
 

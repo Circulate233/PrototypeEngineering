@@ -43,10 +43,10 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
     private ComputerController.SupplyState knownSupply;
     private boolean knownFormed, stateKnown;
     private String stateText = "", structureText = "", alertText = "";
-    private long knownConcurrency = -1, knownInstalled = -1, knownPaid = -1, knownRequired = -1, knownAvailable = -1;
-    private String concurrencyText = "", installedText = "", energyText = "", availableText = "";
+    private long knownConcurrency = -1, knownInstalled = -1, knownPaid = -1, knownRequired = -1, knownAvailable = -1, knownEnergyForComponents = -1;
+    private String concurrencyText = "", installedText = "", energyText = "", availableText = "", energyDemandText = "";
     private String titleText, concurrencyLabel, installedLabel, demandLabel, demandHint, outputLabel, outputHint;
-    private String energyLabel, availableLabel, componentLabel, countLabel, concurrencyColumn, energyColumn, stateLabel;
+    private String energyLabel, energyDemandLabel, availableLabel, componentLabel, countLabel, concurrencyColumn, energyColumn, stateLabel;
     private String runningLabel, pausedLabel, emptyComponents, emptyOutput, requiredLabel, providedLabel, noneLabel;
 
     public GuiComputer(ContainerComputer container, InventoryPlayer player) {
@@ -78,7 +78,7 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         knownComponents = null;
         stateKnown = false;
         layoutStatsY = -1;
-        knownConcurrency = knownInstalled = knownPaid = knownRequired = knownAvailable = -1;
+        knownConcurrency = knownInstalled = knownPaid = knownRequired = knownAvailable = knownEnergyForComponents = -1;
         titleText = container.getGuiTitle().getFormattedText();
         concurrencyLabel = ComputerGuiText.ConcurrencyLabel.getLocal();
         installedLabel = ComputerGuiText.InstalledLabel.getLocal();
@@ -87,6 +87,7 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         outputLabel = ComputerGuiText.OutputResources.getLocal();
         outputHint = ComputerGuiText.PerTick.getLocal();
         energyLabel = ComputerGuiText.EnergyUse.getLocal();
+        energyDemandLabel = ComputerGuiText.EnergyDemand.getLocal();
         availableLabel = ComputerGuiText.EnergyAvailable.getLocal();
         componentLabel = ComputerGuiText.Component.getLocal();
         countLabel = ComputerGuiText.Count.getLocal();
@@ -179,9 +180,13 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         }
         if (knownPaid != container.energyPaid || knownRequired != container.energyRequired) {
             knownPaid = container.energyPaid;
-            knownRequired = container.energyRequired;
             energyText = GuiNumbers.grouped(container.energyPaid) + " / " + GuiNumbers.grouped(container.energyRequired);
         }
+        if (knownEnergyForComponents != container.energyForComponents || knownRequired != container.energyRequired) {
+            knownEnergyForComponents = container.energyForComponents;
+            energyDemandText = GuiNumbers.grouped(container.energyForComponents) + " / " + GuiNumbers.grouped(container.energyRequired);
+        }
+        knownRequired = container.energyRequired;
         if (knownAvailable != container.energyAvailable) {
             knownAvailable = container.energyAvailable;
             availableText = GuiNumbers.grouped(container.energyAvailable);
@@ -300,7 +305,7 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
         }
         stat(concurrencyLabel, concurrencyText, 0, TEXT);
         stat(installedLabel, installedText, 1, TEXT);
-        stat(energyLabel, energyText, 2, container.energyPaid < container.energyRequired ? BAD : TEXT);
+        stat(energyLabel, energyText, 2, container.supplyState == ComputerController.SupplyState.ENERGY_SHORTAGE ? BAD : TEXT);
         if (page == 0) drawOverview();
         else drawComponents(mouseX, mouseY);
     }
@@ -336,9 +341,9 @@ public class GuiComputer extends AEBaseGui<ContainerComputer> {
                 pair(value.name(), value.amountsText(), LEFT_X, y, width, satisfied ? TEXT : BAD);
                 progress(LEFT_X, y + 12, width, 2, fraction(value.occupied(), value.capacity()), satisfied ? GOOD : BAD);
             } else if (index == demands.size()) {
-                boolean satisfied = container.energyPaid >= container.energyRequired;
-                pair(energyLabel, energyText, LEFT_X, y, width, satisfied ? TEXT : BAD);
-                progress(LEFT_X, y + 12, width, 2, fraction(container.energyPaid, container.energyRequired), satisfied ? GOOD : BAD);
+                boolean satisfied = container.energyForComponents >= container.energyRequired;
+                pair(energyDemandLabel, energyDemandText, LEFT_X, y, width, satisfied ? TEXT : BAD);
+                progress(LEFT_X, y + 12, width, 2, fraction(container.energyForComponents, container.energyRequired), satisfied ? GOOD : BAD);
             } else pair(availableLabel, availableText, LEFT_X, y, width, TEXT);
         }
         int outputRight = RIGHT_X + COLUMN_WIDTH - 2;

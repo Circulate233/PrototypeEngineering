@@ -4,7 +4,9 @@
 
 ## 当前检查点
 
-- 2026-11-15 存档与内部同步清理完成：移除固定 Version/Schema 的读写和拒绝分支、普通 Map/Set 重复键检查、机器数据同步的临时去重集合及渲染分片 Count。30 生产 Java、13 测试 Java 已 IDEA 格式化并全级零诊断，1738 tests/271 suites、Spotless、完整构建和 MCP 构建通过。入口：[审查](defensive-programming-audit.md)、[API](../api.md)、[实施记录](implementation-status.md)。此前 V7/V6 的数字限制已删除，未增加历史字段迁移。下一步处理用户追加的中心每格说明与计算机更换组件后的 FE 状态问题。
+- 2026-11-15 内部 FE 与外部限速分离完成：控制器、计算机、研究站及普通/并行配方按缓存扣能，内部产能按剩余空间写入；Forge 和自动传输保留外部限速。中心删除每格并发说明，计算机需求行显示内部可供 FE，实际消耗单独显示。29 Java、2 语言文件 IDEA MCP 全级零诊断，1739 tests/271 suites、完整构建、Spotless 与 MCP 构建通过。入口：[能源 API](../api.md#仓室读写与容量)、[计算机](computers.md)、[实施记录](implementation-status.md)。下一步用户完整重启，复验一级能源仓缓存足够时双组件 64 FE 扣费及外部限速。
+
+- 2026-11-15 存档与内部同步清理完成：移除固定 Version/Schema 的读写和拒绝分支、普通 Map/Set 重复键检查、机器数据同步的临时去重集合及渲染分片 Count。30 生产 Java、13 测试 Java 已 IDEA 格式化并全级零诊断，1738 tests/271 suites、Spotless、完整构建和 MCP 构建通过。入口：[审查](defensive-programming-audit.md)、[API](../api.md)、[实施记录](implementation-status.md)。此前 V7/V6 的数字限制已删除，未增加历史字段迁移。用户追加的中心说明与计算机 FE 问题已由后续内部能源修订处理。
 
 - 2026-11-15 设备界面收尾修复：修正研究站队名查询、无权限显示、材料/资源悬停偏移、按钮重叠与滑块；网络中心改用 AE 滑块并在行数变化时重新布局；计算机页签与滚动条随提示条移动，状态配色补全；文字统一按原字号截断。10 Java 与 2 语言文件 IDEA MCP 全级零诊断，完整构建 1742 测试/271 suites 通过。入口：[改版说明](device-gui-redesign.md)、[实施记录](implementation-status.md)。下一步用户完整重启复验三个界面；当时记录的 3 个持久化测试失败已由后续存档清理处理。
 

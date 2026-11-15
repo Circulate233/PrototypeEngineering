@@ -58,7 +58,7 @@ public final class EnergyBuffer implements EnergyHatch {
     }
 
     /**
-     * Updates limits in place. Existing tokens are rechecked against lower limits before applying.
+     * Updates external transfer limits. Machine reservations retain their quantities.
      */
     public void setTransferLimits(long maxReceive, long maxExtract) {
         context.lock();
@@ -97,6 +97,16 @@ public final class EnergyBuffer implements EnergyHatch {
     }
 
     @Override
+    public long externalReceiveLimit() {
+        return maxReceive;
+    }
+
+    @Override
+    public long externalExtractLimit() {
+        return maxExtract;
+    }
+
+    @Override
     public EnergySnapshot energySnapshot() {
         context.lock();
         try {
@@ -113,7 +123,7 @@ public final class EnergyBuffer implements EnergyHatch {
         checkRequest(amount);
         context.lock();
         try {
-            long accepted = context.isValid() ? Math.min(Math.min(amount, maxReceive), capacity - stored - reservedReceive) : 0;
+            long accepted = context.isValid() ? Math.min(amount, capacity - stored - reservedReceive) : 0;
             if (accepted > 0 && mode == Actionable.MODULATE) {
                 requireChange();
                 stored = Math.addExact(stored, accepted);
@@ -130,7 +140,7 @@ public final class EnergyBuffer implements EnergyHatch {
         checkRequest(amount);
         context.lock();
         try {
-            long extracted = context.isValid() ? Math.min(Math.min(amount, maxExtract), stored - reservedExtract) : 0;
+            long extracted = context.isValid() ? Math.min(amount, stored - reservedExtract) : 0;
             if (extracted > 0 && mode == Actionable.MODULATE) {
                 requireChange();
                 stored = Math.subtractExact(stored, extracted);
@@ -158,6 +168,7 @@ public final class EnergyBuffer implements EnergyHatch {
     @SuppressWarnings("ReturnOfInnerClass") // The public receipt must retain its exact private native token.
     public @Nullable NativeTransferReservation reserveTransfer(long amount, boolean receive) {
         context.requireOrdinaryLock();
+        if (amount > (receive ? maxReceive : maxExtract)) return null;
         if (externalReservations == Integer.MAX_VALUE)
             throw new IllegalStateException("Too many active external energy transfers");
         var result = reserve(energySnapshot(), amount, receive);
@@ -200,8 +211,7 @@ public final class EnergyBuffer implements EnergyHatch {
                 return ReservationResult.STALE_SNAPSHOT;
             }
             long available = receive ? capacity - stored - reservedReceive : stored - reservedExtract;
-            long limit = receive ? maxReceive : maxExtract;
-            if (amount > available || amount > limit) {
+            if (amount > available) {
                 return ReservationResult.INSUFFICIENT;
             }
             if (activeReservations == Integer.MAX_VALUE) {
@@ -341,7 +351,7 @@ public final class EnergyBuffer implements EnergyHatch {
         public boolean canApply() {
             context.requireLock();
             requireState(State.PENDING);
-            return context.isValid() && amount <= (receive ? maxReceive : maxExtract);
+            return context.isValid();
         }
 
         @Override
@@ -349,7 +359,7 @@ public final class EnergyBuffer implements EnergyHatch {
             context.requireLock();
             requireState(State.PENDING);
             if (!canApply()) {
-                throw new IllegalStateException("Energy reservation cannot apply under current limits or lifetime");
+                throw new IllegalStateException("Energy reservation storage is no longer valid");
             }
             context.requireReservedChange(revisionChanges);
             long nextStored = receive ? Math.addExact(stored, amount) : Math.subtractExact(stored, amount);

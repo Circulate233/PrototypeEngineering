@@ -102,6 +102,7 @@
     #pe-redesign .nc-cells i.on { background:var(--dark); box-shadow:none; }
     #pe-redesign .nc-cells i.part { background:linear-gradient(90deg,var(--dark) var(--p),var(--slot) var(--p)); box-shadow:inset 0 0 0 1px var(--line); }
     #pe-redesign .nc-legend { display:flex; justify-content:space-between; font-size:12px; color:var(--soft); }
+    #pe-redesign .nc-legend:last-child { justify-content:flex-end; }
     #pe-redesign .nc-big { font:20px/24px Consolas,"Microsoft YaHei",monospace; color:var(--text); }
     #pe-redesign .nc-list { display:flex; flex-direction:column; }
     #pe-redesign .nc-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:3px 10px; padding:6px 0; }
@@ -275,7 +276,6 @@
         $("nc-level").className = "nc-digits" + (data.level ? "" : " off");
         $("nc-concurrency").textContent = data.used + " / " + data.total;
         $("nc-available").textContent = "可用 " + (data.total - data.used);
-        $("nc-cell-hint").textContent = data.total ? "每格 " + fmt(data.total / 16) : "";
         const cells = $("nc-cells");
         cells.innerHTML = "";
         for (let i = 0; i < 16; i++) {
@@ -317,7 +317,8 @@
         $("pc-installed").innerHTML = fmt(data.installed) + "<em>件</em>";
         const energy = $("pc-energy");
         energy.innerHTML = fmt(data.paid) + "<em>/ " + fmt(data.fee) + "</em>";
-        energy.className = "rd-num" + (data.paid < data.fee ? " bad" : "");
+        energy.className = "rd-num" + (data.energyShortage ? " bad" : "");
+        const energyForComponents = Math.min(data.fee, data.paid + data.available);
         for (const tab of root.querySelectorAll("[data-tab]")) tab.setAttribute("aria-selected",String(tab.dataset.tab === pcTab));
         $("pc-overview").hidden = pcTab !== "overview";
         $("pc-components").hidden = pcTab !== "components";
@@ -325,7 +326,7 @@
           const short = d[1] < d[2];
           return '<div class="pc-row"><span>' + d[0] + '</span><span class="rd-num' + (short ? " bad" : "") + '">' + fmt(d[1]) + ' / ' + fmt(d[2]) + '</span>' + bar(pct(d[1],d[2]),short ? "short" : "done") + '</div>';
         });
-        demandRows.push('<div class="pc-row"><span>FE 实耗 / 需求</span><span class="rd-num' + (data.paid < data.fee ? " bad" : "") + '">' + fmt(data.paid) + ' / ' + fmt(data.fee) + '</span>' + bar(pct(data.paid,data.fee),data.paid < data.fee ? "short" : "done") + '</div>');
+        demandRows.push('<div class="pc-row"><span>FE</span><span class="rd-num' + (energyForComponents < data.fee ? " bad" : "") + '">' + fmt(energyForComponents) + ' / ' + fmt(data.fee) + '</span>' + bar(pct(energyForComponents,data.fee),energyForComponents < data.fee ? "short" : "done") + '</div>');
         demandRows.push('<div class="pc-row"><span>可用 FE</span><span class="rd-num">' + fmt(data.available) + '</span></div>');
         $("pc-demand").innerHTML = demandRows.join("");
         $("pc-output").innerHTML = data.output.length ? data.output.map(o => '<div class="pc-row"><span>' + o[0] + '</span><span class="rd-num">' + o[1] + '</span></div>').join("") : '<div class="rd-empty">暂无资源供给</div>';

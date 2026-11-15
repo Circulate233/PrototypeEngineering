@@ -53,6 +53,8 @@ public final class ContainerComputer extends AEBaseContainer {
     public NetworkCenterResourcePacket outputUpdate = NetworkCenterResourcePacket.EMPTY;
     @GuiSync(11)
     public boolean formed;
+    @GuiSync(12)
+    public long energyForComponents;
 
     public ContainerComputer(InventoryPlayer player, MachineControllerHost host) {
         super(player, host.blockEntity());
@@ -88,9 +90,10 @@ public final class ContainerComputer extends AEBaseContainer {
             supplyState = active ? computer.supplyState() : ComputerController.SupplyState.WAITING;
             concurrency = active ? computer.providedConcurrency() : 0;
             var inventory = computer.installedInventory();
-            energyRequired = computer.energyRequired();
+            energyRequired = computer.networkEnergy(inventory.energyPerTick());
             energyPaid = active ? computer.energyPaid() : 0;
             energyAvailable = 0;
+            energyForComponents = Math.min(energyPaid, energyRequired);
             energySources.clear();
             var elements = MachineHatches.get(computer).energyInputs();
             for (int index = 0; index < elements.size(); index++) {
@@ -99,7 +102,9 @@ public final class ContainerComputer extends AEBaseContainer {
                 if (!energySources.add(context)) continue;
                 context.lock();
                 try {
-                    energyAvailable = Math.addExact(energyAvailable, input.energySnapshot().availableEnergy());
+                    var snapshot = input.energySnapshot();
+                    energyAvailable = Math.addExact(energyAvailable, snapshot.availableEnergy());
+                    energyForComponents += Math.min(energyRequired - energyForComponents, snapshot.availableEnergy());
                 } finally {
                     context.unlock();
                 }

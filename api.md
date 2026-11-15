@@ -227,6 +227,10 @@ Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 
 
 `ResourceHatch` 暴露输入和输出 `ResourceStorage`，`EnergyInput`、`EnergyOutput` 提供独立 FE 接口。结构匹配后发现的仓室保存在机器的 `MachineHatches` 组件中。
 
+机器内部必须通过 `EnergyInput.extractEnergy/reserveExtractEnergy` 扣能，通过 `EnergyOutput.receiveEnergy/reserveReceiveEnergy` 写入产能，仅受未预留电量或剩余容量约束。禁止用 `EnergySnapshot.maxExtract/maxReceive` 限制机器消耗、配方并行分配或内部产能；这两个值只限制 Forge 接口和仓室自动传输。外部限速设为 0 时关闭对应外部转移，内部仍可使用缓存。已有预留的应用、完成和回滚沿原事务执行，不会因为调整外部限速失效。
+
+外部端口可在持有 StorageContext 锁时调用 `EnergyHatch.externalReceiveLimit/externalExtractLimit` 读取限速。默认实现读取快照，内置 EnergyBuffer 直接读取字段，外部转移不会为取得限速额外创建能源快照。
+
 普通搬运可以调用 `ResourceStorage.insert/extract`，传 `Actionable.SIMULATE` 先计算可处理数量，传 `MODULATE` 实际修改。配方执行使用需求系统的快照和预留，以保证多个需求或多台机器共享仓室时不会重复占用。
 
 内置输入仓、输出仓和混合仓都支持在 GUI 插入 AE 资源包，按包内资源的真实种类和数量存储。未能存入的数量保留在资源包中，已经预留的空间不可占用。这个手动解包操作不改变机器和自动化的输入、输出方向，操作规则见[仓室指南](docs/hatches.md#ae-资源包插入)。

@@ -4,7 +4,8 @@ import com.circulation.prototype_eng.api.storage.StorageContext;
 
 
 /**
- * Immutable FE availability and per-operation limits, without an AE resource key.
+ * FE availability and external per-operation transfer limits. Machine consumption and production use
+ * availableEnergy and availableCapacity without maxExtract or maxReceive.
  */
 public record EnergySnapshot(StorageContext context, long revision, long availableEnergy,
                              long availableCapacity, long maxReceive, long maxExtract) {

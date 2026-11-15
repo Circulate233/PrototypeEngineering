@@ -1,5 +1,17 @@
 # 实施进度
 
+## 2026-11-15 内部 FE 与外部传输限速分离
+
+用户截图中一级能源仓存有 128000 FE，计算机两个组件合计需求 64 FE，结算却只取得 32。原因是 ControllerEnergy、配方需求分配和 EnergyBuffer 的直接访问及预留都应用了外部提取限速。内部消耗现在通过 EnergyInput 读取未预留电量，内部产能通过 EnergyOutput 使用剩余空间；控制器费用、普通及并行配方、单来源及自定义分配都采用这一规则。降低外部限速或设为 0 不会取消内部预留。
+
+ForgeEnergyPort 与 HatchAutoTransfer 对外部请求应用接收和提取限速，原生外部转移预留也保留限额。EnergyHatch 提供 externalReceiveLimit/externalExtractLimit，内置 EnergyBuffer 直接返回字段，避免外部转移为了读取限速创建临时快照。Java 与 ZS 文档、仓室和分配说明已同步。
+
+网络中心删除每格并发说明、本地化键和 DecimalFormat。计算机需求区的 FE 行显示本 tick 已支付量与当前缓存可供量之和，上限为当前需求；可用 FE 单独显示仓内剩余量。需求来自当前组件集合及设备倍率，更换组件后不沿用旧费用。顶部实际消耗只在服务端确认为能源不足时标红。预览中的重复界面定义已同步更新，三个 HTML 脚本语法检查通过。
+
+新增一个组件更换回归用例，验证组件费用超过外部限速时仍从缓存完整支付，同 tick 重复发布不重复扣费。现有限速测试改用实际外部端口，内部测试覆盖预留、回滚、失效、单来源分配、别名去重和未来阶段容量检查。最终完整 gradlew.bat build --max-workers=1 --console=plain、Spotless、1739 tests/271 suites 和 IDEA MCP build_project 通过，失败、错误、跳过均为 0。29 Java 已格式化，29 Java 和 2 语言文件逐文件 get_file_problems(errorsOnly:false) 的错误、警告、弱警告均为 0，无超时。
+
+最终证据位于 C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261115/internal-energy/：idea-verified.json、idea-build.json、gradle-build-verified.log、verification-summary.json 和 regression-fixed.log；预览语法记录在同级 device-energy-display/preview-syntax.json。本地英文提交，保留用户 AGENTS.md 修改。未启动游戏，实际界面和连续外部供电由用户完整重启后复验。
+
 ## 2026-11-15 存档与内部同步清理
 
 删除研究世界、玩家和队伍研究、队列、手动会话、研究下载、来源计划、存盘及回执、数据库、机器装配、工位、配方进程、控制器和动画中的固定 Version/Schema 写入与读取检查。结构目录、渲染快照和配方声明的内部二进制同步也删除固定版本整数，直接按当前字段布局解码。已有 NBT 的版本字段不参与读取，本轮没有增加历史字段迁移。

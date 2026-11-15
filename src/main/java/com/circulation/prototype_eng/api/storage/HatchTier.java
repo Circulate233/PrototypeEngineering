@@ -67,7 +67,7 @@ public enum HatchTier {
     }
 
     /**
-     * PM's EnergyStorageImpl applies this limit per operation, despite older FE/t labels.
+     * External transfer limit per operation; machine consumption and production use the buffer directly.
      */
     public long energyTransfer() {
         return energyTransfer;

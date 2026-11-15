@@ -159,12 +159,12 @@ class FixedIoScanConstraintTest {
     }
 
     @Test
-    void futureStageProbesAggregateRequirementsAndAliasesAndHonorEnergyOperationRates() {
+    void futureStageProbesAggregateRequirementsAndAliasesAgainstBufferedEnergy() {
         var recipes = List.of(
             recipe("tick_capacity", 3, io("first", 0, 1, 2, 0, false), io("second", 0, 1, 2, 0, false)),
             recipe("end_capacity", 3, io("first", 0, 0, 0, 3, false), io("second", 0, 0, 0, 3, false)),
-            recipe("input_rate", 3, energy(0, 4, 0, 0, false)),
-            recipe("output_rate", 3, energy(0, 0, 0, 4, false)));
+            recipe("energy_input", 3, energy(0, 30, 0, 0, false)),
+            recipe("energy_output", 3, energy(0, 0, 0, 60, false)));
         for (var recipe : recipes) {
             var env = new Environment();
             env.output.insert(PRODUCT, 4, Actionable.MODULATE);

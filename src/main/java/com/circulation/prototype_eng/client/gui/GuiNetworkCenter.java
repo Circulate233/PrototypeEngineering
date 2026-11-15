@@ -13,7 +13,6 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 import org.lwjgl.input.Mouse;
 
 import java.io.IOException;
-import java.text.DecimalFormat;
 import java.util.List;
 
 import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.*;
@@ -29,10 +28,9 @@ public class GuiNetworkCenter extends AEBaseGui<ContainerNetworkCenter> {
     private static final int LIST_X = 20, LIST_Y = 112, SCROLL_X = 358;
     private static final ResourceLocation BACKGROUND = GuiAtlas.texture("gui_network_center");
     private final Scrollbar scrollbar = new Scrollbar(Scrollbar.SMALL);
-    private final DecimalFormat cellFormat = new DecimalFormat("0.##");
     private long knownConcurrency = -1;
     private int knownUsed = -1, knownLevel = -1, visibleRows = 1;
-    private String concurrencyText = "", availableText = "", cellText = "", levelText = "", statusLabel = "";
+    private String concurrencyText = "", availableText = "", levelText = "", statusLabel = "";
     private String title, levelLabel, concurrencyLabel, resourceLabel, resourceHint, emptyLabel, powerHint;
     private NetworkCenterGuiText knownStatus;
 
@@ -102,7 +100,6 @@ public class GuiNetworkCenter extends AEBaseGui<ContainerNetworkCenter> {
             knownUsed = container.concurrencyUsed;
             concurrencyText = GuiNumbers.grouped(knownUsed) + " / " + GuiNumbers.grouped(knownConcurrency);
             availableText = NetworkCenterGuiText.Available.getLocal(GuiNumbers.grouped(Math.max(0, knownConcurrency - knownUsed)));
-            cellText = knownConcurrency == 0 ? "" : NetworkCenterGuiText.PerCell.getLocal(cellFormat.format(knownConcurrency / (double) CELLS));
         }
         if (knownLevel != container.networkLevel) {
             knownLevel = container.networkLevel;
@@ -151,7 +148,6 @@ public class GuiNetworkCenter extends AEBaseGui<ContainerNetworkCenter> {
         centered(fontRenderer, levelLabel, 16, 66, 60, LINE_HEIGHT, SOFT);
         text(fontRenderer, concurrencyLabel, CELL_X, 37, 120, SOFT);
         right(fontRenderer, concurrencyText, CELL_X + CELL_WIDTH, 37, 150, TEXT);
-        text(fontRenderer, cellText, CELL_X, 66, 120, SOFT);
         right(fontRenderer, availableText, CELL_X + CELL_WIDTH, 66, 150, SOFT);
         text(fontRenderer, resourceLabel, LIST_X, 97, 140, TEXT);
         right(fontRenderer, resourceHint, LIST_X + listWidth(), 97, 190, SOFT);

@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.energy;
 
-import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.energy.EnergyHatchConfiguration;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.HatchReconfigurationStatus;
@@ -58,8 +57,9 @@ class EnergyHatchReconfigurationTest {
         assertNotSame(input.context(), Objects.requireNonNull(installed[0].input()).context());
         assertEquals(0, oldPort.receiveEnergy(100, false));
         assertEquals(0, oldPort.extractEnergy(100, false));
-        assertEquals(11, Objects.requireNonNull(installed[0].input()).receiveEnergy(100, Actionable.MODULATE));
-        assertEquals(7, Objects.requireNonNull(installed[0].output()).extractEnergy(100, Actionable.MODULATE));
+        var installedPort = new ForgeEnergyPort(installed[0].input(), installed[0].output());
+        assertEquals(11, installedPort.receiveEnergy(100, false));
+        assertEquals(7, installedPort.extractEnergy(100, false));
     }
 
     @Test
@@ -74,7 +74,7 @@ class EnergyHatchReconfigurationTest {
             }));
         assertArrayEquals(new long[]{900, 1300}, old.savedBalances());
         assertEquals(0, notifications[0]);
-        assertEquals(31, old.primary().receiveEnergy(100, Actionable.MODULATE));
+        assertEquals(31, new ForgeEnergyPort(old.input(), old.output()).receiveEnergy(100, false));
     }
 
 
@@ -108,8 +108,9 @@ class EnergyHatchReconfigurationTest {
         assertEquals(1300, Objects.requireNonNull(restored.outputStorage()).storedEnergy());
         assertEquals(1000, Objects.requireNonNull(restored.inputStorage()).capacity());
         assertEquals(2000, Objects.requireNonNull(restored.outputStorage()).capacity());
-        assertEquals(11, Objects.requireNonNull(restored.inputStorage()).receiveEnergy(100, Actionable.MODULATE));
-        assertEquals(7, Objects.requireNonNull(restored.outputStorage()).extractEnergy(100, Actionable.MODULATE));
+        var restoredPort = new ForgeEnergyPort(restored.inputStorage(), restored.outputStorage());
+        assertEquals(11, restoredPort.receiveEnergy(100, false));
+        assertEquals(7, restoredPort.extractEnergy(100, false));
         var unchanged = restored.storage();
         saved.setLong("OutputEnergy", 2001);
         assertThrows(IllegalArgumentException.class, () -> restored.loadTag(saved));

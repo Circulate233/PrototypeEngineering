@@ -15,13 +15,13 @@ public interface EnergyInput {
     long storedEnergy();
 
     /**
-     * Returns actual/simulated FE extracted, respecting the current per-operation limit and holds.
+     * Returns actual/simulated machine consumption from the unreserved balance, without external transfer limits.
      * The result is between zero and the requested amount; the operation shares context's lock.
      */
     long extractEnergy(long amount, Actionable mode);
 
     /**
-     * Reserves one exact extraction within the current per-operation limit.
+     * Reserves exact machine consumption from the unreserved balance, without external transfer limits.
      */
     ReservationResult reserveExtractEnergy(EnergySnapshot snapshot, long amount);
 

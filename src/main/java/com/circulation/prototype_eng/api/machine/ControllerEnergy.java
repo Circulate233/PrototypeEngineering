@@ -32,7 +32,7 @@ public final class ControllerEnergy {
             context.lock();
             try {
                 var snapshot = source.energySnapshot();
-                remaining -= Math.min(remaining, Math.min(snapshot.availableEnergy(), snapshot.maxExtract()));
+                remaining -= Math.min(remaining, snapshot.availableEnergy());
             } finally {
                 context.unlock();
             }
@@ -65,7 +65,7 @@ public final class ControllerEnergy {
                 context.lock();
                 try {
                     var snapshot = source.energySnapshot();
-                    long amount = Math.min(remaining, Math.min(snapshot.availableEnergy(), snapshot.maxExtract()));
+                    long amount = Math.min(remaining, snapshot.availableEnergy());
                     if (amount == 0) continue;
                     var reserved = source.reserveExtractEnergy(snapshot, amount);
                     if (reserved.status() != ReservationResult.Status.ACCEPTED) break;

@@ -201,7 +201,7 @@ class EnergySequentialReservationTest {
     }
 
     @Test
-    void appliedCleanupSurvivesLoweredLimitsAndInvalidationAndPendingWorkCannotApply() {
+    void machineWorkSurvivesLoweredExternalLimitsAndCleanupSurvivesInvalidation() {
         for (boolean complete : new boolean[]{false, true}) {
             var energy = new EnergyBuffer(100, () -> {
             });
@@ -214,8 +214,8 @@ class EnergySequentialReservationTest {
                     token.exposeApplied();
                     var pending = accepted(energy.reserveReceiveEnergy(energy.energySnapshot(), 10));
                     energy.setTransferLimits(0, 0);
-                    assertFalse(pending.canApply());
-                    assertThrows(IllegalStateException.class, pending::apply);
+                    assertTrue(pending.canApply());
+                    pending.apply();
                     pending.rollback();
                     energy.invalidate();
                     assertEquals(ReservationResult.Status.INVALID_STORAGE, energy.reserveReceiveEnergy(energy.energySnapshot(), 1).status());

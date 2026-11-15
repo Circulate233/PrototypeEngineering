@@ -69,8 +69,9 @@ class EnergyHatchBlockEntityTest {
         assertEquals(17, Objects.requireNonNull(tile.outputStorage()).storedEnergy());
         tile.setMaxInputRate(9);
         tile.setMaxOutputRate(4);
-        assertEquals(9, Objects.requireNonNull(tile.inputStorage()).receiveEnergy(100, Actionable.MODULATE));
-        assertEquals(4, Objects.requireNonNull(tile.outputStorage()).extractEnergy(100, Actionable.MODULATE));
+        var currentPort = new ForgeEnergyPort(tile.inputStorage(), tile.outputStorage());
+        assertEquals(9, currentPort.receiveEnergy(100, false));
+        assertEquals(4, currentPort.extractEnergy(100, false));
         assertEquals(50, Objects.requireNonNull(tile.inputStorage()).storedEnergy());
         assertEquals(13, Objects.requireNonNull(tile.outputStorage()).storedEnergy());
     }
@@ -102,7 +103,8 @@ class EnergyHatchBlockEntityTest {
         var old = tile.storage();
         tile.loadTag(saved);
         assertEquals(0, old.extractEnergy(100, Actionable.MODULATE));
-        assertEquals(4, tile.storage().extractEnergy(100, Actionable.MODULATE));
+        var port = new ForgeEnergyPort(tile.storage(), HatchMode.MIXED);
+        assertEquals(4, port.extractEnergy(100, false));
 
         var unloaded = tile.storage();
         tile.onChunkUnload();
@@ -110,31 +112,34 @@ class EnergyHatchBlockEntityTest {
         assertNotSame(unloaded, tile.storage());
         assertEquals(0, unloaded.receiveEnergy(100, Actionable.MODULATE));
         assertEquals(0, unloaded.extractEnergy(100, Actionable.MODULATE));
-        assertEquals(11, tile.storage().receiveEnergy(100, Actionable.MODULATE));
-        assertEquals(4, tile.storage().extractEnergy(100, Actionable.MODULATE));
+        port = new ForgeEnergyPort(tile.storage(), HatchMode.MIXED);
+        assertEquals(11, port.receiveEnergy(100, false));
+        assertEquals(4, port.extractEnergy(100, false));
 
         var invalidated = tile.storage();
         tile.invalidate();
         tile.validate();
         assertEquals(0, invalidated.extractEnergy(100, Actionable.MODULATE));
-        assertEquals(4, tile.storage().extractEnergy(100, Actionable.MODULATE));
+        port = new ForgeEnergyPort(tile.storage(), HatchMode.MIXED);
+        assertEquals(4, port.extractEnergy(100, false));
     }
 
     @Test
     void changingRatesKeepsMinusOneUnrestrictedAndZeroProhibitsTransfersAcrossReload() {
         var tile = new EnergyHatchBlockEntity(HatchMode.MIXED, HatchTier.LV1);
         var balance = tile.storage();
+        var port = new ForgeEnergyPort(balance, HatchMode.MIXED);
         assertEquals(-1, tile.maxInputRate());
         assertEquals(-1, tile.maxOutputRate());
         tile.setMaxInputRate(7);
         tile.setMaxOutputRate(3);
-        assertEquals(7, balance.receiveEnergy(Long.MAX_VALUE, Actionable.SIMULATE));
-        assertEquals(7, balance.receiveEnergy(Long.MAX_VALUE, Actionable.MODULATE));
-        assertEquals(3, balance.extractEnergy(Long.MAX_VALUE, Actionable.MODULATE));
+        assertEquals(7, port.receiveEnergy(Integer.MAX_VALUE, true));
+        assertEquals(7, port.receiveEnergy(Integer.MAX_VALUE, false));
+        assertEquals(3, port.extractEnergy(Integer.MAX_VALUE, false));
         tile.setMaxInputRate(0);
         tile.setMaxOutputRate(0);
-        assertEquals(0, balance.receiveEnergy(Long.MAX_VALUE, Actionable.MODULATE));
-        assertEquals(0, balance.extractEnergy(Long.MAX_VALUE, Actionable.MODULATE));
+        assertEquals(0, port.receiveEnergy(Integer.MAX_VALUE, false));
+        assertEquals(0, port.extractEnergy(Integer.MAX_VALUE, false));
         assertEquals(4, balance.storedEnergy());
         assertThrows(IllegalArgumentException.class, () -> tile.setMaxInputRate(-2));
         assertThrows(IllegalArgumentException.class, () -> tile.setMaxOutputRate(-2));
@@ -143,8 +148,8 @@ class EnergyHatchBlockEntityTest {
         tile.setMaxInputRate(-1);
         tile.setMaxOutputRate(Long.MAX_VALUE);
         long defaultLimit = HatchConfig.energyTransfer(HatchTier.LV1);
-        assertEquals(defaultLimit, balance.receiveEnergy(Long.MAX_VALUE, Actionable.MODULATE));
-        assertEquals(defaultLimit, balance.extractEnergy(Long.MAX_VALUE, Actionable.MODULATE));
+        assertEquals(defaultLimit, port.receiveEnergy(Integer.MAX_VALUE, false));
+        assertEquals(defaultLimit, port.extractEnergy(Integer.MAX_VALUE, false));
         assertEquals(4, balance.storedEnergy());
         assertSame(balance, tile.storage());
         tile.setMaxOutputRate(0);
@@ -153,8 +158,9 @@ class EnergyHatchBlockEntityTest {
         tile.loadTag(saved);
         assertEquals(-1, tile.maxInputRate());
         assertEquals(0, tile.maxOutputRate());
-        assertEquals(defaultLimit, tile.storage().receiveEnergy(Long.MAX_VALUE, Actionable.SIMULATE));
-        assertEquals(0, tile.storage().extractEnergy(Long.MAX_VALUE, Actionable.MODULATE));
+        var restoredPort = new ForgeEnergyPort(tile.storage(), HatchMode.MIXED);
+        assertEquals(defaultLimit, restoredPort.receiveEnergy(Integer.MAX_VALUE, true));
+        assertEquals(0, restoredPort.extractEnergy(Integer.MAX_VALUE, false));
         saved.setLong("MaxInRate", -2);
         assertThrows(IllegalArgumentException.class, () -> tile.loadTag(saved));
         assertEquals(-1, tile.maxInputRate());
@@ -174,12 +180,13 @@ class EnergyHatchBlockEntityTest {
         tag.setLong("MaxOutRate", 5);
         tile.readFromNBT(tag);
         var restored = tile.storage();
+        var restoredPort = new ForgeEnergyPort(restored, HatchMode.MIXED);
         assertEquals(0, oldPort.receiveEnergy(100, false));
         assertEquals(0, oldPort.extractEnergy(100, false));
         assertEquals(0, restored.receiveEnergy(100, Actionable.MODULATE));
-        assertEquals(5, restored.extractEnergy(Long.MAX_VALUE, Actionable.MODULATE));
+        assertEquals(5, restoredPort.extractEnergy(Integer.MAX_VALUE, false));
         assertEquals(Long.MAX_VALUE - 5, restored.savedEnergy());
-        assertEquals(5, restored.receiveEnergy(100, Actionable.MODULATE));
+        assertEquals(5, restoredPort.receiveEnergy(100, false));
 
         tile.onChunkUnload();
         assertEquals(0, restored.extractEnergy(100, Actionable.MODULATE));

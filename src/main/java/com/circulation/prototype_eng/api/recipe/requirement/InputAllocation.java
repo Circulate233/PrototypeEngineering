@@ -85,7 +85,8 @@ public final class InputAllocation {
     /**
      * Initial snapshot facts and availability remaining for this projection, addressed by source index.
      * resources contains every AEKey balance captured before this requirement's first projection;
-     * FE sources have an empty resource map and expose their independent energy balance/limit.
+     * FE sources have an empty resource map. Their available amount is the unreserved balance;
+     * maxExtract reports only the external port limit and does not restrict machine allocation.
      * The revision describes the snapshot; reservations use the actual storage context.
      * The resources map is borrowed as an immutable snapshot and must not be changed after construction.
      */

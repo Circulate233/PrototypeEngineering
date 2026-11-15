@@ -404,7 +404,7 @@ class InputAllocationTest {
     }
 
     @Test
-    void independentEnergyHonorsSingleSourceAndPerOperationLimits() {
+    void independentEnergyUsesBufferedBalanceAndSingleSourceAllocation() {
         for (boolean planned : List.of(false, true)) {
             var first = energy(20, 6);
             var second = energy(10, 10);
@@ -412,12 +412,13 @@ class InputAllocationTest {
             var process = process(new MachineHatches(List.of(), List.of(first, first, second), List.of()), 0,
                 RecipeRequirements.ENERGY.requirement(id("energy"), payload));
             assertSame(ProcessResult.SUCCESS, run(process, planned));
-            assertEquals(20, first.storedEnergy());
-            assertEquals(0, second.storedEnergy());
+            assertEquals(10, first.storedEnergy());
+            assertEquals(10, second.storedEnergy());
             var blocked = process(new MachineHatches(List.of(), List.of(first, first), List.of()), 0,
-                RecipeRequirements.ENERGY.requirement(id("energy"), payload));
+                RecipeRequirements.ENERGY.requirement(id("energy"),
+                    new EnergyRequirement(11, 0, 0, 0, false).withInputAllocation(InputAllocation.SINGLE_SOURCE)));
             assertInstanceOf(ProcessResult.Blocked.class, run(blocked, planned));
-            assertEquals(20, first.energySnapshot().availableEnergy());
+            assertEquals(10, first.energySnapshot().availableEnergy());
         }
     }
 

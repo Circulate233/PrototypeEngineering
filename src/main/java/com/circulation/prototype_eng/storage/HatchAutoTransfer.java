@@ -121,13 +121,13 @@ public final class HatchAutoTransfer {
         try {
             if (!current.getAsBoolean() || !validContexts(contexts)) return;
             if (inputEnabled && input != null && remote.canExtract()) {
-                long offered = input.receiveEnergy(Integer.MAX_VALUE, Actionable.SIMULATE);
+                long offered = input.receiveEnergy(Math.min(Integer.MAX_VALUE, input.externalReceiveLimit()), Actionable.SIMULATE);
                 var reservation = offered > 0 ? input.reserveTransfer(offered, true) : null;
                 if (reservation != null)
                     settle(input.context(), reservation, amount -> remote.extractEnergy((int) amount, false));
             }
             if (outputEnabled && output != null && current.getAsBoolean() && output.isValid() && remote.canReceive()) {
-                long offered = output.extractEnergy(Integer.MAX_VALUE, Actionable.SIMULATE);
+                long offered = output.extractEnergy(Math.min(Integer.MAX_VALUE, output.externalExtractLimit()), Actionable.SIMULATE);
                 var reservation = offered > 0 ? output.reserveTransfer(offered, false) : null;
                 if (reservation != null)
                     settle(output.context(), reservation, amount -> remote.receiveEnergy((int) amount, false));

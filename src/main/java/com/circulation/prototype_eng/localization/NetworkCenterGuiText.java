@@ -4,7 +4,7 @@ import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.Tags;
 
 public enum NetworkCenterGuiText implements LocalizationEnum {
-    Level, Active, Standby, Concurrency, Available, Resources, NoResources, PerCell, OccupiedSupply,
+    Level, Active, Standby, Concurrency, Available, Resources, NoResources, OccupiedSupply,
     NoState, Unformed, TeamRejected, NoPower, PowerHint, NoActiveCenter, LevelInsufficient, NoConcurrency;
 
     @Override

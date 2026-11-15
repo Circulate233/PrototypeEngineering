@@ -63,7 +63,7 @@
 - 调用方不能在持有任意存储锁时再进入跨库结算。整个 apply/complete 或补偿过程必须持续持有全部参与者锁，不允许解锁后将中间态当作已提交余额读取或保存。当前批结算不是磁盘事务，也不是未来跨执行 lane 的分布式提交协议。
 - 普通按槽和按 key 转移不创建预留分配列表/数组；按 key 查询使用汇总，可用量通过 key 级 extractHolds 在 O(1) 时间得到。按槽的写入与预检在同一把锁内，长期预留才保留槽位分配。
 
-`ResourceReservation` 的生命周期契约没有 AEKey 字段，独立 EnergyBuffer 也通过它参加同批协调；共用的是补偿协议，而非资源类型。FE 使用自己的 EnergySnapshot，包含未预留余额/空间与单次接收/提取限额。限额下降可能让尚未 apply 的令牌被拒绝；退款使用保留的数量/容量，不能再次被新速率裁成部分退款。restore/限额变更/失效也推进 revision 并发出合并脏信号。
+`ResourceReservation` 的生命周期契约没有 AEKey 字段，独立 EnergyBuffer 也通过它参加同批协调；共用的是补偿协议，而非资源类型。FE 使用自己的 EnergySnapshot，包含未预留余额/空间与外部单次接收/提取限额。机器内部预留只受余额或空间约束；调整外部限额不影响已建立的内部令牌，退款直接使用保留的数量/容量。restore/限额变更/失效也推进 revision 并发出合并脏信号。
 
 ResourceTransactions 的业务回调重载在全部存储 apply 后执行业务 commit，全部成功才调用 complete。拒绝/异常先撤销业务再撤销存储；complete 与通知阶段的异常不会再次回滚终态令牌。RecipeStageExecutor 汇总各需求上交的令牌，统一调用这个边界；详细扩展契约见 [recipes.md](recipes.md)。
 

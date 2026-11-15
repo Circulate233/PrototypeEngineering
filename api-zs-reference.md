@@ -242,7 +242,7 @@ ParallelController.create("example:parallel_module", "tile.example.parallel_modu
 
 `ResourceSide.itemEquivalent(slots, capacity)` 按槽数和单槽物品等价值设置资源容量。流体默认以 1000 mB 折算一个物品单位。带代表资源和比例的重载用于自定义资源类型。`nativeCapacities(slots, resources)` 直接按每种 AEKeyType 的原生单位设置上限，同一种 AEKeyType 不能重复。
 
-`EnergySide.create(capacity, transfer)` 分别指定 FE 容量和单次操作的基础传输限额。`Configuration.resources/energy(tier, input, output)` 将两侧设置组合成一阶仓室；input/output 可各自为 null，但不能同时为空。两侧均提供时形成混合仓，彼此仍是独立存储。
+`EnergySide.create(capacity, transfer)` 分别指定 FE 容量和外部单次传输限额，机器内部消耗及产能不受传输限额约束。`Configuration.resources/energy(tier, input, output)` 将两侧设置组合成一阶仓室；input/output 可各自为 null，但不能同时为空。两侧均提供时形成混合仓，彼此仍是独立存储。
 
 `configureDefaults(configurations)` 设置启动时的默认仓室容量。`request(server, configurations)` 只能在对应服务器主线程调用，返回异步 `Update`。由后续服务器回调检查 `done`，完成后再读取 `result`，禁止在主线程循环等待。顶层更新完成不代表每个仓室都已经应用设置，`hostStatuses` 会说明哪些仓室因忙碌或容量不足等待处理。运行中需要传入的 `IServer` 必须由实际服务器上下文提供，脚本没有用于伪造服务器对象的工厂。
 
