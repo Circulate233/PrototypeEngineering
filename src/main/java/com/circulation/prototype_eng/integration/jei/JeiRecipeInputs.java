@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.integration.jei;
 
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import com.circulation.prototype_eng.api.client.jei.RecipePoolJeiRecipe;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.Minecraft;
@@ -17,6 +19,7 @@ import org.lwjgl.input.Mouse;
  * Only the bounds actually drawn during the current screen frame can consume a wheel event.
  */
 @Mod.EventBusSubscriber(modid = "prototype_eng", value = Side.CLIENT)
+@SideOnly(Side.CLIENT)
 public final class JeiRecipeInputs {
     private static final ObjectArrayList<Drawn> DRAWN = new ObjectArrayList<>();
 

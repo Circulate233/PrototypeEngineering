@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.block;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.IOrientationStrategy;
 import ae2.api.orientation.OrientationStrategies;
@@ -76,6 +79,7 @@ public abstract class MachineControllerBlock<T extends AEBaseTile & MachineContr
     }
 
     @Override
+    @SideOnly(Side.CLIENT)
     public @NotNull String getLocalizedName() {
         return type.displayName().getLocal();
     }

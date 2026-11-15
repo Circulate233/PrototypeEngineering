@@ -10,6 +10,8 @@ Java 公开 API 位于 `src/main/java/com/circulation/prototype_eng/api`。ZS �
 
 机器、配方、结构等对象使用 `模组ID:名称` 形式的 ID。显示名称使用语言文件中的翻译键，不能用中文名称代替 ID。Java 的固定翻译键必须由实现 `LocalizationEnum` 的枚举管理。客户端用 `getLocal()` 取得译文，服务端使用可翻译文本。
 
+`LocalizationEnum.getLocal()` 仅限客户端。服务端消息和容器标题必须使用 `text(...)`；`Item.getItemStackDisplayName(...)` 等双方都会调用且必须返回 String 的原生方法，必须使用公共侧 `net.minecraft.util.text.translation.I18n.translateToLocal(text.getTranslationKey())` 保留完整翻译键，禁止调用客户端 I18n 或 `getLocal()`。纯客户端的 GUI、JEI、预览入口和展示辅助方法必须标注 `@SideOnly(Side.CLIENT)`，并在客户端注册或调用。
+
 物品、流体以及 addon 资源都用 AE2 的 `AEKey` 表示种类，用 `GenericStack` 携带数量。多个资源的数量表使用 `AEKey2LongMap`，累加和扣减优先使用 `addTo`。带原始类型的集合字段、参数和返回值必须使用 fastutil 专用接口，例如 `Reference2LongMap<AEKeyType>` 和 `IntList`；只有纯对象集合可以用标准 JDK 集合接口对外暴露。并发、位集合等特殊语义可以使用相应实现，必须说明实际需要的语义。
 
 本库对象缺值返回带有 `@Nullable` 标注的 `null`，调用方必须判空。禁止在本库字段、参数或返回值中使用 `Optional`、`OptionalInt`、`OptionalLong`、`OptionalDouble`；只有依赖接口要求的类型保留。原始类型使用其业务范围之外的值表示缺失，例如非负奖励时间使用 `long` 的 `-1`；禁止仅为表示缺失而装箱。预算控制的接受判断使用共享 `BudgetResult`：`YIELDED` 暂停，`ACCEPTED` 完成并接受，`REJECTED` 完成并拒绝。
@@ -88,6 +90,8 @@ public final class ExampleRecipeRegistration {
 `machine.controllerInventory()` 返回物理控制器的原生 `InternalInventory`，可用 `getStackInSlot(slot)` 按索引读取，用原生迭代器遍历。默认宿主的具体实现为 `ControllerInventory`，`availableSlots()` 返回当前开放数，`forEachAvailable((stack, slot) -> ...)` 遍历开放格，`forEachStored(...)` 只遍历实际有物品的格子，包括临时关闭的格子。`MachineControllerHost.controllerStack(slot)` 和 `forEachControllerStack(...)` 供自定义控制器使用。必须在服务端拥有机器执行权时读取这些物品，禁止从配方工作线程直接访问物品堆栈；需要异步计算时，先在服务端采集所需的只读事实。
 
 格子从左到右、从上到下开放。未开放格子覆盖半透明白色，普通点击、拖动、双击、数字键及Shift移动都必须通过相同的服务端开放状态检查。关闭格子保留其中物品，重新开放后恢复访问；全部物品随控制器保存，拆除控制器时参与正常物品掉落。
+
+槽位操作必须使用控制器的实际开放状态。AE 槽位通过公共侧 `AppEngSlot.isSlotEnabled()` 限制插入和取出；禁止在服务端调用仅限客户端的 `Slot.isEnabled()`。
 
 `MachineAssembly.builder(type, revision)` 规定怎样创建和恢复这个类型的实际机器。`instanceFactory(MultithreadController::new)` 创建多线程控制器，`instanceFactory(CrossRecipeController::new)` 创建跨配方并行控制器。`component(type, codec)` 为有状态组件绑定保存方式，`recreated(type)` 则在恢复时重新创建不需要保存的组件。codec 负责把组件编码为 NBT、恢复组件，以及在全部组件恢复后检查组件状态。
 

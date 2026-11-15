@@ -7,11 +7,13 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
 import pe.visual.examples.VisualExamples;
 
 import java.util.Objects;
 
 @Mod.EventBusSubscriber(modid = VisualExamples.MOD_ID, value = Side.CLIENT)
+@SideOnly(Side.CLIENT)
 public final class ExternalHatchClient {
     private ExternalHatchClient() {
     }

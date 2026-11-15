@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.storage;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import ae2.api.AECapabilities;
 import ae2.api.behaviors.GenericInternalInventoryAdapters;
 import ae2.api.stacks.AEItemKey;
@@ -508,6 +511,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     }
 
     @Override
+    @SideOnly(Side.CLIENT)
     public void onDataPacket(@NotNull NetworkManager network, SPacketUpdateTileEntity packet) {
         readFromNBT(packet.getNbtCompound());
     }

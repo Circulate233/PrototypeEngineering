@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.integration.jei;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.GenericStack;
@@ -33,6 +36,7 @@ import java.util.function.BooleanSupplier;
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
+@SideOnly(Side.CLIENT)
 public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoCloseable {
     private final MachineType machine;
     private final List<ItemStack> controllers;

@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.machine;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
 import ae2.tile.AEBaseTile;
@@ -890,6 +893,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     }
 
     @Override
+    @SideOnly(Side.CLIENT)
     public void onDataPacket(@NotNull NetworkManager manager, @NotNull SPacketUpdateTileEntity packet) {
         if (packet.getPos().equals(pos) && packet.getTileEntityType() == 0)
             acceptClientTag(packet.getNbtCompound(), manager);

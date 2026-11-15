@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.integration.jei;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import com.circulation.prototype_eng.api.client.jei.JeiPatternRecipe;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeIngredients;
@@ -16,6 +19,7 @@ import java.util.List;
  * Stable panel splitting; no resource or explanation is discarded when a pool exceeds JEI's viewport.
  * Panel groups and candidate cycles are shared read-only for this layout's lifetime.
  */
+@SideOnly(Side.CLIENT)
 public class RecipePanelLayout {
     private static final JeiRenderOptions EXPANDED = new JeiRenderOptions(true, JeiRenderOptions.CandidateMode.EXPANDED, 0);
     public static final int COLUMNS = 4;

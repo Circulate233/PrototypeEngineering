@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.integration.jei;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import ae2.api.client.PatternRecipeTransferEvent;
 import ae2.api.client.PatternRecipeTransferSlot;
 import ae2.api.stacks.AEKey;
@@ -38,6 +41,7 @@ import java.util.function.Function;
 /**
  * Uses the complete wrapper data and AE2S's priority, event, filter packet and encoding APIs.
  */
+@SideOnly(Side.CLIENT)
 final class PatternRecipeTransfer<C extends ContainerPatternEncodingTerm> implements IRecipeTransferHandler<C> {
     private final Class<C> containerClass;
     private final IRecipeTransferHandlerHelper errors;

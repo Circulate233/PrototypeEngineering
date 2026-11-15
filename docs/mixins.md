@@ -16,6 +16,8 @@
 
 `SimpleReloadableResourceManagerAccessor` 和 `FallbackResourceManagerAccessor` 已删除。仓库现有 Access Transformer 增加 `field_110548_a` 与 `field_110540_a` 两个字段的 public 声明，`ModelResourceSources` 直接读取真实域管理器和资源包列表。字段映射已按当前 SRG 核对，新的依赖转换、Java 编译与现有测试通过；独立 ZIP 读取继续使用实际资源包顺序。
 
+`StructureQueries.BIOME_NAME` 通过 Access Transformer 公开的 `Biome.field_76791_y`（`biomeName`）读取原始名称。禁止调用仅限客户端的 `Biome.getBiomeName()`；本模组自行声明字段访问权限，不依赖可选模组提供转换。
+
 ## 保留的5项及实际消费者
 
 | Mixin | 保留原因 |

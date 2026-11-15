@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.energy;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.api.HatchCapabilities;
@@ -427,6 +430,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     }
 
     @Override
+    @SideOnly(Side.CLIENT)
     public void onDataPacket(@NotNull NetworkManager network, SPacketUpdateTileEntity packet) {
         readFromNBT(packet.getNbtCompound());
     }

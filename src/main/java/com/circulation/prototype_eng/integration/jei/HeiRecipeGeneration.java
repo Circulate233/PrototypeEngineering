@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.integration.jei;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import com.circulation.prototype_eng.api.client.jei.RecipePoolJeiRecipe;
 import mezz.jei.api.recipe.IFocus;
 import mezz.jei.api.recipe.IIngredientType;
@@ -14,6 +17,7 @@ import java.util.Map;
 /**
  * The HEI 4.35.1 add/hide and tail-map contract, confined to this version-specific integration.
  */
+@SideOnly(Side.CLIENT)
 final class HeiRecipeGeneration {
     private HeiRecipeGeneration() {
     }

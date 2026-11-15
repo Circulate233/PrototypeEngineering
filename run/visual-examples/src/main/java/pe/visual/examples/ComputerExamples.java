@@ -40,6 +40,7 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
 
 import java.util.List;
 import java.util.Objects;
@@ -145,6 +146,7 @@ public final class ComputerExamples {
     }
 
     @Mod.EventBusSubscriber(modid = VisualExamples.MOD_ID, value = Side.CLIENT)
+    @SideOnly(Side.CLIENT)
     public static final class Client {
         private Client() {
         }

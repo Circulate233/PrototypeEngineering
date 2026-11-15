@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.integration.jei;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
@@ -9,6 +12,7 @@ import java.util.List;
  * Measures the complete explanation with the same font and wrapping used for drawing.
  * Layout and wrapped-line lists are read-only for the layout's lifetime.
  */
+@SideOnly(Side.CLIENT)
 public record RecipeInformationLayout(List<Paragraph> paragraphs, int height) {
     public static RecipeInformationLayout measure(List<JeiRecipeDisplay.Text> information, int width, Font font) {
         var paragraphs = new ObjectArrayList<Paragraph>(information.size());

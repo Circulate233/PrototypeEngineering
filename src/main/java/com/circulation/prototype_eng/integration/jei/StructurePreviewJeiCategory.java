@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.integration.jei;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.localization.StructurePreviewText;
 import mcp.MethodsReturnNonnullByDefault;
@@ -16,6 +19,7 @@ import javax.annotation.ParametersAreNonnullByDefault;
  */
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
+@SideOnly(Side.CLIENT)
 public final class StructurePreviewJeiCategory implements IRecipeCategory<StructurePreviewJeiRecipe> {
     public static final String UID = Tags.MOD_ID + ":structure_preview";
     public static final int WIDTH = 184, HEIGHT = 220;

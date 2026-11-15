@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.localization;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.Tags;
 
@@ -21,6 +24,7 @@ public enum PreviewUiText implements LocalizationEnum {
         translationKey = "gui." + Tags.MOD_ID + ".preview." + suffix;
     }
 
+    @SideOnly(Side.CLIENT)
     public static String onOff(boolean value) {
         return (value ? On : Off).getLocal();
     }

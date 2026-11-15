@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.api.client.jei;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.localization.JeiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -10,6 +13,7 @@ import java.util.List;
  * Complete displayed processing resources; each inner list contains the candidates shown in one slot.
  * Outer and candidate lists are borrowed read-only and must remain unchanged while the recipe is in use.
  */
+@SideOnly(Side.CLIENT)
 public record JeiPatternRecipe(List<List<GenericStack>> inputs, List<List<GenericStack>> outputs) {
     public JeiPatternRecipe {
         validate(inputs);

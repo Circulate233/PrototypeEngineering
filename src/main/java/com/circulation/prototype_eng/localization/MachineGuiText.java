@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.localization;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotStatus;
@@ -21,6 +24,7 @@ public enum MachineGuiText implements LocalizationEnum {
         };
     }
 
+    @SideOnly(Side.CLIENT)
     public static String reason(MachineGuiSnapshot.Entry entry) {
         if (entry.reason().isEmpty()) {
             return status(entry.status()).getLocal();

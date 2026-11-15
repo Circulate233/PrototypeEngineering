@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-15 服务端调用客户端方法的问题已修复：五种物品名称改用公共侧翻译，机器槽位操作改用实际开放状态，群系名称直接读取 AT 公开字段；补齐 GUI、JEI、预览、数据包接收和演示展示入口的客户端限定。完整 `build`、1739 tests/271 suites、Spotless 与 IDEA MCP 构建通过；29 主 Java 全级零诊断，3 run Java 被 IDE 排除并通过 27 Java 演示包编译。入口：[调用规则](../api.md)、[实施记录](implementation-status.md)。下一步由用户重跑独立服务端启动，并复验物品名称、槽位操作和群系条件。
+
 - 2026-11-15 结构控制器测试偶发失败已修复：测试夹具的时间片与整体超时对齐，由工作量决定让出，避免默认 5 毫秒时间片打断发布状态断言。临时延迟对照完成，原库存保持、下一 tick 重试及预算断言保留。完整默认 `build`、1739 tests/271 suites、Spotless 与 IDEA MCP 构建通过，修改的 Java 全级零诊断。入口：[实施记录](implementation-status.md)、[结构控制器测试](../src/test/java/com/circulation/prototype_eng/machine/ControllerStructureUpdatesTest.java)。下一步继续内部 FE 场景的游戏复验。
 
 - 2026-11-15 内部 FE 与外部限速分离完成：控制器、计算机、研究站及普通/并行配方按缓存扣能，内部产能按剩余空间写入；Forge 和自动传输保留外部限速。中心删除每格并发说明，计算机需求行显示内部可供 FE，实际消耗单独显示。29 Java、2 语言文件 IDEA MCP 全级零诊断，1739 tests/271 suites、完整构建、Spotless 与 MCP 构建通过。入口：[能源 API](../api.md#仓室读写与容量)、[计算机](computers.md)、[实施记录](implementation-status.md)。下一步用户完整重启，复验一级能源仓缓存足够时双组件 64 FE 扣费及外部限速。

@@ -29,6 +29,7 @@ import net.minecraft.util.EnumHand;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.SoundCategory;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.text.translation.I18n;
 import net.minecraft.world.World;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
@@ -81,8 +82,9 @@ public class ControllerOrientationTool extends AEBaseItem {
     }
 
     @Override
+    @SuppressWarnings("deprecation")
     public @NotNull String getItemStackDisplayName(@NotNull ItemStack stack) {
-        return OrientationToolText.Name.getLocal();
+        return I18n.translateToLocal(OrientationToolText.Name.getTranslationKey());
     }
 
     @Override

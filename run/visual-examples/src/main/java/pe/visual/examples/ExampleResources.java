@@ -1,5 +1,8 @@
 package pe.visual.examples;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourcePackets;
 import ae2.core.localization.LocalizationEnum;
@@ -47,12 +50,14 @@ public enum ExampleResources implements NetworkResourceType {
     }
 
     @Override
+    @SideOnly(Side.CLIENT)
     public String displayName() {
         LocalizationEnum name = () -> "pe_run_tests.resource." + id.getPath();
         return name.getLocal();
     }
 
     @Override
+    @SideOnly(Side.CLIENT)
     public String format(double amount) {
         return Double.toString(amount) + " " + unit;
     }

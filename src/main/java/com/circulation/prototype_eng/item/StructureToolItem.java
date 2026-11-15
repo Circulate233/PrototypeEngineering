@@ -15,6 +15,7 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.text.translation.I18n;
 import net.minecraft.world.World;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
@@ -35,8 +36,9 @@ public final class StructureToolItem extends AEBaseItem {
     }
 
     @Override
+    @SuppressWarnings("deprecation")
     public @NotNull String getItemStackDisplayName(@NotNull ItemStack stack) {
-        return StructureToolText.ScannerTitle.getLocal();
+        return I18n.translateToLocal(StructureToolText.ScannerTitle.getTranslationKey());
     }
 
     @Override

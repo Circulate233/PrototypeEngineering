@@ -1,5 +1,19 @@
 # 实施进度
 
+## 2026-11-15 服务端调用客户端方法修复
+
+用户独立服务端日志显示，`StatList.reinit` 读取并行控制器物品名称时，调用了仅限客户端的 `LocalizationEnum.getLocal()`。AE 会在服务端移除该方法，导致 `NoSuchMethodError`。普通控制器、并行控制器、构建器、扫描器和方向工具的名称读取统一改用公共侧 `I18n.translateToLocal`，继续从本地化枚举取得完整翻译键；消息和容器标题保留可翻译文本组件。
+
+全项目调用检查还发现 `ContainerMachine` 在 Shift 转移、拖拽和合并物品时调用客户端 `Slot.isEnabled()`，以及 `StructureQueries.BIOME_NAME` 调用客户端 `Biome.getBiomeName()`。机器槽位改为重写公共侧 `AppEngSlot.isSlotEnabled()`，由 AE 原生插入和取出流程读取开放状态；转移、拖拽及合并直接使用容器开放状态，删除重复的槽位覆写。群系名称直接读取原始字段，本模组的 AT 明确公开 `field_76791_y`，不依赖可选模组的字段转换；最终发布 jar 的 FMLAT 清单与该声明已核对。
+
+方块名称与 tooltip、界面文本辅助方法、四个 TE 数据包接收方法，以及 JEI 和结构预览 API 补齐客户端限定。演示资源的展示方法和两个模型注册入口同步补齐限定。API、开发规范及 AT 说明已更新。
+
+对 1848 个主项目 class 和 77 个演示包 class 检查方法调用、字段访问、继承、方法签名、类型常量及方法引用，沿父类和接口解析客户端成员，最终未发现未限定代码对已限定客户端成员的直接引用，没有无法解析的类。额外验证使用真实依赖 class，移除 `LocalizationEnum`、`Slot` 与 `Biome` 的客户端成员：原物品代码复现 `getLocal()` 缺失，原容器代码复现 `Slot.isEnabled()` 缺失；修正后五种名称和槽位开关的 15 项行为检查全部通过。验证程序和原始代码对照保存在仓库外，没有新增常驻测试或运行时检查。
+
+最终 `gradlew.bat build --console=plain`、Spotless、1739 tests/271 suites 与 IDEA MCP `build_project` 通过，测试失败、错误和跳过均为 0。32 个修改 Java 已由 IDEA MCP 格式化；29 主 Java 的逐文件 `get_file_problems(errorsOnly:false)` 错误、警告、弱警告均为 0；3 run Java 被 IDE 排除，改以真实 SDK 编译，27 Java 演示包生成成功且未安装。未启动 Minecraft 客户端或服务端，完整独服启动及实际操作由用户复验。
+
+证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261115/server-side-calls/`：`server-crash.log`、`side-audit-final.txt`、`addon-side-audit-final.txt`、`behavior-original-items.log`、`behavior-original-container.log`、`behavior-final.log`、`gradle-build-final.log`、`test-totals.json`、`idea-final.json`、`idea-build.json`、`addon-build-final.log`。本轮本地英文提交，保留用户 `AGENTS.md` 修改。
+
 ## 2026-11-15 结构控制器测试时间片修正
 
 用户的完整构建在 `unstablePublicationPreservesAcceptedBindingsAndRetriesOnTheVeryNextTick` 中预期 `UNAVAILABLE`，实际得到 `YIELD`。该测试直接使用运行时默认的 5 毫秒时间片，线程调度或执行耗时超过时间片时，结构检查会在发布前让出，断言因此依赖机器负载。

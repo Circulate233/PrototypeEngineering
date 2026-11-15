@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.block;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.IOrientationStrategy;
 import ae2.api.orientation.OrientationStrategies;
@@ -78,11 +81,13 @@ public class ParallelControllerBlock extends AEBaseTileBlock<ParallelControllerB
     }
 
     @Override
+    @SideOnly(Side.CLIENT)
     public @NotNull String getLocalizedName() {
         return type.displayName().getLocal();
     }
 
     @Override
+    @SideOnly(Side.CLIENT)
     protected void addCheckedInformation(@NotNull ItemStack stack, @Nullable World world, @NotNull List<String> lines, @NotNull ITooltipFlag flag) {
         super.addCheckedInformation(stack, world, lines, flag);
         lines.add(ParallelControllerText.Tooltip.getLocal(type.maximum()));

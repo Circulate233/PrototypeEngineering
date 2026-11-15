@@ -81,18 +81,8 @@ public final class ContainerMachine extends AEBaseContainer {
             int index = slot;
             var nativeSlot = new AppEngSlot(inventory, slot, inventoryX(slot), inventoryY(slot)) {
                 @Override
-                public boolean isEnabled() {
-                    return isControllerSlotAvailable(index);
-                }
-
-                @Override
-                public boolean isItemValid(@NotNull ItemStack stack) {
-                    return isEnabled() && super.isItemValid(stack);
-                }
-
-                @Override
-                public boolean canTakeStack(@NotNull EntityPlayer actor) {
-                    return isEnabled() && super.canTakeStack(actor);
+                public boolean isSlotEnabled() {
+                    return isControllerSlotAvailable(index) && super.isSlotEnabled();
                 }
             };
             addSlotToContainer(nativeSlot, SlotSemantics.STORAGE);
@@ -122,6 +112,10 @@ public final class ContainerMachine extends AEBaseContainer {
         return slot >= 0 && slot < ControllerInventory.CAPACITY && slot < availableInventorySlots;
     }
 
+    private boolean isSlotAvailable(Slot slot) {
+        return slot.slotNumber >= ControllerInventory.CAPACITY || isControllerSlotAvailable(slot.slotNumber);
+    }
+
     private void refreshInventory() {
         if (isServerSide()) availableInventorySlots = tile.refreshControllerInventorySlots();
     }
@@ -148,17 +142,17 @@ public final class ContainerMachine extends AEBaseContainer {
 
     @Override
     protected boolean isValidQuickMoveDestination(Slot slot, ItemStack stack, boolean fromPlayer) {
-        return slot.isEnabled() && super.isValidQuickMoveDestination(slot, stack, fromPlayer);
+        return isSlotAvailable(slot) && super.isValidQuickMoveDestination(slot, stack, fromPlayer);
     }
 
     @Override
     public boolean canDragIntoSlot(@NotNull Slot slot) {
-        return slot.isEnabled() && super.canDragIntoSlot(slot);
+        return isSlotAvailable(slot) && super.canDragIntoSlot(slot);
     }
 
     @Override
     public boolean canMergeSlot(@NotNull ItemStack stack, @NotNull Slot slot) {
-        return slot.isEnabled() && super.canMergeSlot(stack, slot);
+        return isSlotAvailable(slot) && super.canMergeSlot(stack, slot);
     }
 
     @Override

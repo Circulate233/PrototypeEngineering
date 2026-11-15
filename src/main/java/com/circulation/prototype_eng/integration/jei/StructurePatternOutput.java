@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.integration.jei;
 
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import ae2.api.client.PatternRecipeTransferEvent;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.GenericStack;
@@ -15,6 +17,7 @@ import net.minecraftforge.fml.relauncher.Side;
  * Names the controller result through AE2S's normal, client-side pattern transfer event.
  */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID, value = Side.CLIENT)
+@SideOnly(Side.CLIENT)
 public final class StructurePatternOutput {
     private StructurePatternOutput() {
     }

@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.api.client.structure;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.client.preview.StructurePreviewExpansion;
@@ -15,6 +18,7 @@ import org.jetbrains.annotations.Nullable;
  * Java library entry for read-only previews and native world projections; client-thread owned.
  * List arguments and results, including nested lists, must support constant-time indexed access.
  */
+@SideOnly(Side.CLIENT)
 public final class StructurePreviews implements AutoCloseable {
     private final ClientStructureCatalog catalog;
     private final StructurePreviewCache<Request> requests;

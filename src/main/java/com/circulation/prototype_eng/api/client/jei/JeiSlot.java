@@ -1,11 +1,15 @@
 package com.circulation.prototype_eng.api.client.jei;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import net.minecraft.client.Minecraft;
 
 
 /**
  * Full panel bounds and native ingredient inset, with caller supplied skin hooks.
  */
+@SideOnly(Side.CLIENT)
 public record JeiSlot(int x, int y, int width, int height, int inset, Skin skin) {
     public static final Skin PLAIN = new Skin() {
     };

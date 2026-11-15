@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.api.client.structure;
 
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
 import ae2.api.orientation.BlockOrientation;
 import ae2.client.gui.AEBaseGui;
 import ae2.container.AEBaseContainer;
@@ -18,6 +21,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Java opens the same authoritative catalog viewer used by machines, commands and HEI.
  */
+@SideOnly(Side.CLIENT)
 public final class StructurePreviewScreens {
     private StructurePreviewScreens() {
     }

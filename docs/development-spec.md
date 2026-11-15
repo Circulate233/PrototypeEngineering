@@ -153,7 +153,7 @@ PN 原先作为 PM 附属模组产生的访问限制、注册桥接、重复上�
 | R22 | 保留功能效果和多线程性能能力 | 除明确取消/替换的部分外，不允许功能性缺失；多工位、并行、资源亲和性、planned 预留/提交/补偿等属于迁移要求。必须先确认旧实现及目的，不能盲目重造或把尚未迁移的功能标为可选。 |
 | R23 | 独立存储契约，复用 AE2 类型 | 不使用 MEStorage 作为核心存储接口。按配方事务、预留与多线程需求独立设计存储；AEKey/AEKeyType 等类型继续复用，MEStorage 和 Forge 库存仅在对外适配层使用。 |
 | R24 | 保留十阶仓室及 PM 美术 | 资源与能源各保留输入、输出、混合三方向和十阶。资源槽数/物品容量沿用 PM ItemHatchConfig，流体每槽容量沿用 FluidHatchConfig，能源容量/操作限额沿用 EnergyHatchConfig；资源美术使用 PM item_hatch 原模型纹理，能源使用 energy_hatch，保留署名与 Bloom 元素。默认值可配置，不新增正式玩法内容。 |
-| R25 | 翻译使用 AE2S 枚举契约 | 本项目本地化枚举实现 LocalizationEnum，非生成的固定 key 必须枚举；客户端字符串使用 getLocal，服务器可用标题/文本使用 text 组件。GUI 不拼接翻译键，也不直接以裸翻译键调用翻译函数。动态声明的结构/配方池 key 保留其准确大小写。 |
+| R25 | 翻译使用 AE2S 本地化枚举 | 本项目本地化枚举实现 LocalizationEnum，非生成的固定 key 必须枚举；客户端字符串使用 getLocal，服务器消息和标题使用 text 组件。双方都会调用且必须返回 String 的物品名称方法使用公共侧 I18n.translateToLocal(enum.getTranslationKey())，禁止调用客户端 getLocal。GUI 不拼接翻译键。动态声明的结构/配方池 key 保留其准确大小写。 |
 | R26 | 逐类真实 IDEA MCP 检查 | 使用本机 MCP 的 get_file_problems（errorsOnly:false），每个类消除错误、警告及弱警告并记录范围/结果。不得操作桌面 IDE；工具未挂载时连接已经启用的本地 MCP、通过 tools/list 查找工具，不修改 IDE 设置。编译、格式检查和人工审查不能代替该证据。 |
 | R27 | 数量映射复用 AE2 专用集合 | AEKey 数量使用 AEKey2LongMap；累加/扣减优先 addTo，避免 get 后 put 的重复寻址。非 AEKey 累加也优先 fastutil addTo；保留真实余额的溢出预检、预留/退款约束、顺序和零值清理。 |
 | R28 | PN 资源占用与配方并行 | 算力等 PN 资源占用随配方并行量缩放；并发资源除外，同一台机器无论多少并行、多少工作线程，均只占用 1。资源占用与 Java 后台线程是不同职责；多个工位不能重复申请整机并发额度。必须将此规则接到实际配方消费者，不能只以账本存在作为完成证据。 |
