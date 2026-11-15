@@ -18,7 +18,6 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationTo
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.recipe.requirement.DynamicInputCandidates;
-import com.circulation.prototype_eng.recipe.requirement.NbtLongArrayAccess;
 import com.circulation.prototype_eng.scheduler.planned.PlannedRecipeCoordinator;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import com.circulation.prototype_eng.storage.BufferedResourceHatch;
@@ -37,7 +36,6 @@ import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentString;
 import org.junit.jupiter.api.Test;
 
-import javax.annotation.Nonnull;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
@@ -175,9 +173,9 @@ class DynamicInputCandidatesTest {
         firstValues[511] = 1;
         secondValues[511] = 9;
         var firstTag = new NBTTagCompound();
-        firstTag.setTag("data", new ReadableLongArray(firstValues));
+        firstTag.setTag("data", new NBTTagLongArray(firstValues));
         var secondTag = new NBTTagCompound();
-        secondTag.setTag("data", new ReadableLongArray(secondValues));
+        secondTag.setTag("data", new NBTTagLongArray(secondValues));
         var first = new TaggedKey(type, firstTag, "first");
         var second = new TaggedKey(type, secondTag, "second");
         var warehouse = new BufferedResourceHatch(HatchMode.INPUT, 2, Reference2LongMaps.singleton(type, 10L), () -> {
@@ -208,33 +206,6 @@ class DynamicInputCandidatesTest {
             assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
             assertEquals(0, input.amount(first));
             assertEquals(1, input.amount(second));
-        }
-    }
-
-    /**
-     * Supplies the same read-only view the production Mixin supplies, without starting FML.
-     */
-    private static class ReadableLongArray extends NBTTagLongArray implements NbtLongArrayAccess {
-        private final long[] values;
-
-        private ReadableLongArray(long[] values) {
-            super(values);
-            this.values = values;
-        }
-
-        @Override
-        public @Nonnull NBTTagLongArray copy() {
-            return new ReadableLongArray(values.clone());
-        }
-
-        @Override
-        public int prototype_eng$length() {
-            return values.length;
-        }
-
-        @Override
-        public long prototype_eng$value(int index) {
-            return values[index];
         }
     }
 

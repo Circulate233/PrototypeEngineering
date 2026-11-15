@@ -7,19 +7,19 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 /**
- * Immutable Java source snapshot addressed by its index in this allocation.
+ * Java source snapshot addressed by its index in this allocation. Returned arrays are borrowed read-only.
  */
 @SuppressWarnings("unused")
 @ZenRegister
 @ZenClass("mods.prototype_eng.recipe.AllocationSource")
 public final class ZenAllocationSource {
     private final InputAllocation.Source source;
+    private ZenResource[] resources;
 
     public ZenAllocationSource(InputAllocation.Source source) {
-        this.source = Objects.requireNonNull(source);
+        this.source = source;
     }
 
     @ZenGetter("index")
@@ -39,11 +39,14 @@ public final class ZenAllocationSource {
 
     @ZenGetter("resources")
     public ZenResource[] resources() {
-        var resources = new ObjectArrayList<ZenResource>(source.resources().size());
-        for (var entry : source.resources().object2LongEntrySet()) {
-            if (entry.getLongValue() > 0) resources.add(new ZenResource(entry.getKey(), entry.getLongValue()));
+        if (resources == null) {
+            var values = new ObjectArrayList<ZenResource>(source.resources().size());
+            for (var entry : source.resources().object2LongEntrySet()) {
+                if (entry.getLongValue() > 0) values.add(new ZenResource(entry.getKey(), entry.getLongValue()));
+            }
+            resources = values.toArray(ZenResource[]::new);
         }
-        return resources.toArray(ZenResource[]::new);
+        return resources;
     }
 
     /**

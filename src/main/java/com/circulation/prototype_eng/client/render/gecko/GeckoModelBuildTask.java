@@ -20,7 +20,6 @@ import software.bernie.geckolib3.geo.render.built.GeoModel;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -77,8 +76,9 @@ public class GeckoModelBuildTask implements Runnable {
         return state.failure;
     }
 
+    @SuppressWarnings("DataFlowIssue") // READY is published together with the completed model buffers.
     public synchronized BuiltModelBuffers.@Nullable Lease borrow() {
-        return state.status == Status.READY ? Objects.requireNonNull(state.result).borrow() : null;
+        return state.status == Status.READY ? state.result.borrow() : null;
     }
 
     private synchronized boolean alive() {
@@ -139,7 +139,7 @@ public class GeckoModelBuildTask implements Runnable {
         }
         if (failure instanceof Error error) throw error;
         if (failure instanceof Exception exception) throw exception;
-        return Objects.requireNonNull(result);
+        return result;
     }
 
     private BuiltModelBuffers buildModel(GeoModel model, GeckoModelBaker baker, @Nullable GeckoAnimatedBoneIndex index,
@@ -333,6 +333,8 @@ public class GeckoModelBuildTask implements Runnable {
                 bounds.add(source[index], source[index + 1], source[index + 2]);
         }
 
+        @SuppressWarnings("DataFlowIssue")
+            // A target without a mapped ticket owns the packed byte buffer.
         void finish(MachineRenderPass pass, Map<MachineRenderPass, ByteBuffer> packedOut,
                     Map<MachineRenderPass, ReusableModelVboUploader.GpuDraw> gpuOut) {
             int count = Math.multiplyExact(writer.position(), 4);
@@ -353,7 +355,7 @@ public class GeckoModelBuildTask implements Runnable {
                     consumed = ticket.finished();
                 }
             } else {
-                var output = Objects.requireNonNull(bytes);
+                var output = bytes;
                 if (count == 0) {
                     consumed = true;
                     direct.release(output);
@@ -366,6 +368,8 @@ public class GeckoModelBuildTask implements Runnable {
             }
         }
 
+        @SuppressWarnings("DataFlowIssue")
+            // A target without a mapped ticket owns the packed byte buffer.
         void abort() {
             if (consumed) return;
             if (ticket != null) {
@@ -376,7 +380,7 @@ public class GeckoModelBuildTask implements Runnable {
                 consumed = true;
             } else {
                 consumed = true;
-                direct.release(Objects.requireNonNull(bytes));
+                direct.release(bytes);
             }
         }
     }

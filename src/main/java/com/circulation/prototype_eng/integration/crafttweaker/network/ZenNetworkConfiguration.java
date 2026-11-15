@@ -16,13 +16,12 @@ import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.integration.crafttweaker.resource.ZenComputingModifier;
 import com.circulation.prototype_eng.integration.crafttweaker.resource.ZenComputingResources;
 import crafttweaker.annotations.ZenRegister;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.Locale;
-import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -36,11 +35,12 @@ public final class ZenNetworkConfiguration {
     private final Consumer<MachineAssembly.Builder> assembly;
 
     public ZenNetworkConfiguration(Consumer<MachineType.Builder> machine, Consumer<MachineAssembly.Builder> assembly) {
-        this.machine = Objects.requireNonNull(machine);
-        this.assembly = Objects.requireNonNull(assembly);
+        this.machine = machine;
+        this.assembly = assembly;
     }
 
     @ZenMethod
+    @SuppressWarnings("DataFlowIssue")
     public static ZenNetworkConfiguration create(String id, String roleName, int level, ZenComputingResources supply, ZenComputingModifier modifier, int dataCenterCapacity, ZenNetworkRequirements defaults) {
         var name = new ResourceLocation(id);
         var role = NetworkDeviceRole.valueOf(roleName.toUpperCase(Locale.ROOT));
@@ -53,14 +53,14 @@ public final class ZenNetworkConfiguration {
         var database = role == NetworkDeviceRole.DATA_CENTER ? MachineDataCenterStorage.component(child(name, "database"), level, dataCenterCapacity, ResearchRegistry.INSTANCE) : null;
         var computer = role == NetworkDeviceRole.COMPUTER ? MachineComputerComponents.component(child(name, "components"), NetworkComputerComponentRegistry.INSTANCE) : null;
         var base = MachineNetworkDevice.capturedComponent(child(name, "device"), (owner, identity) -> {
-            boolean formed = Objects.requireNonNull(owner.lifecycle()).formed();
+            boolean formed = owner.lifecycle().formed();
             if (database != null)
-                return Objects.requireNonNull(owner.components().get(database)).networkCapture(identity, formed, resources, adjustment);
+                return owner.components().get(database).networkCapture(identity, formed, resources, adjustment);
             if (computer != null)
-                return Objects.requireNonNull(owner.components().get(computer)).networkCapture(identity, level, formed, resources, adjustment);
+                return owner.components().get(computer).networkCapture(identity, level, formed, resources, adjustment);
             return new NetworkRuntime.Capture(new NetworkDeviceSnapshot(identity.identity(), role, level, formed, identity.loadOrder(), resources, adjustment, 0, 0), () -> true);
         });
-        var dependencies = new ObjectArrayList<>(base.dependencies());
+        var dependencies = new ObjectLinkedOpenHashSet<>(base.dependencies());
         if (database != null) dependencies.add(database);
         if (computer != null) dependencies.add(computer);
         var device = new ComponentType<>(base.id(), base::create, base.systems(), dependencies);

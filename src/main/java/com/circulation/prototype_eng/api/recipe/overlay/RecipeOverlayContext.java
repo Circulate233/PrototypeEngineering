@@ -7,7 +7,6 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * One modifier application. Tracked writes are valid only during apply; direct process/machine
@@ -62,13 +61,12 @@ public final class RecipeOverlayContext {
         if (!active) {
             throw new IllegalStateException("Recipe overlay modifier context is no longer active");
         }
-        Objects.requireNonNull(layerId);
         if (layerId.isBlank()) {
             throw new IllegalArgumentException("Blank overlay layer id");
         }
         String uniqueId = "recipe_overlay/" + frame(modifierId.toString()) + frame(Integer.toString(ordinal)) + frame(layerId);
         var change = RecipeOverlays.getOrCreate(process).put(target, path, uniqueId, type, data);
-        changes.add(Objects.requireNonNull(change));
+        changes.add(change);
     }
 
     void close() {

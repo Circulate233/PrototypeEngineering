@@ -2,20 +2,18 @@ package com.circulation.prototype_eng.research;
 
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
-import com.circulation.prototype_eng.api.research.ResearchDefinition;
-import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchStartContext;
 import com.circulation.prototype_eng.api.research.TeamResearchView;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.Collection;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -26,14 +24,13 @@ public final class ResearchEligibility {
     private final ResearchRegistry registry;
 
     public ResearchEligibility(ResearchRegistry registry) {
-        this.registry = Objects.requireNonNull(registry);
+        this.registry = registry;
         if (!registry.isFrozen()) {
             throw new IllegalStateException("Research eligibility requires a frozen registry");
         }
     }
 
     private static void requireTeamId(String teamId) {
-        Objects.requireNonNull(teamId);
         if (teamId.isBlank() || !teamId.equals(teamId.trim())) {
             throw new IllegalArgumentException("Research team id must be canonical non-blank text");
         }
@@ -44,7 +41,7 @@ public final class ResearchEligibility {
      * source exclusively. Blacklist and staged prerequisites affect the resulting view across both
      * sources without erasing stored levels. Conditions run for each structurally eligible target.
      * Resources and membership must be captured by the server owner before calling this method.
-     * The supplied blacklist must remain immutable while any returned view retains it.
+     * Supplied membership sets and blacklists remain borrowed read-only while any view retains them.
      */
     public TeamResearchView calculate(String teamId, Collection<UUID> currentMembers,
                                       Map<UUID, PlayerResearchState> playerStates,
@@ -83,32 +80,19 @@ public final class ResearchEligibility {
                                                 Object2IntMap<ResourceLocation> teamOwnedResearch,
                                                 Set<ResourceLocation> blacklistedResearchIds) {
         requireTeamId(teamId);
-        var members = new ObjectOpenHashSet<UUID>(currentMembers.size());
-        for (var member : Objects.requireNonNull(currentMembers)) {
-            if (!members.add(Objects.requireNonNull(member))) {
-                throw new IllegalArgumentException("Duplicate research team member " + member);
-            }
-        }
+        var members = currentMembers instanceof Set<UUID> set ? set : new ObjectOpenHashSet<>(currentMembers);
         var raw = new Object2IntOpenHashMap<ResourceLocation>(members.size());
         for (var member : members) {
             var state = playerStates.get(member);
-            if (state == null) {
-                throw new IllegalArgumentException("Missing research state for member " + member);
-            }
             for (var entry : state.completedLevelsSnapshot().object2IntEntrySet()) {
-                var id = Objects.requireNonNull(entry.getKey());
-                var definition = requireSource(id, entry.getIntValue(), ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM);
-                if (entry.getIntValue() > raw.getInt(definition.id())) {
+                var id = entry.getKey();
+                if (entry.getIntValue() > raw.getInt(id)) {
                     raw.put(id, entry.getIntValue());
                 }
             }
         }
-        for (var entry : Objects.requireNonNull(teamOwnedResearch).object2IntEntrySet()) {
-            var id = Objects.requireNonNull(entry.getKey());
-            requireSource(id, entry.getIntValue(), ResearchDownloadDeliveryPolicy.ITEM_ONLY);
-            if (raw.containsKey(id)) {
-                throw new IllegalArgumentException("Research exists in both ordinary sources: " + id);
-            }
+        for (var entry : teamOwnedResearch.object2IntEntrySet()) {
+            var id = entry.getKey();
             if (entry.getIntValue() > 0) {
                 raw.put(id, entry.getIntValue());
             }
@@ -120,8 +104,7 @@ public final class ResearchEligibility {
             resolveEffective(definition.id(), raw, blacklistedResearchIds, effective);
         }
         effective.object2IntEntrySet().removeIf(entry -> entry.getIntValue() == 0);
-        var emptyTargets = new Object2IntOpenHashMap<ResourceLocation>();
-        return new TeamResearchView(registry, teamId, members, effective, emptyTargets, blacklistedResearchIds);
+        return new TeamResearchView(registry, teamId, members, effective, Object2IntMaps.emptyMap(), blacklistedResearchIds);
     }
 
     /**
@@ -131,7 +114,6 @@ public final class ResearchEligibility {
     public boolean canStart(TeamResearchView view, ResourceLocation researchId, int targetLevel, UUID requestedBy,
                             Reference2DoubleMap<NetworkResourceType> availableResources, int networkCenterLevel) {
         requireView(view);
-        Objects.requireNonNull(requestedBy);
         if (!view.members().contains(requestedBy)) {
             throw new IllegalArgumentException("Research requester is not a captured member of team " + view.teamId());
         }
@@ -151,7 +133,7 @@ public final class ResearchEligibility {
      */
     public boolean structurallyEligible(TeamResearchView view, ResourceLocation researchId, int targetLevel) {
         requireView(view);
-        var definition = registry.require(Objects.requireNonNull(researchId));
+        var definition = registry.require(researchId);
         int completed = view.completedLevel(researchId);
         if (targetLevel < 1 || targetLevel > definition.maxLevel() || completed >= definition.maxLevel()
             || targetLevel != completed + 1 || definition.specialOnly() || view.blacklistedResearchIds().contains(researchId)) {
@@ -200,16 +182,7 @@ public final class ResearchEligibility {
         return 0;
     }
 
-    private ResearchDefinition requireSource(ResourceLocation id, int level, ResearchDownloadDeliveryPolicy expected) {
-        var definition = registry.require(id);
-        if (definition.specialOnly() || definition.deliveryPolicy() != expected || level < 0 || level > definition.maxLevel()) {
-            throw new IllegalArgumentException("Illegal ordinary research source or level for " + id + ": " + level);
-        }
-        return definition;
-    }
-
     private void requireView(TeamResearchView view) {
-        Objects.requireNonNull(view);
         if (view.registry() != registry) {
             throw new IllegalArgumentException("Research view belongs to another definition registry");
         }

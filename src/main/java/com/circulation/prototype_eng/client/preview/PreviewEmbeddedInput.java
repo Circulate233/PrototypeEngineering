@@ -28,15 +28,28 @@ public final class PreviewEmbeddedInput {
 
     void mark(GuiScreen host, StructurePreviewPanel panel) {
         if (host == null) return;
-        active.removeIf(entry -> entry.panel == panel);
+        Active next = null;
+        for (int index = 0; index < active.size(); index++)
+            if (active.get(index).panel == panel) {
+                next = active.remove(index);
+                break;
+            }
+        if (next == null) next = new Active(panel);
         var rect = panel.scene().viewport();
-        var next = new Active(host, panel, (int) Math.round(rect.x() - StructurePreviewPanel.SCENE_X), (int) Math.round(rect.y() - StructurePreviewPanel.SCENE_Y), System.currentTimeMillis());
+        next.host = host;
+        next.x = (int) Math.round(rect.x() - StructurePreviewPanel.SCENE_X);
+        next.y = (int) Math.round(rect.y() - StructurePreviewPanel.SCENE_Y);
+        next.touched = System.currentTimeMillis();
         active.add(next);
         dragging.mark(host, panel, next.x, next.y, next.touched);
     }
 
     void remove(StructurePreviewPanel panel) {
-        active.removeIf(entry -> entry.panel == panel);
+        for (int index = 0; index < active.size(); index++)
+            if (active.get(index).panel == panel) {
+                active.remove(index);
+                break;
+            }
         if (dragging.panel == panel) dragging.clear();
     }
 
@@ -57,18 +70,9 @@ public final class PreviewEmbeddedInput {
     @SubscribeEvent
     public void tick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
-        for (int index = 0; index < active.size(); index++) {
+        for (int index = active.size() - 1; index >= 0; index--) {
             var entry = active.get(index);
-            if (!expired(entry)) continue;
-            // Reads above invoke no cleanup. Freeze only the unvisited suffix before close can
-            // remove/reopen panels; the ordinary all-current tick allocates no snapshot.
-            var remaining = new ObjectArrayList<>(active.subList(index, active.size()));
-            remaining.getFirst().panel.close();
-            for (int cursor = 1; cursor < remaining.size(); cursor++) {
-                var next = remaining.get(cursor);
-                if (expired(next)) next.panel.close();
-            }
-            return;
+            if (expired(entry)) entry.panel.close();
         }
     }
 
@@ -123,7 +127,15 @@ public final class PreviewEmbeddedInput {
             }
     }
 
-    private record Active(GuiScreen host, StructurePreviewPanel panel, int x, int y, long touched) {
+    private static final class Active {
+        private GuiScreen host;
+        private final StructurePreviewPanel panel;
+        private int x, y;
+        private long touched;
+
+        private Active(StructurePreviewPanel panel) {
+            this.panel = panel;
+        }
     }
 
     /**

@@ -4,9 +4,9 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.math.BlockPos;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -58,21 +58,21 @@ public final class StructureSnapshot {
             source.requireServerThread();
             capture(read, source, problems);
         }
-        failures = List.copyOf(problems);
+        failures = problems;
     }
 
-    private StructureSnapshot(StructureSnapshot captured, StructureReadPlan.Builder trace) {
+    private StructureSnapshot(StructureSnapshot captured, StructureReadPlan.@NotNull Builder trace) {
         areas = captured.areas;
         reads = captured.reads;
         failures = captured.failures;
-        this.trace = Objects.requireNonNull(trace);
+        this.trace = trace;
     }
 
     /**
      * Only detached facts survive a slice; every borrowed read port is closed after actual exit.
      */
-    public static StructureOperation<StructureSnapshot> beginCapture(StructureReadPlan plan, StructureReadSource source,
-                                                                     @Nullable JoinedWorker worker) {
+    public static StructureOperation<@Nullable StructureSnapshot> beginCapture(StructureReadPlan plan, StructureReadSource source,
+                                                                               @Nullable JoinedWorker worker) {
         var capture = new Capture(plan, source, worker != null);
         return new StructureOperation<>() {
             @Override
@@ -133,8 +133,7 @@ public final class StructureSnapshot {
      * All source access completes synchronously before the detached snapshot is returned.
      */
     public static StructureSnapshot capture(StructureReadPlan plan, StructureReadSource source) {
-        Objects.requireNonNull(plan);
-        Objects.requireNonNull(source).requireServerThread();
+        source.requireServerThread();
         return new StructureSnapshot(plan, source);
     }
 
@@ -144,7 +143,7 @@ public final class StructureSnapshot {
     @Nullable
     public static StructureSnapshot capture(StructureReadPlan plan, StructureReadSource source, RecipeWorkBudget work) {
         var operation = beginCapture(plan, source, null);
-        return operation.advance(work) ? Objects.requireNonNull(operation.result()) : null;
+        return operation.advance(work) ? operation.result() : null;
     }
 
     StructureSnapshot tracking(StructureReadPlan.Builder trace) {
@@ -152,7 +151,7 @@ public final class StructureSnapshot {
     }
 
     public boolean isAreaLoaded(StructureBounds bounds) {
-        var fact = areas.get(Objects.requireNonNull(bounds));
+        var fact = areas.get(bounds);
         if (fact == null) {
             throw new IllegalArgumentException("Undeclared structure area: " + bounds);
         }
@@ -162,8 +161,8 @@ public final class StructureSnapshot {
         if (fact.failure() != null) {
             throw new IllegalStateException("Area capture failed: " + bounds, fact.failure());
         }
-        if (!Objects.requireNonNull(fact.value())) unavailableVisits = Math.incrementExact(unavailableVisits);
-        return Objects.requireNonNull(fact.value());
+        if (!fact.value()) unavailableVisits = Math.incrementExact(unavailableVisits);
+        return fact.value();
     }
 
     /**
@@ -177,7 +176,6 @@ public final class StructureSnapshot {
      * Null is an explicitly captured absent value, never an undeclared or unloaded read.
      * Returned facts are borrowed read-only from this snapshot; predicates must not mutate them.
      */
-    @Nullable
     @SuppressWarnings("unchecked") // Read identity binds query<T> to the Fact<T> written by capture.
     public <T> T read(StructureQuery<T> query, BlockPos position) {
         var request = new StructureReadPlan.Read<>(position, query);
@@ -281,8 +279,8 @@ public final class StructureSnapshot {
         private RecipeWorkBudget borrowedWork;
 
         private Capture(StructureReadPlan plan, StructureReadSource source, boolean workerReads) {
-            this.plan = Objects.requireNonNull(plan);
-            this.source = Objects.requireNonNull(source);
+            this.plan = plan;
+            this.source = source;
             source.requireServerThread();
             this.workerReads = workerReads;
         }
@@ -304,7 +302,6 @@ public final class StructureSnapshot {
         @Nullable
         public Runnable prepareWorker(RecipeWorkBudget work) {
             source.requireServerThread();
-            Objects.requireNonNull(work);
             if (borrowedWork != null)
                 throw new IllegalStateException("Previous structure reads have not been joined and closed");
             if (complete) return null;
@@ -353,10 +350,10 @@ public final class StructureSnapshot {
                 if (!pending.isEmpty()) {
                     borrowedWork = work;
                     completedReads = 0;
-                    return this::readPending;
+                    return () -> readPending(work);
                 }
                 if (readIndex == plan.reads().size() && work.take()) {
-                    result = new StructureSnapshot(areas, reads, Collections.unmodifiableList(failures));
+                    result = new StructureSnapshot(areas, reads, failures);
                     complete = true;
                 }
                 return null;
@@ -376,8 +373,7 @@ public final class StructureSnapshot {
             }
         }
 
-        private void readPending() {
-            var work = Objects.requireNonNull(borrowedWork);
+        private void readPending(RecipeWorkBudget work) {
             for (int index1 = 0; index1 < pending.size(); index1++) {
                 var read = pending.get(index1);
                 if (!work.take(0)) return;
@@ -391,7 +387,7 @@ public final class StructureSnapshot {
          */
         public void finishWorker(boolean accepted, @Nullable Throwable primary) {
             source.requireServerThread();
-            var work = Objects.requireNonNull(borrowedWork, "No borrowed structure read batch");
+            var work = borrowedWork;
             try {
                 if (!accepted) {
                     complete = true;
@@ -431,7 +427,7 @@ public final class StructureSnapshot {
         private void capture(Object2ObjectOpenHashMap<StructureReadPlan.Read<?>, Fact<?>> reads, ObjectArrayList<Failure> failures, RecipeWorkBudget work) {
             if (work instanceof StructureCheckPolicy.Work actual) actual.completeReserved();
             try {
-                reads.put(read, new Fact<>(read.query().copy(window.read()), null));
+                reads.put(read, new Fact<>(window.capture(read.query()), null));
             } catch (RuntimeException failure) {
                 reads.put(read, new Fact<>(null, failure));
                 failures.add(new Failure(StructureBounds.at(read.position()), read.query(), failure));
@@ -444,12 +440,8 @@ public final class StructureSnapshot {
     }
 
     public record Failure(StructureBounds area, @Nullable StructureQuery<?> query, RuntimeException cause) {
-        public Failure {
-            Objects.requireNonNull(area);
-            Objects.requireNonNull(cause);
-        }
     }
 
-    private record Fact<T>(@Nullable T value, @Nullable RuntimeException failure) {
+    private record Fact<T>(T value, @Nullable RuntimeException failure) {
     }
 }

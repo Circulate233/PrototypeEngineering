@@ -7,7 +7,6 @@ import net.minecraft.util.math.BlockPos;
 
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -26,8 +25,8 @@ final class PreviewBlockModelCache implements AutoCloseable {
     private boolean invalidating;
 
     PreviewBlockModelCache(Predicate<StructurePreviewModel> current, Supplier<ChunkBaker> bakers, int capacity) {
-        this.current = Objects.requireNonNull(current);
-        this.bakers = Objects.requireNonNull(bakers);
+        this.current = current;
+        this.bakers = bakers;
         if (capacity <= 0) throw new IllegalArgumentException("Nonpositive block-model cache capacity");
         this.capacity = capacity;
     }

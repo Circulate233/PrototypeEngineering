@@ -9,7 +9,6 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.ints.Int2ObjectAVLTreeMap;
 import it.unimi.dsi.fastutil.objects.AbstractObjectList;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
@@ -25,7 +24,6 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 
@@ -50,39 +48,34 @@ public final class RecipeCatalog {
     public RecipeCatalog(Collection<? extends RecipePool> pools) {
         var knownPools = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>(pools.size());
         var canonical = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineRecipe>();
-        for (var pool : Objects.requireNonNull(pools, "pools")) {
-            Objects.requireNonNull(pool, "pool");
-            if (knownPools.putIfAbsent(Objects.requireNonNull(pool.id()), pool) != null)
+        for (var pool : pools) {
+            if (knownPools.putIfAbsent(pool.id(), pool) != null)
                 throw new IllegalArgumentException("Duplicate catalog pool: " + pool.id());
-            var poolRecipes = new ObjectArrayList<MachineRecipe>(pool.recipes().size());
+            var poolRecipes = pool.recipes();
             var membership = new ReferenceOpenHashSet<MachineRecipe>(pool.recipes().size());
-            var groups = new Object2ObjectOpenHashMap<ResourceLocation, ObjectArrayList<MachineRecipe>>();
+            var groups = new Object2ObjectOpenHashMap<ResourceLocation, List<MachineRecipe>>();
             var ids = new ObjectLinkedOpenHashSet<ResourceLocation>(pool.recipes().size());
-            var elements = Objects.requireNonNull(pool.recipes(), "pool recipes");
+            var elements = pool.recipes();
             for (int index3 = 0; index3 < elements.size(); index3++) {
                 var recipe = elements.get(index3);
-                Objects.requireNonNull(recipe, "pool recipe");
                 if (!ids.add(recipe.id()))
                     throw new IllegalArgumentException("Duplicate recipe in pool: " + recipe.id());
                 var previous = canonical.putIfAbsent(recipe.id(), recipe);
                 if (previous != null && previous != recipe)
                     throw new IllegalArgumentException("Different canonical recipes share catalog ID: " + recipe.id());
                 if (previous == null) priority.put(recipe, priority.size());
-                poolRecipes.add(recipe);
                 membership.add(recipe);
                 owners.computeIfAbsent(recipe, _ -> new ObjectArrayList<>(2)).add(pool);
                 for (var group : recipe.recipeGroups())
                     groups.computeIfAbsent(group, _ -> new ObjectArrayList<>(6)).add(recipe);
             }
-            var frozenGroups = new Object2ObjectOpenHashMap<ResourceLocation, List<MachineRecipe>>(groups.size());
-            groups.forEach((group, rows) -> frozenGroups.put(group, ObjectLists.unmodifiable(rows)));
-            members.put(pool, new PoolMembers(ObjectLists.unmodifiable(poolRecipes), membership,
-                Object2ObjectMaps.unmodifiable(frozenGroups)));
+            members.put(pool, new PoolMembers(poolRecipes, membership,
+                groups));
         }
-        this.pools = Object2ObjectMaps.unmodifiable(knownPools);
-        orderedPools = ObjectLists.unmodifiable(new ObjectArrayList<>(knownPools.values()));
-        recipes = Object2ObjectMaps.unmodifiable(canonical);
-        orderedRecipes = ObjectLists.unmodifiable(new ObjectArrayList<>(canonical.values()));
+        this.pools = knownPools;
+        orderedPools = new ObjectArrayList<>(knownPools.values());
+        recipes = canonical;
+        orderedRecipes = new ObjectArrayList<>(canonical.values());
         boolean stable = true;
         for (int index2 = 0; index2 < orderedRecipes.size(); index2++) {
             var recipe = orderedRecipes.get(index2);
@@ -103,10 +96,18 @@ public final class RecipeCatalog {
     }
 
     /**
+     * Registered owners of this canonical recipe. The returned list is borrowed read-only.
+     */
+    public List<RecipePool> poolsContaining(MachineRecipe recipe) {
+        var result = owners.get(recipe);
+        return result == null ? List.of() : result;
+    }
+
+    /**
      * Resolves transient retry hints against this catalog's exact canonical definition.
      */
     public @Nullable MachineRecipe recipe(ResourceLocation id) {
-        return recipes.get(Objects.requireNonNull(id));
+        return recipes.get(id);
     }
 
     /**
@@ -115,7 +116,7 @@ public final class RecipeCatalog {
     @SuppressWarnings("ReturnOfInnerClass") // The keyed capture retains this exact owner's quantity and revision proof.
     public synchronized RecipeCandidateIndex.Cursor beginFixedInputCandidates(MachineRecipe recipe, MachineInstance machine,
                                                                               Set<ResourceLocation> groups) {
-        if (recipes.get(Objects.requireNonNull(recipe).id()) != recipe)
+        if (recipes.get(recipe.id()) != recipe)
             throw new IllegalArgumentException("Foreign retry recipe");
         var index = retryIndexes.getAndMoveToLast(recipe);
         if (index == null) {
@@ -154,8 +155,8 @@ public final class RecipeCatalog {
      * Lazy immutable static-ID view, visited by the original work budget.
      */
     public List<RecipePool> poolsFor(MachineType type) {
-        var ids = Objects.requireNonNull(type).recipePoolIds();
-        return ObjectLists.unmodifiable(new AbstractObjectList<>() {
+        var ids = type.recipePoolIds();
+        return new AbstractObjectList<>() {
             @Override
             public RecipePool get(int index) {
                 var id = ids.get(index);
@@ -168,7 +169,7 @@ public final class RecipeCatalog {
             public int size() {
                 return ids.size();
             }
-        });
+        };
     }
 
     @SuppressWarnings("ReturnOfInnerClass")
@@ -208,7 +209,7 @@ public final class RecipeCatalog {
         // The scanner captures the exact source generation for this pass.
     CandidatePass beginCandidates(Selection selection, Set<ResourceLocation> groups, List<RecipeCandidateIndex> indexes,
                                   BooleanSupplier definitionCurrent) {
-        if (Objects.requireNonNull(selection).catalog != this)
+        if (selection.catalog != this)
             throw new IllegalArgumentException("Foreign pool selection");
         return new CandidatePass(selection.machine, groups, indexes, selection, definitionCurrent);
     }
@@ -228,7 +229,7 @@ public final class RecipeCatalog {
             }
             return combination.pool;
         }
-        var providers = ObjectLists.unmodifiable(new ObjectArrayList<>(selectedPools));
+        var providers = new ObjectArrayList<>(selectedPools);
         var pool = new CompositeRecipePool(COMBINATION_ID, providers.getFirst().translationKey(), providers);
         if (combinations.size() == COMBINATION_CACHE_SIZE) combinations.removeFirst();
         combinations.add(new Combination(providers, pool));
@@ -262,7 +263,7 @@ public final class RecipeCatalog {
             this.machine = machine;
             this.selected = selected;
             // SelectionCapture exclusively owns this completed provider list; no recipe is visited here.
-            this.selectedPools = ObjectLists.unmodifiable(selectedPools);
+            this.selectedPools = selectedPools;
             combinedPool = selectedPools.size() == 1 ? selectedPools.getFirst() : null;
         }
 
@@ -300,16 +301,15 @@ public final class RecipeCatalog {
         private Selection result;
 
         private SelectionCapture(MachineInstance machine) {
-            this.machine = Objects.requireNonNull(machine);
-            input = Objects.requireNonNull(machine.getRecipePools(RecipeCatalog.this), "Selected recipe pools").iterator();
+            this.machine = machine;
+            input = machine.getRecipePools(RecipeCatalog.this).iterator();
         }
 
         public boolean advance(RecipeWorkBudget budget) {
-            Objects.requireNonNull(budget);
             if (result != null) return true;
             while (input.hasNext()) {
                 if (!budget.take()) return false;
-                var pool = Objects.requireNonNull(input.next(), "Selected recipe pool");
+                var pool = input.next();
                 if (pools.get(pool.id()) != pool)
                     throw new IllegalArgumentException("Selected recipe pool is foreign or counterfeit: " + pool.id());
                 if (selected.add(pool)) ordered.add(pool);
@@ -372,15 +372,14 @@ public final class RecipeCatalog {
 
         private CandidatePass(MachineInstance machine, Set<ResourceLocation> groups, List<RecipeCandidateIndex> indexes,
                               @Nullable Selection selection, BooleanSupplier definitionCurrent) {
-            this.machine = Objects.requireNonNull(machine);
-            this.definitionCurrent = Objects.requireNonNull(definitionCurrent);
+            this.machine = machine;
+            this.definitionCurrent = definitionCurrent;
             this.groups = groups;
             this.indexes = indexes;
             this.selection = selection;
         }
 
         public boolean advance(RecipeWorkBudget budget) {
-            Objects.requireNonNull(budget);
             if (!definitionCurrent.getAsBoolean()) return false;
             if (phase == 7) return true;
             if (stale) return false;
@@ -401,7 +400,7 @@ public final class RecipeCatalog {
                         if (!definitionCurrent.getAsBoolean()) return false;
                         if (pool == null) {
                             if (!budget.take()) return false;
-                            pool = Objects.requireNonNull(selection.combinedPool());
+                            pool = selection.combinedPool();
                             poolIndex = 1;
                             poolMembers = members.get(pool);
                             poolLookup = pool.beginCandidates(machine, groups);
@@ -434,7 +433,7 @@ public final class RecipeCatalog {
                                     continue;
                                 }
                                 if (!budget.take()) return false;
-                                pendingRecipe = Objects.requireNonNull(poolOpinion.next(), "pool candidate");
+                                pendingRecipe = poolOpinion.next();
                                 if (recipes.get(pendingRecipe.id()) != pendingRecipe || (poolMembers == null
                                     ? !selection.accepts(machine, pendingRecipe) : !poolMembers.identities.contains(pendingRecipe)))
                                     throw new IllegalArgumentException("Pool candidate is foreign or outside its pool: " + pendingRecipe.id());
@@ -465,7 +464,7 @@ public final class RecipeCatalog {
                         if (!budget.take()) return false;
                         orderedScope.add(scopeIterator.next());
                     }
-                    scope = ObjectLists.unmodifiable(orderedScope);
+                    scope = orderedScope;
                     phase = scope.isEmpty() ? 6 : 4;
                 }
                 if (phase == 4) {
@@ -473,7 +472,7 @@ public final class RecipeCatalog {
                         if (!definitionCurrent.getAsBoolean()) return false;
                         if (lookup == null) {
                             if (!budget.take()) return false;
-                            lookup = Objects.requireNonNull(indexes.get(indexCursor).beginLookup(machine, groups, scope));
+                            lookup = indexes.get(indexCursor).beginLookup(machine, groups, scope);
                             observed.add(lookup);
                         }
                         if (!definitionCurrent.getAsBoolean()) return false;
@@ -494,7 +493,7 @@ public final class RecipeCatalog {
                         }
                         while (opinion.hasNext()) {
                             if (!budget.take()) return false;
-                            var candidate = Objects.requireNonNull(opinion.next(), "indexed candidate");
+                            var candidate = opinion.next();
                             if (recipes.get(candidate.id()) != candidate || !chosen.containsKey(priority.getInt(candidate)))
                                 throw new IllegalArgumentException("Indexed recipe is foreign or outside its group scope: " + candidate.id());
                             if (accepted.add(candidate)) agreements.addTo(candidate, 1);
@@ -547,7 +546,6 @@ public final class RecipeCatalog {
 
                 @Override
                 public boolean advance(RecipeWorkBudget budget) {
-                    Objects.requireNonNull(budget);
                     if (complete) return true;
                     if (!CandidatePass.this.current()) {
                         complete = true;
@@ -561,7 +559,7 @@ public final class RecipeCatalog {
                         if (child == null) {
                             if (!budget.take()) return false;
                             var opinion = cursor < poolChecks ? poolObserved.get(cursor) : observed.get(cursor - poolChecks);
-                            child = Objects.requireNonNull(opinion.beginValidation());
+                            child = opinion.beginValidation();
                         }
                         if (!child.advance(budget)) return false;
                         if (!child.current()) {

@@ -31,16 +31,18 @@ public final class MinecraftDataCenterPersistence implements MachineDataCenterPe
     private MinecraftDataCenterPersistence() {
     }
 
+    @SuppressWarnings("DataFlowIssue")
     public static boolean available(MachineInstance owner) {
-        Objects.requireNonNull(owner.lifecycle()).host().requireServerThread();
+        owner.lifecycle().host().requireServerThread();
         return target(owner) != null;
     }
 
     /**
      * The native storage attachment uses the same physical target as synchronous persistence.
      */
+    @SuppressWarnings("DataFlowIssue")
     public static void markDirty(MachineInstance owner) {
-        Objects.requireNonNull(owner.lifecycle()).host().requireServerThread();
+        owner.lifecycle().host().requireServerThread();
         Objects.requireNonNull(target(owner), "Original Anvil database host is unavailable").tile().markDirty();
     }
 
@@ -54,12 +56,13 @@ public final class MinecraftDataCenterPersistence implements MachineDataCenterPe
                 result = candidate;
             }
         }
-        return Objects.requireNonNull(result, "Database has no physical ownership binding");
+        return result;
     }
 
     @Nullable
+    @SuppressWarnings("DataFlowIssue")
     private static Target target(MachineInstance owner) {
-        var lifecycle = Objects.requireNonNull(owner.lifecycle());
+        var lifecycle = owner.lifecycle();
         var location = lifecycle.host().identity();
         if (!(lifecycle.host().world() instanceof WorldServer world) || lifecycle.host().worldIdentity() != world
             || world.provider.getDimension() != location.dimension()
@@ -74,15 +77,16 @@ public final class MinecraftDataCenterPersistence implements MachineDataCenterPe
     }
 
     @Override
+    @SuppressWarnings({"DataFlowIssue", "resource"})
     public void persistAndVerify(MachineInstance owner, ResourceLocation storageType, ResourceLocation ownershipType,
                                  NBTTagCompound expected, BooleanSupplier physicalCurrent) {
-        var lifecycle = Objects.requireNonNull(owner.lifecycle());
+        var lifecycle = owner.lifecycle();
         lifecycle.host().requireServerThread();
         owner.requirePersistenceBoundary();
         var target = Objects.requireNonNull(target(owner), "Original Anvil database host is unavailable");
         var ownership = ownership(owner, ownershipType);
         var identity = ownership.identity();
-        var registration = Objects.requireNonNull(ownership.registration());
+        var registration = ownership.registration();
         if (!registration.unique() || registration.runtimeIdentity() != owner || registration.worldIdentity() != target.world()
             || !registration.location().equals(target.location()) || !physicalCurrent.getAsBoolean())
             throw new IllegalStateException("Original database identity binding is stale");

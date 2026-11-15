@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.api.recipe.probability;
 
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 
-import java.util.Objects;
 import java.util.Random;
 import java.util.random.RandomGenerator;
 
@@ -39,8 +38,6 @@ public final class BinomialSampler {
      * Nonfinite probability is rejected; finite nonpositive n/p yield zero and p>=1 yields n.
      */
     public static int sample(RandomGenerator random, int n, double probability, ProbabilityTuning tuning) {
-        Objects.requireNonNull(random, "random");
-        Objects.requireNonNull(tuning, "tuning");
         if (!Double.isFinite(probability)) {
             throw new IllegalArgumentException("Probability must be finite");
         }
@@ -107,14 +104,14 @@ public final class BinomialSampler {
         private int result;
 
         public Cursor(RandomGenerator random, int n, double probability, ProbabilityTuning tuning) {
-            this.random = Objects.requireNonNull(random);
+            this.random = random;
             this.n = n;
             if (!Double.isFinite(probability)) {
                 throw new IllegalArgumentException("Probability must be finite");
             }
             complement = probability > 0.5 && probability < 1;
             this.probability = complement ? 1 - probability : probability;
-            this.tuning = Objects.requireNonNull(tuning);
+            this.tuning = tuning;
         }
 
         public boolean advance(RecipeWorkBudget budget) {

@@ -24,7 +24,6 @@ import org.jetbrains.annotations.Nullable;
 import java.math.BigInteger;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -73,6 +72,7 @@ public final class CrossRecipeBatch {
     /**
      * Called at the first real work capture, before any host or process has acquired a tick lease.
      */
+    @SuppressWarnings("DataFlowIssue")
     public static void prepare(MachineInstance owner) {
         if (!(owner instanceof CrossRecipeController)) return;
         if (running(owner)) {
@@ -85,7 +85,7 @@ public final class CrossRecipeBatch {
                     var slot = elements8.get(index8);
                     var process = slot.process();
                     if (process == null) continue;
-                    var timing = Objects.requireNonNull(process.crossRecipeTiming(), "A running cohort cannot accept untimed work");
+                    var timing = process.crossRecipeTiming();
                     if (expected != null && (!timing.batch.equals(expected.batch) || timing.duration != expected.duration))
                         throw new IllegalStateException("Inconsistent restored cross-recipe cohort");
                     expected = timing;
@@ -151,6 +151,7 @@ public final class CrossRecipeBatch {
     /**
      * START effects participate in the frozen quantity weights; a cohort then shares one work clock.
      */
+    @SuppressWarnings("DataFlowIssue")
     public static void prepareRound(MachineInstance owner) {
         if (!(owner instanceof CrossRecipeController cross)) return;
         boolean allStarted = true;
@@ -166,7 +167,7 @@ public final class CrossRecipeBatch {
                 var slot = elements10.get(index10);
                 var process = slot.process();
                 if (process == null || process.state().lifecycle().isTerminal()) continue;
-                var timing = Objects.requireNonNull(process.crossRecipeTiming());
+                var timing = process.crossRecipeTiming();
                 int count = RecipeParallelism.effective(process);
                 changed |= count != timing.parallelism;
                 allStarted &= process.state().started();
@@ -193,7 +194,7 @@ public final class CrossRecipeBatch {
                     weighted = weighted.add(BigInteger.valueOf(process.recipe().durationTicks()).multiply(BigInteger.valueOf(RecipeParallelism.effective(process))));
                 }
             }
-            assign(members, weighted, parallels, Objects.requireNonNull(members.getFirst().crossRecipeTiming()).batch, true);
+            assign(members, weighted, parallels, members.getFirst().crossRecipeTiming().batch, true);
         }
         cross.batchSpeed(speed);
     }
@@ -350,13 +351,11 @@ public final class CrossRecipeBatch {
     public record Timing(UUID batch, int duration, int parallelism, int materialOffset,
                          Map<RequirementPath, EnergyOffsets> energyOffsets) {
         public Timing {
-            Objects.requireNonNull(batch);
             if (duration < 0 || parallelism < 1 || materialOffset < 0 || materialOffset >= Math.max(1, duration))
                 throw new IllegalArgumentException("Invalid cross-recipe timing");
             var owned = new Object2ObjectLinkedOpenHashMap<>(energyOffsets);
             for (var entry : owned.object2ObjectEntrySet()) {
-                Objects.requireNonNull(entry.getKey());
-                var value = Objects.requireNonNull(entry.getValue());
+                var value = entry.getValue();
                 if (value.input < 0 || value.output < 0 || value.input >= Math.max(1, duration) || value.output >= Math.max(1, duration))
                     throw new IllegalArgumentException("Invalid energy rounding offset");
             }

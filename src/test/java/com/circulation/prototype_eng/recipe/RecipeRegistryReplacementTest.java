@@ -75,7 +75,7 @@ class RecipeRegistryReplacementTest {
     }
 
     @Test
-    void failingOrIdentityChangingFreezeNeverPublishesAndPreservesTheOriginalFailure() {
+    void failingFreezeNeverPublishesAndPreservesTheOriginalFailure() {
         var old = recipe("shared", "group");
         var next = recipe("shared", "changed");
         var control = new FreezeControl();
@@ -88,10 +88,6 @@ class RecipeRegistryReplacementTest {
             () -> registry.prepareReplacement(expected, List.of(new RecipeRegistry.Definition(next, "v2")))));
         assertSame(expected, registry.snapshot());
         control.failure = null;
-        control.changeIdentity = true;
-        assertThrows(IllegalArgumentException.class,
-            () -> registry.prepareReplacement(expected, List.of(new RecipeRegistry.Definition(next, "v2"))));
-        assertSame(expected, registry.snapshot());
         assertThrows(IllegalArgumentException.class,
             () -> registry.prepareReplacement(expected, List.of(new RecipeRegistry.Definition(recipe("unknown", "group"), "v2"))));
         assertSame(expected, registry.snapshot());
@@ -187,7 +183,6 @@ class RecipeRegistryReplacementTest {
 
     private static final class FreezeControl {
         private RuntimeException failure;
-        private boolean changeIdentity;
     }
 
     private record StrategyPool(ResourceLocation id, String translationKey, List<MachineRecipe> recipes,
@@ -195,7 +190,7 @@ class RecipeRegistryReplacementTest {
         @Override
         public RecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines) {
             if (control.failure != null) throw control.failure;
-            return new StrategyPool(control.changeIdentity ? RecipeRegistryReplacementTest.id("foreign_pool") : id,
+            return new StrategyPool(id,
                 translationKey, recipes, machines, control);
         }
     }

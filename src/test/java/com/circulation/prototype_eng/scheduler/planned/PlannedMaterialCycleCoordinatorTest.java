@@ -119,7 +119,7 @@ class PlannedMaterialCycleCoordinatorTest {
         try (var backend = new Backend()) {
             var coordinator = fixture.coordinator(backend, stage -> {
                 assertEquals(1, fixture.acquired.getInt(stage.phase()));
-                assertThrows(NullPointerException.class, fixture.process::tickContext);
+                assertNull(fixture.process.tickContext());
                 if (stage.phase() != RecipeStage.END) {
                     return List.of();
                 }
@@ -515,6 +515,7 @@ class PlannedMaterialCycleCoordinatorTest {
                     }
 
                     @Override
+                    @SuppressWarnings("DataFlowIssue")
                     public void commit() {
                         assertSame(owner, Thread.currentThread());
                         if (phase == RecipeStage.TICK) {
@@ -533,7 +534,7 @@ class PlannedMaterialCycleCoordinatorTest {
             });
             process = RecipeProcess.materialCycle(machine, id("material"), List.of(requirement),
                 new MachineHatches(List.of(), List.of(energy), List.of()), 7);
-            process.components().create(new ComponentType<>(id("callbacks"), _ -> new Object(), List.of(new ComponentSystem<RecipeProcess, Object>() {
+            process.components().create(new ComponentType<>(id("callbacks"), _ -> new Object(), List.of(new ComponentSystem<>() {
                 @Override
                 public ResourceLocation id() {
                     return PlannedMaterialCycleCoordinatorTest.id("callbacks");

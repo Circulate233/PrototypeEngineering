@@ -4,7 +4,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -21,7 +20,6 @@ public final class PlannedCancellationToken {
      * Claims all current registrations once; every callback runs outside the registration lock.
      */
     public boolean cancel(Reason reason) {
-        Objects.requireNonNull(reason, "Planned cancellation reason");
         ObjectArrayList<Registration> callbacks;
         synchronized (cancellationLock) {
             if (cancellationReason != null) {
@@ -68,7 +66,7 @@ public final class PlannedCancellationToken {
      * Registers without a check/register race; an already cancelled token invokes it synchronously.
      */
     public Registration onCancel(Consumer<Reason> handler) {
-        var registration = new Registration(this, Objects.requireNonNull(handler, "Planned cancellation handler"));
+        var registration = new Registration(this, handler);
         Reason currentReason;
         synchronized (cancellationLock) {
             currentReason = cancellationReason;

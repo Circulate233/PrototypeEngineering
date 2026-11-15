@@ -28,19 +28,19 @@ import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * PM's independent FE start/tick/end IO, with each source counted once per operation.
  */
 public final class EnergyRequirementSystem implements RecipeRequirementSystem<EnergyRequirement> {
+    @SuppressWarnings("DataFlowIssue")
     private static RequirementTransaction acquire(RecipeProcess process, RecipeRequirement<EnergyRequirement> requirement,
                                                   RecipeStage stage, long input, long output) {
         var timing = process.crossRecipeTiming();
         boolean batched = timing != null && timing.duration() > 0 && process.requirementPath().parent() == null;
         if (batched) {
             if (stage != RecipeStage.TICK) return RequirementTransaction.SUCCESS;
-            var offsets = Objects.requireNonNull(timing.energyOffsets().get(process.requirementPath()));
+            var offsets = timing.energyOffsets().get(process.requirementPath());
             var payload = requirement.payload();
             input = timing.portion(CrossRecipeBatch.energyTotal(payload.input(), payload.inputPerTick(),
                 process.recipe().durationTicks(), timing.parallelism()), offsets.input(), process.tickContext());
@@ -103,7 +103,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                 if (reserved.status() != ReservationResult.Status.ACCEPTED) {
                     return RecipeText.StorageChanged.blocked();
                 }
-                reservations.add(Objects.requireNonNull(reserved.reservation()));
+                reservations.add(reserved.reservation());
                 remaining -= portion;
             } finally {
                 context.unlock();
@@ -144,7 +144,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                 if (reserved.status() != ReservationResult.Status.ACCEPTED) {
                     return RecipeText.StorageChanged.blocked();
                 }
-                reservations.add(Objects.requireNonNull(reserved.reservation()));
+                reservations.add(reserved.reservation());
                 remaining -= portion;
             } finally {
                 context.unlock();
@@ -160,7 +160,8 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
     }
 
     @Override
-    @SuppressWarnings("ReturnOfInnerClass") // The owner binding intentionally retains its captured callback scope.
+    @SuppressWarnings({"ReturnOfInnerClass", "DataFlowIssue"})
+    // The owner binding intentionally retains its captured callback scope.
     public RequirementPreparation prepare(RecipeProcess process, RecipeRequirement<EnergyRequirement> requirement,
                                           RecipeStage stage) {
         var payload = requirement.payload();
@@ -184,7 +185,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
         var parallelCapture = process.attributes().beginValueCapture(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
         var device = process.owner().networkDevice();
         double networkEnergy = device == null ? 1 : device.energyMultiplier();
-        var offsets = batched ? Objects.requireNonNull(timing.energyOffsets().get(process.requirementPath())) : null;
+        var offsets = batched ? timing.energyOffsets().get(process.requirementPath()) : null;
         var tick = batched ? process.tickContext() : null;
         int originalDuration = process.recipe().durationTicks();
         return new RequirementPreparation() {
@@ -217,6 +218,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
             }
 
             @Override
+            @SuppressWarnings("DataFlowIssue")
             public RequirementTransaction acquire() {
                 var reservations = new ObjectArrayList<ResourceReservation>(6);
                 var budget = process.preparationBudget();
@@ -226,8 +228,8 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                     if (!parallelCapture.advance(budget)) return paused(reservations);
                     quantities = new EnergyQuantities(input, output, Math.max(1, (int) Math.floor(parallelCapture.result())), networkEnergy);
                     if (batched)
-                        quantities.batch = new BatchEnergy(Objects.requireNonNull(timing), Objects.requireNonNull(offsets),
-                            payload, originalDuration, Objects.requireNonNull(tick));
+                        quantities.batch = new BatchEnergy(timing, offsets,
+                            payload, originalDuration, tick);
                     return paused(reservations);
                 }
                 if (!quantities.complete || process.hatches() != hatches) {
@@ -255,7 +257,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                             int sourceIndex = index++;
                             var inputSource = direction == 0 ? hatches.energyInputs().get(sourceIndex) : null;
                             var outputSource = direction == 1 ? hatches.energyOutputs().get(sourceIndex) : null;
-                            var context = inputSource != null ? inputSource.context() : Objects.requireNonNull(outputSource).context();
+                            var context = inputSource != null ? inputSource.context() : outputSource.context();
                             boolean valid = inputSource != null ? inputSource.isValid() : outputSource.isValid();
                             if (!valid || !visited.add(context)) {
                                 continue;
@@ -277,7 +279,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                                 if (reserved.status() != ReservationResult.Status.ACCEPTED) {
                                     return new ReservedRequirement(RecipeText.StorageChanged.blocked(), reservations);
                                 }
-                                reservations.add(Objects.requireNonNull(reserved.reservation()));
+                                reservations.add(reserved.reservation());
                                 remaining -= portion;
                             } finally {
                                 context.unlock();
@@ -428,7 +430,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                     if (!input.isValid() || !context.current(snapshot.revision())) return changed();
                     var reserved = input.reserveExtractEnergy(snapshot, assigned);
                     if (reserved.status() != ReservationResult.Status.ACCEPTED) return changed();
-                    reservations.add(Objects.requireNonNull(reserved.reservation()));
+                    reservations.add(reserved.reservation());
                 } finally {
                     context.unlock();
                 }

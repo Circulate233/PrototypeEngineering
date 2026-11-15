@@ -25,6 +25,7 @@ import java.nio.CharBuffer;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -93,6 +94,7 @@ public final class StructureCatalogCodec {
                 throw new IllegalArgumentException("Unknown structure catalog protocol version");
             var session = new UUID(input.readLong(), input.readLong());
             long sequence = input.readLong();
+            if (sequence < 0) throw new IllegalArgumentException("Invalid catalog view sequence");
             var nodes = new ObjectArrayList<StructureCatalogView.Node>();
             int nodeCount = count(input);
             for (int i = 0; i < nodeCount; i++) {
@@ -121,15 +123,46 @@ public final class StructureCatalogCodec {
             for (int e = 0; e < entryCount; e++) {
                 var id = id(input);
                 int node = input.readInt();
+                if (node < 0 || node >= nodes.size() || !id.equals(nodes.get(node).id()))
+                    throw new IllegalArgumentException("Catalog view entry has no matching node: " + id);
                 String name = nullable(input);
                 var displays = displays(input, version);
                 if (entries.putIfAbsent(id, new StructureCatalogView.Entry(node, name, displays)) != null)
                     throw new IllegalArgumentException("Duplicate preview structure ID");
             }
             if (input.available() != 0) throw new IllegalArgumentException("Trailing structure catalog payload");
+            validateGraph(nodes);
             return new StructureCatalogView(session, sequence, nodes, entries);
         } catch (IOException failure) {
             throw new IllegalArgumentException("Cannot decode structure catalog view", failure);
+        }
+    }
+
+    private static void validateGraph(List<StructureCatalogView.Node> nodes) {
+        var colors = new byte[nodes.size()];
+        var stack = new int[nodes.size()];
+        var next = new int[nodes.size()];
+        for (int root = 0; root < nodes.size(); root++) {
+            if (colors[root] != 0) continue;
+            int depth = 0;
+            stack[0] = root;
+            colors[root] = 1;
+            while (depth >= 0) {
+                int node = stack[depth];
+                if (next[node] == nodes.get(node).children().size()) {
+                    colors[node] = 2;
+                    depth--;
+                    continue;
+                }
+                int child = nodes.get(node).children().getInt(next[node]++);
+                if (child < 0 || child >= nodes.size())
+                    throw new IllegalArgumentException("Unknown preview child node");
+                if (colors[child] == 1) throw new IllegalArgumentException("Cyclic preview graph");
+                if (colors[child] == 0) {
+                    colors[child] = 1;
+                    stack[++depth] = child;
+                }
+            }
         }
     }
 

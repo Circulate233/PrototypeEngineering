@@ -6,7 +6,6 @@ import com.circulation.prototype_eng.integration.ftb.FtbOwnerTeamResolver;
 import net.minecraft.server.MinecraftServer;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Session-wide network publication, refreshed only at scheduler owner boundaries.
@@ -19,7 +18,7 @@ public final class ServerNetworkRuntime {
     }
 
     public static synchronized void start(MinecraftServer server) {
-        requireThread(Objects.requireNonNull(server));
+        requireThread(server);
         if (session != null) {
             throw new IllegalStateException("A server network runtime is already running");
         }

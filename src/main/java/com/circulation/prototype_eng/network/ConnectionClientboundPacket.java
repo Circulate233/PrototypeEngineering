@@ -6,7 +6,6 @@ import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * AE clientbound family with the exact connection captured before its client-owner scheduling.
@@ -15,7 +14,7 @@ public abstract class ConnectionClientboundPacket extends ClientboundPacket {
     private @Nullable Object receivedConnection;
 
     final void receiveConnection(Object connection) {
-        receivedConnection = Objects.requireNonNull(connection);
+        receivedConnection = connection;
     }
 
     final void dispatchClient(@Nullable Object currentConnection) {

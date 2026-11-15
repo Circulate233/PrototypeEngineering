@@ -12,7 +12,6 @@ import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Framework input-source receipts. Native reservation transitions retain their original semantics.
@@ -39,9 +38,8 @@ public final class ResourceInputReceipts {
         private final ObjectArrayList<Receipt> receipts = new ObjectArrayList<>();
 
         public Receipt prepare(@Nullable ResourceRecipeObserver observer, AEKey key, long amount) {
-            Objects.requireNonNull(key);
             if (amount <= 0) throw new IllegalArgumentException("Input receipt needs a positive amount");
-            Object identity = observer == null ? null : Objects.requireNonNull(observer.observerIdentity());
+            Object identity = observer == null ? null : observer.observerIdentity();
             var receipt = new Receipt(observer, identity, key, amount);
             receipts.add(receipt);
             return receipt;
@@ -155,7 +153,7 @@ public final class ResourceInputReceipts {
             if (result.status() != ReservationResult.Status.ACCEPTED) {
                 return result;
             }
-            delegate = Objects.requireNonNull(result.reservation());
+            delegate = result.reservation();
             return accepted;
         }
 

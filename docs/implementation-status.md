@@ -1,5 +1,19 @@
 # 实施进度
 
+## 2026-11-15 全项目复审与 Mixin 简化
+
+从 `6300da1` 的工作树复审851份生产 Java，删除5个 Mixin 和2个失去消费者的辅助类，当前生产源码844份。清理构造参数、已知载荷和原生加载调用上的重复非空断言；集合、数组及 NBT 按 Javadoc 直接交付。ComponentData 按 revision 缓存顶层快照，机器数据按对象/版本复用；组件排序、生命周期参与者、定义索引和装配信息避免重复生成。研究、网络、仓室、渲染与脚本包装合并重复遍历，移除临时 codec、路径副本、逐元素 Word 和无用包装。
+
+控制器保留6个方向×4个旋转的24种预烘焙模型，运行时直接读缓存。预览直接从原数组和 offset 写最终缓冲，每个结构的切片共用一次生成的路径。生产源码只有 `ControllerRotatedModel` 烘焙共享基础顶点时保留一处 clone。
+
+现存10项 Mixin 删除5项：NBT 长数组直接读公开字段，Zen 动态成员用 construction 阶段类型注册，CTM 用公开 serializer 注册；两个资源管理器 accessor 改为现有 AT 字段声明。无消费者的 fileResourcepacks AT 同时删除。剩余5项负责实际渲染阶段、距离/包围盒、预览容器与 HEI 注册/输入顺序，逐项依据见 [mixins.md](mixins.md)。产物已核对，仅包含5个 Mixin 类，AT及 FMLAT manifest 正确，删除的 Mixin 类没有残留。
+
+完整行为测试发现 VBO 清理在 fastutil entry 移除后继续读取值，已改为先保存对象再移除；检查其他删除循环没有同类错误。数据库来源捕获实际存储对象，替换后旧发布失效。删除残留的 DTO 防写、借用列表被修改及故意违反 freeze 返回要求的测试，保留实际解码、事务、恢复、注册和渲染验证。
+
+1728项测试、269 suites全部通过，失败、错误和跳过均为0；完整 Gradle build、Spotless 和 IDEA MCP构建通过。最后删除无消费者的 AT 后，compileJava、compileTestJava及 build -x test再次通过，沿用此前完整行为结果。520份 Java 已通过本机 IDEA格式化及逐文件 errorsOnly:false：503份全级零诊断，HatchBloomMetadata因IDE未解析现有 CTM依赖保留5条ERROR及1条弱警告，16份run被IDE排除。CTM真实jar编译通过，没有将这些结果记录为全仓IDE零诊断。
+
+27份Java addon及15份真实ZS编译、核心API检查通过，生成 addon未安装；游戏内注册时序、资源重载和画面仍由用户完整重启复验。本轮新增代码注释没有中文。最终证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261115/`：`review-summary.json`、`review-idea-current.json`、`review-at-build-complete.log`、`review-packaged-complete.log`、`review-mixins-complete.json`、`review-run-final-addon.log`和`review-run-final-verification/`。阶段本地英文提交，保留用户 AGENTS.md修改。
+
 ## 2026-11-15 计算机与研究站文字布局修正
 
 根据用户截图修正计算机状态栏左右文字的纵向位置，资源名称与数值使用同一行高；组件数字与对应列标题右对齐。空组件提示改为表格内居中，删除空表的选中背景及多余分隔行。未成型时只显示一次原因。并发显示改为当前实际供给的单个数值，移除 GUI 配置上限字段和同步，后台上限计算继续生效。截图中的 0 来自组件停供或机器未取得网络许可，8 是控制器配置上限，原格式混用了两类数据。

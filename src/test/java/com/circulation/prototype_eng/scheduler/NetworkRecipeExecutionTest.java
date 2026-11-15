@@ -898,7 +898,7 @@ class NetworkRecipeExecutionTest {
         private Worker worker(boolean scanning, int capacity, ExecutionMode mode, Layout layout,
                               Function<MachineType, MachineInstance> instanceFactory, boolean defaultScanner, ControllerExecutionPolicy policy) {
             var events = new ObjectArrayList<String>();
-            var before = new ComponentType<>(id("before"), _ -> events, List.of(new MachineSystem<ObjectArrayList<String>>() {
+            var before = new ComponentType<>(id("before"), _ -> events, List.of(new MachineSystem<>() {
                 @Override
                 public ResourceLocation id() {
                     return NetworkRecipeExecutionTest.id("before_system");
@@ -928,7 +928,7 @@ class NetworkRecipeExecutionTest {
                     component.add("post");
                 }
             }));
-            var after = new ComponentType<>(id("after"), _ -> events, List.of(new MachineSystem<ObjectArrayList<String>>() {
+            var after = new ComponentType<>(id("after"), _ -> events, List.of(new MachineSystem<>() {
                 @Override
                 public ResourceLocation id() {
                     return NetworkRecipeExecutionTest.id("after_system");
@@ -952,7 +952,7 @@ class NetworkRecipeExecutionTest {
                 List.of(), List.of(), _ -> false, () -> 7), new ScanLimits(10, 10), _ -> true);
             var extra = new ComponentType<>(id("extra_slots"), machine -> layout == Layout.ALIAS
                 ? Objects.requireNonNull(machine.components().get(MachineWorkSlots.TYPE)) : new MachineWorkSlots(machine, List.of()),
-                MachineWorkSlots.TYPE.systems(), List.of(MachineWorkSlots.TYPE));
+                MachineWorkSlots.TYPE.systems(), Set.of(MachineWorkSlots.TYPE));
             var failing = new ComponentType<>(id("failing"), _ -> new Object(), List.of(new MachineSystem<>() {
                 @Override
                 public ResourceLocation id() {

@@ -41,7 +41,6 @@ public final class NetworkRecipeExtensions {
      */
     public synchronized void register(int priority, NetworkRecipeExtension extension) {
         if (publicationStarted) throw new IllegalStateException("Network recipe extension registration has ended");
-        Objects.requireNonNull(extension);
         long sequence = nextSequence;
         nextSequence = Math.incrementExact(nextSequence);
         registrations.add(new Registration(priority, sequence, extension));
@@ -52,7 +51,7 @@ public final class NetworkRecipeExtensions {
      */
     public void publish(RecipeCatalog catalog, ResearchRegistry research) {
         beginPublication(research);
-        var recipes = new ObjectArrayList<>(Objects.requireNonNull(catalog).recipes());
+        var recipes = new ObjectArrayList<>(catalog.recipes());
         recipes.sort(Comparator.comparing(MachineRecipe::id));
         publishInitial(recipes);
     }
@@ -62,7 +61,6 @@ public final class NetworkRecipeExtensions {
      */
     public void publish(RecipeRegistry.Snapshot catalog, ResearchRegistry research) {
         beginPublication(research);
-        Objects.requireNonNull(catalog);
         var identities = new ReferenceOpenHashSet<MachineRecipe>();
         var recipes = new ObjectArrayList<MachineRecipe>();
         var elements = catalog.catalog().recipes();
@@ -116,7 +114,7 @@ public final class NetworkRecipeExtensions {
     }
 
     public boolean isCurrent(Snapshot expected) {
-        return frozen == Objects.requireNonNull(expected);
+        return frozen == expected;
     }
 
     /**
@@ -130,7 +128,7 @@ public final class NetworkRecipeExtensions {
      * Adopts the table for the same concrete session that owns recipe directory publication.
      */
     public synchronized PublicationBinding bindPublication(RecipeRegistry.Publication publication) {
-        Objects.requireNonNull(publication).requireOwner();
+        publication.requireOwner();
         if (!publication.live() || !canBindPublication()) {
             throw new IllegalStateException("Network recipe publication is already active or closed");
         }
@@ -153,8 +151,7 @@ public final class NetworkRecipeExtensions {
         if (!isCurrent(expected)) throw new IllegalArgumentException("Foreign or stale network recipe snapshot");
         var unique = new ReferenceOpenHashSet<MachineRecipe>(declaredRecipes.size());
         var additions = new ObjectArrayList<MachineRecipe>(declaredRecipes.size());
-        for (var recipe : Objects.requireNonNull(declaredRecipes, "declared recipes")) {
-            Objects.requireNonNull(recipe);
+        for (var recipe : declaredRecipes) {
             if (!expected.requirements.containsKey(recipe) && unique.add(recipe)) additions.add(recipe);
         }
         additions.sort(Comparator.comparing(MachineRecipe::id));
@@ -183,7 +180,7 @@ public final class NetworkRecipeExtensions {
                     throw new IllegalStateException("Network recipe configuration is already in progress: " + recipe.id());
                 if (state.failure instanceof RuntimeException failure) throw failure;
                 if (state.failure instanceof Error failure) throw failure;
-                return Objects.requireNonNull(state.requirements);
+                return state.requirements;
             }
             state = new Configuration();
             configured.put(recipe, state);
@@ -215,7 +212,6 @@ public final class NetworkRecipeExtensions {
     }
 
     private boolean matchesPrepared(Prepared prepared) {
-        Objects.requireNonNull(prepared);
         var capturedBinding = publicationBinding;
         return prepared.owner == this && !prepared.consumed && frozen == prepared.expected
             && prepared.publicationBinding == capturedBinding
@@ -260,7 +256,7 @@ public final class NetworkRecipeExtensions {
         }
 
         public NetworkWorkRequirements require(MachineRecipe recipe) {
-            var value = requirements.get(Objects.requireNonNull(recipe));
+            var value = requirements.get(recipe);
             if (value == null)
                 throw new IllegalArgumentException("Recipe is outside the published network catalog: " + recipe.id());
             return value;

@@ -87,12 +87,12 @@ public final class ResearchStationExamples {
             if (index >= 2) formula.perTick(ExampleResources.SIGNAL, 0.5);
             if (index == 4) formula.perTick(ExampleResources.MEMORY, 8).constant(ExampleResources.STORAGE, 1_200);
             var stage = ResearchLevelStage.builder(1, 1).durationTicks(600).researchTier(1).resourceFormula(formula.build())
-                                          .material(Objects.requireNonNull(AEItemKey.of(Items.IRON_INGOT)), 2)
-                                          .material(Objects.requireNonNull(AEItemKey.of(Items.REDSTONE)), 10)
-                                          .material(Objects.requireNonNull(AEItemKey.of(Items.GOLD_NUGGET)), 100).build();
+                                          .material(AEItemKey.of(Items.IRON_INGOT), 2)
+                                          .material(AEItemKey.of(Items.REDSTONE), 10)
+                                          .material(AEItemKey.of(Items.GOLD_NUGGET), 100).build();
             event.registry().register(ResearchDefinition.builder(new ResourceLocation("pe_run_tests", "java_research_" + name))
                                                         .maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                                        .displayName(() -> "pe_run_tests.research." + name).icon(Objects.requireNonNull(AEItemKey.of(Items.BOOK)))
+                                                        .displayName(() -> "pe_run_tests.research." + name).icon(AEItemKey.of(Items.BOOK))
                                                         .stage(stage).build());
         }
     }

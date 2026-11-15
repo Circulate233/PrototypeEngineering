@@ -692,7 +692,7 @@ public final class RunTestsCommand extends CommandBase {
 
     private static AEKey key(String name, int meta) throws CommandException {
         if (name.equals("water") || name.equals("lava"))
-            return Objects.requireNonNull(AEFluidKey.of(name.equals("water") ? FluidRegistry.WATER : FluidRegistry.LAVA));
+            return AEFluidKey.of(name.equals("water") ? FluidRegistry.WATER : FluidRegistry.LAVA);
         var item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(name));
         if (item == null) throw new CommandException("Unknown item " + name);
         return Objects.requireNonNull(AEItemKey.of(new ItemStack(item, 1, meta)));

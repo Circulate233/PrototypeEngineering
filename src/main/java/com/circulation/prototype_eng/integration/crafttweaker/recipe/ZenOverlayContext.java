@@ -12,7 +12,6 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 // ZenScript discovers these entry points through annotations rather than Java call sites.
 @SuppressWarnings("unused")
@@ -22,7 +21,7 @@ public final class ZenOverlayContext {
     private final RecipeOverlayContext context;
 
     public ZenOverlayContext(RecipeOverlayContext context) {
-        this.context = Objects.requireNonNull(context);
+        this.context = context;
     }
 
     @ZenGetter("modifierId")

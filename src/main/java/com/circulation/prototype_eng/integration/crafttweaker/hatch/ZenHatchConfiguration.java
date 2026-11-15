@@ -14,7 +14,6 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Values only; startup registration and loaded propagation use the same public Java configuration API.
@@ -23,9 +22,6 @@ import java.util.Objects;
 @ZenClass("mods.prototype_eng.hatch.Configuration")
 @SuppressWarnings("unused") // ZenScript resolves the registered public factories.
 public record ZenHatchConfiguration(HatchConfigurationUpdates.Target value) {
-    public ZenHatchConfiguration {
-        Objects.requireNonNull(value);
-    }
 
     @ZenMethod
     public static ZenHatchConfiguration resources(int tier, @Nullable ZenResourceHatchSide input, @Nullable ZenResourceHatchSide output) {
@@ -47,7 +43,7 @@ public record ZenHatchConfiguration(HatchConfigurationUpdates.Target value) {
 
     @ZenMethod
     public static ZenHatchUpdate request(IServer server, ZenHatchConfiguration[] configurations) {
-        return new ZenHatchUpdate(HatchConfigurationUpdates.request(CraftTweakerMC.getMCServer(Objects.requireNonNull(server)),
+        return new ZenHatchUpdate(HatchConfigurationUpdates.request(CraftTweakerMC.getMCServer(server),
             targets(configurations)));
     }
 

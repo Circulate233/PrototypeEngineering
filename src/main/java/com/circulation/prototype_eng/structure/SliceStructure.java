@@ -23,14 +23,13 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Greedy consecutive slices. Validators run once at the base; children run once at the last matched
  * slice, with zero matches placing children one sliceOffset before the base. Child failure does not
  * retry a shorter length. An unavailable attempted slice fails the whole structure.
+ * Validator and child lists are borrowed read-only for the definition's lifetime.
  */
 @SuppressWarnings("unused") // Public extensible definitions use identity, not recursive structural equality.
 public class SliceStructure implements MachineStructure, StructurePreviewProvider {
@@ -57,35 +56,25 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
         if (minCount < 0 || maxCount < minCount) {
             throw new IllegalArgumentException("Slice counts must satisfy 0 <= minCount <= maxCount");
         }
-        this.id = Objects.requireNonNull(id);
-        this.orientation = Objects.requireNonNull(orientation);
-        this.offset = Objects.requireNonNull(offset).toImmutable();
+        this.id = id;
+        this.orientation = orientation;
+        this.offset = offset.toImmutable();
         this.hideWorldBlocks = hideWorldBlocks;
-        this.pattern = Objects.requireNonNull(pattern);
+        this.pattern = pattern;
         this.minCount = minCount;
         this.maxCount = maxCount;
-        this.sliceOffset = Objects.requireNonNull(sliceOffset).toImmutable();
+        this.sliceOffset = sliceOffset.toImmutable();
         this.budgeted = budgeted;
+        this.validators = validators;
+        this.children = children;
         if (owned) {
-            this.validators = Collections.unmodifiableList(validators);
-            this.children = Collections.unmodifiableList(children);
             planReusable = reusable;
         } else {
-            var copiedValidators = new ObjectArrayList<StructurePredicate>(validators.size());
-            var copiedChildren = new ObjectArrayList<MachineStructure>(children.size());
             boolean stable = budgeted && pattern.planReusable();
-            for (int index7 = 0; index7 < validators.size(); index7++) {
-                var validator = validators.get(index7);
-                copiedValidators.add(Objects.requireNonNull(validator));
-                stable = stable && validator.planReusable();
-            }
-            for (int index5 = 0; index5 < children.size(); index5++) {
-                var child = children.get(index5);
-                copiedChildren.add(Objects.requireNonNull(child));
-                stable = stable && child.planReusable();
-            }
-            this.validators = Collections.unmodifiableList(copiedValidators);
-            this.children = Collections.unmodifiableList(copiedChildren);
+            for (int index = 0; stable && index < validators.size(); index++)
+                stable = validators.get(index).planReusable();
+            for (int index = 0; stable && index < children.size(); index++)
+                stable = children.get(index).planReusable();
             planReusable = stable;
         }
     }
@@ -161,8 +150,6 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
 
     @Override
     public SliceStructure transform(StructureTransform rotation) {
-        if (budgeted) return (SliceStructure) Objects.requireNonNull(beginTransform(rotation).run());
-        Objects.requireNonNull(rotation);
         BlockOrientation transformedOrientation = BlockOrientation.get(
             rotation.apply(orientation.getSide(RelativeSide.FRONT)),
             rotation.apply(orientation.getSide(RelativeSide.TOP)));
@@ -187,8 +174,6 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
             beginCollectReads(plan, anchor, controller).run();
             return;
         }
-        Objects.requireNonNull(plan);
-        Objects.requireNonNull(controller);
         BlockPos origin = StructurePattern.add(anchor, offset);
         for (long index = 0; index < maxCount; index++) {
             pattern.collectReads(plan, sliceOrigin(origin, Math.toIntExact(index)), controller);
@@ -211,9 +196,7 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
     @Override
     @Nullable
     public StructureMatch match(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller) {
-        if (budgeted) return Objects.requireNonNull(beginMatch(snapshot, anchor, controller).run()).match();
-        Objects.requireNonNull(snapshot);
-        Objects.requireNonNull(controller);
+        if (budgeted) return beginMatch(snapshot, anchor, controller).run().match();
         BlockPos origin = StructurePattern.add(anchor, offset);
         var blocks = new ObjectLinkedOpenHashSet<BlockPos>();
         int count = 0;
@@ -267,7 +250,6 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
     @Override
     @SuppressWarnings("ReturnOfInnerClass") // This private default cursor retains immutable definition data only.
     public StructureOperation<MachineStructure> beginTransform(StructureTransform rotation) {
-        Objects.requireNonNull(rotation);
         if (!budgeted) return MachineStructure.super.beginTransform(rotation);
         return new StructureOperation<>() {
             private final StructureOperation<StructurePattern> patternWork = pattern.beginTransform(rotation);
@@ -282,18 +264,17 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
 
             @Override
             public boolean advance(RecipeWorkBudget work) {
-                Objects.requireNonNull(work);
                 if (complete()) return true;
                 if (!patternWork.advance(work)) return false;
-                reusable = reusable && Objects.requireNonNull(patternWork.result()).planReusable();
+                reusable = reusable && patternWork.result().planReusable();
                 while (validatorIndex < validators.size()) {
                     if (validator == null) {
                         if (!work.take()) return false;
                         validator = validators.get(validatorIndex).beginTransform(rotation);
                     }
                     if (!validator.advance(work)) return false;
-                    transformedValidators.add(Objects.requireNonNull(validator.result()));
-                    reusable = reusable && Objects.requireNonNull(validator.result()).planReusable();
+                    transformedValidators.add(validator.result());
+                    reusable = reusable && validator.result().planReusable();
                     validator = null;
                     validatorIndex++;
                 }
@@ -303,8 +284,8 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                         child = children.get(childIndex).beginTransform(rotation);
                     }
                     if (!child.advance(work)) return false;
-                    transformedChildren.add(Objects.requireNonNull(child.result()));
-                    reusable = reusable && Objects.requireNonNull(child.result()).planReusable();
+                    transformedChildren.add(child.result());
+                    reusable = reusable && child.result().planReusable();
                     child = null;
                     childIndex++;
                 }
@@ -312,7 +293,7 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                 var actualOrientation = BlockOrientation.get(rotation.apply(orientation.getSide(RelativeSide.FRONT)),
                     rotation.apply(orientation.getSide(RelativeSide.TOP)));
                 finish(new SliceStructure(id, actualOrientation, rotation.apply(offset), hideWorldBlocks,
-                    Objects.requireNonNull(patternWork.result()), minCount, maxCount, rotation.apply(sliceOffset), transformedValidators, transformedChildren, true, true, reusable));
+                    patternWork.result(), minCount, maxCount, rotation.apply(sliceOffset), transformedValidators, transformedChildren, true, true, reusable));
                 return true;
             }
         };
@@ -320,15 +301,12 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
 
     @Override
     @SuppressWarnings("ReturnOfInnerClass") // The default cursor retains its immutable declaration and private builder.
-    public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) {
-        Objects.requireNonNull(plan);
-        Objects.requireNonNull(anchor);
-        Objects.requireNonNull(controller);
+    public StructureOperation<@Nullable Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) {
         if (!budgeted) return MachineStructure.super.beginCollectReads(plan, anchor, controller);
         var origin = StructurePattern.add(anchor, offset);
         return new StructureOperation<>() {
             @Nullable
-            private StructureOperation<Void> pending;
+            private StructureOperation<@Nullable Void> pending;
             private long patternIndex;
             private int validatorIndex, childIndex;
             private long childCount = minCount;
@@ -336,7 +314,6 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
 
             @Override
             public boolean advance(RecipeWorkBudget work) {
-                Objects.requireNonNull(work);
                 if (complete()) return true;
                 if (!begun) {
                     if (!work.take()) return false;
@@ -387,9 +364,6 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
     @SuppressWarnings("ReturnOfInnerClass")
     // Only the explicit private default instance owns this greedy matching cursor.
     public StructureOperation<StructureMatchResult> beginMatch(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller) {
-        Objects.requireNonNull(snapshot);
-        Objects.requireNonNull(anchor);
-        Objects.requireNonNull(controller);
         if (!budgeted) return MachineStructure.super.beginMatch(snapshot, anchor, controller);
         var origin = StructurePattern.add(anchor, offset);
         return new StructureOperation<>() {
@@ -412,8 +386,8 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
             private boolean patternsComplete;
 
             @Override
+            @SuppressWarnings("DataFlowIssue") // The active pattern cursor is created with the current slice origin.
             public boolean advance(RecipeWorkBudget work) {
-                Objects.requireNonNull(work);
                 if (complete()) return true;
                 while (!patternsComplete) {
                     if (count == maxCount) {
@@ -430,7 +404,7 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                         patternWork = pattern.beginMatch(snapshot, currentOrigin, controller);
                     }
                     if (!patternWork.advance(work)) return false;
-                    var status = Objects.requireNonNull(patternWork.result());
+                    var status = patternWork.result();
                     if (status == StructurePredicateResult.UNAVAILABLE) {
                         finish(StructureMatchResult.unavailable());
                         return true;
@@ -442,7 +416,7 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                     if (positions == null) positions = pattern.blocks().longKeySet().iterator();
                     while (positions.hasNext()) {
                         if (!work.take()) return false;
-                        var position = StructurePattern.add(Objects.requireNonNull(currentOrigin), positions.nextLong());
+                        var position = StructurePattern.add(currentOrigin, positions.nextLong());
                         if (!position.equals(controller) && seenBlocks.add(position)) matchedBlocks.add(position);
                     }
                     patternWork = null;
@@ -459,7 +433,7 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                         validator = validators.get(validatorIndex).beginMatch(snapshot, origin, controller);
                     }
                     if (!validator.advance(work)) return false;
-                    var status = Objects.requireNonNull(validator.result());
+                    var status = validator.result();
                     if (status != StructurePredicateResult.MATCHED) {
                         finish(new StructureMatchResult(status, null));
                         return true;
@@ -474,12 +448,12 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                         child = children.get(childIndex).beginMatch(snapshot, childOrigin, controller);
                     }
                     if (!child.advance(work)) return false;
-                    var outcome = Objects.requireNonNull(child.result());
+                    var outcome = child.result();
                     if (outcome.status() != StructurePredicateResult.MATCHED) {
                         finish(outcome);
                         return true;
                     }
-                    matchedChildren.add(Objects.requireNonNull(outcome.match()));
+                    matchedChildren.add(outcome.match());
                     child = null;
                     childIndex++;
                 }
@@ -488,7 +462,7 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                     freeze = StructureMatch.beginCreate(SliceStructure.this, origin, count, matchedBlocks, matchedChildren);
                 }
                 if (!freeze.advance(work)) return false;
-                finish(StructureMatchResult.matched(Objects.requireNonNull(freeze.result())));
+                finish(StructureMatchResult.matched(freeze.result()));
                 return true;
             }
         };

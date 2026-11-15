@@ -6,7 +6,6 @@ import crafttweaker.annotations.ZenRegister;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 
-import java.util.Objects;
 
 /**
  * Stable child identity survives retries and restarts; no persistent state is exposed.
@@ -15,10 +14,6 @@ import java.util.Objects;
 @ZenClass("mods.prototype_eng.research.ResearchRewardEvent")
 @SuppressWarnings("unused") // Public adapters are discovered by ZenScript.
 public record ZenResearchRewardEvent(RewardEventKey key, ResearchRewardContext context) {
-    public ZenResearchRewardEvent {
-        Objects.requireNonNull(key);
-        Objects.requireNonNull(context);
-    }
 
     @ZenGetter("playerId")
     public String playerId() {

@@ -15,7 +15,6 @@ import net.minecraftforge.fml.common.Mod;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * One scheduler per actual server session, including integrated-server restarts in the same JVM.
@@ -31,7 +30,6 @@ public final class ServerTaskSchedulers {
     }
 
     public static synchronized void start(MinecraftServer server) {
-        Objects.requireNonNull(server);
         if (!server.isCallingFromMinecraftThread()) {
             throw new IllegalStateException("Scheduler startup requires the server thread");
         }

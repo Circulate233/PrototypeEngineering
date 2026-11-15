@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.machine.MachineInstance;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.Collection;
-import java.util.Objects;
 
 /**
  * Optional tile-entity contract for lightweight structure ports. Discovery and creation run at the
@@ -20,8 +19,7 @@ public interface StructureComponentProvider {
 
     record Context(MachineInstance machine, BlockPos providerPos, long formationGeneration) {
         public Context {
-            Objects.requireNonNull(machine);
-            providerPos = Objects.requireNonNull(providerPos).toImmutable();
+            providerPos = providerPos.toImmutable();
             if (formationGeneration <= 0) {
                 throw new IllegalArgumentException("Formation generation must be positive");
             }
@@ -33,9 +31,7 @@ public interface StructureComponentProvider {
      */
     record Entry<C>(ComponentType<MachineInstance, C> type, String portId, C component) {
         public Entry {
-            Objects.requireNonNull(type);
-            Objects.requireNonNull(component);
-            if (Objects.requireNonNull(portId).isBlank()) {
+            if (portId.isBlank()) {
                 throw new IllegalArgumentException("Structure port ID must not be blank");
             }
         }

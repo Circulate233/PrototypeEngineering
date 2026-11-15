@@ -11,7 +11,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
@@ -61,9 +60,6 @@ public final class ControllerRenderChunks {
     public record Part(ControllerDisplayData display, MachineRenderSnapshot.CatalogToken catalog,
                        int totalBytes, int index, byte[] bytes) {
         public Part {
-            Objects.requireNonNull(display);
-            Objects.requireNonNull(catalog);
-            Objects.requireNonNull(bytes);
             int count = chunks(totalBytes);
             if (index < 0 || index >= count || bytes.length != Math.min(CHUNK_BYTES, totalBytes - index * CHUNK_BYTES))
                 throw new IllegalArgumentException("Invalid machine render chunk size/index");
@@ -109,7 +105,6 @@ public final class ControllerRenderChunks {
         private byte @Nullable [][] parts;
         private byte @Nullable [][] acceptedParts;
         private int received;
-        private boolean acceptedComplete;
         private boolean retired;
         private long generationFloor;
 
@@ -122,7 +117,6 @@ public final class ControllerRenderChunks {
             generationFloor = generation;
             if (header != null && header.display().generation() < generationFloor) {
                 parts = null;
-                acceptedComplete = false;
                 acceptedParts = null;
             }
         }
@@ -140,7 +134,6 @@ public final class ControllerRenderChunks {
             if (header != null && !display.follows(header.display())) return false;
             withdrawnThrough = display;
             parts = null;
-            acceptedComplete = false;
             acceptedParts = null;
             return true;
         }
@@ -150,14 +143,13 @@ public final class ControllerRenderChunks {
         }
 
         public boolean current(ControllerDisplayData display, MachineRenderSnapshot.CatalogToken token) {
-            return !retired && display.generation() >= generationFloor && acceptedComplete && header != null && header.display().equals(display) && header.catalog().equals(token);
+            return !retired && display.generation() >= generationFloor && acceptedParts != null && header != null && header.display().equals(display) && header.catalog().equals(token);
         }
 
         public void retire() {
             retired = true;
-            acceptedComplete = false;
-            parts = null;
             acceptedParts = null;
+            parts = null;
             header = null;
             withdrawnThrough = null;
         }
@@ -185,15 +177,13 @@ public final class ControllerRenderChunks {
                 if (part.display().equals(header.display())) {
                     if (!part.catalog().equals(header.catalog()) || part.totalBytes() != header.totalBytes()) {
                         parts = null;
-                        acceptedComplete = false;
                         acceptedParts = null;
                         throw new IllegalArgumentException("Conflicting machine render chunk headers");
                     }
                     if (parts == null) {
-                        if (acceptedComplete) {
-                            var frozen = Objects.requireNonNull(acceptedParts, "Complete render assembler has no frozen parts");
+                        if (acceptedParts != null) {
+                            var frozen = acceptedParts;
                             if (!Arrays.equals(frozen[part.index()], part.bytes())) {
-                                acceptedComplete = false;
                                 acceptedParts = null;
                                 throw new IllegalArgumentException("Conflicting repeated completed machine render chunk");
                             }
@@ -204,7 +194,6 @@ public final class ControllerRenderChunks {
                     if (!part.display().follows(header.display()) || part.catalog().sequence() < header.catalog().sequence())
                         return null;
                     parts = null;
-                    acceptedComplete = false;
                     acceptedParts = null;
                 }
             }
@@ -212,14 +201,14 @@ public final class ControllerRenderChunks {
                 header = part;
                 parts = new byte[part.count()][];
                 received = 0;
-                acceptedComplete = false;
+                acceptedParts = null;
             }
             byte[] bytes = part.bytes();
             byte[] previous = parts[part.index()];
             if (previous != null) {
                 if (!Arrays.equals(previous, bytes)) {
                     parts = null;
-                    acceptedComplete = false;
+                    acceptedParts = null;
                     throw new IllegalArgumentException("Conflicting repeated machine render chunk");
                 }
                 return null;
@@ -237,7 +226,6 @@ public final class ControllerRenderChunks {
             var snapshot = decode.apply(complete);
             if (!matches.test(snapshot, part))
                 throw new IllegalArgumentException("Machine render payload differs from its frozen chunk header");
-            acceptedComplete = true;
             acceptedParts = completedParts;
             return snapshot;
         }

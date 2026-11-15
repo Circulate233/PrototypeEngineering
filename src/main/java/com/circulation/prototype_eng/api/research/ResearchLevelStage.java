@@ -24,7 +24,6 @@ import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * A continuous level range with single-station work ticks and total material and network demands.
@@ -53,7 +52,7 @@ public final class ResearchLevelStage {
         if (builder.durationTicks <= 0)
             throw new IllegalArgumentException("Research stage must declare positive duration ticks");
         durationTicks = builder.durationTicks;
-        resourceFormula = Objects.requireNonNull(builder.resourceFormula, "Research stage formula");
+        resourceFormula = builder.resourceFormula;
         resourceFormula.validateRange(firstLevel, lastLevel, durationTicks);
         prerequisites = builder.prerequisites;
         mutexRules = builder.mutexRules;
@@ -214,7 +213,6 @@ public final class ResearchLevelStage {
         }
 
         public Builder prerequisite(ResourceLocation researchId, int minLevel) {
-            Objects.requireNonNull(researchId);
             if (minLevel < 1 || prerequisites.containsKey(researchId)) {
                 throw new IllegalArgumentException("Invalid or duplicate research prerequisite " + researchId);
             }
@@ -235,12 +233,12 @@ public final class ResearchLevelStage {
         }
 
         public Builder resourceFormula(ResearchResourceFormula formula) {
-            resourceFormula = Objects.requireNonNull(formula);
+            resourceFormula = formula;
             return this;
         }
 
         public Builder materialRequirement(RecipeRequirement<?> requirement) {
-            materialRequirements.add(Objects.requireNonNull(requirement));
+            materialRequirements.add(requirement);
             return this;
         }
 
@@ -254,7 +252,7 @@ public final class ResearchLevelStage {
             if (level < firstLevel || level > lastLevel) {
                 throw new IllegalArgumentException("Reward level outside research stage");
             }
-            rewardsByLevel.computeIfAbsent(level, _ -> new ObjectArrayList<>()).add(Objects.requireNonNull(reward));
+            rewardsByLevel.computeIfAbsent(level, _ -> new ObjectArrayList<>()).add(reward);
             return this;
         }
 

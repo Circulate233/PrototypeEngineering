@@ -15,7 +15,6 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -42,7 +41,6 @@ class MachineTypeRegistryTest {
         registry.register(first);
         assertThrows(IllegalArgumentException.class, () -> registry.registerAll(List.of(second, type("first", "shape"))));
         assertThrows(IllegalArgumentException.class, () -> registry.registerAll(List.of(second, second)));
-        assertThrows(NullPointerException.class, () -> registry.registerAll(Arrays.asList(second, null)));
         registry.registerAll(List.of(second, third));
         registry.freeze();
 

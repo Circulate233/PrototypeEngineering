@@ -24,7 +24,7 @@ public final class HatchGuiInventory implements InternalInventory, GenericStackD
         if (cells < 1 || cells > 72) throw new IllegalArgumentException("Invalid hatch display size");
         this.cells = cells;
         this.client = client;
-        this.display = Objects.requireNonNull(display);
+        this.display = display;
     }
 
     @Override

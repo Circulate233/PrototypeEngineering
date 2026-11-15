@@ -26,7 +26,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
-import java.util.Objects;
 
 /**
  * PM's tiered input/output/IO energy hatch, retaining separate machine and automation directions.
@@ -69,8 +68,8 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     }
 
     public EnergyHatchBlockEntity(HatchMode mode, HatchTier tier) {
-        this.mode = Objects.requireNonNull(mode, "mode");
-        this.tier = Objects.requireNonNull(tier, "tier");
+        this.mode = mode;
+        this.tier = tier;
         effective = HatchConfig.energyConfiguration(tier, mode);
         createStorage();
     }
@@ -193,8 +192,9 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
         });
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private HatchReplacement applyConfiguration() {
-        var target = (EnergyHatchConfiguration) Objects.requireNonNull(configurationRequest.target());
+        var target = (EnergyHatchConfiguration) configurationRequest.target();
         var old = balances;
         return old.replace(target, maxInputRate, maxOutputRate, this::requestStorageSave,
             () -> balances == old && configurationRequest.target() == target && !isInvalid(), candidate -> {
@@ -242,14 +242,14 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
         return autoOutput;
     }
 
-    @SuppressWarnings("unused") // Public native transfer query.
+    @SuppressWarnings({"unused", "DataFlowIssue"}) // Public native transfer query.
     public long effectiveInputRate() {
-        return Objects.requireNonNull(effective.input() == null ? effective.output() : effective.input()).effectiveRate(maxInputRate);
+        return (effective.input() == null ? effective.output() : effective.input()).effectiveRate(maxInputRate);
     }
 
-    @SuppressWarnings("unused") // Public native transfer query.
+    @SuppressWarnings({"unused", "DataFlowIssue"}) // Public native transfer query.
     public long effectiveOutputRate() {
-        return Objects.requireNonNull(effective.output() == null ? effective.input() : effective.output()).effectiveRate(maxOutputRate);
+        return (effective.output() == null ? effective.input() : effective.output()).effectiveRate(maxOutputRate);
     }
 
     /**

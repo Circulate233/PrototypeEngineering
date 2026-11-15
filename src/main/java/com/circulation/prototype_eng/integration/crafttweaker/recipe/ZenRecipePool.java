@@ -11,7 +11,6 @@ import com.circulation.prototype_eng.integration.crafttweaker.jei.ZenJeiOptions;
 import com.circulation.prototype_eng.integration.crafttweaker.jei.ZenJeiPage;
 import crafttweaker.annotations.ZenRegister;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import org.jetbrains.annotations.Nullable;
 import stanhebben.zenscript.annotations.ZenClass;
@@ -19,7 +18,6 @@ import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * An immutable declaration submitted to the existing recipe registration phase.
@@ -51,17 +49,16 @@ public final class ZenRecipePool {
      * Addons retain their actual pool lookup policy and exact recipe/codec handles.
      */
     public static ZenRecipePool of(RecipePool pool, ZenRecipe[] recipes) {
-        Objects.requireNonNull(pool);
         var bindings = new ObjectArrayList<ZenRecipe>(recipes.length);
         if (pool.recipes().size() != recipes.length)
             throw new IllegalArgumentException("Pool recipe binding count differs");
         for (int i = 0; i < recipes.length; i++) {
-            var recipe = Objects.requireNonNull(recipes[i]);
+            var recipe = recipes[i];
             if (pool.recipes().get(i) != recipe.recipe())
                 throw new IllegalArgumentException("Pool must retain exact recipe bindings");
             bindings.add(recipe);
         }
-        return new ZenRecipePool(pool, ObjectLists.unmodifiable(bindings));
+        return new ZenRecipePool(pool, bindings);
     }
 
     @ZenMethod
@@ -69,11 +66,11 @@ public final class ZenRecipePool {
         var definitions = new ObjectArrayList<ZenRecipe>(recipes.length);
         var values = new ObjectArrayList<MachineRecipe>(recipes.length);
         for (var recipe : recipes) {
-            definitions.add(Objects.requireNonNull(recipe));
+            definitions.add(recipe);
             values.add(recipe.recipe());
         }
         return new ZenRecipePool(new DefaultRecipePool(ZenRecipeSupport.id(id), translationKey, values),
-            ObjectLists.unmodifiable(definitions));
+            definitions);
     }
 
     @ZenMethod
@@ -88,11 +85,9 @@ public final class ZenRecipePool {
      */
     @ZenMethod
     public static ZenRecipePool combine(String id, String translationKey, ZenRecipePool[] pools) {
-        Objects.requireNonNull(pools);
         var providers = new ObjectArrayList<RecipePool>(pools.length);
         var handles = new Reference2ObjectOpenHashMap<MachineRecipe, ZenRecipe>();
         for (var pool : pools) {
-            Objects.requireNonNull(pool);
             providers.add(pool.value);
             for (int index3 = 0; index3 < pool.recipes.size(); index3++) {
                 var recipe = pool.recipes.get(index3);
@@ -106,14 +101,13 @@ public final class ZenRecipePool {
         var elements = combined.recipes();
         for (int index = 0; index < elements.size(); index++) {
             var recipe = elements.get(index);
-            bindings.add(Objects.requireNonNull(handles.get(recipe)));
+            bindings.add(handles.get(recipe));
         }
-        return new ZenRecipePool(combined, ObjectLists.unmodifiable(bindings));
+        return new ZenRecipePool(combined, bindings);
     }
 
     @ZenMethod
     public ZenRecipePool existingJeiPage(String categoryUid) {
-        Objects.requireNonNull(categoryUid);
         var target = switch (value) {
             case DefaultRecipePool pool -> pool.withExistingJeiPage(categoryUid);
             case SimpleRecipePool pool -> pool.withExistingJeiPage(categoryUid);
@@ -125,12 +119,12 @@ public final class ZenRecipePool {
 
     @ZenMethod
     public ZenRecipePool jeiOptions(ZenJeiOptions settings) {
-        return new ZenRecipePool(value, recipes, Objects.requireNonNull(settings), page);
+        return new ZenRecipePool(value, recipes, settings, page);
     }
 
     @ZenMethod
     public ZenRecipePool customJeiPage(ZenJeiPage handle) {
-        return new ZenRecipePool(value, recipes, options, Objects.requireNonNull(handle));
+        return new ZenRecipePool(value, recipes, options, handle);
     }
 
     public void declareClient() {

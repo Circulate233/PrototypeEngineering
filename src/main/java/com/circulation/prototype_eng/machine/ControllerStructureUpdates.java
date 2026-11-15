@@ -20,7 +20,6 @@ import com.circulation.prototype_eng.structure.StructureRefresh;
 import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
@@ -56,9 +55,10 @@ public class ControllerStructureUpdates {
     @Nullable
     private StructureConfiguration budgetBlockedConfiguration;
 
+    @SuppressWarnings("DataFlowIssue")
     public ControllerStructureUpdates(MachineController controller, MachineStructureHost host,
                                       TaskScheduler scheduler, Runnable changed) {
-        this(Objects.requireNonNull(Objects.requireNonNull(controller).machine(), "Controller has no loaded machine"), host,
+        this(controller.machine(), host,
             scheduler, () -> {
                 var currentMachine = controller.machine();
                 var currentLifecycle = currentMachine == null ? null : currentMachine.lifecycle();
@@ -78,15 +78,16 @@ public class ControllerStructureUpdates {
         this(machine, host, scheduler, attachmentCurrent, machine::active, changed);
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private ControllerStructureUpdates(MachineInstance machine, MachineStructureHost host, TaskScheduler scheduler,
                                        BooleanSupplier attachmentCurrent, BooleanSupplier activeMachine, Runnable changed) {
-        this.attachmentCurrent = Objects.requireNonNull(attachmentCurrent);
-        this.activeMachine = Objects.requireNonNull(activeMachine);
-        this.host = Objects.requireNonNull(host);
-        this.scheduler = Objects.requireNonNull(scheduler);
-        this.changed = Objects.requireNonNull(changed);
+        this.attachmentCurrent = attachmentCurrent;
+        this.activeMachine = activeMachine;
+        this.host = host;
+        this.scheduler = scheduler;
+        this.changed = changed;
         host.requireServerThread();
-        lifecycle = Objects.requireNonNull(machine.lifecycle());
+        lifecycle = machine.lifecycle();
         if (lifecycle.state() != MachineLifecycle.State.LOADED || lifecycle.retired()) {
             throw new IllegalStateException("Structure updates require a loaded controller");
         }
@@ -119,7 +120,6 @@ public class ControllerStructureUpdates {
      */
     public void enqueueTick(long now, Runnable observed) {
         host.requireServerThread();
-        Objects.requireNonNull(observed);
         if (firstCheckPending) {
             tick(now);
             scheduler.runAtBoundary(observed);
@@ -259,7 +259,7 @@ public class ControllerStructureUpdates {
      */
     public void checkPolicy(StructureCheckPolicy policy) {
         host.requireServerThread();
-        this.policy = Objects.requireNonNull(policy);
+        this.policy = policy;
         current = null;
         checked = false;
         status = StructureCheckPolicy.Status.IDLE;
@@ -391,7 +391,7 @@ public class ControllerStructureUpdates {
         private final StructureConfiguration configuration;
         private final PlannedDeadline deadline;
         @Nullable
-        private StructureOperation<StructureRefresh.Request> preparation;
+        private StructureOperation<StructureRefresh.@Nullable Request> preparation;
         @Nullable
         private StructureRefresh.ParallelPreparation parallelPreparation;
         @Nullable
@@ -399,7 +399,7 @@ public class ControllerStructureUpdates {
         @Nullable
         private StructureOperation<StructureRefresh.Result> evaluation;
         @Nullable
-        private StructureOperation<StructureAssembly> discovery;
+        private StructureOperation<@Nullable StructureAssembly> discovery;
         private boolean stopped;
 
         private Attempt(StructureConfiguration configuration, PlannedDeadline deadline) {
@@ -476,8 +476,9 @@ public class ControllerStructureUpdates {
                     }
                 }
                 if (attempt.evaluation == null) attempt.evaluation = attempt.request.beginEvaluate();
+                var evaluation = attempt.evaluation;
                 return new TaskScheduler.StructureWork(attempt.deadline,
-                    () -> Objects.requireNonNull(attempt.evaluation).advance(work), this::complete);
+                    () -> evaluation.advance(work), this::complete);
             } catch (RuntimeException | Error failure) {
                 try {
                     fail(failure);
@@ -488,15 +489,17 @@ public class ControllerStructureUpdates {
             }
         }
 
+        @SuppressWarnings("DataFlowIssue")
         private void closeCapture(PlannedTaskExecutor.Result<Boolean> outcome) {
             host.requireServerThread();
             var failure = outcome instanceof PlannedTaskExecutor.Failure<Boolean>(var cause) ? cause : null;
             boolean accepted = outcome instanceof PlannedTaskExecutor.Success<Boolean>(var success) && success;
             // The scheduler runs all such closes before any completion or publication callback.
-            Objects.requireNonNull(attempt.parallelPreparation).finishWorker(accepted, failure);
+            attempt.parallelPreparation.finishWorker(accepted, failure);
         }
 
         @Nullable
+        @SuppressWarnings("DataFlowIssue")
         private Supplier<TaskScheduler.StructureWork> complete(PlannedTaskExecutor.Result<Boolean> outcome) {
             host.requireServerThread();
             if (capturing) {
@@ -542,7 +545,7 @@ public class ControllerStructureUpdates {
                     yieldWork();
                     return null;
                 }
-                var result = Objects.requireNonNull(Objects.requireNonNull(attempt.evaluation).result());
+                var result = attempt.evaluation.result();
                 if (attempt.discovery == null) attempt.discovery = refresh.beginDiscovery(result);
                 if (!attempt.discovery.advance(work)) {
                     yieldWork();

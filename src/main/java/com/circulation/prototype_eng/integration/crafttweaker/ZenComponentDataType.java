@@ -1,7 +1,7 @@
 package com.circulation.prototype_eng.integration.crafttweaker;
 
 import crafttweaker.api.data.IData;
-import org.jetbrains.annotations.Nullable;
+import crafttweaker.zenscript.GlobalRegistry;
 import stanhebben.zenscript.annotations.OperatorType;
 import stanhebben.zenscript.compiler.IEnvironmentGlobal;
 import stanhebben.zenscript.compiler.IEnvironmentMethod;
@@ -9,6 +9,7 @@ import stanhebben.zenscript.expression.Expression;
 import stanhebben.zenscript.expression.ExpressionString;
 import stanhebben.zenscript.expression.partial.IPartialExpression;
 import stanhebben.zenscript.symbols.IZenSymbol;
+import stanhebben.zenscript.symbols.SymbolType;
 import stanhebben.zenscript.type.ZenType;
 import stanhebben.zenscript.type.ZenTypeNative;
 import stanhebben.zenscript.util.ZenPosition;
@@ -16,24 +17,30 @@ import stanhebben.zenscript.util.ZenPosition;
 /**
  * CT2 dynamic native getters otherwise return an Expression which cannot be assigned.
  */
-public final class ZenComponentDataMembers {
-    private ZenComponentDataMembers() {
+public final class ZenComponentDataType extends ZenTypeNative {
+    public ZenComponentDataType() {
+        super(ZenComponentData.class);
     }
 
-    /**
-     * Preserve ordinary native methods/getters and every class other than this data adapter.
-     */
-    public static @Nullable IPartialExpression member(ZenTypeNative nativeType, ZenPosition position, IEnvironmentGlobal environment,
-                                                      IPartialExpression value, String name) {
-        if (nativeType.toJavaClass() != ZenComponentData.class || nativeType.getMembers().containsKey(name))
-            return null;
+    public static void register() {
+        var types = GlobalRegistry.getTypes();
+        var type = new ZenComponentDataType();
+        types.getTypeMap().put(ZenComponentData.class, type);
+        type.complete(types);
+        GlobalRegistry.getRoot().put(type.getName(), new SymbolType(type), GlobalRegistry.getErrors());
+    }
+
+    @Override
+    public IPartialExpression getMember(ZenPosition position, IEnvironmentGlobal environment,
+                                        IPartialExpression value, String name) {
+        if (getMembers().containsKey(name)) return super.getMember(position, environment, value, name);
         var receiver = value.eval(environment);
-        var expansion = environment.getExpansion(nativeType.getName());
+        var expansion = environment.getExpansion(getName());
         if (expansion != null) {
             var member = expansion.instanceMember(position, environment, receiver, name);
             if (member != null) return member;
         }
-        return new Member(nativeType, position, receiver, new ExpressionString(position, name), environment.getType(IData.class));
+        return new Member(this, position, receiver, new ExpressionString(position, name), environment.getType(IData.class));
     }
 
     private record Member(ZenTypeNative nativeType, ZenPosition position, Expression receiver, Expression key,

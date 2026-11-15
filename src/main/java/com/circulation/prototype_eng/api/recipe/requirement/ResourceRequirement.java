@@ -6,7 +6,6 @@ import it.unimi.dsi.fastutil.objects.ObjectLists;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Resource IO payload, combining PM item/fluid IO with AE2's extensible key types.
@@ -26,8 +25,6 @@ public record ResourceRequirement(List<GenericStack> inputs, List<GenericStack> 
         validateStacks(inputsPerTick);
         validateStacks(outputsPerTick);
         validateStacks(outputs);
-        Objects.requireNonNull(chance);
-        Objects.requireNonNull(inputAllocation);
     }
 
     public ResourceRequirement(List<GenericStack> inputs, List<GenericStack> inputsPerTick,

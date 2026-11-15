@@ -17,7 +17,6 @@ import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Cross-component checks for the built-in execution graph at a quiescent process boundary. External
@@ -26,6 +25,8 @@ import java.util.Objects;
  * not persisted; only zero-time and provably coincident thresholds imply mandatory child state.
  */
 public final class BuiltinProcessValidation {
+    private static final RequirementAttributeState.Snapshot NO_ATTRIBUTES = new RequirementAttributeState.Snapshot(List.of(), List.of());
+
     private BuiltinProcessValidation() {
     }
 
@@ -55,14 +56,13 @@ public final class BuiltinProcessValidation {
      */
     public static void validate(RecipeProcess process, RecipeDefinitionIndex index, boolean stableResourceGroups,
                                 boolean stableStructure) {
-        Objects.requireNonNull(process, "process").requirePersistenceBoundary();
-        Objects.requireNonNull(index, "index");
+        process.requirePersistenceBoundary();
         var lockComponent = process.components().get(ResourceInputLocks.TYPE);
         Map<ResourceInputLocks.Key, AEKey> locks = lockComponent == null ? Map.of() : lockComponent.snapshot();
         var selectionComponent = process.components().get(SelectiveState.TYPE);
         Map<RequirementPath, SelectiveState.SelectionSnapshot> selections = selectionComponent == null ? Map.of() : selectionComponent.snapshot();
         var attributeComponent = process.components().get(RequirementAttributeState.TYPE);
-        var attributes = attributeComponent == null ? new RequirementAttributeState.Snapshot(List.of(), List.of()) : attributeComponent.snapshot();
+        var attributes = attributeComponent == null ? NO_ATTRIBUTES : attributeComponent.snapshot();
         var receipts = selectionComponent == null ? List.<SelectiveState.AbortReceipt>of() : selectionComponent.abortReceipts();
         validateAttributeReferences(index, attributes);
         validateAbortReceipts(process, index, receipts);
@@ -151,8 +151,8 @@ public final class BuiltinProcessValidation {
     private static void validateLocks(RecipeProcess process, RecipeDefinitionIndex index,
                                       Map<ResourceInputLocks.Key, AEKey> locks, boolean stableResourceGroups) {
         for (var entry : locks.entrySet()) {
-            var key = Objects.requireNonNull(entry.getKey(), "input lock");
-            var chosen = Objects.requireNonNull(entry.getValue(), "chosen input");
+            var key = entry.getKey();
+            var chosen = entry.getValue();
             var definition = index.require(key.requirement());
             if (definition.type() != RecipeRequirements.RESOURCES || key.stage() != RecipeStage.START
                 || key.groupIndex() < 0) {
@@ -183,12 +183,12 @@ public final class BuiltinProcessValidation {
         var modifiersClaimed = new ObjectOpenHashSet<SelectiveState.ModifierReference>();
         var overlaysClaimed = new ObjectOpenHashSet<SelectiveState.OverlayReference>();
         for (var entry : selections.entrySet()) {
-            var path = Objects.requireNonNull(entry.getKey(), "selection path");
+            var path = entry.getKey();
             var definition = index.require(path);
             if (definition.type() != RecipeRequirements.SELECTIVE || !(definition.payload() instanceof SelectiveRequirement payload)) {
                 throw invalid("Selection path does not identify a built-in selector: " + path);
             }
-            var selection = Objects.requireNonNull(entry.getValue(), "selection");
+            var selection = entry.getValue();
             if (!selection.committed() || selection.index() < -1 || stableStructure && selection.index() >= payload.candidates().size()) {
                 throw invalid("Selection has an invalid committed candidate index: " + path);
             }

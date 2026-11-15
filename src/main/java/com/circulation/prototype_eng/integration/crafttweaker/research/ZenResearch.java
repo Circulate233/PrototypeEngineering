@@ -13,7 +13,6 @@ import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.Locale;
-import java.util.Objects;
 
 /**
  * A Java definition handle, including complete stage, unlock and eligibility behavior.
@@ -28,14 +27,14 @@ public final class ZenResearch {
     private ResearchDefinition value;
 
     public ZenResearch(ResearchDefinition value) {
-        this.value = Objects.requireNonNull(value);
+        this.value = value;
         builder = null;
         id = value.id();
         maxLevel = value.maxLevel();
     }
 
     private ZenResearch(ResearchDefinition.Builder builder, ResourceLocation id, int maxLevel) {
-        this.builder = Objects.requireNonNull(builder);
+        this.builder = builder;
         this.id = id;
         this.maxLevel = maxLevel;
     }
@@ -45,8 +44,7 @@ public final class ZenResearch {
         var location = new ResourceLocation(id);
         var builder = ResearchDefinition.builder(location).maxLevel(maxLevel).specialOnly(specialOnly)
                                         .deliveryPolicy(ResearchDownloadDeliveryPolicy.valueOf(deliveryPolicy.toUpperCase(Locale.ROOT))).itemDownloadLevelCost(itemDownloadLevelCost);
-        for (var stage : Objects.requireNonNull(stages)) builder.stage(stage.value());
-        Objects.requireNonNull(condition);
+        for (var stage : stages) builder.stage(stage.value());
         builder.startCondition(context -> condition.canStart(new ZenResearchStartContext(context)));
         return new ZenResearch(builder, location, maxLevel);
     }

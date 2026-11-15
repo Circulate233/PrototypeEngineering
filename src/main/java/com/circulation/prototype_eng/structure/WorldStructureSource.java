@@ -12,7 +12,6 @@ import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.gen.ChunkProviderServer;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Real world adapter; only this capture phase calls world/TE/capability methods.
@@ -22,7 +21,7 @@ public final class WorldStructureSource implements StructureReadSource {
     private final MachineLifecycleHost host;
 
     public WorldStructureSource(MachineLifecycleHost host) {
-        this.host = Objects.requireNonNull(host);
+        this.host = host;
     }
 
     @Override
@@ -37,7 +36,6 @@ public final class WorldStructureSource implements StructureReadSource {
     }
 
     @Override
-    @Nullable
     public <T> T read(StructureQuery<T> query, BlockPos position) {
         requireServerThread();
         return query.capture(host.world(), position);
@@ -51,19 +49,14 @@ public final class WorldStructureSource implements StructureReadSource {
     @Nullable
     public <T> StructureReadWindow<T> beginNativeWorkerRead(StructureQuery<T> query, BlockPos position) {
         requireServerThread();
-        Objects.requireNonNull(query);
-        var immutable = Objects.requireNonNull(position).toImmutable();
+        var immutable = position.toImmutable();
         var provider = host.world().getChunkProvider();
         if (!query.supportsWorkerBlocks() || !(provider instanceof ChunkProviderServer chunks))
             return StructureReadSource.super.beginWorkerRead(query, immutable);
         if (immutable.getY() < 0 || immutable.getY() >= 256) return null;
         var chunk = chunks.loadedChunks.get(ChunkPos.asLong(immutable.getX() >> 4, immutable.getZ() >> 4));
         if (chunk == null || !chunk.isLoaded()) return null;
-        return query.beginWorkerCapture(requested -> {
-            if (!immutable.equals(requested))
-                throw new IllegalArgumentException("Worker block read is outside its bound position");
-            return chunk.getBlockState(requested);
-        }, immutable);
+        return query.beginWorkerCapture(chunk::getBlockState, immutable);
     }
 
     /**

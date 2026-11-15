@@ -9,7 +9,6 @@ import net.minecraftforge.common.util.FakePlayer;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
-import java.util.Objects;
 
 public final class RewardDeliveryRecovery {
     private RewardDeliveryRecovery() {
@@ -17,7 +16,7 @@ public final class RewardDeliveryRecovery {
 
     public static void reconcileDeliveryJournal(EntityPlayer player) {
         if (player.world.isRemote || !(player instanceof EntityPlayerMP actual) || player instanceof FakePlayer) return;
-        var server = Objects.requireNonNull(actual.getServerWorld().getMinecraftServer(), "Reward player loading server");
+        var server = actual.server;
         if (!server.isCallingFromMinecraftThread())
             throw new IllegalStateException("Reward player loading requires the server thread");
         var id = EntityPlayer.getUUID(player.getGameProfile());
@@ -25,7 +24,7 @@ public final class RewardDeliveryRecovery {
             throw new IllegalArgumentException("Loaded reward player identity differs from the authenticated profile");
         }
         var loaded = RewardDeliveryJournal.read(player.getEntityData(), id);
-        var overworld = Objects.requireNonNull(server.getWorld(0), "Reward player loading overworld");
+        var overworld = server.getWorld(0);
         if (!(overworld.getSaveHandler() instanceof SaveHandler handler) || handler.getPlayerNBTManager() != handler) {
             // The delivery adapter also rejects this writer; it cannot establish a new proof.
             return;

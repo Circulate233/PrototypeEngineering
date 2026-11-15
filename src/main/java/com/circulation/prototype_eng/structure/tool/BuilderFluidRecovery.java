@@ -24,15 +24,14 @@ final class BuilderFluidRecovery {
         int remaining = fluid.amount;
         if (ae != null) remaining -= (int) ae.insert(key, remaining);
         if (remaining == 0) return;
-        var offered = fluid.copy();
         var inventory = new PlayerInvWrapper(player.inventory);
         for (int slot = 0; slot < inventory.getSlots() && remaining > 0; slot++) {
-            remaining = fill(player, inventory, slot, offered, remaining);
+            remaining = fill(player, inventory, slot, fluid, remaining);
             var stack = inventory.getStackInSlot(slot);
             var nested = stack.getCapability(CapabilityItemHandler.ITEM_HANDLER_CAPABILITY, null);
             if (nested instanceof IItemHandlerModifiable writable)
                 for (int inner = 0; inner < writable.getSlots() && remaining > 0; inner++)
-                    remaining = fill(player, writable, inner, offered, remaining);
+                    remaining = fill(player, writable, inner, fluid, remaining);
         }
         if (remaining > 0)
             BuilderDropRecovery.give(player, GenericResourcePackageItem.wrap(key, remaining));

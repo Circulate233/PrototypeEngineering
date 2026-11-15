@@ -8,7 +8,6 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.WorldServer;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -57,7 +56,7 @@ public final class ResearchItemDownloadContext {
     }
 
     AEItemKey materialKey() {
-        return Objects.requireNonNull(AEItemKey.of(material));
+        return AEItemKey.of(material);
     }
 
     public ResearchDefinition research() {

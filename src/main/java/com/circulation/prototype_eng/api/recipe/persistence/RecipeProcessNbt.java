@@ -38,7 +38,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -164,7 +163,7 @@ public final class RecipeProcessNbt {
      * A startup process decorator may only attach components explicitly supported by this codec.
      */
     public boolean supportsComponent(ComponentType<RecipeProcess, ?> type) {
-        var binding = bindings.get(Objects.requireNonNull(type).id());
+        var binding = bindings.get(type.id());
         return binding != null;
     }
 
@@ -231,7 +230,7 @@ public final class RecipeProcessNbt {
      * Restores the complete material requirement graph against newly authorized physical sources.
      */
     public RecipeProcess decodeMaterialCycle(MachineInstance owner, MachineHatches hatches, NBTTagCompound saved) {
-        return decode(owner, saved, Objects.requireNonNull(hatches));
+        return decode(owner, saved, hatches);
     }
 
     private RecipeProcess decode(MachineInstance owner, NBTTagCompound tag, @Nullable MachineHatches hatches) {
@@ -418,20 +417,20 @@ public final class RecipeProcessNbt {
         private AttributeModifierNbt attributes = AttributeModifierNbt.INSTANCE;
 
         private Builder(MachineRecipe recipe, String revision) {
-            this.recipe = Objects.requireNonNull(recipe);
-            this.revision = Objects.requireNonNull(revision);
+            this.recipe = recipe;
+            this.revision = revision;
             if (revision.isBlank()) {
                 throw new IllegalArgumentException("Recipe revision must not be blank");
             }
         }
 
         public Builder resources(ResourceKeyNbt codec) {
-            resources = Objects.requireNonNull(codec);
+            resources = codec;
             return this;
         }
 
         public Builder attributes(AttributeModifierNbt codec) {
-            attributes = Objects.requireNonNull(codec);
+            attributes = codec;
             return this;
         }
 
@@ -449,7 +448,7 @@ public final class RecipeProcessNbt {
          * Pure checks for external wrappers, overlay history or cross-component invariants, after restoration.
          */
         public Builder validator(Consumer<RecipeProcess> validator) {
-            validators.add(Objects.requireNonNull(validator));
+            validators.add(validator);
             return this;
         }
 

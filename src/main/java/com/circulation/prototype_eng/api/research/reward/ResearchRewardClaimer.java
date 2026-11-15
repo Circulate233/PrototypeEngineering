@@ -13,7 +13,6 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 
@@ -130,7 +129,6 @@ public final class ResearchRewardClaimer {
     }
 
     public static Result claim(Request request) {
-        Objects.requireNonNull(request, "request");
         var key = new RewardClaim.Key(request.playerState().playerUuid(), request.definition().id(), request.level());
         var session = request.playerState().tryRewardSession(key);
         if (session == null) return result(Status.BUSY, "Player research state has an active writer");
@@ -143,9 +141,8 @@ public final class ResearchRewardClaimer {
      * Executes under the caller's exact session; the caller retains ownership through its final checkpoint.
      */
     public static Result claim(Request request, PlayerResearchState.RewardSession session) {
-        Objects.requireNonNull(request, "request");
         var key = new RewardClaim.Key(request.playerState().playerUuid(), request.definition().id(), request.level());
-        if (!Objects.requireNonNull(session).owns(request.playerState(), key)) {
+        if (!session.owns(request.playerState(), key)) {
             throw new IllegalArgumentException("Reward request does not own this player/claim session");
         }
         if (!request.current().getAsBoolean()) return stale();
@@ -219,11 +216,6 @@ public final class ResearchRewardClaimer {
         }
 
         public Request {
-            Objects.requireNonNull(playerState, "playerState");
-            Objects.requireNonNull(definition, "definition");
-            Objects.requireNonNull(checkpoint, "checkpoint");
-            Objects.requireNonNull(itemDelivery, "itemDelivery");
-            Objects.requireNonNull(current, "current");
             if (level < 1 || level > definition.maxLevel() || currentWorldTime < 0)
                 throw new IllegalArgumentException("Invalid reward claim request");
         }

@@ -8,7 +8,6 @@ import com.circulation.prototype_eng.api.recipe.selective.SelectiveContext;
 import crafttweaker.annotations.ZenRegister;
 import stanhebben.zenscript.annotations.ZenClass;
 
-import java.util.Objects;
 import java.util.function.BiConsumer;
 
 /**
@@ -28,10 +27,6 @@ public final class ZenRequirementOverlay {
     }
 
     public <C, D> ZenRequirementOverlay(RecipeRequirement<C> target, RequirementPath path, RecipeOverlayType<C, D> type, D data) {
-        Objects.requireNonNull(target);
-        Objects.requireNonNull(path);
-        Objects.requireNonNull(type);
-        Objects.requireNonNull(data);
         recipe = (context, layerId) -> context.put(target, path, layerId, type, data);
         selective = (context, layerId) -> context.putRequirementOverlay(target, path, layerId, type, data);
     }

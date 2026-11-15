@@ -22,12 +22,12 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Stable dynamic alternatives from all available source keys, without storage or world access.
  */
 public final class DynamicInputCandidates {
+    private static final byte[] NO_DATA = new byte[0];
     private static final Comparator<ResourceLocation> RESOURCE_ID_ORDER = Comparator.nullsFirst(Comparator.naturalOrder());
 
     private DynamicInputCandidates() {
@@ -42,7 +42,6 @@ public final class DynamicInputCandidates {
      * and their NBT, then sorting costs O(matches*log(matches)); maxCandidates bounds only the result.
      */
     public static List<AEKey> enumerate(Collection<AEKey> availableKeys, DynamicInputGroup group) {
-        Objects.requireNonNull(group, "group");
         var configuredOrder = group.candidateOrder();
         if (configuredOrder != null) {
             return enumerate(availableKeys, group, configuredOrder);
@@ -74,7 +73,6 @@ public final class DynamicInputCandidates {
      * Equal-order unequal keys are rejected across the full result before applying maxCandidates.
      */
     public static List<AEKey> enumerate(Collection<AEKey> availableKeys, DynamicInputGroup group, Comparator<AEKey> stableOrder) {
-        Objects.requireNonNull(stableOrder, "stableOrder");
         var matches = matching(availableKeys, group);
         matches.sort(stableOrder);
         for (int index = 1; index < matches.size(); index++) {
@@ -90,12 +88,9 @@ public final class DynamicInputCandidates {
     }
 
     private static ObjectArrayList<AEKey> matching(Collection<AEKey> availableKeys, DynamicInputGroup group) {
-        Objects.requireNonNull(availableKeys, "availableKeys");
-        Objects.requireNonNull(group, "group");
         var matches = new ObjectArrayList<AEKey>();
         var seen = new ObjectOpenHashSet<AEKey>();
         for (var key : availableKeys) {
-            Objects.requireNonNull(key, "available key");
             if (seen.add(key) && group.matcher().matches(key, group.pattern())) {
                 matches.add(key);
             }
@@ -112,7 +107,6 @@ public final class DynamicInputCandidates {
     }
 
     private static byte[] canonical(NBTTagCompound tag) {
-        Objects.requireNonNull(tag, "serialized key");
         var bytes = new ByteArrayOutputStream();
         try (var output = new DataOutputStream(bytes)) {
             writeCanonical(tag, output);
@@ -133,7 +127,7 @@ public final class DynamicInputCandidates {
                 for (int index2 = 0; index2 < names.size(); index2++) {
                     var name = names.get(index2);
                     writeString(name, output);
-                    writeCanonical(Objects.requireNonNull(compound.getTag(name), "compound value"), output);
+                    writeCanonical(compound.getTag(name), output);
                 }
             }
             case NBTTagList list -> {
@@ -184,10 +178,11 @@ public final class DynamicInputCandidates {
 
         Cursor(Collection<AEKey> independentKeys, DynamicInputGroup group, boolean retainAll) {
             this.retainAll = retainAll;
-            available = Objects.requireNonNull(independentKeys).iterator();
-            this.group = Objects.requireNonNull(group);
+            available = independentKeys.iterator();
+            this.group = group;
         }
 
+        @SuppressWarnings("DataFlowIssue")
         public boolean advance(RecipeWorkBudget budget) {
             if (complete) {
                 return true;
@@ -197,7 +192,7 @@ public final class DynamicInputCandidates {
                     if (!budget.take()) {
                         return false;
                     }
-                    var key = Objects.requireNonNull(available.next());
+                    var key = available.next();
                     if (!seen.add(key) || !group.matcher().matches(key, group.pattern())) {
                         continue;
                     }
@@ -209,13 +204,13 @@ public final class DynamicInputCandidates {
                 if (encoding != null && !encoding.advance(budget)) {
                     return false;
                 }
-                var key = Objects.requireNonNull(encodingKey);
+                var key = encodingKey;
                 var resourceId = key.getId();
                 if (!budget.take()) {
                     return false;
                 }
                 matches.add(new StableKey(key, key.getType().getId(),
-                    resourceId, encoding == null ? new byte[0] : encoding.result()));
+                    resourceId, encoding == null ? NO_DATA : encoding.result()));
                 encoding = null;
                 encodingKey = null;
             }

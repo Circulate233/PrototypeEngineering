@@ -6,7 +6,6 @@ import com.circulation.prototype_eng.api.storage.HatchMode;
 import net.minecraftforge.energy.IEnergyStorage;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * PM energy hatch's input/output/IO capability routing and configurable per-operation limits.
@@ -16,8 +15,8 @@ public final class ForgeEnergyPort implements IEnergyStorage {
     private final @Nullable EnergyHatch output;
 
     public ForgeEnergyPort(EnergyHatch storage, HatchMode mode) {
-        this(mode.hasInput() ? Objects.requireNonNull(storage) : null,
-            mode.hasOutput() ? Objects.requireNonNull(storage) : null);
+        this(mode.hasInput() ? storage : null,
+            mode.hasOutput() ? storage : null);
     }
 
     /**

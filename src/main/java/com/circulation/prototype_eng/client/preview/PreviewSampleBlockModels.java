@@ -1,13 +1,14 @@
 package com.circulation.prototype_eng.client.preview;
 
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 
 import java.util.List;
+import java.nio.ByteOrder;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
-import java.util.function.Consumer;
 
 /**
  * Only the current filtered C samples can prepare or emit CPU quads; pending work never bypasses filtering.
@@ -41,7 +42,7 @@ final class PreviewSampleBlockModels {
      * Initial cell admission, every preparation visit and every emitted quad consume this independent work budget.
      */
     List<StructureProjectionState.Sample> present(StructurePreviewModel expected, List<StructureProjectionState.Sample> samples,
-                                                  int visits, BooleanSupplier current, Consumer<int[]> output) {
+                                                  int visits, BooleanSupplier current, VertexSink output) {
         requireOwner();
         if (visits < 0) throw new IllegalArgumentException("Negative sample quad work budget");
         if (model != expected) {
@@ -50,7 +51,7 @@ final class PreviewSampleBlockModels {
         }
         var captured = epoch;
         var pending = new ObjectArrayList<StructureProjectionState.Sample>();
-        var selected = new Reference2ObjectOpenHashMap<StructurePreviewModel.Cell, ObjectArrayList<int[]>>();
+        var selected = new Reference2ObjectOpenHashMap<StructurePreviewModel.Cell, IntArrayList>();
         BooleanSupplier valid = () -> captured == epoch && model == expected && current.getAsBoolean();
         int start = samples.isEmpty() ? 0 : workCursor % samples.size();
         for (int visit = 0; visit < samples.size(); visit++) {
@@ -72,10 +73,7 @@ final class PreviewSampleBlockModels {
             }
             while (mesh.preparation != null && visits > 0) {
                 visits--;
-                var owned = mesh;
-                boolean complete = mesh.preparation.step(data -> {
-                    if (valid.getAsBoolean()) owned.quads.add(data);
-                });
+                boolean complete = mesh.preparation.step(mesh.append);
                 if (!valid.getAsBoolean()) return List.of();
                 if (complete) mesh.preparation = null;
             }
@@ -84,14 +82,15 @@ final class PreviewSampleBlockModels {
                 pending.add(sample);
                 continue;
             }
-            int count = Math.min(visits, mesh.quads.size());
-            if (count == 0 && !mesh.quads.isEmpty()) pending.add(sample);
+            int quads = mesh.vertices.size() / 28;
+            int count = Math.min(visits, quads);
+            if (count == 0 && quads != 0) pending.add(sample);
             for (int i = 0; i < count; i++) {
                 if (!valid.getAsBoolean()) return List.of();
-                var data = mesh.quads.get(mesh.cursor);
-                mesh.cursor = mesh.cursor + 1 == mesh.quads.size() ? 0 : mesh.cursor + 1;
+                int quad = mesh.cursor;
+                mesh.cursor = mesh.cursor + 1 == quads ? 0 : mesh.cursor + 1;
                 visits--;
-                selected.computeIfAbsent(sample.cell(), _ -> new ObjectArrayList<>()).add(data);
+                selected.computeIfAbsent(sample.cell(), _ -> new IntArrayList()).add(quad);
                 if (!valid.getAsBoolean()) return List.of();
             }
             if (before != visits) workCursor = index + 1 == samples.size() ? 0 : index + 1;
@@ -101,10 +100,11 @@ final class PreviewSampleBlockModels {
             var sample = samples.get(index2);
             var chosen = selected.get(sample.cell());
             if (chosen == null) continue;
+            var mesh = cells.get(sample.cell());
             for (int index1 = 0; index1 < chosen.size(); index1++) {
-                var data = chosen.get(index1);
+                int offset = chosen.getInt(index1) * 28;
                 if (!valid.getAsBoolean()) return List.of();
-                output.accept(data);
+                output.put(mesh.vertices.elements(), offset, 28);
                 if (!valid.getAsBoolean()) return List.of();
             }
         }
@@ -112,11 +112,18 @@ final class PreviewSampleBlockModels {
     }
 
     interface Preparation {
-        boolean step(Consumer<int[]> sink);
+        boolean step(PreviewBlockQuadCursor.QuadSink sink);
+    }
+
+    @FunctionalInterface
+    interface VertexSink {
+        void put(int[] vertices, int offset, int length);
     }
 
     private static final class CellMesh {
-        final ObjectArrayList<int[]> quads = new ObjectArrayList<>();
+        final IntArrayList vertices = new IntArrayList();
+        final PreviewBlockQuadCursor.QuadSink append = (_, data, offset, tint, translation) ->
+            PreviewBlockVertices.append(vertices, data, offset, tint, ByteOrder.nativeOrder(), translation);
         Preparation preparation;
         int cursor;
 

@@ -10,7 +10,6 @@ import com.circulation.prototype_eng.api.storage.StorageFence;
 import com.circulation.prototype_eng.storage.NativeTransferReservation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * One long FE balance with exact quantity/capacity holds and a shared concurrency boundary.
@@ -47,8 +46,7 @@ public final class EnergyBuffer implements EnergyHatch {
         }
     }
 
-    private static void checkRequest(long amount, Actionable mode) {
-        Objects.requireNonNull(mode, "mode");
+    private static void checkRequest(long amount) {
         if (amount < 0) {
             throw new IllegalArgumentException("Amount must not be negative");
         }
@@ -116,7 +114,7 @@ public final class EnergyBuffer implements EnergyHatch {
 
     @Override
     public long receiveEnergy(long amount, Actionable mode) {
-        checkRequest(amount, mode);
+        checkRequest(amount);
         context.lock();
         try {
             long accepted = context.isValid() ? Math.min(Math.min(amount, maxReceive), capacity - stored - reservedReceive) : 0;
@@ -133,7 +131,7 @@ public final class EnergyBuffer implements EnergyHatch {
 
     @Override
     public long extractEnergy(long amount, Actionable mode) {
-        checkRequest(amount, mode);
+        checkRequest(amount);
         context.lock();
         try {
             long extracted = context.isValid() ? Math.min(Math.min(amount, maxExtract), stored - reservedExtract) : 0;
@@ -194,7 +192,6 @@ public final class EnergyBuffer implements EnergyHatch {
     }
 
     private ReservationResult reserve(EnergySnapshot snapshot, long amount, boolean receive) {
-        Objects.requireNonNull(snapshot);
         if (amount <= 0) {
             throw new IllegalArgumentException("An energy reservation needs a positive amount");
         }

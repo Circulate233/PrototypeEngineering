@@ -22,7 +22,6 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagInt;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 import static pe.visual.examples.run.CoreCases.*;

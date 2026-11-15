@@ -27,7 +27,6 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Exports the selected world region using the library's existing structure JSON schema.
@@ -52,7 +51,7 @@ public final class StructureToolExport {
             }
         }
         var relative = new BlockPos(Math.subtractExact(pos.getX(), origin.getX()), Math.subtractExact(pos.getY(), origin.getY()), Math.subtractExact(pos.getZ(), origin.getZ()));
-        return new Cell(rotation.apply(relative), Objects.requireNonNull(state.getBlock().getRegistryName()),
+        return new Cell(rotation.apply(relative), state.getBlock().getRegistryName(),
             state.getBlock().getMetaFromState(state), nbt);
     }
 

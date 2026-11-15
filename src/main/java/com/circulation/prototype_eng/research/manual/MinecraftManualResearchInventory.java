@@ -25,7 +25,6 @@ import net.minecraftforge.common.util.FakePlayer;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.IntPredicate;
 
@@ -51,11 +50,10 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
      * The caller may exclude slots from this research material request.
      */
     public MinecraftManualResearchInventory(EntityPlayerMP player, IntPredicate protectedSlot) {
-        this.player = Objects.requireNonNull(player);
-        Objects.requireNonNull(protectedSlot);
+        this.player = player;
         this.protectedSlot = protectedSlot;
-        inventory = Objects.requireNonNull(player.inventory);
-        server = Objects.requireNonNull(player.getServerWorld().getMinecraftServer());
+        inventory = player.inventory;
+        server = player.getServerWorld().getMinecraftServer();
         requireOwner();
     }
 
@@ -93,13 +91,12 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
     @Override
     public @Nullable ManualResearchMaterialReceipt find(UUID operationId) {
         requireOwner();
-        return readReceipts().get(Objects.requireNonNull(operationId));
+        return readReceipts().get(operationId);
     }
 
     @Override
     public @Nullable ManualResearchMaterialReceipt findBySession(UUID sessionId) {
         requireOwner();
-        Objects.requireNonNull(sessionId);
         for (var receipt : readReceipts().values()) {
             if (receipt.sessionId().equals(sessionId)) {
                 return receipt;
@@ -271,7 +268,6 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
 
     private void remove(UUID operationId, ManualResearchMaterialReceipt.Status expectedStatus) {
         requireOwner();
-        Objects.requireNonNull(operationId);
         var receipts = readReceipts();
         var current = receipts.get(operationId);
         if (current != null) {
@@ -292,7 +288,6 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
     }
 
     private @Nullable ObjectArrayList<ItemStack> planMaterials(List<ItemStack> before, AEKey2LongMap quantities) {
-        Objects.requireNonNull(quantities);
         if (quantities.isEmpty()) {
             throw new IllegalArgumentException("Manual material quantities must not be empty");
         }
@@ -305,12 +300,13 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
         }
         var after = new ObjectArrayList<ItemStack>(before.size());
         for (int slot = 0; slot < before.size(); slot++) {
-            var stack = before.get(slot).copy();
+            var stack = before.get(slot);
             if (!stack.isEmpty() && !protectedSlot.test(slot)) {
-                var key = Objects.requireNonNull(AEItemKey.of(stack));
+                var key = AEItemKey.of(stack);
                 long needed = remaining.getLong(key);
                 int taken = (int) Math.min(needed, stack.getCount());
                 if (taken > 0) {
+                    stack = stack.copy();
                     stack.shrink(taken);
                     remaining.addTo(key, -taken);
                     if (needed == taken) {
@@ -338,7 +334,7 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
                                     ManualResearchMaterialReceipt committed, List<ItemStack> before, List<ItemStack> after,
                                     int selectedSlot, IntOpenHashSet attempted, Throwable original) {
         try {
-            if (matches(Objects.requireNonNull(committed.inventoryAfter()))) {
+            if (matches(committed.inventoryAfter())) {
                 receipts.put(committed.operationId(), committed);
                 publishAndSave(receipts);
                 return;
@@ -363,7 +359,7 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
                     throw new IllegalStateException("Inventory changed during material compensation");
                 }
                 inventory.setInventorySlotContents(slot, before.get(slot).copy());
-                observed.set(slot, before.get(slot).copy());
+                observed.set(slot, before.get(slot));
             }
             if (!matches(committed.inventoryBefore())) {
                 throw new IllegalStateException("Material compensation lacks exact before proof");
@@ -440,7 +436,7 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
 
     private ManualResearchMaterialReceipt requireReceipt(Object2ObjectLinkedOpenHashMap<UUID, ManualResearchMaterialReceipt> receipts,
                                                          UUID operationId) {
-        var receipt = receipts.get(Objects.requireNonNull(operationId));
+        var receipt = receipts.get(operationId);
         if (receipt == null) {
             throw new IllegalStateException("Missing material receipt " + operationId);
         }
@@ -449,14 +445,14 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
     }
 
     private void requirePlayer(ManualResearchMaterialReceipt receipt) {
-        if (!player.getUniqueID().equals(Objects.requireNonNull(receipt).playerId())) {
+        if (!player.getUniqueID().equals(receipt.playerId())) {
             throw new IllegalArgumentException("Material receipt belongs to another player");
         }
     }
 
     private void requireAfter(ManualResearchMaterialReceipt receipt) {
         if (receipt.status() == ManualResearchMaterialReceipt.Status.PREPARED
-            || !matches(Objects.requireNonNull(receipt.inventoryAfter()))) {
+            || !matches(receipt.inventoryAfter())) {
             throw new IllegalStateException("Committed material inventory lacks its exact after proof");
         }
     }

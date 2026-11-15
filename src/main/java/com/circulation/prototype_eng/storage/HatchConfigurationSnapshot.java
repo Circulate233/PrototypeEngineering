@@ -18,7 +18,6 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -30,7 +29,6 @@ public record HatchConfigurationSnapshot(UUID session, long revision, List<Hatch
     private static final int PROFILE_COUNT = HatchTier.VALUES.length * HatchMode.VALUES.length * 2;
 
     public HatchConfigurationSnapshot {
-        Objects.requireNonNull(session);
         if (revision < 0 || profiles.size() != PROFILE_COUNT)
             throw new IllegalArgumentException("Incomplete hatch configuration snapshot");
         for (int index = 0; index < profiles.size(); index++) {

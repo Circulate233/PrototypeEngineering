@@ -63,8 +63,8 @@ public final class MachineOwnership implements MachineLifecycleListener {
      * External hosts may supply their own server-session registry at the same lifecycle boundary.
      */
     public MachineOwnership(MachineInstance owner, Function<MachineLifecycleHost, MachineIdentityRegistry> registry) {
-        this.owner = Objects.requireNonNull(owner);
-        this.registry = Objects.requireNonNull(registry);
+        this.owner = owner;
+        this.registry = registry;
     }
 
     public PersistentMachineIdentity identity() {
@@ -80,6 +80,7 @@ public final class MachineOwnership implements MachineLifecycleListener {
     }
 
     @Override
+    @SuppressWarnings("resource")
     public void onLoaded(MachineLifecycleEvent.Loaded event) {
         requireOwner(event.context().machine());
         var host = event.context().host();
@@ -98,8 +99,8 @@ public final class MachineOwnership implements MachineLifecycleListener {
             }
             identity = new PersistentMachineIdentity(UUID.randomUUID(), actor);
         }
-        registration = Objects.requireNonNull(registry.apply(host), "Ownership registry")
-                              .register(identity(), event.context().identity(), host.worldIdentity(), owner);
+        registration = registry.apply(host)
+                               .register(identity(), event.context().identity(), host.worldIdentity(), owner);
     }
 
     @Override

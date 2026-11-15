@@ -12,7 +12,6 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -27,7 +26,7 @@ public final class TeamOwnedResearch {
     private Completion writer;
 
     public TeamOwnedResearch(String teamId, ResearchRegistry registry) {
-        this.registry = Objects.requireNonNull(registry);
+        this.registry = registry;
         if (!registry.isFrozen()) {
             throw new IllegalStateException("Research registry is not ready");
         }
@@ -39,7 +38,7 @@ public final class TeamOwnedResearch {
     }
 
     public synchronized int completedLevel(ResourceLocation id) {
-        return state.levels().getInt(Objects.requireNonNull(id));
+        return state.levels().getInt(id);
     }
 
     public synchronized Object2IntMap<ResourceLocation> completedLevelsSnapshot() {
@@ -55,23 +54,21 @@ public final class TeamOwnedResearch {
     }
 
     public synchronized boolean canWriteResearch(ResourceLocation id) {
-        return writer == null && !sourceReservations.containsKey(Objects.requireNonNull(id));
+        return writer == null && !sourceReservations.containsKey(id);
     }
 
     public synchronized boolean sourceReserved(ResourceLocation id) {
-        return sourceReservations.containsKey(Objects.requireNonNull(id));
+        return sourceReservations.containsKey(id);
     }
 
     public synchronized boolean sourceReservedBy(ResourceLocation id, UUID operationId) {
-        return Objects.requireNonNull(operationId).equals(sourceReservations.get(Objects.requireNonNull(id)));
+        return operationId.equals(sourceReservations.get(id));
     }
 
     /**
      * Runtime-only reservation; direct team completions for other research remain available.
      */
     public synchronized boolean tryReserveSource(ResourceLocation id, UUID operationId) {
-        Objects.requireNonNull(id);
-        Objects.requireNonNull(operationId);
         var existing = sourceReservations.get(id);
         if (existing != null) return existing.equals(operationId);
         if (writer != null) return false;
@@ -81,8 +78,6 @@ public final class TeamOwnedResearch {
     }
 
     public synchronized boolean canReleaseSource(ResourceLocation id, UUID operationId) {
-        Objects.requireNonNull(id);
-        Objects.requireNonNull(operationId);
         return writer == null || !id.equals(writer.researchId) || !operationId.equals(writer.operationId);
     }
 
@@ -142,7 +137,6 @@ public final class TeamOwnedResearch {
     @Nullable
     public synchronized Completion tryPrepareSourceMutation(ResourceLocation id, int expectedBeforeLevel,
                                                             int afterLevel, @Nullable UUID operationId) {
-        Objects.requireNonNull(id);
         if (writer != null || (operationId == null ? sourceReserved(id) : !sourceReservedBy(id, operationId)))
             return null;
         return prepareSourceMutation(id, expectedBeforeLevel, afterLevel, operationId);
@@ -182,25 +176,14 @@ public final class TeamOwnedResearch {
     }
 
     private void requireUnreserved(ResourceLocation id) {
-        if (sourceReservations.containsKey(Objects.requireNonNull(id)))
+        if (sourceReservations.containsKey(id))
             throw new IllegalStateException("Team research source is reserved by a download");
     }
 
+    /**
+     * Completed zero-default levels are borrowed read-only for this snapshot's lifetime.
+     */
     public record Snapshot(String teamId, Object2IntMap<ResourceLocation> levels) {
-        public Snapshot {
-            Objects.requireNonNull(teamId);
-            if (teamId.isBlank() || !teamId.equals(teamId.trim())) {
-                throw new IllegalArgumentException("Invalid stable team id");
-            }
-            var copy = new Object2IntOpenHashMap<ResourceLocation>(levels.size());
-            for (var entry : Objects.requireNonNull(levels).object2IntEntrySet()) {
-                if (entry.getKey() == null || entry.getIntValue() < 1) {
-                    throw new IllegalArgumentException("Invalid saved team research");
-                }
-                copy.put(entry.getKey(), entry.getIntValue());
-            }
-            levels = copy;
-        }
     }
 
     private static final class SnapshotCodec implements NbtCodec<Snapshot> {
@@ -235,7 +218,10 @@ public final class TeamOwnedResearch {
                     throw new IllegalArgumentException("Invalid or duplicate team research level");
                 }
             }
-            return new Snapshot(tag.getString("Team"), levels);
+            var teamId = tag.getString("Team");
+            if (teamId.isBlank() || !teamId.equals(teamId.trim()))
+                throw new IllegalArgumentException("Invalid stable team id");
+            return new Snapshot(teamId, levels);
         }
     }
 

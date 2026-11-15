@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.integration.crafttweaker;
 
 import com.circulation.prototype_eng.api.data.ComponentData;
-import crafttweaker.annotations.ZenRegister;
 import crafttweaker.api.data.IData;
 import crafttweaker.mc1120.data.NBTConverter;
 import net.minecraft.nbt.NBTPrimitive;
@@ -20,19 +19,19 @@ import stanhebben.zenscript.annotations.ZenMemberSetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 import stanhebben.zenscript.annotations.ZenOperator;
 
-import java.util.Objects;
 
 /**
  * IData conversion only; mutable storage and change detection belong to the public Java API.
  */
-@ZenRegister
 @ZenClass("mods.prototype_eng.data.ComponentData")
 @SuppressWarnings("unused") // Public entry points are resolved by ZenScript's registered type.
 public final class ZenComponentData {
     private final ComponentData data;
+    private ComponentData.Snapshot captured;
+    private IData capturedData;
 
     public ZenComponentData(ComponentData data) {
-        this.data = Objects.requireNonNull(data);
+        this.data = data;
     }
 
     @ZenMethod
@@ -48,7 +47,7 @@ public final class ZenComponentData {
     }
 
     private static NBTTagCompound compound(IData values) {
-        var tag = NBTConverter.from(Objects.requireNonNull(values));
+        var tag = NBTConverter.from(values);
         if (!(tag instanceof NBTTagCompound compound))
             throw new IllegalArgumentException("Component data requires an IData map");
         return compound;
@@ -89,7 +88,12 @@ public final class ZenComponentData {
 
     @ZenMethod
     public IData asIData() {
-        return NBTConverter.from(data.snapshot().data(), true);
+        var snapshot = data.snapshot();
+        if (captured != snapshot) {
+            captured = snapshot;
+            capturedData = NBTConverter.from(snapshot.data(), true);
+        }
+        return capturedData;
     }
 
     @ZenMethod

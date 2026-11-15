@@ -20,7 +20,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
@@ -51,10 +50,10 @@ public final class ManualResearch {
 
     public ManualResearch(TeamResearchQueue queue, TeamOwnedResearch team,
                           Map<UUID, PlayerResearchState> players, Checkpoint checkpoint) {
-        this.queue = Objects.requireNonNull(queue);
-        this.team = Objects.requireNonNull(team);
-        this.players = Objects.requireNonNull(players);
-        this.checkpoint = Objects.requireNonNull(checkpoint);
+        this.queue = queue;
+        this.team = team;
+        this.players = players;
+        this.checkpoint = checkpoint;
         if (queue.registry() != team.registry() || !queue.teamId().equals(team.teamId())) {
             throw new IllegalArgumentException("Manual research sources belong to different teams");
         }
@@ -114,7 +113,6 @@ public final class ManualResearch {
      */
     public boolean blocksSourceReduction(ResourceLocation researchId, @Nullable UUID player) {
         requireOwner();
-        Objects.requireNonNull(researchId);
         for (var session : sessions.values())
             if (session.queueKey().researchId().equals(researchId) && session.completionIntent() != null
                 && (player == null || session.completionIntent().baselines().containsKey(player))) return true;
@@ -143,7 +141,7 @@ public final class ManualResearch {
             var restored = new Long2ObjectLinkedOpenHashMap<ManualResearchSession>(saved.size());
             var ids = new ObjectOpenHashSet<UUID>(saved.size());
             for (var original : saved) {
-                var session = Objects.requireNonNull(original).restored();
+                var session = original.restored();
                 validateSession(session);
                 if (!ids.add(session.id()) || restored.putIfAbsent(session.queueKey().queueEntryId(), session) != null) {
                     throw new IllegalArgumentException("Duplicate restored manual session");
@@ -161,9 +159,6 @@ public final class ManualResearch {
     @SuppressWarnings("DataFlowIssue")
     public Status begin(TeamResearchQueue.Entry entry, UUID actor, Context context) {
         return guarded(() -> {
-            Objects.requireNonNull(entry);
-            Objects.requireNonNull(actor);
-            Objects.requireNonNull(context);
             if (queue.busy() || team.busy()) {
                 return Status.RECOVERY_PENDING;
             }
@@ -227,7 +222,6 @@ public final class ManualResearch {
      */
     public Status pause(long queueEntryId, Context context, ManualResearchSession.PauseReason reason) {
         return guarded(() -> {
-            Objects.requireNonNull(reason);
             var session = requireSession(queueEntryId);
             validateTime(session, context);
             if (queue.busy() || team.busy()) {
@@ -263,7 +257,6 @@ public final class ManualResearch {
      */
     public Status cancelInvalidated(long queueEntryId, Context context, @Nullable ManualResearchInventory inventory) {
         return guarded(() -> {
-            Objects.requireNonNull(context);
             if (!context.current().getAsBoolean()) {
                 return Status.STALE_CONTEXT;
             }
@@ -331,7 +324,7 @@ public final class ManualResearch {
         if (session.status() == ManualResearchSession.Status.PAUSED) {
             return Status.PAUSED;
         }
-        var contributor = Objects.requireNonNull(session.contributor());
+        var contributor = session.contributor();
         if (!context.members().contains(contributor)) {
             return pause(session, ManualResearchSession.PauseReason.CONTRIBUTOR_TEAM_CHANGED, context.serverTime());
         }
@@ -379,9 +372,10 @@ public final class ManualResearch {
         return recoverMaterial(session, context, inventory, materials, false);
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private Status recoverMaterial(ManualResearchSession session, Context context,
                                    @Nullable ManualResearchInventory inventory, ManualMaterials materials, boolean invalidated) {
-        var intent = Objects.requireNonNull(session.materialIntent());
+        var intent = session.materialIntent();
         if (inventory == null || !context.onlinePlayers().contains(intent.contributor())) {
             return Status.RECOVERY_PENDING;
         }
@@ -395,8 +389,6 @@ public final class ManualResearch {
         }
         if (receipt != null) {
             unpreparedOperations.remove(intent.operationId());
-        }
-        if (receipt != null) {
             requireReceipt(session, receipt);
         }
         if (invalidated && !context.current().getAsBoolean()) {
@@ -432,12 +424,11 @@ public final class ManualResearch {
                     }
                     committedPersisted = true;
                     requireHead(session.queueKey());
-                    receipt = Objects.requireNonNull(inventory.find(intent.operationId()), "Consumed material receipt is missing");
+                    receipt = inventory.find(intent.operationId());
                     requireReceipt(session, receipt);
                 }
             }
             if (session.status() == ManualResearchSession.Status.MATERIAL_COMMIT_PENDING) {
-                Objects.requireNonNull(receipt);
                 if (receipt.status() != ManualResearchMaterialReceipt.Status.COMMITTED) {
                     throw new IllegalStateException("Pending material intent has an incompatible player receipt");
                 }
@@ -473,7 +464,7 @@ public final class ManualResearch {
             if (receipt == null || receipt.status() != ManualResearchMaterialReceipt.Status.COMMITTED) {
                 throw new IllegalStateException("Committed material intent lost its player receipt");
             }
-            if (!inventory.matches(Objects.requireNonNull(receipt.inventoryAfter()))) {
+            if (!inventory.matches(receipt.inventoryAfter())) {
                 return Status.RECOVERY_PENDING;
             }
             if (!committedPersisted) {
@@ -494,7 +485,7 @@ public final class ManualResearch {
             if (receipt.status() == ManualResearchMaterialReceipt.Status.PREPARED) {
                 throw new IllegalStateException("Settled material work has an uncommitted player receipt");
             }
-            if (!inventory.matches(Objects.requireNonNull(receipt.inventoryAfter()))) {
+            if (!inventory.matches(receipt.inventoryAfter())) {
                 return Status.RECOVERY_PENDING;
             }
             if (receipt.status() == ManualResearchMaterialReceipt.Status.COMMITTED) {
@@ -530,11 +521,12 @@ public final class ManualResearch {
         return Status.CANCELLED;
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private Status finishCompletion(ManualResearchSession session, ManualMaterials materials) {
         if (!materials.complete(session.work())) {
             throw new IllegalStateException("Manual completion contains unpaid material work");
         }
-        var intent = Objects.requireNonNull(session.completionIntent());
+        var intent = session.completionIntent();
         var members = intent.baselines().keySet();
         if (session.status() != ManualResearchSession.Status.QUEUE_HEAD_REMOVED) {
             requireHead(session.queueKey());
@@ -599,6 +591,7 @@ public final class ManualResearch {
         }
         boolean teamOwned = queue.registry().require(session.queueKey().researchId()).deliveryPolicy() == ResearchDownloadDeliveryPolicy.ITEM_ONLY;
         var baselines = new Object2IntOpenHashMap<UUID>(context.members().size());
+        baselines.defaultReturnValue(-1);
         for (var member : context.members()) {
             var player = requirePlayer(member);
             if (player.busy()) {
@@ -785,9 +778,5 @@ public final class ManualResearch {
      */
     public record CheckpointState(ObjectList<ManualResearchSession> sessions, TeamResearchQueue.Snapshot queue,
                                   TeamOwnedResearch.Snapshot team, ObjectList<PlayerResearchState.Snapshot> players) {
-        public CheckpointState {
-            Objects.requireNonNull(queue);
-            Objects.requireNonNull(team);
-        }
     }
 }

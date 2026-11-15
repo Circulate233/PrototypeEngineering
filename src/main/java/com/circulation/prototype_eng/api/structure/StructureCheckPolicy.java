@@ -4,7 +4,6 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 
 import java.time.Duration;
-import java.util.Objects;
 
 /**
  * Local structure work policy; a retained attempt never renews its deadline.
@@ -17,10 +16,9 @@ public record StructureCheckPolicy(long workUnits, Duration sliceTime, Duration 
     }
 
     public StructureCheckPolicy {
-        if (workUnits <= 0 || Objects.requireNonNull(timeout).isNegative() || timeout.isZero())
+        if (workUnits <= 0 || timeout.isNegative() || timeout.isZero())
             throw new IllegalArgumentException("Structure work allowance and timeout must be positive");
-        Objects.requireNonNull(finalMode);
-        if (Objects.requireNonNull(sliceTime).isNegative() || sliceTime.isZero())
+        if (sliceTime.isNegative() || sliceTime.isZero())
             throw new IllegalArgumentException("Structure slice time must be positive");
     }
 
@@ -47,7 +45,7 @@ public record StructureCheckPolicy(long workUnits, Duration sliceTime, Duration 
 
         private Work(long units, PlannedDeadline deadline, PlannedDeadline sliceDeadline, boolean cooperative) {
             super(units);
-            this.deadline = Objects.requireNonNull(deadline);
+            this.deadline = deadline;
             this.cooperative = cooperative;
             this.sliceDeadline = sliceDeadline;
             allowance = units;

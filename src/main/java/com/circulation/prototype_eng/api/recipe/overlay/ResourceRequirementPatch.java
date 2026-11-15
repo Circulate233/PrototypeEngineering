@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Immutable IO overrides: null inherits the base field, while an empty list explicitly clears it.
@@ -36,7 +35,6 @@ public record ResourceRequirementPatch(@Nullable List<GenericStack> inputs,
      * Keeps probability, random outputs and group/lock definitions unchanged.
      */
     public ResourceRequirement apply(ResourceRequirement base) {
-        Objects.requireNonNull(base, "base");
         if (inputs == null && inputsPerTick == null && outputsPerTick == null && outputs == null
             && voidExcessOutputs == null) {
             return base;

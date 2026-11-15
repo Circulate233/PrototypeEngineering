@@ -14,7 +14,6 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -43,7 +42,6 @@ public final class ComponentMap<E> {
     public static <E> void validateTypes(Collection<? extends ComponentType<E, ?>> declarations) {
         var dependencies = new Object2ObjectLinkedOpenHashMap<ComponentType<E, ?>, Set<ComponentType<E, ?>>>(declarations.size());
         for (var type : declarations) {
-            Objects.requireNonNull(type);
             if (dependencies.putIfAbsent(type, type.dependencies()) != null) {
                 throw new IllegalArgumentException("Component declared twice: " + type.id());
             }
@@ -58,14 +56,14 @@ public final class ComponentMap<E> {
         var identities = new Object2ObjectOpenHashMap<ResourceLocation, ComponentType<E, ?>>();
         var graph = new TopologicalComponentMap<ComponentType<E, ?>, ComponentType<E, ?>>();
         for (var entry : dependencies.entrySet()) {
-            var type = Objects.requireNonNull(entry.getKey());
-            var edges = Objects.requireNonNull(entry.getValue());
+            var type = entry.getKey();
+            var edges = entry.getValue();
             if (graph.contains(type)) {
                 throw new IllegalArgumentException("Component declared twice: " + type.id());
             }
             requireTypeIdentity(identities, type);
             for (var dependency : edges) {
-                requireTypeIdentity(identities, Objects.requireNonNull(dependency));
+                requireTypeIdentity(identities, dependency);
             }
             graph.add(type, type, edges);
         }
@@ -115,7 +113,7 @@ public final class ComponentMap<E> {
             var elements16 = node.key().systems();
             for (int index16 = 0; index16 < elements16.size(); index16++) {
                 var system = elements16.get(index16);
-                var id = Objects.requireNonNull(system.id(), "system id");
+                var id = system.id();
                 var previous = systemDefinitions.putIfAbsent(id, system);
                 if (previous != null && previous != system) {
                     throw new IllegalArgumentException("Different systems share id " + id);
@@ -167,8 +165,6 @@ public final class ComponentMap<E> {
     }
 
     public <C> void put(ComponentType<E, C> type, C component) {
-        Objects.requireNonNull(type);
-        Objects.requireNonNull(component);
         var previous = types.get(type.id());
         if (previous != null && previous != type) {
             throw new IllegalArgumentException("Different component types share id " + type.id());
@@ -183,8 +179,6 @@ public final class ComponentMap<E> {
     @Nullable
     @SuppressWarnings("ReturnOfInnerClass") // The candidate belongs to this exact component map and graph revision.
     public <C> PreparedPut preparePut(ComponentType<E, C> type, C component, RecipeWorkBudget work) {
-        Objects.requireNonNull(type);
-        Objects.requireNonNull(component);
         var previous = types.get(type.id());
         if (previous != null && previous != type)
             throw new IllegalArgumentException("Different component types share id " + type.id());
@@ -220,8 +214,6 @@ public final class ComponentMap<E> {
      * Used when restoring an immutable component; preserves the existing node and effective graph.
      */
     public <C> void replaceValue(ComponentType<E, C> type, C component) {
-        Objects.requireNonNull(type);
-        Objects.requireNonNull(component);
         if (types.get(type.id()) != type) {
             throw new IllegalArgumentException("Cannot replace absent or foreign component type: " + type.id());
         }
@@ -286,20 +278,17 @@ public final class ComponentMap<E> {
      * Captures component dependency order, independently of assembly order, for lifecycle cleanup.
      */
     public List<SavedBinding<E, ?>> orderedBindings() {
-        return Objects.requireNonNull(orderedBindings(new RecipeWorkBudget(Long.MAX_VALUE)));
+        if (orderedBindingsRevision == components.revision()) return frozenOrderedBindings;
+        return orderedBindings(new RecipeWorkBudget(Long.MAX_VALUE));
     }
 
     /**
-     * Original component dependency order, charged before each current publication visit.
+     * Original component dependency order; only uncached work consumes the budget.
      */
     @Nullable
     public List<SavedBinding<E, ?>> orderedBindings(RecipeWorkBudget work) {
         long revision = components.revision();
-        if (orderedBindingsRevision == revision) {
-            for (int index = 0; index < frozenOrderedBindings.size(); index++)
-                if (!work.take()) return null;
-            return frozenOrderedBindings;
-        }
+        if (orderedBindingsRevision == revision) return frozenOrderedBindings;
         var result = new ObjectArrayList<SavedBinding<E, ?>>();
         var ordered = components.orderedComponents(work);
         if (ordered == null) return null;
@@ -382,7 +371,6 @@ public final class ComponentMap<E> {
      * A body fault remains primary; post faults are suppressed rather than replacing it.
      */
     public void tick(E owner, Runnable body) {
-        Objects.requireNonNull(body);
         var session = beginTick(owner);
         Throwable primary = null;
         try {
@@ -433,11 +421,6 @@ public final class ComponentMap<E> {
      * Completed dependency sets are borrowed read-only from the captured component graph.
      */
     public record SavedBinding<E, C>(ComponentType<E, C> type, C component, Set<ComponentType<E, ?>> dependencies) {
-        public SavedBinding {
-            Objects.requireNonNull(type);
-            Objects.requireNonNull(component);
-            Objects.requireNonNull(dependencies);
-        }
     }
 
     /**
@@ -466,7 +449,7 @@ public final class ComponentMap<E> {
             requireBoundary();
             if (Thread.currentThread() != creator || delegated != null)
                 throw new IllegalStateException("Only the undispatched creator may delegate component work");
-            delegated = new WorkerDispatch(Objects.requireNonNull(action));
+            delegated = new WorkerDispatch(action);
             return delegated;
         }
 
@@ -681,14 +664,14 @@ public final class ComponentMap<E> {
     public final class BindingCapture {
         private final long revision = components.revision();
         private final boolean validate;
-        private final Iterator<TopologicalComponentMap.Node<ComponentType<E, ?>, Binding<E, ?>>> assembly = components.assemblyIterator();
-        private final ObjectArrayList<SavedBinding<E, ?>> captured = new ObjectArrayList<>();
-        private final Object2ObjectOpenHashMap<ComponentType<E, ?>, ObjectLinkedOpenHashSet<ComponentType<E, ?>>> edges = new Object2ObjectOpenHashMap<>();
-        private final Object2ObjectOpenHashMap<ResourceLocation, ComponentSystem<E, ?>> systems = new Object2ObjectOpenHashMap<>();
-        private final Object2ObjectOpenHashMap<ResourceLocation, ObjectLinkedOpenHashSet<ComponentType<E, ?>>> owners = new Object2ObjectOpenHashMap<>();
-        private final Object2IntOpenHashMap<ComponentType<E, ?>> indegrees = new Object2IntOpenHashMap<>();
-        private final Object2ObjectOpenHashMap<ComponentType<E, ?>, ObjectArrayList<ComponentType<E, ?>>> dependents = new Object2ObjectOpenHashMap<>();
-        private final ObjectArrayList<ComponentType<E, ?>> queue = new ObjectArrayList<>();
+        private Iterator<TopologicalComponentMap.Node<ComponentType<E, ?>, Binding<E, ?>>> assembly;
+        private ObjectArrayList<SavedBinding<E, ?>> captured;
+        private Object2ObjectOpenHashMap<ComponentType<E, ?>, ObjectLinkedOpenHashSet<ComponentType<E, ?>>> edges;
+        private Object2ObjectOpenHashMap<ResourceLocation, ComponentSystem<E, ?>> systems;
+        private Object2ObjectOpenHashMap<ResourceLocation, ObjectLinkedOpenHashSet<ComponentType<E, ?>>> owners;
+        private Object2IntOpenHashMap<ComponentType<E, ?>> indegrees;
+        private Object2ObjectOpenHashMap<ComponentType<E, ?>, ObjectArrayList<ComponentType<E, ?>>> dependents;
+        private ObjectArrayList<ComponentType<E, ?>> queue;
         private TopologicalComponentMap.Node<ComponentType<E, ?>, Binding<E, ?>> node;
         private Iterator<ComponentType<E, ?>> originalEdges;
         private ObjectLinkedOpenHashSet<ComponentType<E, ?>> mutableEdges;
@@ -719,11 +702,21 @@ public final class ComponentMap<E> {
             if (!this.validate && assemblyCapturedRevision == revision) {
                 cachedResult = frozenAssembly;
                 phase = 6;
+            } else {
+                assembly = components.assemblyIterator();
+                captured = new ObjectArrayList<>();
+                if (this.validate) {
+                    edges = new Object2ObjectOpenHashMap<>();
+                    systems = new Object2ObjectOpenHashMap<>();
+                    owners = new Object2ObjectOpenHashMap<>();
+                    indegrees = new Object2IntOpenHashMap<>();
+                    dependents = new Object2ObjectOpenHashMap<>();
+                    queue = new ObjectArrayList<>();
+                }
             }
         }
 
         public boolean advance(RecipeWorkBudget budget) {
-            Objects.requireNonNull(budget);
             if (!current()) return false;
             if (phase == 6) return true;
             if (phase == 0) {
@@ -765,7 +758,7 @@ public final class ComponentMap<E> {
                     while (registrationSystem < registrationType.systems().size()) {
                         if (!budget.take()) return false;
                         var system = registrationType.systems().get(registrationSystem++);
-                        var id = Objects.requireNonNull(system.id(), "system id");
+                        var id = system.id();
                         var previous = systems.putIfAbsent(id, system);
                         if (previous != null && previous != system)
                             throw new IllegalArgumentException("Different systems share id " + id);
@@ -787,7 +780,7 @@ public final class ComponentMap<E> {
                         if (edgeSystem == null) {
                             if (!budget.take()) return false;
                             edgeSystem = edgeType.systems().get(edgeSystemCursor++);
-                            ordering = Objects.requireNonNull(edgeSystem.runAfter()).iterator();
+                            ordering = edgeSystem.runAfter().iterator();
                             before = false;
                         }
                         while (true) {
@@ -811,7 +804,7 @@ public final class ComponentMap<E> {
                             if (!before) {
                                 if (!budget.take()) return false;
                                 before = true;
-                                ordering = Objects.requireNonNull(edgeSystem.runBefore()).iterator();
+                                ordering = edgeSystem.runBefore().iterator();
                                 continue;
                             }
                             edgeSystem = null;

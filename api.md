@@ -14,9 +14,15 @@ Java 公开 API 位于 `src/main/java/com/circulation/prototype_eng/api`。ZS �
 
 本库缺值统一返回带有 `@Nullable` 标注的对象，调用方必须判空。禁止在本库字段、参数或返回值中使用 `Optional`、`OptionalInt`、`OptionalLong`、`OptionalDouble`；只有依赖接口要求的类型保留。原始类型优先使用其业务范围之外的值表示缺失，例如非负奖励时间使用 `long` 的 `-1`；禁止仅为表示缺失而装箱。队首、推进计划、内容和存档等对象不存在时返回 `null`。
 
+未标注 `@Nullable`、且未明确允许缺值的参数、集合元素和工厂结果必须非空。调用方必须满足这些要求，禁止通过反复 `requireNonNull` 或逐元素检查补偿错误调用。真实的资源缺失、权限变化、溢出、存档格式和事务预检仍按对应接口处理。
+
+`StructureOperation<T>`、`StructureQuery<T>` 与结构读取接口通过泛型类型参数表示可空结果。自定义操作或查询允许返回 `null` 时，必须使用 `StructureOperation<@Nullable T>` 或 `StructureQuery<@Nullable T>`；只有操作完成后才能读取 `result()`。内置 `TILE_NBT` 为可空查询，数值和状态查询完成后返回实际值。
+
 所有 List 参数和返回值，包括嵌套列表，必须支持常数时间索引访问。使用 ArrayList、ObjectArrayList、List.of 或符合该要求的自定义实现；禁止传入 LinkedList。内部按索引遍历，不通过复制列表修正调用方的实现选择。
 
 集合和 NBT 的所有权按对应 Javadoc 处理。定义构建器交付完成的数据后不得再修改；只读访问直接返回已有对象。`ResourceKeyNbt.INSTANCE` 使用 AE 默认类型解析器，自定义解析器创建一次 codec 后复用；`AttributeModifierNbt.INSTANCE` 和 `MachineAttributesNbt.INSTANCE` 提供默认属性编码器。资源类型必须复用单例，R2DMap 按对象身份索引，累加使用 `addTo`。
+
+`ComponentType` 的 systems 使用支持常数时间索引的 List，dependencies 使用 Set，两个参数均直接借用，声明后不得修改。配方池、研究快照和结构显示数据按只读方式交付；为 JEI 更改分类时复用已建立的输入索引。`ComponentData.set/merge/replace` 借用不可再修改的子标签；快照按 revision 复用，仅保留独立顶层索引，使后续正常写入不改变已发布快照。`ResourceKeyNbt.decode(id, data)` 的类型加载器只读取自己的字段，不修改输入，允许输入同时包含库存元数据。
 
 RecipeOverlays 的 NBT 通过静态函数编解码，进程的固定需求图由 `RecipeProcess.definitionIndex()` 按需建立一次并复用。快照、下载输出和手动材料凭据的数组/NBT 按 Javadoc 只读交付；创建方在实际需要独立可修改状态时建立一次副本，禁止在 getter 或 DTO 构造器中重复复制。
 

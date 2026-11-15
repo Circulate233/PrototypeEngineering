@@ -13,7 +13,6 @@ import org.lwjgl.input.Keyboard;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * PM tier art with independent IO meters, borderless rate fields and no upgrade slots.
@@ -133,8 +132,9 @@ public final class GuiEnergyHatch extends AEBaseGui<ContainerEnergyHatch> {
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue") // The container constructor sets its AE title before this GUI opens.
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        GuiLabel.drawCentered(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 29, 8, fieldWidth + 9, 10, 0x404040, false);
+        GuiLabel.drawCentered(fontRenderer, container.getGuiTitle().getFormattedText(), 29, 8, fieldWidth + 9, 10, 0x404040, false);
         drawEnergyAmount(25, container.energy, container.capacity);
         if (mixed) drawEnergyAmount(38, container.outputEnergy, container.outputCapacity);
         // Fields store screen coordinates; draw them before AE draws button/slot tooltips.
@@ -149,12 +149,13 @@ public final class GuiEnergyHatch extends AEBaseGui<ContainerEnergyHatch> {
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue") // The container constructor sets its AE title before this GUI opens.
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         if (!inputRate.isFocused()) inputRate.setText(Long.toString(container.inputRate));
         if (!outputRate.isFocused()) outputRate.setText(Long.toString(container.outputRate));
         super.drawScreen(mouseX, mouseY, partialTicks);
         if (hovered(26, 7, fieldWidth + 15, 12, mouseX, mouseY))
-            drawHoveringText(List.of(Objects.requireNonNull(container.getGuiTitle()).getFormattedText()), mouseX, mouseY);
+            drawHoveringText(List.of(container.getGuiTitle().getFormattedText()), mouseX, mouseY);
         else if (mixed && (hovered(166, 7, 22, 72, mouseX, mouseY) || hovered(26, 37, fieldWidth + 15, 12, mouseX, mouseY)))
             drawEnergyTooltip(mouseX, mouseY, GuiText.Output, container.outputEnergy, container.outputCapacity);
         else if (hovered(mixed ? 143 : 166, 7, 22, 72, mouseX, mouseY) || hovered(26, 24, fieldWidth + 15, 12, mouseX, mouseY))

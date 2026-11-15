@@ -20,7 +20,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -34,8 +33,8 @@ public class ModelAssets implements IResourceManager, AutoCloseable {
     private final Set<String> domains;
     private final Path mountedRoot;
     private final GeckoRenderRequest.Epoch epoch = new GeckoRenderRequest.Epoch();
-    private final Map<ResourceLocation, Source> sources = new Object2ObjectOpenHashMap<>();
-    private final Map<ResourceLocation, Texture> textures = new Object2ObjectOpenHashMap<>();
+    private Map<ResourceLocation, Source> sources = new Object2ObjectOpenHashMap<>();
+    private Map<ResourceLocation, Texture> textures = new Object2ObjectOpenHashMap<>();
     private boolean retired;
 
     public ModelAssets(ModelClientThread client, IResourceManager packs, Path mountedRoot) {
@@ -169,9 +168,6 @@ public class ModelAssets implements IResourceManager, AutoCloseable {
             if (retired || entry.retired || textures.get(entry.source) != entry) return false;
         }
         if (entry.nativeTexture == null) register(entry);
-        synchronized (this) {
-            if (retired || entry.retired || textures.get(entry.source) != entry) return false;
-        }
         bindNative(entry);
         return true;
     }
@@ -188,10 +184,10 @@ public class ModelAssets implements IResourceManager, AutoCloseable {
         synchronized (this) {
             if (retired) return;
             retired = true;
-            old = Map.copyOf(textures);
-            textures.clear();
-            oldSources = Map.copyOf(sources);
-            sources.clear();
+            old = textures;
+            textures = Map.of();
+            oldSources = sources;
+            sources = Map.of();
         }
         Throwable failure = null;
         for (var source : oldSources.values())
@@ -259,14 +255,16 @@ public class ModelAssets implements IResourceManager, AutoCloseable {
         entry.nativeLocation = location;
     }
 
+    @SuppressWarnings("DataFlowIssue") // Binding follows native texture registration.
     protected void bindNative(Texture entry) {
-        Minecraft.getMinecraft().getTextureManager().bindTexture(Objects.requireNonNull(entry.nativeLocation));
+        Minecraft.getMinecraft().getTextureManager().bindTexture(entry.nativeLocation);
     }
 
+    @SuppressWarnings("DataFlowIssue") // Native deletion runs only after texture registration.
     protected void deleteNative(Texture entry) {
         var manager = Minecraft.getMinecraft().getTextureManager();
-        var location = Objects.requireNonNull(entry.nativeLocation);
-        var texture = Objects.requireNonNull(entry.nativeTexture);
+        var location = entry.nativeLocation;
+        var texture = entry.nativeTexture;
         if (manager.getTexture(location) == texture) manager.deleteTexture(location);
         else texture.deleteGlTexture();
     }

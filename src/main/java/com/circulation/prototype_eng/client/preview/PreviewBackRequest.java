@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.client.preview;
 
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -12,8 +11,8 @@ public final class PreviewBackRequest {
     private boolean pending;
 
     public PreviewBackRequest(BooleanSupplier buttonsReleased, Runnable back) {
-        this.buttonsReleased = Objects.requireNonNull(buttonsReleased);
-        this.back = Objects.requireNonNull(back);
+        this.buttonsReleased = buttonsReleased;
+        this.back = back;
     }
 
     public void mousePress() {

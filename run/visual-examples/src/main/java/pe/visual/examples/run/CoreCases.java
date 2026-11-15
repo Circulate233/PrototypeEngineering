@@ -6,7 +6,6 @@ import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKeyType;
 import com.circulation.prototype_eng.api.data.DataComponents;
 import com.circulation.prototype_eng.api.machine.*;
-import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.component.MachineScheduling;
 import com.circulation.prototype_eng.api.machine.lifecycle.*;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;

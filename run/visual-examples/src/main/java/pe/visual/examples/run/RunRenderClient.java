@@ -131,10 +131,10 @@ public final class RunRenderClient {
         }
 
         private static List<JeiSlot> slots(int x) {
-            var slots = new ObjectArrayList<JeiSlot>();
+            var slots = new ObjectArrayList<JeiSlot>(4);
             for (int index = 0; index < 4; index++)
                 slots.add(new JeiSlot(x + index % 2 * 20, 23 + index / 2 * 20, 18, 18, 1, JeiVisuals.AUTOMATIC));
-            return List.copyOf(slots);
+            return slots;
         }
 
         @Override
@@ -169,21 +169,25 @@ public final class RunRenderClient {
             NativeChecks.check("client_named_page_wrapper", wrapper instanceof RunWrapper && wrapper.page() == this && wrapper.pool() == pool);
             var settings = RecipePoolJeiRegistry.INSTANCE.renderOptions(pool.id());
             wrapper.ingredients().initialize(layout, inputs, outputs, settings);
-            wrapper.ingredients().showGroups(layout, rows(wrapper.display(), JeiRecipeDisplay.Role.INPUT), rows(wrapper.display(), JeiRecipeDisplay.Role.OUTPUT), inputs.size(), outputs.size());
+            var recipe = (RunWrapper) wrapper;
+            wrapper.ingredients().showGroups(layout, recipe.inputs, recipe.outputs, inputs.size(), outputs.size());
             layout.setRecipeId(pool.id().getNamespace(), wrapper.recipe().id());
-        }
-
-        private static List<List<JeiRecipeDisplay.Resource>> rows(JeiRecipeDisplay display, JeiRecipeDisplay.Role role) {
-            return display.resources().stream().filter(row -> row.role() == role).map(List::of).toList();
         }
 
         @Override
         public PreparedUpdate prepareUpdate(RecipePool target, RecipeJeiDisplays.Snapshot displays) {
             NativeChecks.check("client_page_target_identity", target.id().equals(pool.id()));
-            for (var recipe : target.recipes()) {
+            var recipes = target.recipes();
+            for (int recipeIndex = 0; recipeIndex < recipes.size(); recipeIndex++) {
+                var recipe = recipes.get(recipeIndex);
                 var display = displays.describe(recipe);
-                NativeChecks.check("client_page_native_slot_capacity", rows(display, JeiRecipeDisplay.Role.INPUT).size() <= inputs.size()
-                    && rows(display, JeiRecipeDisplay.Role.OUTPUT).size() <= outputs.size());
+                int inputCount = 0, outputCount = 0;
+                var resources = display.resources();
+                for (int index = 0; index < resources.size(); index++) {
+                    if (resources.get(index).role() == JeiRecipeDisplay.Role.INPUT) inputCount++;
+                    else if (resources.get(index).role() == JeiRecipeDisplay.Role.OUTPUT) outputCount++;
+                }
+                NativeChecks.check("client_page_native_slot_capacity", inputCount <= inputs.size() && outputCount <= outputs.size());
             }
             var expected = pool;
             return new PreparedUpdate() {
@@ -216,8 +220,16 @@ public final class RunRenderClient {
     }
 
     private static final class RunWrapper extends RecipePoolJeiRecipe {
+        private final ObjectArrayList<List<JeiRecipeDisplay.Resource>> inputs = new ObjectArrayList<>(), outputs = new ObjectArrayList<>();
+
         private RunWrapper(RunPage page, RecipePool pool, MachineRecipe recipe, JeiRecipeDisplay display, JeiRecipeIngredients ingredients) {
             super(page, pool, recipe, display, ingredients);
+            var resources = display.resources();
+            for (int index = 0; index < resources.size(); index++) {
+                var resource = resources.get(index);
+                if (resource.role() == JeiRecipeDisplay.Role.INPUT) inputs.add(List.of(resource));
+                else if (resource.role() == JeiRecipeDisplay.Role.OUTPUT) outputs.add(List.of(resource));
+            }
         }
 
         @Override
@@ -226,8 +238,8 @@ public final class RunRenderClient {
             if (!isCurrent()) return;
             var page = (RunPage) page();
             var options = RecipePoolJeiRegistry.INSTANCE.renderOptions(pool().id());
-            fallback(minecraft, RunPage.rows(display(), JeiRecipeDisplay.Role.INPUT), page.inputs, options);
-            fallback(minecraft, RunPage.rows(display(), JeiRecipeDisplay.Role.OUTPUT), page.outputs, options);
+            fallback(minecraft, inputs, page.inputs, options);
+            fallback(minecraft, outputs, page.outputs, options);
             minecraft.fontRenderer.drawString(recipe().durationTicks() + " t", 73, 39, 0xff263747);
         }
 
@@ -240,12 +252,13 @@ public final class RunRenderClient {
         @Override
         public List<String> getTooltipStrings(int x, int y) {
             if (!isCurrent()) return List.of();
-            var rows = new ObjectArrayList<JeiRecipeDisplay.Resource>();
-            rows.addAll(display().resources());
+            var rows = display().resources();
             var result = new ObjectArrayList<String>();
-            for (var row : rows)
+            for (int index = 0; index < rows.size(); index++) {
+                var row = rows.get(index);
                 if (x >= (row.role() == JeiRecipeDisplay.Role.INPUT ? 8 : 118) && y >= 23 && y < 64)
                     result.addAll(JeiRecipeIngredients.tooltip(row));
+            }
             return result;
         }
     }

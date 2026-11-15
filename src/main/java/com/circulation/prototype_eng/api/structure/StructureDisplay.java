@@ -8,10 +8,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Visual projection of a declaration. Incomplete projections must never imply matching success.
+ * Options and their maps are borrowed read-only for the display's lifetime.
  * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public record StructureDisplay(String key, List<BlockOption> options, @Nullable String tileNbt, boolean complete) {
@@ -20,9 +20,7 @@ public record StructureDisplay(String key, List<BlockOption> options, @Nullable 
     }
 
     public StructureDisplay {
-        Objects.requireNonNull(key);
         if (key.isBlank()) throw new IllegalArgumentException("Empty structure display key");
-        options = List.copyOf(options);
         if (options.isEmpty()) throw new IllegalArgumentException("A display needs at least one block option");
     }
 
@@ -36,17 +34,14 @@ public record StructureDisplay(String key, List<BlockOption> options, @Nullable 
         }
 
         public BlockOption {
-            Objects.requireNonNull(blockId);
             if (meta < 0 || meta > 15) throw new IllegalArgumentException("Block metadata must be in 0..15");
-            nbt = Map.copyOf(nbt);
-            properties = Map.copyOf(properties);
         }
 
         public static BlockOption of(IBlockState state, Map<String, String> nbt) {
             var properties = new Object2ObjectRBTreeMap<String, String>();
             for (var property : state.getPropertyKeys())
                 properties.put(property.getName(), propertyName(state, property));
-            return new BlockOption(Objects.requireNonNull(state.getBlock().getRegistryName()), state.getBlock().getMetaFromState(state), nbt, properties);
+            return new BlockOption(state.getBlock().getRegistryName(), state.getBlock().getMetaFromState(state), nbt, properties);
         }
 
         private static <T extends Comparable<T>> String propertyName(IBlockState state, IProperty<T> property) {

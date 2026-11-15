@@ -15,6 +15,7 @@ import java.util.Arrays;
  * Keeps the input fluid from masking a different, drainable output fluid.
  */
 public final class HatchFluidHandler implements IFluidHandler {
+    private static final IFluidTankProperties[] EMPTY_TANKS = new IFluidTankProperties[0];
     private final GenericStackFluidStorage input;
     private final GenericStackFluidStorage output;
     @Nullable
@@ -39,7 +40,7 @@ public final class HatchFluidHandler implements IFluidHandler {
 
     private static IFluidTankProperties[] tankProperties(GenericStackFluidStorage adapter, @Nullable SlottedResourceStorage storage) {
         if (storage == null) {
-            return new IFluidTankProperties[0];
+            return EMPTY_TANKS;
         }
         storage.context().lock();
         try {
@@ -69,8 +70,7 @@ public final class HatchFluidHandler implements IFluidHandler {
         inputStorage.context().lock();
         try {
             int amount = settings == null ? resource.amount : (int) settings.limitFluidInput(resource.amount);
-            var limited = resource.copy();
-            limited.amount = amount;
+            var limited = amount == resource.amount ? resource : new FluidStack(resource, amount);
             return input.fill(limited, doFill);
         } finally {
             inputStorage.context().unlock();
@@ -85,8 +85,8 @@ public final class HatchFluidHandler implements IFluidHandler {
         }
         outputStorage.context().lock();
         try {
-            var limited = resource.copy();
-            limited.amount = settings == null ? resource.amount : (int) settings.limitFluidOutput(resource.amount);
+            int amount = settings == null ? resource.amount : (int) settings.limitFluidOutput(resource.amount);
+            var limited = amount == resource.amount ? resource : new FluidStack(resource, amount);
             return output.drain(limited, doDrain);
         } finally {
             outputStorage.context().unlock();

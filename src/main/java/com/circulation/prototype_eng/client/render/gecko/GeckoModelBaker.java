@@ -52,10 +52,13 @@ public class GeckoModelBaker {
         };
     }
 
+    /**
+     * Bone sets must remain unchanged while retained by the estimate cache.
+     */
     public int[] estimateRoutedFilteredVertexCounts(GeoModel model, Set<String> active, BakeMode mode, Set<String> potential) {
-        var hit = estimates.getAndMoveToLast(new Estimate(model, active, mode, potential));
+        var key = new Estimate(model, active, mode, potential);
+        var hit = estimates.getAndMoveToLast(key);
         if (hit != null) return hit;
-        var key = new Estimate(model, Set.copyOf(active), mode, Set.copyOf(potential));
         int[] out = new int[4];
         for (int index2 = 0; index2 < model.topLevelBones.size(); index2++) {
             var bone = model.topLevelBones.get(index2);

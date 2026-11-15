@@ -7,7 +7,6 @@ import net.minecraft.nbt.NBTTagList;
 import net.minecraftforge.common.util.Constants;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -47,8 +46,6 @@ public record ResearchDownloadMaterial(UUID playerId, UUID operationId, int slot
      */
     @Nullable
     public static ResearchDownloadMaterial prepare(UUID playerId, UUID operationId, int slot, NBTTagCompound before) {
-        Objects.requireNonNull(playerId);
-        Objects.requireNonNull(operationId);
         var material = PlayerInventoryNbt.stack(before, slot);
         if (material.isEmpty()) return null;
         material.setByte("Count", (byte) 1);

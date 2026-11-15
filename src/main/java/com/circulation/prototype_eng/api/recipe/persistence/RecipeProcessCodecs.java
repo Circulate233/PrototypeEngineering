@@ -5,14 +5,12 @@ import com.circulation.prototype_eng.api.recipe.RecipeDefinitionRevision;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Stable process persistence resolver. Published snapshots retain all explicitly supplied historical
@@ -47,14 +45,13 @@ public final class RecipeProcessCodecs {
     }
 
     public boolean isCurrent(Snapshot expected) {
-        return current == Objects.requireNonNull(expected);
+        return current == expected;
     }
 
     /**
      * Claims the sole publication capability when a registry adopts this resolver before freezing.
      */
     public synchronized RegistryBinding bindRegistry(RecipeRegistry registry) {
-        Objects.requireNonNull(registry);
         if (fixed || registryBinding != null)
             throw new IllegalStateException("Process codec resolver cannot be bound to this registry");
         registryBinding = new RegistryBinding(this, registry);
@@ -68,8 +65,7 @@ public final class RecipeProcessCodecs {
         if (fixed) throw new IllegalStateException("Fixed process codecs cannot be extended");
         if (!isCurrent(expected)) throw new IllegalArgumentException("Foreign or stale process codec snapshot");
         boolean changed = false;
-        for (var codec : Objects.requireNonNull(additions, "process codecs")) {
-            Objects.requireNonNull(codec, "process codec");
+        for (var codec : additions) {
             if (expected.get(codec.recipe()) != codec) changed = true;
         }
         if (!changed) return new Prepared(this, expected, expected);
@@ -77,7 +73,6 @@ public final class RecipeProcessCodecs {
     }
 
     public synchronized boolean canInstall(Prepared prepared) {
-        Objects.requireNonNull(prepared);
         return prepared.owner == this && !prepared.consumed && current == prepared.expected;
     }
 
@@ -130,8 +125,7 @@ public final class RecipeProcessCodecs {
             this.owner = owner;
             byRecipe = previous == null ? new Reference2ObjectOpenHashMap<>() : new Reference2ObjectOpenHashMap<>(previous.byRecipe);
             byRevision = previous == null ? new Object2ObjectLinkedOpenHashMap<>() : new Object2ObjectLinkedOpenHashMap<>(previous.byRevision);
-            for (var codec : Objects.requireNonNull(additions, "process codecs")) {
-                Objects.requireNonNull(codec, "process codec");
+            for (var codec : additions) {
                 var identity = new RecipeDefinitionRevision(codec.recipe().id(), codec.revision());
                 var oldRecipe = byRecipe.putIfAbsent(codec.recipe(), codec);
                 var oldRevision = byRevision.putIfAbsent(identity, codec);
@@ -139,7 +133,7 @@ public final class RecipeProcessCodecs {
                     throw new IllegalArgumentException("Conflicting process persistence binding: " + identity);
                 }
             }
-            codecs = ObjectLists.unmodifiable(new ObjectArrayList<>(byRevision.values()));
+            codecs = new ObjectArrayList<>(byRevision.values());
         }
 
         public RecipeProcessCodecs owner() {
@@ -152,7 +146,7 @@ public final class RecipeProcessCodecs {
 
         @Nullable
         public RecipeProcessNbt get(MachineRecipe recipe) {
-            return byRecipe.get(Objects.requireNonNull(recipe));
+            return byRecipe.get(recipe);
         }
 
         public RecipeProcessNbt require(MachineRecipe recipe) {

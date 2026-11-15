@@ -11,7 +11,6 @@ import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadR
 import com.circulation.prototype_eng.api.structure.json.StructurePredicateRegistrationEvent;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
-import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -107,7 +106,7 @@ public final class DefinitionRegistrations {
 
     static final class Phase<E> {
         private final String name;
-        private final ObjectArrayList<Consumer<E>> declarations = new ObjectArrayList<>();
+        private ObjectArrayList<Consumer<E>> declarations = new ObjectArrayList<>();
         private boolean sealed;
 
         Phase(String name) {
@@ -116,18 +115,17 @@ public final class DefinitionRegistrations {
 
         synchronized void add(Consumer<E> declaration) {
             if (sealed) throw new IllegalStateException("Definition registration is closed for " + name);
-            declarations.add(Objects.requireNonNull(declaration));
+            declarations.add(declaration);
         }
 
         void deliver(E event) {
-            Objects.requireNonNull(event);
             ObjectArrayList<Consumer<E>> callbacks;
             synchronized (this) {
                 if (sealed)
                     throw new IllegalStateException("Definition registration was already delivered for " + name);
                 sealed = true;
-                callbacks = new ObjectArrayList<>(declarations);
-                declarations.clear();
+                callbacks = declarations;
+                declarations = null;
             }
             for (int index = 0; index < callbacks.size(); index++) {
                 var callback = callbacks.get(index);

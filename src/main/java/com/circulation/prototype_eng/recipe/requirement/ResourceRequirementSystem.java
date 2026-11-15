@@ -41,7 +41,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * PM's ordered multi-container resource IO, reserving actual quantities instead of simulating twice.
@@ -86,7 +85,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             AEKey2LongMap random = null;
             if (randomOutputs) {
                 random = new AEKeyLinkedOpenHashMap(6);
-                randomOutputs(process, Objects.requireNonNull(pool), salt, times, random);
+                randomOutputs(process, pool, salt, times, random);
                 merge(produced, random);
             }
             boolean needsOutput = !outputs.isEmpty() || randomOutputs;
@@ -270,7 +269,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                     if (reserved.status() != ReservationResult.Status.ACCEPTED) {
                         return RecipeText.StorageChanged.blocked();
                     }
-                    reservations.add(Objects.requireNonNull(reserved.reservation()));
+                    reservations.add(reserved.reservation());
                     remaining -= portion;
                 } finally {
                     context.unlock();
@@ -374,7 +373,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
 
             @Override
             public void retainPureFacts() {
-                process.retainPureFacts(stage, Objects.requireNonNull(computation));
+                process.retainPureFacts(stage, computation);
             }
 
             @Override
@@ -797,6 +796,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             sourceFacts = new ObjectArrayList<>();
         }
 
+        @SuppressWarnings("DataFlowIssue")
         private boolean advance(RecipeWorkBudget budget, List<ResourceReservation> owned) {
             if (complete || !needsStorage) {
                 complete = true;
@@ -850,7 +850,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                             owned.add(capture); // One original handle is retained even before its native journal completes.
                         }
                         if (!capture.advance(budget)) return false;
-                        var reserved = Objects.requireNonNull(capture.result);
+                        var reserved = capture.result;
                         long portion = capture.amount;
                         if (portion < 0 || portion > remaining)
                             throw new IllegalStateException("Storage violated reservation capture contract");
@@ -880,8 +880,9 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             return true;
         }
 
+        @SuppressWarnings("DataFlowIssue")
         private boolean advanceAllocated(RecipeWorkBudget budget, List<ResourceReservation> owned) {
-            var values = Objects.requireNonNull(projections);
+            var values = projections;
             while (key != null || projection < values.size()) {
                 if (key == null) {
                     if (!budget.take()) return false;
@@ -892,7 +893,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                 }
                 while (capturedSource < storages.size()) {
                     var storage = storages.get(capturedSource);
-                    if (Objects.requireNonNull(allocation).kind() == InputAllocation.Kind.CUSTOM && initialFacts == null) {
+                    if (allocation.kind() == InputAllocation.Kind.CUSTOM && initialFacts == null) {
                         if (quantityCapture == null) {
                             if (!budget.take()) return false;
                             quantityCapture = storage.beginQuantityCapture();
@@ -907,7 +908,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                             var entry = quantityEntries.next();
                             if (entry.getLongValue() < 0)
                                 throw new IllegalStateException("Negative source snapshot balance");
-                            Objects.requireNonNull(fullAmounts).addTo(entry.getKey(), entry.getLongValue());
+                            fullAmounts.addTo(entry.getKey(), entry.getLongValue());
                         }
                     }
                     if (!budget.take()) return false;
@@ -922,11 +923,11 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                         long extractable = storage.extract(key, Long.MAX_VALUE, Actionable.SIMULATE);
                         if (available < 0 || extractable < 0)
                             throw new IllegalStateException("Storage violated input allocation availability");
-                        Objects.requireNonNull(snapshots).add(snapshot);
+                        snapshots.add(snapshot);
                         var initial = initialFacts == null ? null : initialFacts.get(capturedSource);
                         var amounts = initial != null ? initial.resources() : fullAmounts == null ? InputAllocationPlan.NO_RESOURCES
                             : fullAmounts.build();
-                        Objects.requireNonNull(sourceFacts).add(new InputAllocation.Source(capturedSource,
+                        sourceFacts.add(new InputAllocation.Source(capturedSource,
                             initial == null ? snapshot.revision() : initial.revision(),
                             Math.min(available, extractable), amounts, 0, extractable));
                     } finally {
@@ -939,8 +940,8 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                 }
                 if (plan == null) {
                     if (initialFacts == null) initialFacts = sourceFacts;
-                    plan = new InputAllocationPlan(Objects.requireNonNull(allocation), allocationStage,
-                        projection - 1, key, remaining, Objects.requireNonNull(sourceFacts));
+                    plan = new InputAllocationPlan(allocation, allocationStage,
+                        projection - 1, key, remaining, sourceFacts);
                 }
                 if (!plan.advance(budget)) return false;
                 if (plan.missing() != 0) {
@@ -951,7 +952,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                 while (verifiedSource < storages.size()) {
                     if (!budget.take()) return false;
                     var storage = storages.get(verifiedSource);
-                    var snapshot = Objects.requireNonNull(snapshots).get(verifiedSource++);
+                    var snapshot = snapshots.get(verifiedSource++);
                     var context = storage.context();
                     context.lock();
                     try {
@@ -973,13 +974,13 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                     try {
                         if (!storage.isValid()) return changed();
                         if (capture == null) {
-                            var snapshot = Objects.requireNonNull(snapshots).get(source);
+                            var snapshot = snapshots.get(source);
                             if (!context.current(snapshot.revision())) return changed();
                             capture = new ReservationCaptureToken(context, storage.beginReserveExtract(snapshot, key, expected));
                             owned.add(capture);
                         }
                         if (!capture.advance(budget)) return false;
-                        if (Objects.requireNonNull(capture.result).status() != ReservationResult.Status.ACCEPTED
+                        if (capture.result.status() != ReservationResult.Status.ACCEPTED
                             || capture.amount != expected) return changed();
                         capture = null;
                         source++;
@@ -1021,14 +1022,14 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
 
         private ReservationCaptureToken(StorageContext context, ResourceStorage.ReservationCapture capture) {
             this.context = context;
-            this.capture = Objects.requireNonNull(capture);
+            this.capture = capture;
         }
 
         private boolean advance(RecipeWorkBudget budget) {
             if (result != null) return true;
             if (!capture.advance(budget)) return false;
             amount = capture.amount();
-            result = Objects.requireNonNull(capture.result());
+            result = capture.result();
             token = result.reservation();
             if (token != null && token.context() != context)
                 throw new IllegalStateException("Captured reservation changed its physical context");
@@ -1163,7 +1164,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                 if (!current.advance(budget)) {
                     return false;
                 }
-                sources.add(Objects.requireNonNull(source));
+                sources.add(source);
                 captures.add(current);
                 amounts.add(current.available());
                 current = null;

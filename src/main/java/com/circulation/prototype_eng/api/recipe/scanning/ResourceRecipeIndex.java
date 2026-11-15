@@ -17,18 +17,15 @@ import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectAVLTreeMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.Reference2IntMap;
-import it.unimi.dsi.fastutil.objects.Reference2IntMaps;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ReferenceSet;
-import it.unimi.dsi.fastutil.objects.ReferenceSets;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -36,7 +33,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 
@@ -58,22 +54,21 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
     private final List<MachineRecipe> unfiltered;
 
     public ResourceRecipeIndex(RecipeCatalog catalog, Collection<Footprint> footprints) {
-        this(Objects.requireNonNull(catalog, "catalog").recipes(), footprints);
+        this(catalog.recipes(), footprints);
     }
 
     private ResourceRecipeIndex(List<MachineRecipe> recipes, Collection<Footprint> footprints) {
-        canonical = ObjectLists.unmodifiable(new ObjectArrayList<>(Objects.requireNonNull(recipes)));
+        canonical = recipes;
         var ordinals = new Reference2IntOpenHashMap<MachineRecipe>(canonical.size());
         for (int index3 = 0; index3 < canonical.size(); index3++) {
             var recipe = canonical.get(index3);
             ordinals.put(recipe, ordinals.size());
         }
-        order = Reference2IntMaps.unmodifiable(ordinals);
+        order = ordinals;
         var declared = new ReferenceOpenHashSet<MachineRecipe>(footprints.size());
         var filtered = new ReferenceOpenHashSet<MachineRecipe>(footprints.size());
-        var mutable = new Object2ObjectOpenHashMap<AEKey, ObjectArrayList<Posting>>();
-        for (var footprint : Objects.requireNonNull(footprints, "footprints")) {
-            Objects.requireNonNull(footprint, "footprint");
+        var mutable = new Object2ObjectOpenHashMap<AEKey, List<Posting>>();
+        for (var footprint : footprints) {
             var recipe = footprint.recipe();
             if (!order.containsKey(recipe) || !declared.add(recipe)) {
                 throw new IllegalArgumentException("Foreign or repeated recipe footprint: " + recipe.id());
@@ -89,16 +84,14 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                 mutable.computeIfAbsent(input.what(), _ -> new ObjectArrayList<>()).add(new Posting(recipe, input.amount(), keys));
             }
         }
-        indexed = ReferenceSets.unmodifiable(filtered);
+        indexed = filtered;
         var retained = new ObjectArrayList<MachineRecipe>(canonical.size() - filtered.size());
         for (int index2 = 0; index2 < canonical.size(); index2++) {
             var recipe = canonical.get(index2);
             if (!filtered.contains(recipe)) retained.add(recipe);
         }
-        unfiltered = ObjectLists.unmodifiable(retained);
-        var frozen = new Object2ObjectOpenHashMap<AEKey, List<Posting>>(mutable.size());
-        mutable.forEach((key, values) -> frozen.put(key, ObjectLists.unmodifiable(values)));
-        postings = Object2ObjectMaps.unmodifiable(frozen);
+        unfiltered = retained;
+        postings = mutable;
     }
 
     /**
@@ -110,12 +103,10 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
      * stay unfiltered even when the predicate returns true. TICK/END IO is not indexed.
      */
     public static ResourceRecipeIndex forFixedInputs(RecipeCatalog catalog, Predicate<MachineRecipe> stableInputs) {
-        return forFixedInputs(Objects.requireNonNull(catalog, "catalog").recipes(), stableInputs);
+        return forFixedInputs(catalog.recipes(), stableInputs);
     }
 
     public static ResourceRecipeIndex forFixedInputs(List<MachineRecipe> recipes, Predicate<MachineRecipe> stableInputs) {
-        Objects.requireNonNull(recipes);
-        Objects.requireNonNull(stableInputs, "stableInputs");
         var footprints = new ObjectArrayList<Footprint>(recipes.size());
         for (int index4 = 0; index4 < recipes.size(); index4++) {
             var recipe = recipes.get(index4);
@@ -225,13 +216,11 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
      */
     public record Footprint(MachineRecipe recipe, List<GenericStack> inputs) {
         public Footprint {
-            Objects.requireNonNull(recipe, "recipe");
             var amounts = new AEKeyLinkedOpenHashMap(inputs.size());
-            var elements6 = Objects.requireNonNull(inputs, "inputs");
+            var elements6 = inputs;
             for (int index6 = 0; index6 < elements6.size(); index6++) {
                 var input = elements6.get(index6);
-                Objects.requireNonNull(input, "input");
-                var key = Objects.requireNonNull(input.what(), "input key");
+                var key = input.what();
                 long amount = input.amount();
                 long previous = amounts.getLong(key);
                 if (amount <= 0) {
@@ -241,7 +230,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
             }
             var normalized = new ObjectArrayList<GenericStack>(amounts.size());
             amounts.object2LongEntrySet().forEach(entry -> normalized.add(new GenericStack(entry.getKey(), entry.getLongValue())));
-            inputs = ObjectLists.unmodifiable(normalized);
+            inputs = normalized;
         }
     }
 
@@ -271,21 +260,20 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         private int phase;
 
         private InventoryLookup(AEKey2LongMap inventory, int parallelism, Set<ResourceLocation> groups) {
-            this.inventory = Objects.requireNonNull(inventory);
+            this.inventory = inventory;
             if (parallelism < 1) throw new IllegalArgumentException("Nonpositive matching parallelism");
             this.parallelism = parallelism;
             singleCeiling = parallelism;
-            inputGroups = Objects.requireNonNull(groups).iterator();
+            inputGroups = groups.iterator();
         }
 
         @Override
         public boolean advance(RecipeWorkBudget budget) {
-            Objects.requireNonNull(budget);
             if (phase == 3) return true;
             if (phase == 0) {
                 while (inputGroups.hasNext()) {
                     if (!budget.take()) return false;
-                    groups.add(Objects.requireNonNull(inputGroups.next()));
+                    groups.add(inputGroups.next());
                 }
                 if (canonical.size() == 1) singleInputs = postings.object2ObjectEntrySet().iterator();
                 else entries = inventory.object2LongEntrySet().iterator();
@@ -417,9 +405,9 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
 
         private QuantityLookup(MachineInstance machine, Set<ResourceLocation> groups, List<MachineRecipe> scope,
                                @Nullable List<? extends ResourceHatch> selectedHatches) {
-            this.machine = Objects.requireNonNull(machine, "machine");
-            this.groups = Objects.requireNonNull(groups, "groups");
-            this.scope = Objects.requireNonNull(scope, "scope");
+            this.machine = machine;
+            this.groups = groups;
+            this.scope = scope;
             this.sourceBindings = MachineHatches.get(machine);
             this.selectedHatches = selectedHatches == null ? List.of() : selectedHatches;
             grouped = selectedHatches == null ? new GroupedResourceLookup(machine, order::getInt,
@@ -428,7 +416,6 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
 
         @Override
         public boolean advance(RecipeWorkBudget budget) {
-            Objects.requireNonNull(budget);
             if (grouped != null) return grouped.advance(budget);
             if (phase == 5) return true;
             if (stale) return false;
@@ -437,7 +424,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                     while (scopedRecipe != null || scopeCursor < scope.size()) {
                         if (scopedRecipe == null) {
                             if (!budget.take()) return false;
-                            scopedRecipe = Objects.requireNonNull(scope.get(scopeCursor++), "scoped recipe");
+                            scopedRecipe = scope.get(scopeCursor++);
                             if (!order.containsKey(scopedRecipe))
                                 throw new IllegalArgumentException("Scope contains a foreign canonical recipe: " + scopedRecipe.id());
                             recipeGroups = scopedRecipe.recipeGroups().iterator();
@@ -466,12 +453,12 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                             var hatch = hatches.get(hatchCursor++);
                             boolean valid = hatch.isValid();
                             var storage = valid ? hatch.input() : null;
-                            var context = storage == null ? null : Objects.requireNonNull(storage.context(), "input context");
-                            var identity = storage == null ? null : Objects.requireNonNull(hatch.inputStorageIdentity(), "input identity");
+                            var context = storage == null ? null : storage.context();
+                            var identity = storage == null ? null : hatch.inputStorageIdentity();
                             boolean storageValid = storage != null && storage.isValid();
                             bindings.add(new Binding(hatch, valid, storage != null, identity, context, storageValid));
                             if (!valid || storage == null || !storageValid) continue;
-                            view = new CapturedView(hatch, storage, context, identity, Objects.requireNonNull(postings.size() == 1
+                            view = new CapturedView(hatch, storage, context, identity, (postings.size() == 1
                                 ? storage.beginQuantityCapture(postings.keySet().iterator().next()) : storage.beginQuantityCapture()));
                             captures.add(view);
                         }
@@ -481,12 +468,12 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                                 stale = true;
                                 return false;
                             }
-                            quantities = Objects.requireNonNull(view.capture.available()).object2LongEntrySet().iterator();
+                            quantities = view.capture.available().object2LongEntrySet().iterator();
                         }
                         while (quantities.hasNext()) {
                             if (!budget.take()) return false;
                             var entry = quantities.next();
-                            var key = Objects.requireNonNull(entry.getKey(), "input key");
+                            var key = entry.getKey();
                             long amount = entry.getLongValue();
                             if (amount < 0) throw new IllegalStateException("Negative input availability");
                             if (!postings.containsKey(key)) continue;
@@ -583,7 +570,6 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
 
                 @Override
                 public boolean advance(RecipeWorkBudget budget) {
-                    Objects.requireNonNull(budget);
                     if (complete) return true;
                     if (stale) {
                         complete = true;

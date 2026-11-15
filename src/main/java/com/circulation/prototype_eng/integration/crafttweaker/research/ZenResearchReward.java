@@ -11,7 +11,6 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.Locale;
-import java.util.Objects;
 
 /**
  * Ordered children of one choice; Java-provided display metadata is preserved by wrapped groups.
@@ -49,7 +48,6 @@ public final class ZenResearchReward {
     @ZenMethod
     public ZenResearchReward event(String childId, ZenResearchRewardCallback callback) {
         open();
-        Objects.requireNonNull(callback);
         children.add(new RewardChild.Event(new ResourceLocation(childId), (key, context) ->
             RewardEventAction.Result.valueOf(callback.deliver(new ZenResearchRewardEvent(key, context)).toUpperCase(Locale.ROOT))));
         return this;

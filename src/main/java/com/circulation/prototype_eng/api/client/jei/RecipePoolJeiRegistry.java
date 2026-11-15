@@ -3,9 +3,7 @@ package com.circulation.prototype_eng.api.client.jei;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.fml.relauncher.Side;
@@ -20,6 +18,7 @@ import java.util.function.Function;
 
 /**
  * Client-owned binding. No JEI reference is stored in the common recipe registry or pool.
+ * Returned lists and catalyst stacks are borrowed read-only until the next registration generation.
  */
 @SideOnly(Side.CLIENT)
 public class RecipePoolJeiRegistry {
@@ -31,6 +30,7 @@ public class RecipePoolJeiRegistry {
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePoolJeiPage> clientCustom = new Object2ObjectLinkedOpenHashMap<>();
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, ObjectArrayList<ItemStack>> clientCatalysts = new Object2ObjectLinkedOpenHashMap<>();
     private Map<ResourceLocation, RecipePoolJeiPage> pages;
+    private List<RecipePoolJeiPage> pageList;
     private Map<ResourceLocation, RecipePool> registeredPools;
     private Map<ResourceLocation, String> externalPages;
     private boolean binding;
@@ -48,7 +48,7 @@ public class RecipePoolJeiRegistry {
             var pool = pools.get(index2);
             if (externalPage(pool, existingCategoryIds) == null) result.addAll(pool.recipes());
         }
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     /**
@@ -60,12 +60,11 @@ public class RecipePoolJeiRegistry {
         if (!started) {
             clientCustom.putAll(custom);
             clientOptions.putAll(options);
-            for (var entry : catalysts.object2ObjectEntrySet()) {
-                clientCatalysts.put(entry.getKey(), new ObjectArrayList<>(entry.getValue()));
-            }
+            clientCatalysts.putAll(catalysts);
             started = true;
         }
         pages = null;
+        pageList = null;
         registeredPools = null;
         externalPages = null;
         custom.clear();
@@ -73,9 +72,7 @@ public class RecipePoolJeiRegistry {
         options.putAll(clientOptions);
         custom.putAll(clientCustom);
         catalysts.clear();
-        for (var entry : clientCatalysts.object2ObjectEntrySet()) {
-            catalysts.put(entry.getKey(), new ObjectArrayList<>(entry.getValue()));
-        }
+        catalysts.putAll(clientCatalysts);
     }
 
     /**
@@ -83,8 +80,6 @@ public class RecipePoolJeiRegistry {
      */
     public void register(ResourceLocation poolId, RecipePoolJeiPage page) {
         requireRegistration();
-        Objects.requireNonNull(poolId);
-        Objects.requireNonNull(page);
         if (!poolId.equals(page.pool().id())) {
             throw new IllegalArgumentException("JEI page belongs to a different recipe pool");
         }
@@ -98,12 +93,12 @@ public class RecipePoolJeiRegistry {
      */
     public void renderOptions(ResourceLocation poolId, JeiRenderOptions settings) {
         requireRegistration();
-        if (options.putIfAbsent(Objects.requireNonNull(poolId), Objects.requireNonNull(settings)) != null)
+        if (options.putIfAbsent(poolId, settings) != null)
             throw new IllegalArgumentException("Duplicate JEI render options: " + poolId);
     }
 
     public JeiRenderOptions renderOptions(ResourceLocation poolId) {
-        return options.getOrDefault(Objects.requireNonNull(poolId), JeiRenderOptions.defaults());
+        return options.getOrDefault(poolId, JeiRenderOptions.defaults());
     }
 
     /**
@@ -112,10 +107,18 @@ public class RecipePoolJeiRegistry {
     @SuppressWarnings("unused") // Public addon navigation binding during the client event.
     public void catalyst(ResourceLocation poolId, ItemStack item) {
         requireRegistration();
-        if (Objects.requireNonNull(item).isEmpty()) {
+        if (item.isEmpty()) {
             throw new IllegalArgumentException("JEI catalyst is empty");
         }
-        catalysts.computeIfAbsent(Objects.requireNonNull(poolId), _ -> new ObjectArrayList<>()).add(item.copy());
+        var entries = catalysts.get(poolId);
+        if (entries == null) {
+            entries = new ObjectArrayList<>();
+            catalysts.put(poolId, entries);
+        } else if (started && entries == clientCatalysts.get(poolId)) {
+            entries = new ObjectArrayList<>(entries);
+            catalysts.put(poolId, entries);
+        }
+        entries.add(item);
     }
 
     /**
@@ -139,16 +142,9 @@ public class RecipePoolJeiRegistry {
     public void freeze(List<RecipePool> pools, Function<RecipePool, ? extends RecipePoolJeiPage> defaultFactory,
                        @Nullable RecipeJeiDisplays.Snapshot descriptions, Set<String> existingCategoryIds) {
         requireRegistration();
-        Objects.requireNonNull(defaultFactory);
         binding = true;
         try {
-            var known = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>(pools.size());
-            for (int index3 = 0; index3 < pools.size(); index3++) {
-                var pool = pools.get(index3);
-                if (known.putIfAbsent(Objects.requireNonNull(pool).id(), pool) != null) {
-                    throw new IllegalArgumentException("Duplicate frozen recipe pool: " + pool.id());
-                }
-            }
+            var known = indexPools(pools);
             for (var id : custom.keySet()) {
                 if (!known.containsKey(id)) {
                     throw new IllegalArgumentException("Custom JEI page has unknown recipe pool: " + id);
@@ -174,7 +170,7 @@ public class RecipePoolJeiRegistry {
                 }
                 var page = custom.get(pool.id());
                 if (page == null) {
-                    page = Objects.requireNonNull(defaultFactory.apply(pool), "Default JEI page returned null");
+                    page = defaultFactory.apply(pool);
                 } else if (page.pool() != pool && descriptions != null) {
                     var update = page.prepareUpdate(pool, descriptions);
                     if (update == null)
@@ -188,9 +184,10 @@ public class RecipePoolJeiRegistry {
                 }
                 resolved.put(pool.id(), page);
             }
-            pages = Object2ObjectMaps.unmodifiable(resolved);
-            registeredPools = Object2ObjectMaps.unmodifiable(known);
-            externalPages = Object2ObjectMaps.unmodifiable(external);
+            pages = resolved;
+            pageList = new ObjectArrayList<>(resolved.values());
+            registeredPools = known;
+            externalPages = external;
             custom.clear();
         } finally {
             binding = false;
@@ -199,7 +196,7 @@ public class RecipePoolJeiRegistry {
 
     public List<RecipePoolJeiPage> pages() {
         requireFrozen();
-        return ObjectLists.unmodifiable(new ObjectArrayList<>(pages.values()));
+        return pageList;
     }
 
     public Map<ResourceLocation, String> externalPages() {
@@ -218,7 +215,7 @@ public class RecipePoolJeiRegistry {
             var pool = pools.get(index1);
             if (pages.containsKey(pool.id())) result.addAll(pool.recipes());
         }
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     /**
@@ -227,10 +224,9 @@ public class RecipePoolJeiRegistry {
     public boolean acceptsPools(List<RecipePool> pools) {
         requireFrozen();
         if (pools.size() != registeredPools.size()) return false;
-        var remaining = new Object2ObjectLinkedOpenHashMap<>(registeredPools);
         for (int index4 = 0; index4 < pools.size(); index4++) {
             var pool = pools.get(index4);
-            var previous = remaining.remove(pool.id());
+            var previous = registeredPools.get(pool.id());
             if (previous == null || previous.hasExistingJeiPage() != pool.hasExistingJeiPage()
                 || !Objects.equals(previous.existingJeiPageId(), pool.existingJeiPageId()))
                 return false;
@@ -256,19 +252,15 @@ public class RecipePoolJeiRegistry {
         requireFrozen();
         if (!acceptsPools(pools)) return null;
         var updates = new ObjectArrayList<RecipePoolJeiPage.PreparedUpdate>();
-        var remaining = new Object2ObjectLinkedOpenHashMap<>(pages);
         for (int index5 = 0; index5 < pools.size(); index5++) {
             var pool = pools.get(index5);
             if (externalPages.containsKey(pool.id())) continue;
-            var page = remaining.remove(pool.id());
-            if (page == null) throw new IllegalArgumentException("JEI replacement has unknown pool: " + pool.id());
+            var page = pages.get(pool.id());
             var update = page.prepareUpdate(pool, displays);
             if (update == null) return null;
-            if (update.page() != page || update.pool() != pool || !RecipePoolJeiPage.uid(pool.id()).equals(page.getUid()))
-                throw new IllegalArgumentException("JEI page prepared a foreign pool or category: " + pool.id());
             updates.add(update);
         }
-        return ObjectLists.unmodifiable(updates);
+        return updates;
     }
 
     public List<ItemStack> catalysts(ResourceLocation poolId) {
@@ -276,15 +268,18 @@ public class RecipePoolJeiRegistry {
         if (!registeredPools.containsKey(poolId)) {
             throw new IllegalArgumentException("Unknown JEI recipe pool: " + poolId);
         }
-        var result = new ObjectArrayList<ItemStack>();
         var entries = catalysts.get(poolId);
-        if (entries != null) {
-            for (int index = 0; index < entries.size(); index++) {
-                var stack = entries.get(index);
-                result.add(stack.copy());
-            }
+        return entries == null ? List.of() : entries;
+    }
+
+    private static Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool> indexPools(List<RecipePool> pools) {
+        var known = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>(pools.size());
+        for (int index = 0; index < pools.size(); index++) {
+            var pool = pools.get(index);
+            if (known.putIfAbsent(pool.id(), pool) != null)
+                throw new IllegalArgumentException("Duplicate frozen recipe pool: " + pool.id());
         }
-        return ObjectLists.unmodifiable(result);
+        return known;
     }
 
     private void requireRegistration() {

@@ -18,7 +18,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 
 /**
  * Default tiered storage hatch; independent entities extend HatchBlock with their own entity type.
@@ -34,8 +33,8 @@ public class ResourceHatchBlock extends HatchBlock<ResourceHatchBlockEntity> {
 
     public ResourceHatchBlock(ResourceLocation id, HatchMode mode, HatchTier tier) {
         super(id, ResourceHatchBlockEntity.class, 5.0F);
-        this.mode = Objects.requireNonNull(mode);
-        this.tier = Objects.requireNonNull(tier);
+        this.mode = mode;
+        this.tier = tier;
     }
 
     public HatchMode mode() {

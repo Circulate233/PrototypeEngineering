@@ -22,7 +22,6 @@ import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Each factory produces the existing immutable, typed Java requirement.
@@ -45,7 +44,7 @@ public final class ZenRequirement {
 
     private ZenRequirement(RecipeRequirement<?> value, @Nullable RecipeRequirement<ResourceRequirement> resource,
                            @Nullable RecipeRequirement<EnergyRequirement> energy) {
-        this.value = Objects.requireNonNull(value);
+        this.value = value;
         this.resource = resource;
         this.energy = energy;
     }
@@ -169,7 +168,7 @@ public final class ZenRequirement {
             throw new IllegalArgumentException("Random output weights must match candidates");
         var entries = new ObjectArrayList<WeightedSampling.Weighted<GenericStack>>(candidates.length);
         for (int i = 0; i < candidates.length; i++)
-            entries.add(new WeightedSampling.Weighted<>(Objects.requireNonNull(candidates[i]).stack(), weights[i]));
+            entries.add(new WeightedSampling.Weighted<>(candidates[i].stack(), weights[i]));
         var base = resource().payload();
         return resources(id(), new ResourceRequirement(base.inputs(), base.inputsPerTick(), base.outputsPerTick(), base.outputs(),
             base.voidExcessOutputs(), base.chance(), new RandomOutputPool(entries, pickCount),

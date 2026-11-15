@@ -6,10 +6,10 @@ import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.api.storage.StorageFence;
 import com.circulation.prototype_eng.storage.HatchReplacement;
 import com.circulation.prototype_eng.storage.HatchStorageChanges;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
@@ -24,7 +24,7 @@ public final class EnergyHatchStorage {
 
     public EnergyHatchStorage(EnergyHatchConfiguration configuration, long inputRate, long outputRate,
                               long inputEnergy, long outputEnergy, Runnable changed) {
-        this.configuration = Objects.requireNonNull(configuration);
+        this.configuration = configuration;
         if (inputEnergy < 0 || outputEnergy < 0
             || inputEnergy > (configuration.input() == null ? 0 : configuration.input().capacity())
             || outputEnergy > (configuration.output() == null ? 0 : configuration.output().capacity()))
@@ -43,8 +43,9 @@ public final class EnergyHatchStorage {
         return buffer;
     }
 
-    public EnergyBuffer primary() {
-        return Objects.requireNonNull(input == null ? output : input);
+    @SuppressWarnings("DataFlowIssue")
+    public @NotNull EnergyBuffer primary() {
+        return input == null ? output : input;
     }
 
     public @Nullable EnergyBuffer input() {
@@ -63,22 +64,23 @@ public final class EnergyHatchStorage {
         locked(() -> contexts.forEach(StorageContext::invalidate));
     }
 
+    @SuppressWarnings("DataFlowIssue")
     public void updateRates(long inputRate, long outputRate) {
         locked(() -> {
             if (input != null) {
-                var side = Objects.requireNonNull(configuration.input());
+                var side = configuration.input();
                 input.requireTransferLimits(side.effectiveRate(inputRate), side.effectiveRate(outputRate));
             }
             if (output != null) {
-                var side = Objects.requireNonNull(configuration.output());
+                var side = configuration.output();
                 output.requireTransferLimits(side.effectiveRate(inputRate), side.effectiveRate(outputRate));
             }
             if (input != null) {
-                var side = Objects.requireNonNull(configuration.input());
+                var side = configuration.input();
                 input.setTransferLimits(side.effectiveRate(inputRate), side.effectiveRate(outputRate));
             }
             if (output != null) {
-                var side = Objects.requireNonNull(configuration.output());
+                var side = configuration.output();
                 output.setTransferLimits(side.effectiveRate(inputRate), side.effectiveRate(outputRate));
             }
         });

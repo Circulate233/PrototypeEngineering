@@ -66,10 +66,9 @@ public final class NetworkParticipants {
         begin();
         try {
             if (stopping) throw new IllegalStateException("Network participants are stopping");
-            Objects.requireNonNull(participant);
-            var id = Objects.requireNonNull(participant.participantId());
-            var owner = Objects.requireNonNull(participant.ownerId());
-            if (Objects.requireNonNull(participant.state()) == NetworkParticipant.State.UNREGISTERED) {
+            var id = participant.participantId();
+            var owner = participant.ownerId();
+            if (participant.state() == NetworkParticipant.State.UNREGISTERED) {
                 throw new IllegalArgumentException("Cannot register an unregistered participant");
             }
             if (registrations.containsKey(id))
@@ -173,13 +172,13 @@ public final class NetworkParticipants {
             var result = new CaptureSet();
             for (var registration : registrations.values()) {
 
-                var state = Objects.requireNonNull(registration.participant.state());
+                var state = registration.participant.state();
                 if (state == NetworkParticipant.State.UNREGISTERED) {
                     throw new IllegalStateException("Registered participant reported UNREGISTERED");
                 }
                 NetworkParticipant.Capture capture = null;
                 if (state == NetworkParticipant.State.ACTIVE) {
-                    capture = Objects.requireNonNull(registration.participant.capture(tick, epoch));
+                    capture = registration.participant.capture(tick, epoch);
                     var snapshot = capture.snapshot();
                     result.contributions.add(new NetworkContribution(registration.id, registration.owner, epoch,
                         snapshot.version(), snapshot.concurrencyPerTick(), snapshot.resources()));
@@ -206,7 +205,7 @@ public final class NetworkParticipants {
                 if (capture != null) {
                     if (!capture.current().getAsBoolean()) return false;
                     var expected = captures.owners.get(registration.owner);
-                    if (expected != null && !sameOwner(expected, Objects.requireNonNull(teams.resolve(registration.owner))))
+                    if (expected != null && !sameOwner(expected, teams.resolve(registration.owner)))
                         return false;
 
                     if (registration.participant.state() != observed.state) return false;
@@ -285,9 +284,6 @@ public final class NetworkParticipants {
         public PlanResult plan(UUID planId, Snapshot snapshot, ResourceLocation workType, @Nullable ResourceLocation materialSource) {
             begin();
             try {
-                Objects.requireNonNull(planId);
-                Objects.requireNonNull(snapshot);
-                Objects.requireNonNull(workType);
                 if (stopping || !active) return PlanResult.denied(PlanStatus.INACTIVE);
                 if (workById.containsKey(planId)) return PlanResult.denied(PlanStatus.DUPLICATE_PLAN);
                 for (var work : pending) {
@@ -419,7 +415,7 @@ public final class NetworkParticipants {
                 state = WorkState.CANCELLING;
                 try {
                     if (!registration.active || !runtime.authorized(publication)) return cancelOriginal();
-                    var result = Objects.requireNonNull(registration.participant.commit(command));
+                    var result = registration.participant.commit(command);
                     if (result == NetworkParticipant.Commit.REJECTED) {
                         cancellation = Cancellation.CANCELLED;
                         return cancelOriginal();
@@ -478,11 +474,11 @@ public final class NetworkParticipants {
             state = WorkState.CANCELLING;
             try {
                 if (cancellation == Cancellation.UNKNOWN) {
-                    cancellation = Objects.requireNonNull(registration.participant.cancellationState(command));
+                    cancellation = registration.participant.cancellationState(command);
                 }
                 if (cancellation == Cancellation.RETRYABLE) {
                     cancellation = Cancellation.UNKNOWN;
-                    cancellation = Objects.requireNonNull(registration.participant.cancel(command));
+                    cancellation = registration.participant.cancel(command);
                 }
                 if (cancellation != Cancellation.CANCELLED) {
                     runtime.revoke();

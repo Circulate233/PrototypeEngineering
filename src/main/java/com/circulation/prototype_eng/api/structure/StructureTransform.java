@@ -6,7 +6,6 @@ import com.circulation.prototype_eng.util.ExternalEnumValues;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 
-import java.util.Objects;
 
 /**
  * An exact rotation of structure offsets and directions. {@link BlockOrientation#NORTH_UP} is the
@@ -43,15 +42,13 @@ public final class StructureTransform {
      * Rotates offsets expressed in NORTH_UP into the target orientation.
      */
     public static StructureTransform of(BlockOrientation orientation) {
-        return ROTATIONS[Objects.requireNonNull(orientation, "orientation").ordinal()];
+        return ROTATIONS[orientation.ordinal()];
     }
 
     /**
      * Rotates offsets already expressed in {@code from} into {@code to}.
      */
     public static StructureTransform between(BlockOrientation from, BlockOrientation to) {
-        Objects.requireNonNull(from, "from");
-        Objects.requireNonNull(to, "to");
         return of(BlockOrientation.get(
             to.rotate(from.resultingRotate(EnumFacing.NORTH)),
             to.rotate(from.resultingRotate(EnumFacing.UP))));
@@ -63,7 +60,6 @@ public final class StructureTransform {
      * @throws ArithmeticException if a rotated coordinate cannot be represented as an int
      */
     public BlockPos apply(BlockPos position) {
-        Objects.requireNonNull(position, "position");
         return apply(position.getX(), position.getY(), position.getZ(), BlockPos.ORIGIN);
     }
 
@@ -92,7 +88,6 @@ public final class StructureTransform {
      * Rotates a direction with the same signed permutation used for coordinates.
      */
     public EnumFacing apply(EnumFacing direction) {
-        Objects.requireNonNull(direction, "direction");
         return switch (direction) {
             case EAST -> east;
             case WEST -> east.getOpposite();

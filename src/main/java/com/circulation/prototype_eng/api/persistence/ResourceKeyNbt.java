@@ -38,8 +38,13 @@ public final class ResourceKeyNbt implements NbtCodec<AEKey> {
 
     @Override
     public AEKey decode(NBTTagCompound tag) {
-        var id = new ResourceLocation(tag.getString("Type"));
-        var data = tag.getCompoundTag("Data");
+        return decode(new ResourceLocation(tag.getString("Type")), tag.getCompoundTag("Data"));
+    }
+
+    /**
+     * Type loaders read their own fields without mutating data; enclosing inventory metadata may also be present.
+     */
+    public AEKey decode(ResourceLocation id, NBTTagCompound data) {
         var type = resolve(id);
         var key = type.loadKeyFromTag(data);
         if (key == null) {

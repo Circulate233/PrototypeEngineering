@@ -6,7 +6,6 @@ import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransacti
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Explicit host entry point; process creation never invokes this pipeline automatically. Acquisition
@@ -23,7 +22,6 @@ public final class RecipeOverlayPipeline {
      * callbacks must not modify the list while acquisition is running.
      */
     public static RequirementTransaction acquire(RecipeProcess process, List<RecipeOverlayModifierDescriptor> descriptors) {
-        Objects.requireNonNull(process);
         if (descriptors.isEmpty()) {
             return RequirementTransaction.SUCCESS;
         }

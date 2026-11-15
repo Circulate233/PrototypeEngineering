@@ -6,7 +6,6 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -82,7 +81,6 @@ public record ResearchDownloadOperation(UUID id, Intent intent, ResearchDownload
     public record Intent(UUID playerId, UUID nonce, UUID databaseId, String teamId, ResourceLocation researchId,
                          int level, int slot) {
         public Intent {
-            Objects.requireNonNull(researchId);
             if (level < 1 || slot < 0 || slot >= 41)
                 throw new IllegalArgumentException("Invalid download level or player inventory slot");
         }

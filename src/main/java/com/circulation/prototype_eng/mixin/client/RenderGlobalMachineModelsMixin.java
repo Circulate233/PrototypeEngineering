@@ -16,9 +16,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * The batch and global-TESR boundaries both feed the same ordered model pass pipeline.
- */
 @Mixin(RenderGlobal.class)
 public abstract class RenderGlobalMachineModelsMixin {
     @Unique
@@ -28,11 +25,6 @@ public abstract class RenderGlobalMachineModelsMixin {
 
     @Inject(method = "renderEntities", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/tileentity/TileEntityRendererDispatcher;drawBatch(I)V", shift = At.Shift.AFTER, remap = false))
     private void prototype_eng$afterBatch(Entity view, ICamera camera, float partialTicks, CallbackInfo callback) {
-        prototype_eng$flush();
-    }
-
-    @Inject(method = "renderEntities", at = @At("RETURN"))
-    private void prototype_eng$afterGlobal(Entity view, ICamera camera, float partialTicks, CallbackInfo callback) {
         prototype_eng$flush();
     }
 

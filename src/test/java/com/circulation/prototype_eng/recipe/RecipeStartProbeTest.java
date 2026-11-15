@@ -348,7 +348,7 @@ class RecipeStartProbeTest {
             if (selections != null) {
                 assertTrue(selections.snapshot().isEmpty());
             }
-            assertThrows(NullPointerException.class, process::requirementPath);
+            assertNull(process.requirementPath());
             assertEquals(0, metrics.commits);
             assertEquals(0, metrics.completes);
             assertEquals(0, metrics.descriptorApplications);

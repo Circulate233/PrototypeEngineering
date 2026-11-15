@@ -5,7 +5,6 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.fml.common.eventhandler.Event;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -23,10 +22,10 @@ public final class RecipeDefinitionPublicationEvent extends Event {
 
     public RecipeDefinitionPublicationEvent(MinecraftServer server, UUID sessionId, @Nullable RecipeRegistry.Snapshot previous,
                                             RecipeRegistry.Snapshot current, @Nullable EntityPlayerMP player) {
-        this.server = Objects.requireNonNull(server);
-        this.sessionId = Objects.requireNonNull(sessionId);
+        this.server = server;
+        this.sessionId = sessionId;
         this.previous = previous;
-        this.current = Objects.requireNonNull(current);
+        this.current = current;
         this.player = player;
     }
 

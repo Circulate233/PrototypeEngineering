@@ -16,7 +16,6 @@ import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.localization.JeiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import mcp.MethodsReturnNonnullByDefault;
 import mezz.jei.api.IGuiHelper;
@@ -30,7 +29,6 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Function;
 
 /**
@@ -88,12 +86,10 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
         this(pool, guiHelper, describe, options, font, singleInput, true);
     }
 
-    AutoLayoutRecipePage(RecipePool pool, IGuiHelper guiHelper, Function<MachineRecipe, JeiRecipeDisplay> describe,
+    AutoLayoutRecipePage(RecipePool pool, @SuppressWarnings("unused") IGuiHelper guiHelper, Function<MachineRecipe, JeiRecipeDisplay> describe,
                          JeiRenderOptions options, RecipeInformationLayout.Font font, boolean singleInput, boolean showArrow) {
-        this.font = Objects.requireNonNull(font);
-        Objects.requireNonNull(pool);
-        Objects.requireNonNull(guiHelper);
-        this.options = Objects.requireNonNull(options);
+        this.font = font;
+        this.options = options;
         this.singleInput = singleInput;
         this.showArrow = showArrow;
         data = measure(pool, describe);
@@ -109,7 +105,7 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
         var result = new ObjectArrayList<JeiSlot>();
         for (int i = 0; i < count; i++)
             result.add(new JeiSlot(x + i % columns * STRIDE, y + i / columns * STRIDE, 18, 18, 1, JeiVisuals.AUTOMATIC));
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     private static int columns(int count, int limit) {
@@ -289,7 +285,7 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
             for (int i = 0; i < panels.pageCount(); i++)
                 geometries.add(owner.geometry(panels.inputGroups(i).size(), panels.outputGroups(i).size()));
             geometry = geometries.getFirst();
-            explanation = Objects.requireNonNull(captured.information.get(display), "Display was not measured for this category");
+            explanation = captured.information.get(display);
         }
 
         private void refresh(boolean initialize) {

@@ -11,14 +11,13 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 final class ZenRecipeSupport {
     private ZenRecipeSupport() {
     }
 
     static ResourceLocation id(String value) {
-        return new ResourceLocation(Objects.requireNonNull(value));
+        return new ResourceLocation(value);
     }
 
     static List<GenericStack> stacks(ZenResource[] values) {
@@ -32,7 +31,7 @@ final class ZenRecipeSupport {
     }
 
     static NumericAttributeModifier numericModifier(String id, double amount, String operation) {
-        return new NumericAttributeModifier(id, amount, AttributeModifier.Operation.valueOf(Objects.requireNonNull(operation)));
+        return new NumericAttributeModifier(id, amount, AttributeModifier.Operation.valueOf(operation));
     }
 
     static List<AEKey> keys(ZenResource[] values) {

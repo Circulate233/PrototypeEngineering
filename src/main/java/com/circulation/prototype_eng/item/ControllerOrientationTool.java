@@ -7,7 +7,6 @@ import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.localization.OrientationToolText;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.util.ITooltipFlag;
 import net.minecraft.enchantment.Enchantment;
@@ -166,7 +165,7 @@ public class ControllerOrientationTool extends AEBaseItem {
 
     @Override
     public @NotNull Set<String> getToolClasses(@NotNull ItemStack stack) {
-        return isEnabled(stack) ? Set.of() : new ObjectOpenHashSet<>(TOOL_CLASSES);
+        return isEnabled(stack) ? Set.of() : TOOL_CLASSES;
     }
 
     @Override

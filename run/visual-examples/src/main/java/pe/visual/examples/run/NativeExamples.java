@@ -39,7 +39,6 @@ import com.circulation.prototype_eng.api.structure.StructurePattern;
 import com.circulation.prototype_eng.api.structure.StructurePredicates;
 import com.circulation.prototype_eng.api.structure.StructurePredicate;
 import com.circulation.prototype_eng.structure.TemplateStructure;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.block.Block;
 import net.minecraft.init.Blocks;
@@ -56,7 +55,6 @@ import java.util.Locale;
 
 import com.circulation.prototype_eng.api.structure.StructureDefinition;
 
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -102,7 +100,7 @@ public final class NativeExamples {
         for (int lane = 1; lane <= 4; lane++) {
             var id = NativeRunCases.id("native_cycle_" + lane);
             var io = new ResourceRequirement(List.of(item(new ItemStack(starts.get(lane - 1)), 1)),
-                List.of(item(new ItemStack(Items.COAL), 1), new GenericStack(Objects.requireNonNull(AEFluidKey.of(FluidRegistry.WATER)), 5)),
+                List.of(item(new ItemStack(Items.COAL), 1), new GenericStack(AEFluidKey.of(FluidRegistry.WATER), 5)),
                 List.of(item(new ItemStack(Items.IRON_NUGGET), 1)), List.of(item(new ItemStack(Items.DIAMOND), lane)), false);
             var recipe = new MachineRecipe(id, 400, List.of(
                 RecipeRequirements.RESOURCES.requirement(NativeRunCases.id("native_io_" + lane), io),
@@ -121,7 +119,7 @@ public final class NativeExamples {
             Set.of(NativeRunCases.id("native_lane_1")), 1, RecipeParallelismSelection.fixed(1));
         var chanceRecipe = new MachineRecipe(NativeRunCases.id("native_chance"), 400, List.of(
             RecipeRequirements.RESOURCES.requirement(NativeRunCases.id("native_chance_input"), new ResourceRequirement(
-                List.of(item(new ItemStack(Items.FLINT), 1), new GenericStack(Objects.requireNonNull(AEFluidKey.of(FluidRegistry.WATER)), 1000)), List.of())),
+                List.of(item(new ItemStack(Items.FLINT), 1), new GenericStack(AEFluidKey.of(FluidRegistry.WATER), 1000)), List.of())),
             RecipeRequirements.RESOURCES.requirement(NativeRunCases.id("native_chance_output"), new ResourceRequirement(
                 List.of(), List.of(), List.of(), List.of(item(new ItemStack(Items.DIAMOND), 1)), false, new ResourceChance(25, null), null))),
             Set.of(NativeRunCases.id("native_lane_1")), 1, RecipeParallelismSelection.fixed(1));
@@ -176,6 +174,6 @@ public final class NativeExamples {
     }
 
     private static GenericStack item(ItemStack stack, long amount) {
-        return new GenericStack(Objects.requireNonNull(AEItemKey.of(stack)), amount);
+        return new GenericStack(AEItemKey.of(stack), amount);
     }
 }

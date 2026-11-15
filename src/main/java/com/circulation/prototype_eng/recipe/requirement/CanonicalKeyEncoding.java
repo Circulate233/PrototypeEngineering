@@ -15,7 +15,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.IntToLongFunction;
 
 /**
@@ -29,7 +28,7 @@ class CanonicalKeyEncoding {
     private int allocationCredit;
 
     CanonicalKeyEncoding(NBTTagCompound tag) {
-        parts.add(new Node(Objects.requireNonNull(tag)));
+        parts.add(new Node(tag));
     }
 
     boolean advance(RecipeWorkBudget budget) {
@@ -54,7 +53,6 @@ class CanonicalKeyEncoding {
             }
             result = new byte[emitted.size()];
         }
-        // Copying final bytes is separately charged before each read/write.
         while (copied < result.length) {
             if (!budget.take()) {
                 return false;
@@ -91,8 +89,8 @@ class CanonicalKeyEncoding {
                 yield new Array(values.length, 4, index -> values[index]);
             }
             case NBTTagLongArray array -> {
-                var values = (NbtLongArrayAccess) array;
-                yield new Array(values.prototype_eng$length(), 8, values::prototype_eng$value);
+                long[] values = array.data;
+                yield new Array(values.length, 8, index -> values[index]);
             }
             case NBTPrimitive number -> switch (tag.getId()) {
                 case 1 -> new Word(number.getByte(), 1);
@@ -170,8 +168,9 @@ class CanonicalKeyEncoding {
         private final IntToLongFunction element;
         private final Word header;
         private int cursor;
-        @Nullable
-        private Word current;
+        private long current;
+        private int elementCursor;
+        private boolean reading;
 
         private Array(int length, int elementBytes, IntToLongFunction element) {
             this.length = length;
@@ -186,16 +185,20 @@ class CanonicalKeyEncoding {
                 return false;
             }
             while (cursor < length) {
-                if (current == null) {
+                if (!reading) {
                     if (!budget.take()) {
                         return false;
                     }
-                    current = new Word(element.applyAsLong(cursor), elementBytes);
+                    current = element.applyAsLong(cursor);
+                    reading = true;
                 }
-                if (!current.advance(budget)) {
-                    return false;
+                while (elementCursor < elementBytes) {
+                    if (!budget.take()) return false;
+                    emit((int) (current >>> (8 * (elementBytes - elementCursor - 1))));
+                    elementCursor++;
                 }
-                current = null;
+                reading = false;
+                elementCursor = 0;
                 cursor++;
             }
             return true;
@@ -282,7 +285,7 @@ class CanonicalKeyEncoding {
                     return false;
                 }
                 String name = ordered.get(cursor++);
-                push(new Node(Objects.requireNonNull(tag.getTag(name))));
+                push(new Node(tag.getTag(name)));
                 push(new Text(name));
                 return false;
             }

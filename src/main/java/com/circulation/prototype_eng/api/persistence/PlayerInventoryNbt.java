@@ -11,7 +11,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.util.Objects;
 
 /**
  * Complete 1.12 player inventory proofs, preserving native item tags and capabilities.
@@ -45,7 +44,6 @@ public final class PlayerInventoryNbt {
     }
 
     public static NBTTagCompound decode(byte[] source) {
-        Objects.requireNonNull(source);
         if (source.length == 0 || source.length > MAX_BYTES)
             throw new IllegalArgumentException("Invalid inventory snapshot byte length");
         try {
@@ -75,8 +73,8 @@ public final class PlayerInventoryNbt {
         for (int index = 0; index < list.tagCount(); index++) {
             var stack = list.getCompoundTagAt(index);
             if (Byte.toUnsignedInt(stack.getByte("Slot")) != encoded) continue;
-            var result = stack.copy();
-            result.removeTag("Slot");
+            var result = new NBTTagCompound();
+            for (var key : stack.getKeySet()) if (!key.equals("Slot")) result.setTag(key, stack.getTag(key));
             return result;
         }
         return new NBTTagCompound();

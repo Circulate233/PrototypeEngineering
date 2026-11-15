@@ -11,7 +11,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -25,7 +24,7 @@ public final class TeamResearchCompletion {
     private final Thread owner = Thread.currentThread();
 
     public TeamResearchCompletion(ResearchRegistry registry) {
-        this.registry = Objects.requireNonNull(registry);
+        this.registry = registry;
         if (!registry.isFrozen()) {
             throw new IllegalStateException("Research registry is not ready");
         }
@@ -49,7 +48,7 @@ public final class TeamResearchCompletion {
     public Prepared prepareFrozen(ResourceLocation id, int targetLevel, Collection<UUID> members,
                                   Map<UUID, PlayerResearchState> players, TeamOwnedResearch team, long worldTime,
                                   Object2IntMap<UUID> baselines) {
-        return prepare(id, targetLevel, members, players, team, worldTime, Objects.requireNonNull(baselines));
+        return prepare(id, targetLevel, members, players, team, worldTime, baselines);
     }
 
     @Nullable
@@ -63,8 +62,6 @@ public final class TeamResearchCompletion {
         if (definition.specialOnly() || targetLevel < 1 || targetLevel > definition.maxLevel() || worldTime < 0) {
             throw new IllegalArgumentException("Invalid ordinary research completion: " + id);
         }
-        Objects.requireNonNull(players);
-        Objects.requireNonNull(team);
         if (team.registry() != registry) {
             throw new IllegalArgumentException("Team research belongs to a different registry");
         }

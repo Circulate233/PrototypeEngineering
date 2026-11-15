@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -16,7 +15,6 @@ public final class ManualResearchMaterialReceiptNbt {
     }
 
     public static NBTTagCompound encode(ManualResearchMaterialReceipt receipt) {
-        Objects.requireNonNull(receipt);
         var tag = new NBTTagCompound();
         tag.setInteger("version", 1);
         tag.setString("sessionId", receipt.sessionId().toString());

@@ -13,7 +13,6 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.util.ResourceLocation;
 
-import java.util.Objects;
 import java.util.function.BiFunction;
 
 /**
@@ -28,7 +27,7 @@ public final class MachineGuiRegistry {
 
     @SuppressWarnings("unused") // Downstream mods register their own containers before opening any GUI.
     public static void register(ResourceLocation type, BiFunction<InventoryPlayer, MachineControllerHost, ? extends AEBaseContainer> factory) {
-        if (FACTORIES.putIfAbsent(Objects.requireNonNull(type), Objects.requireNonNull(factory)) != null) {
+        if (FACTORIES.putIfAbsent(type, factory) != null) {
             throw new IllegalArgumentException("Machine container already registered: " + type);
         }
     }

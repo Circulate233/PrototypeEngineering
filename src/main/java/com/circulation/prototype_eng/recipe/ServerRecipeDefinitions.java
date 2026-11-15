@@ -15,7 +15,6 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.PlayerEvent;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -30,7 +29,7 @@ public final class ServerRecipeDefinitions {
     }
 
     public static synchronized void start(MinecraftServer server) {
-        requireThread(Objects.requireNonNull(server));
+        requireThread(server);
         if (session != null) throw new IllegalStateException("Recipe definition session is already running");
         var scheduler = ServerTaskSchedulers.forServer(server);
         var sessionId = UUID.randomUUID();
@@ -86,9 +85,10 @@ public final class ServerRecipeDefinitions {
     }
 
     @SubscribeEvent
+    @SuppressWarnings("DataFlowIssue")
     public static void loggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.player instanceof EntityPlayerMP player)) return;
-        var server = Objects.requireNonNull(player.getServer());
+        var server = player.getServer();
         var current = requireSession(server);
         var connection = player.connection;
         current.scheduler.runAtBoundary(() -> {

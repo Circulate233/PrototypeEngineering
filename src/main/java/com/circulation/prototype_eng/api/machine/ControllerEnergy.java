@@ -18,11 +18,12 @@ import java.util.List;
  */
 public final class ControllerEnergy {
     private long paidTick = Long.MIN_VALUE;
+    private final ReferenceOpenHashSet<StorageContext> visited = new ReferenceOpenHashSet<>();
 
     public boolean canPay(MachineInstance machine, long tick) {
         long remaining = machine.networkEnergy(machine.energyPerTick());
         if (remaining == 0 || paidTick == tick) return true;
-        var visited = new ReferenceOpenHashSet<StorageContext>();
+        visited.clear();
         var elements = MachineHatches.get(machine).energyInputs();
         for (int index = 0; index < elements.size(); index++) {
             var source = elements.get(index);
@@ -54,7 +55,7 @@ public final class ControllerEnergy {
         remaining = machine.networkEnergy(remaining);
         if (remaining == 0 || paidTick == tick) return Payment.FREE;
         var tokens = new ObjectArrayList<ResourceReservation>();
-        var visited = new ReferenceOpenHashSet<StorageContext>();
+        visited.clear();
         try {
             var elements2 = MachineHatches.get(machine).energyInputs();
             for (int index2 = 0; index2 < elements2.size(); index2++) {

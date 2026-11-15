@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.BiFunction;
 
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -106,7 +107,7 @@ class CheckpointRequirementTest {
     }
 
     private static void assertNoTick(RecipeProcess process) {
-        assertThrows(NullPointerException.class, process::tickContext);
+        assertNull(process.tickContext());
     }
 
     private static ResourceLocation id(String name) {

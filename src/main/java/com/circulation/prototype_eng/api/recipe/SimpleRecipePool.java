@@ -18,7 +18,6 @@ import com.circulation.prototype_eng.api.storage.StorageContext;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
@@ -28,7 +27,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 
@@ -43,8 +41,8 @@ public final class SimpleRecipePool implements RecipePool {
     private final ResourceRecipeIndex inputIndex;
     private final Predicate<MachineInstance> stableInputs;
     private final @Nullable String existingJeiPageId;
-    private final Object2ObjectOpenHashMap<AEKey, List<Entry>> byInput = new Object2ObjectOpenHashMap<>();
-    private final Reference2IntOpenHashMap<MachineRecipe> priority = new Reference2IntOpenHashMap<>();
+    private final Object2ObjectOpenHashMap<AEKey, List<Entry>> byInput;
+    private final Reference2IntOpenHashMap<MachineRecipe> priority;
 
     /**
      * Uses the actual owner's scanner/input policy; unknown factories/providers retain every candidate.
@@ -65,17 +63,18 @@ public final class SimpleRecipePool implements RecipePool {
 
     private SimpleRecipePool(ResourceLocation id, String translationKey, List<Entry> entries, List<MachineType> machines,
                              Predicate<MachineInstance> stableInputs, @Nullable String existingJeiPageId) {
-        this.id = Objects.requireNonNull(id);
+        this.id = id;
         if (translationKey == null || translationKey.isBlank())
             throw new IllegalArgumentException("Pool title is required");
         this.translationKey = translationKey;
-        this.stableInputs = Objects.requireNonNull(stableInputs);
+        this.stableInputs = stableInputs;
+        byInput = new Object2ObjectOpenHashMap<>();
+        priority = new Reference2IntOpenHashMap<>();
         var ids = new ObjectOpenHashSet<ResourceLocation>(entries.size());
         var rows = new ObjectArrayList<MachineRecipe>(entries.size());
         var postings = new Object2ObjectOpenHashMap<AEKey, ObjectArrayList<Entry>>(entries.size());
         for (int index5 = 0; index5 < entries.size(); index5++) {
             var entry = entries.get(index5);
-            Objects.requireNonNull(entry);
             if (!ids.add(entry.recipe.id()))
                 throw new IllegalArgumentException("Duplicate simple recipe: " + entry.recipe.id());
             priority.put(entry.recipe, rows.size());
@@ -84,11 +83,11 @@ public final class SimpleRecipePool implements RecipePool {
         }
         postings.forEach((key, values) -> {
             values.sort(Comparator.comparingLong(entry -> entry.input.amount()));
-            byInput.put(key, ObjectLists.unmodifiable(values));
+            byInput.put(key, values);
         });
-        recipes = ObjectLists.unmodifiable(rows);
+        recipes = rows;
         inputIndex = ResourceRecipeIndex.forFixedInputs(recipes, _ -> true);
-        this.machines = ObjectLists.unmodifiable(new ObjectArrayList<>(machines));
+        this.machines = machines;
         this.existingJeiPageId = existingJeiPageId;
     }
 
@@ -136,12 +135,19 @@ public final class SimpleRecipePool implements RecipePool {
      * Immutable addon binding; existing lookup policy and native quantities remain unchanged.
      */
     public SimpleRecipePool withExistingJeiPage(@Nullable String categoryUid) {
-        var entries = new ObjectArrayList<Entry>(recipes.size());
-        for (int index3 = 0; index3 < recipes.size(); index3++) {
-            var recipe = recipes.get(index3);
-            entries.add(Entry.of(recipe));
-        }
-        return new SimpleRecipePool(id, translationKey, entries, machines, stableInputs, categoryUid);
+        return new SimpleRecipePool(this, categoryUid);
+    }
+
+    private SimpleRecipePool(SimpleRecipePool source, @Nullable String categoryUid) {
+        id = source.id;
+        translationKey = source.translationKey;
+        recipes = source.recipes;
+        machines = source.machines;
+        inputIndex = source.inputIndex;
+        stableInputs = source.stableInputs;
+        existingJeiPageId = categoryUid;
+        byInput = source.byInput;
+        priority = source.priority;
     }
 
     @Override
@@ -156,7 +162,7 @@ public final class SimpleRecipePool implements RecipePool {
 
     @Override
     public @Nullable RecipeCandidateIndex.Cursor beginCandidates(MachineInstance machine, Set<ResourceLocation> groups) {
-        return stableInputs.test(Objects.requireNonNull(machine))
+        return stableInputs.test(machine)
             ? new GroupedResourceLookup(machine, priority::getInt, group -> new Lookup(machine, group.hatches().resources())) : null;
     }
 
@@ -165,8 +171,6 @@ public final class SimpleRecipePool implements RecipePool {
      */
     public record Entry(MachineRecipe recipe, GenericStack input, List<GenericStack> outputs) {
         public Entry {
-            Objects.requireNonNull(recipe);
-            Objects.requireNonNull(input);
             ResourceRequirement.validateStacks(outputs);
             var resource = resource(recipe);
             if (!resource.inputs().getFirst().equals(input) || !resource.outputs().equals(outputs))
@@ -191,7 +195,6 @@ public final class SimpleRecipePool implements RecipePool {
         }
 
         private static ResourceRequirement resource(MachineRecipe recipe) {
-            Objects.requireNonNull(recipe);
             var requirements = recipe.orderedRequirements();
             if (requirements.size() != 1 || requirements.getFirst().type() != RecipeRequirements.RESOURCES
                 || !(requirements.getFirst().payload() instanceof ResourceRequirement resource)
@@ -262,7 +265,6 @@ public final class SimpleRecipePool implements RecipePool {
 
         @Override
         public boolean advance(RecipeWorkBudget budget) {
-            Objects.requireNonNull(budget);
             if (phase == 3) return true;
             if (stale) return false;
             while (true) {
@@ -281,12 +283,12 @@ public final class SimpleRecipePool implements RecipePool {
                             }
                             var storage = hatch.input();
                             boolean validStorage = storage != null && storage.isValid();
-                            var identity = storage == null ? null : Objects.requireNonNull(hatch.inputStorageIdentity());
-                            var context = storage == null ? null : Objects.requireNonNull(storage.context());
+                            var identity = storage == null ? null : hatch.inputStorageIdentity();
+                            var context = storage == null ? null : storage.context();
                             bindings.add(new Binding(hatch, true, storage != null, identity, context, validStorage));
                             if (!validStorage) continue;
-                            view = new Captured(hatch, storage, Objects.requireNonNull(context), Objects.requireNonNull(identity),
-                                Objects.requireNonNull(byInput.size() == 1 ? storage.beginQuantityCapture(byInput.keySet().iterator().next()) : storage.beginQuantityCapture()));
+                            view = new Captured(hatch, storage, context, identity,
+                                (byInput.size() == 1 ? storage.beginQuantityCapture(byInput.keySet().iterator().next()) : storage.beginQuantityCapture()));
                             captures.add(view);
                         }
                         if (quantities == null) {
@@ -300,7 +302,7 @@ public final class SimpleRecipePool implements RecipePool {
                         while (quantities.hasNext()) {
                             if (!budget.take()) return false;
                             var entry = quantities.next();
-                            var key = Objects.requireNonNull(entry.getKey());
+                            var key = entry.getKey();
                             long amount = entry.getLongValue();
                             if (amount < 0) throw new IllegalStateException("Negative input availability");
                             if (!byInput.containsKey(key)) continue;
@@ -405,7 +407,6 @@ public final class SimpleRecipePool implements RecipePool {
 
                 @Override
                 public boolean advance(RecipeWorkBudget budget) {
-                    Objects.requireNonNull(budget);
                     if (complete) return true;
                     if (stale) {
                         complete = true;

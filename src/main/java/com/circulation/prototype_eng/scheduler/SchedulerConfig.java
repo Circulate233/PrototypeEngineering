@@ -7,7 +7,6 @@ import org.jetbrains.annotations.Nullable;
 import java.io.File;
 import java.time.Duration;
 import java.util.Locale;
-import java.util.Objects;
 
 /**
  * Server defaults and explicit reloads; running sessions apply requests at a joined tick boundary.
@@ -21,7 +20,7 @@ public final class SchedulerConfig {
     }
 
     public static void load(File directory) {
-        configurationFile = new File(Objects.requireNonNull(directory), Tags.MOD_ID + "/scheduler.cfg");
+        configurationFile = new File(directory, Tags.MOD_ID + "/scheduler.cfg");
         reload();
     }
 
@@ -96,8 +95,6 @@ public final class SchedulerConfig {
         public Settings {
             if (workerThreads < 1 || laneCount < 1)
                 throw new IllegalArgumentException("Scheduler thread counts must be positive");
-            Objects.requireNonNull(plannedTimeout);
-            Objects.requireNonNull(workerStrategy);
             if (plannedTimeout.isNegative() || plannedTimeout.isZero())
                 throw new IllegalArgumentException("Planned budget must be positive");
             plannedTimeout.toNanos(); // Validate representability before accepting a runtime request.

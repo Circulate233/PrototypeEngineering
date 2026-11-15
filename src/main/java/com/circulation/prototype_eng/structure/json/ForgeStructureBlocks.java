@@ -6,7 +6,6 @@ import com.circulation.prototype_eng.api.structure.StructurePredicates;
 import com.circulation.prototype_eng.api.structure.json.StructureBlockResolver;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
@@ -70,9 +69,8 @@ public final class ForgeStructureBlocks implements StructureBlockResolver {
                 if (block != Blocks.AIR) result.add(block);
             }
         }
-        var frozen = ObjectLists.unmodifiable(result);
-        regexBlocks.put(expression, frozen);
-        return frozen;
+        regexBlocks.put(expression, result);
+        return result;
     }
 
     @Override
@@ -100,6 +98,6 @@ public final class ForgeStructureBlocks implements StructureBlockResolver {
             if (result.size() == 32) break;
             result.add(displayState(block.getRegistryName(), 0, Map.of()));
         }
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 }

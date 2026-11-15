@@ -12,7 +12,6 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
-import java.util.Objects;
 
 /**
  * Native client event consumes common parameters and the same independent Java page instances.
@@ -31,7 +30,7 @@ public final class ScriptJeiEvents {
     @SuppressWarnings("unused") // Client Java addons expose the returned common handle to scripts.
     public static ZenJeiPage page(String id, RecipePoolJeiPage page) {
         var handle = ZenJeiPage.named(id);
-        if (PAGES.putIfAbsent(handle.id(), Objects.requireNonNull(page)) != null)
+        if (PAGES.putIfAbsent(handle.id(), page) != null)
             throw new IllegalArgumentException("Duplicate addon JEI page handle: " + id);
         return handle;
     }

@@ -12,7 +12,6 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 
 import java.util.Collection;
-import java.util.Objects;
 
 /**
  * All-or-nothing work-slot loading using the host's live layout and executor. Explicit layout revision
@@ -28,8 +27,8 @@ public final class MachineWorkSlotsNbt {
     }
 
     public MachineWorkSlotsNbt(String revision, RecipeProcessCodecs recipes) {
-        this.revision = Objects.requireNonNull(revision);
-        this.recipes = Objects.requireNonNull(recipes);
+        this.revision = revision;
+        this.recipes = recipes;
         if (revision.isBlank()) {
             throw new IllegalArgumentException("Work-slot layout revision must not be blank");
         }

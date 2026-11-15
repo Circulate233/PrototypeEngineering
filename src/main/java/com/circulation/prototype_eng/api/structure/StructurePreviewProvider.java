@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.structure;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Optional immutable display geometry for an external shape; no matcher/factory crosses the wire.
@@ -29,9 +28,8 @@ public interface StructurePreviewProvider {
     record Geometry(Kind kind, BlockPos offset, int minCount, int maxCount, BlockPos sliceOffset,
                     List<BlockPos> cells, List<MachineStructure> children) {
         public Geometry {
-            Objects.requireNonNull(kind);
-            offset = Objects.requireNonNull(offset).toImmutable();
-            sliceOffset = Objects.requireNonNull(sliceOffset).toImmutable();
+            offset = offset.toImmutable();
+            sliceOffset = sliceOffset.toImmutable();
             if (minCount < 0 || maxCount < minCount) throw new IllegalArgumentException("Invalid preview slice counts");
         }
     }

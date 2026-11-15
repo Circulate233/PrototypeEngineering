@@ -4,17 +4,12 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Stable nested identity: reused child definitions in different wrappers own separate process state.
  */
 public record RequirementPath(@Nullable RequirementPath parent, ResourceLocation typeId,
                               ResourceLocation requirementId) {
-    public RequirementPath {
-        Objects.requireNonNull(typeId);
-        Objects.requireNonNull(requirementId);
-    }
 
     private static String frame(ResourceLocation id) {
         String value = id.toString();

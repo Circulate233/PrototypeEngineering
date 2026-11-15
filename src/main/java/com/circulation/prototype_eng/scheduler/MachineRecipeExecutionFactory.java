@@ -12,7 +12,6 @@ import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
@@ -32,11 +31,11 @@ final class MachineRecipeExecutionFactory implements TaskScheduler.PlannedFactor
 
     MachineRecipeExecutionFactory(Supplier<List<TaskScheduler.PlannedCandidate>> candidates, Supplier<Runnable> preparation,
                                   LongSupplier tick, BooleanSupplier tickOpen, Predicate<MachineInstance> concurrentAdmission) {
-        this.candidates = Objects.requireNonNull(candidates);
-        this.preparation = Objects.requireNonNull(preparation);
-        this.tick = Objects.requireNonNull(tick);
-        this.tickOpen = Objects.requireNonNull(tickOpen);
-        this.concurrentAdmission = Objects.requireNonNull(concurrentAdmission);
+        this.candidates = candidates;
+        this.preparation = preparation;
+        this.tick = tick;
+        this.tickOpen = tickOpen;
+        this.concurrentAdmission = concurrentAdmission;
     }
 
     @Nullable
@@ -70,7 +69,7 @@ final class MachineRecipeExecutionFactory implements TaskScheduler.PlannedFactor
             if (machine == null || !owns(candidate.task())) {
                 continue;
             }
-            var lifecycle = Objects.requireNonNull(machine.lifecycle());
+            var lifecycle = machine.lifecycle();
             var machineMode = machine.executionMode();
             var policy = machine.executionPolicy();
             if (!unique.add(machine)) {
@@ -88,7 +87,7 @@ final class MachineRecipeExecutionFactory implements TaskScheduler.PlannedFactor
             return null;
         }
         long capturedTick = tick.getAsLong();
-        return new MachineRecipeExecution(tasks, captured, forwardDeadline, Objects.requireNonNull(preparation.get()),
+        return new MachineRecipeExecution(tasks, captured, forwardDeadline, preparation.get(),
             () -> tickOpen.getAsBoolean() && tick.getAsLong() == capturedTick);
     }
 }

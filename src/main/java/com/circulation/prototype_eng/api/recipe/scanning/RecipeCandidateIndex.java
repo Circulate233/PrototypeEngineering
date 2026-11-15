@@ -8,7 +8,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -45,7 +44,6 @@ public interface RecipeCandidateIndex {
 
             @Override
             public boolean advance(RecipeWorkBudget budget) {
-                Objects.requireNonNull(budget);
                 if (complete) {
                     return true;
                 }
@@ -100,7 +98,6 @@ public interface RecipeCandidateIndex {
 
                 @Override
                 public boolean advance(RecipeWorkBudget budget) {
-                    Objects.requireNonNull(budget);
                     if (!complete) {
                         if (!budget.take()) return false;
                         valid = Cursor.this.current();

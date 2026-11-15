@@ -4,19 +4,12 @@
   "refmap": "prototype_eng.refmap.json",
   "minVersion": "0.8.7",
   "compatibilityLevel": "JAVA_25",
-  "mixins": [
-    "NBTTagLongArrayMixin",
-    "ZenComponentDataMemberMixin"
-  ],
   "client": [
     "client.RenderGlobalMachineModelsMixin",
     "client.TileEntityRendererDispatcherMachineMixin",
-    "client.SimpleReloadableResourceManagerAccessor",
-    "client.FallbackResourceManagerAccessor",
     "client.GuiContainerPreviewMixin",
     "client.ModRegistryRecipePoolPagesMixin",
-    "client.HeiPreviewInputMixin",
-    "client.CtmHatchBloomMetadataMixin"
+    "client.HeiPreviewInputMixin"
   ],
   "injectors": {
     "defaultRequire": 1

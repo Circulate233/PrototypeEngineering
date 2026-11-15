@@ -27,7 +27,7 @@ import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
 import com.circulation.prototype_eng.integration.crafttweaker.ZenComponentData;
-import com.circulation.prototype_eng.integration.crafttweaker.ZenComponentDataMembers;
+import com.circulation.prototype_eng.integration.crafttweaker.ZenComponentDataType;
 import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
 import com.circulation.prototype_eng.recipe.RecipeDefinitionManifestCodec;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
@@ -54,14 +54,10 @@ import stanhebben.zenscript.annotations.ZenExpansion;
 import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 import stanhebben.zenscript.annotations.ZenSetter;
-import stanhebben.zenscript.compiler.IEnvironmentGlobal;
-import stanhebben.zenscript.expression.partial.IPartialExpression;
 import stanhebben.zenscript.impl.GenericCompileEnvironment;
 import stanhebben.zenscript.impl.GenericErrorLogger;
 import stanhebben.zenscript.impl.GenericRegistry;
 import stanhebben.zenscript.symbols.SymbolType;
-import stanhebben.zenscript.type.ZenTypeNative;
-import stanhebben.zenscript.util.ZenPosition;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -101,8 +97,7 @@ class ZenRecipeBridgeTest {
         var output = new ByteArrayOutputStream();
         var environment = new GenericCompileEnvironment();
         var registry = new GenericRegistry(environment, new GenericErrorLogger(new PrintStream(output, true, StandardCharsets.UTF_8)));
-        // Ordinary JUnit does not apply Mixins. Register one native type using the production helper.
-        var dataType = new WritableDataType();
+        var dataType = new ZenComponentDataType();
         registry.getTypes().getTypeMap().put(ZenComponentData.class, dataType);
         dataType.complete(registry.getTypes());
         registry.getRoot().put(dataType.getName(), new SymbolType(dataType), registry.getErrorLogger());
@@ -496,18 +491,6 @@ class ZenRecipeBridgeTest {
         @ZenGetter("length")
         public static int length(ZenComponentData data) {
             throw new AssertionError("Native data members must take precedence over expansions");
-        }
-    }
-
-    private static final class WritableDataType extends ZenTypeNative {
-        private WritableDataType() {
-            super(ZenComponentData.class);
-        }
-
-        @Override
-        public IPartialExpression getMember(ZenPosition position, IEnvironmentGlobal environment, IPartialExpression value, String name) {
-            var member = ZenComponentDataMembers.member(this, position, environment, value, name);
-            return member == null ? super.getMember(position, environment, value, name) : member;
         }
     }
 

@@ -7,7 +7,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
-import java.util.Objects;
 
 /**
  * Authoritative client-thread directory; local config and incomplete network data never replace it.
@@ -28,13 +27,12 @@ public final class ClientStructureCatalog {
      */
     public static ClientStructureCatalog local(StructureCatalogView view) {
         var catalog = new ClientStructureCatalog();
-        catalog.view = Objects.requireNonNull(view);
+        catalog.view = view;
         return catalog;
     }
 
     public void connected(Object connection) {
         requireOwner();
-        Objects.requireNonNull(connection);
         if (this.connection == connection) return;
         this.connection = connection;
         pending = null;
@@ -68,10 +66,11 @@ public final class ClientStructureCatalog {
 
     /**
      * A caller may hold a cache token only for this exact completed view, including session identity.
+     * Callbacks must not add or remove subscriptions while invalidation is being delivered.
      */
     public AutoCloseable onInvalidated(Runnable callback) {
         requireOwner();
-        var entry = new Invalidation(Objects.requireNonNull(callback));
+        var entry = new Invalidation(callback);
         invalidations.add(entry);
         return () -> {
             requireOwner();
@@ -125,9 +124,8 @@ public final class ClientStructureCatalog {
     private void invalidate() {
         Throwable failure = null;
 
-        var elements = new ObjectArrayList<>(invalidations);
-        for (int index1 = 0; index1 < elements.size(); index1++) {
-            var callback = elements.get(index1);
+        for (int index1 = 0; index1 < invalidations.size(); index1++) {
+            var callback = invalidations.get(index1);
             try {
                 callback.callback.run();
             } catch (RuntimeException | Error caught) {

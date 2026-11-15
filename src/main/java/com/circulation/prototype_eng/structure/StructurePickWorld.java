@@ -25,8 +25,6 @@ import net.minecraftforge.fluids.Fluid;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
-import java.util.Objects;
 import java.util.function.Function;
 
 /**
@@ -68,8 +66,11 @@ public final class StructurePickWorld extends World implements AutoCloseable {
         pickedNbt = tileNbt;
         try {
             var hit = new RayTraceResult(new Vec3d(position).add(.5, .5, .5), EnumFacing.UP, position);
-            var stack = state.getBlock().getPickBlock(state, hit, this, position, player).copy();
-            if (!stack.isEmpty()) stack.setCount(1);
+            var stack = state.getBlock().getPickBlock(state, hit, this, position, player);
+            if (!stack.isEmpty() && stack.getCount() != 1) {
+                stack = stack.copy();
+                stack.setCount(1);
+            }
             return stack;
         } finally {
             try {
@@ -83,8 +84,9 @@ public final class StructurePickWorld extends World implements AutoCloseable {
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue") // pickedState is assigned before pickedPosition can match a queried position.
     public @NotNull IBlockState getBlockState(@NotNull BlockPos pos) {
-        return pos.equals(pickedPosition) ? Objects.requireNonNull(pickedState) : states.apply(pos);
+        return pos.equals(pickedPosition) ? pickedState : states.apply(pos);
     }
 
     @Override
@@ -158,12 +160,11 @@ public final class StructurePickWorld extends World implements AutoCloseable {
 
     @Override
     public void close() {
-        var owned = List.copyOf(tiles.values());
-        tiles.clear();
         chunks.clear();
         Throwable failure = null;
-        for (int index = 0; index < owned.size(); index++) {
-            var tile = owned.get(index);
+        for (var entries = tiles.fastIterator(); entries.hasNext(); ) {
+            var tile = entries.next().getValue();
+            entries.remove();
             try {
                 tile.invalidate();
             } catch (RuntimeException | Error caught) {

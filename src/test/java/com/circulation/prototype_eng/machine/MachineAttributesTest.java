@@ -86,8 +86,6 @@ class MachineAttributesTest {
         assertEquals(4, child.value(SPEED));
         assertThrows(IllegalArgumentException.class, () -> child.setResolvedBase(SPEED, Double.NaN));
         assertEquals(4, child.value(SPEED));
-        assertThrows(IllegalArgumentException.class, () -> new MachineAttributes.LocalAttribute(null,
-            Map.of("local", new NumericAttributeModifier("local", 1, ADDITION)), false));
     }
 
     @Test
@@ -166,22 +164,6 @@ class MachineAttributesTest {
         parent.setBase(SPEED, 100);
         parent.restoreLocal(rootSnapshot);
         assertEquals(32, child.value(SPEED));
-    }
-
-    @Test
-    void rejectedRestoreCannotPartiallyReplaceExistingLocalState() {
-        var attributes = new MachineAttributes();
-        attributes.setBase(SPEED, 10);
-        attributes.addModifier(SPEED, new NumericAttributeModifier("add", 2, ADDITION));
-        var invalid = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAttributes.LocalAttribute>();
-        invalid.put(SPEED, new MachineAttributes.LocalAttribute(99.0, Map.of()));
-        invalid.put(OTHER, null);
-        assertThrows(NullPointerException.class, () -> attributes.restoreLocal(invalid));
-        assertEquals(12, attributes.value(SPEED));
-        assertEquals(1, attributes.localSnapshot().size());
-        assertThrows(IllegalArgumentException.class, () -> new MachineAttributes.LocalAttribute(null,
-            Map.of("wrong_key", new NumericAttributeModifier("actual_id", 1, ADDITION))));
-        assertEquals(12, attributes.value(SPEED));
     }
 
     @Test

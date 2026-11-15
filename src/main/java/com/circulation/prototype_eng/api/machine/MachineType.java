@@ -15,7 +15,6 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.ToIntFunction;
 import java.util.function.Consumer;
@@ -210,13 +209,12 @@ public final class MachineType {
         private ToIntFunction<MachineInstance> controllerInventorySize;
 
         private Builder(ResourceLocation id, LocalizationEnum displayName, ResourceLocation structureId) {
-            this.id = Objects.requireNonNull(id, "machine ID");
-            this.displayName = Objects.requireNonNull(displayName, "display name");
-            this.structureId = Objects.requireNonNull(structureId, "structure ID");
+            this.id = id;
+            this.displayName = displayName;
+            this.structureId = structureId;
         }
 
         public Builder component(ComponentType<MachineInstance, ?> type) {
-            Objects.requireNonNull(type, "component type");
             if (components.putIfAbsent(type.id(), type) != null) {
                 throw new IllegalArgumentException("Duplicate machine component ID: " + type.id());
             }
@@ -227,21 +225,20 @@ public final class MachineType {
          * Declares this machine as a static user of the pool, including addon pools registered later.
          */
         public Builder recipePool(ResourceLocation poolId) {
-            if (!recipePools.add(Objects.requireNonNull(poolId, "recipe pool"))) {
+            if (!recipePools.add(poolId)) {
                 throw new IllegalArgumentException("Duplicate machine recipe pool: " + poolId);
             }
             return this;
         }
 
         public Builder recipeGroup(ResourceLocation group) {
-            if (!recipeGroups.add(Objects.requireNonNull(group, "recipe group"))) {
+            if (!recipeGroups.add(group)) {
                 throw new IllegalArgumentException("Duplicate machine recipe group: " + group);
             }
             return this;
         }
 
         public Builder workSlot(WorkSlotDefinition definition) {
-            Objects.requireNonNull(definition, "work slot");
             if (workSlots.putIfAbsent(definition.name(), definition) != null) {
                 throw new IllegalArgumentException("Duplicate machine work slot: " + definition.name());
             }
@@ -249,7 +246,6 @@ public final class MachineType {
         }
 
         public Builder attribute(ResourceLocation attribute, double base) {
-            Objects.requireNonNull(attribute, "attribute ID");
             if (!Double.isFinite(base)) {
                 throw new IllegalArgumentException("Default attribute base must be finite");
             }
@@ -261,7 +257,7 @@ public final class MachineType {
         }
 
         public Builder executionMode(ExecutionMode mode) {
-            executionMode = Objects.requireNonNull(mode);
+            executionMode = mode;
             explicitExecutionMode = true;
             return this;
         }
@@ -272,7 +268,7 @@ public final class MachineType {
         }
 
         public Builder executionPolicy(ControllerExecutionPolicy policy) {
-            executionPolicy = Objects.requireNonNull(policy);
+            executionPolicy = policy;
             return this;
         }
 

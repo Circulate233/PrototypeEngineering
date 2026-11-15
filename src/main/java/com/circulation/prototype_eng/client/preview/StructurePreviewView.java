@@ -22,11 +22,9 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.function.Function;
 
 /**
@@ -79,12 +77,12 @@ public final class StructurePreviewView {
      */
     public StructurePreviewView(StructurePreviews previews, ResourceLocation id, StructurePreviewSettings settings,
                                 @Nullable MachineType machine) {
-        this.previews = Objects.requireNonNull(previews);
-        this.id = Objects.requireNonNull(id);
+        this.previews = previews;
+        this.id = id;
         if (machine != null && !machine.structureId().equals(id))
             throw new IllegalArgumentException("Preview machine does not reference the requested structure");
         this.machine = machine;
-        this.settings = Objects.requireNonNull(settings);
+        this.settings = settings;
         alternatives.putAll(settings.displayOptions());
     }
 
@@ -467,7 +465,7 @@ public final class StructurePreviewView {
         if (key.equals(materialKey)) return materialRows;
         var result = materialRows(complete, names, unknownName);
         if (key.token != token || key.names != namesRevision || complete != model()) return List.of();
-        materialRows = Collections.unmodifiableList(filterAndSort(result));
+        materialRows = filterAndSort(result);
         materialKey = key;
         return materialRows;
     }
@@ -492,7 +490,7 @@ public final class StructurePreviewView {
             var display = line.display();
             var name = display == null ? unknownName : names.get(display);
             if (name == null) {
-                name = Objects.requireNonNull(nameProvider.apply(display));
+                name = nameProvider.apply(display);
                 if (complete != model() || round != token || nameEpoch != namesRevision) return List.of();
                 names.put(display, name);
             }

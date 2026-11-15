@@ -14,7 +14,6 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 /**
  * Script view of the existing snapshot query contract; it grants no live IWorld access.
@@ -23,9 +22,6 @@ import java.util.Objects;
 @ZenClass("mods.prototype_eng.structure.Facts")
 @SuppressWarnings("unused") // Registered script getters and methods.
 public record ZenStructureFacts(StructureFacts value) {
-    public ZenStructureFacts {
-        Objects.requireNonNull(value);
-    }
 
     @ZenGetter("x")
     public int x() {
@@ -94,107 +90,107 @@ public record ZenStructureFacts(StructureFacts value) {
 
     @ZenGetter("biomeName")
     public String biomeName() {
-        return Objects.requireNonNull(value.read(StructureQueries.BIOME_NAME));
+        return value.read(StructureQueries.BIOME_NAME);
     }
 
     @ZenGetter("biomeId")
     public String biomeId() {
-        return Objects.requireNonNull(value.read(StructureQueries.BIOME)).toString();
+        return value.read(StructureQueries.BIOME).toString();
     }
 
     @ZenGetter("biomeTemperature")
     public float biomeTemperature() {
-        return Objects.requireNonNull(value.read(StructureQueries.BIOME_TEMPERATURE));
+        return value.read(StructureQueries.BIOME_TEMPERATURE);
     }
 
     @ZenGetter("biomeRainfall")
     public float biomeRainfall() {
-        return Objects.requireNonNull(value.read(StructureQueries.BIOME_RAINFALL));
+        return value.read(StructureQueries.BIOME_RAINFALL);
     }
 
     @ZenGetter("dimension")
     public int dimension() {
-        return Objects.requireNonNull(value.read(StructureQueries.DIMENSION));
+        return value.read(StructureQueries.DIMENSION);
     }
 
     @ZenGetter("worldTime")
     public long worldTime() {
-        return Objects.requireNonNull(value.read(StructureQueries.WORLD_TIME));
+        return value.read(StructureQueries.WORLD_TIME);
     }
 
     @ZenGetter("totalWorldTime")
     public long totalWorldTime() {
-        return Objects.requireNonNull(value.read(StructureQueries.TOTAL_WORLD_TIME));
+        return value.read(StructureQueries.TOTAL_WORLD_TIME);
     }
 
     @ZenGetter("daytime")
     public boolean daytime() {
-        return Objects.requireNonNull(value.read(StructureQueries.DAYTIME));
+        return value.read(StructureQueries.DAYTIME);
     }
 
     @ZenGetter("raining")
     public boolean raining() {
-        return Objects.requireNonNull(value.read(StructureQueries.RAINING));
+        return value.read(StructureQueries.RAINING);
     }
 
     @ZenGetter("thundering")
     public boolean thundering() {
-        return Objects.requireNonNull(value.read(StructureQueries.THUNDERING));
+        return value.read(StructureQueries.THUNDERING);
     }
 
     @ZenGetter("skyVisible")
     public boolean skyVisible() {
-        return Objects.requireNonNull(value.read(StructureQueries.SKY_VISIBLE));
+        return value.read(StructureQueries.SKY_VISIBLE);
     }
 
     @ZenGetter("rainingAt")
     public boolean rainingAt() {
-        return Objects.requireNonNull(value.read(StructureQueries.RAINING_AT));
+        return value.read(StructureQueries.RAINING_AT);
     }
 
     @ZenGetter("light")
     public int light() {
-        return Objects.requireNonNull(value.read(StructureQueries.LIGHT));
+        return value.read(StructureQueries.LIGHT);
     }
 
     @ZenGetter("strongPower")
     public int strongPower() {
-        return Objects.requireNonNull(value.read(StructureQueries.STRONG_POWER));
+        return value.read(StructureQueries.STRONG_POWER);
     }
 
     @ZenGetter("height")
     public int height() {
-        return Objects.requireNonNull(value.read(StructureQueries.HEIGHT));
+        return value.read(StructureQueries.HEIGHT);
     }
 
     @ZenGetter("notAir")
     public boolean notAir() {
-        return Objects.requireNonNull(value.read(StructureQueries.NON_AIR));
+        return value.read(StructureQueries.NON_AIR);
     }
 
     @ZenGetter("hasTileEntity")
     public boolean hasTileEntity() {
-        return Objects.requireNonNull(value.read(StructureQueries.HAS_TILE_ENTITY));
+        return value.read(StructureQueries.HAS_TILE_ENTITY);
     }
 
     @ZenGetter("resourceHatch")
     public boolean resourceHatch() {
-        return Objects.requireNonNull(value.read(StructureQueries.RESOURCE_HATCH));
+        return value.read(StructureQueries.RESOURCE_HATCH);
     }
 
     @ZenGetter("energyInputHatch")
     public boolean energyInputHatch() {
-        return Objects.requireNonNull(value.read(StructureQueries.ENERGY_INPUT_HATCH));
+        return value.read(StructureQueries.ENERGY_INPUT_HATCH);
     }
 
     @ZenGetter("energyOutputHatch")
     public boolean energyOutputHatch() {
-        return Objects.requireNonNull(value.read(StructureQueries.ENERGY_OUTPUT_HATCH));
+        return value.read(StructureQueries.ENERGY_OUTPUT_HATCH);
     }
 
     @ZenGetter("blockState")
     public IBlockState blockState() {
-        return CraftTweakerMC.getBlockState(Objects.requireNonNull(value.read(StructureQueries.BLOCK_STATE)));
+        return CraftTweakerMC.getBlockState(value.read(StructureQueries.BLOCK_STATE));
     }
 
     @ZenGetter("tileNbt")

@@ -185,7 +185,7 @@ class MachineAssemblyTest {
             assertSame(host, Objects.requireNonNull(owner.lifecycle()).host());
             log.add("factory:second");
             return new State();
-        }, List.of(), List.of(first));
+        }, List.of(), Set.of(first));
         var type = declaration().component(second).component(first).attribute(id("speed"), 6).build();
         var assembly = MachineAssembly.builder(type, "v1")
                                       .component(first, new StateCodec() {

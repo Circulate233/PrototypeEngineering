@@ -4,6 +4,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
@@ -14,7 +15,6 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -30,6 +30,8 @@ public final class TopologicalComponentMap<K, C> {
     private List<Node<K, C>> cached = ObjectLists.emptyList();
     private long revision;
     private long cachedRevision;
+    private Map<K, Set<K>> pendingSnapshot;
+    private long pendingSnapshotRevision = -1;
 
     public long revision() {
         return revision;
@@ -85,13 +87,13 @@ public final class TopologicalComponentMap<K, C> {
         var merged = new ObjectLinkedOpenHashSet<K>(dependencies.size());
         for (var dependency : dependencies) {
             if (!work.take()) return null;
-            merged.add(Objects.requireNonNull(dependency));
+            merged.add(dependency);
         }
         var waiting = pending.get(key);
         if (waiting != null) {
             for (var dependency : waiting) {
                 if (!work.take()) return null;
-                merged.add(Objects.requireNonNull(dependency));
+                merged.add(dependency);
             }
         }
         if (!work.take()) return null;
@@ -118,8 +120,6 @@ public final class TopologicalComponentMap<K, C> {
     }
 
     public void addDependency(K dependent, K dependency) {
-        Objects.requireNonNull(dependent);
-        Objects.requireNonNull(dependency);
         var node = nodes.get(dependent);
         if (node == null) {
             if (pending.computeIfAbsent(dependent, ignored -> new ObjectLinkedOpenHashSet<>()).add(dependency)) {
@@ -214,8 +214,12 @@ public final class TopologicalComponentMap<K, C> {
     }
 
     Map<K, Set<K>> pendingDependencies() {
+        if (pending.isEmpty()) return Object2ObjectMaps.emptyMap();
+        if (pendingSnapshotRevision == revision) return pendingSnapshot;
         var result = new Object2ObjectLinkedOpenHashMap<K, Set<K>>(pending.size());
         pending.forEach((key, dependencies) -> result.put(key, new ObjectLinkedOpenHashSet<>(dependencies)));
+        pendingSnapshot = result;
+        pendingSnapshotRevision = revision;
         return result;
     }
 
@@ -223,7 +227,8 @@ public final class TopologicalComponentMap<K, C> {
      * Immutable snapshot: later edits cannot change a phase that is already executing.
      */
     public List<Node<K, C>> orderedComponents() {
-        return Objects.requireNonNull(orderedComponents(new RecipeWorkBudget(Long.MAX_VALUE)));
+        if (cachedRevision == revision) return cached;
+        return orderedComponents(new RecipeWorkBudget(Long.MAX_VALUE));
     }
 
     /**
@@ -299,10 +304,5 @@ public final class TopologicalComponentMap<K, C> {
      * Dependency sets and published node lists are read-only for consumers.
      */
     public record Node<K, C>(K key, C component, Set<K> dependencies) {
-        public Node {
-            Objects.requireNonNull(key);
-            Objects.requireNonNull(component);
-            Objects.requireNonNull(dependencies);
-        }
     }
 }

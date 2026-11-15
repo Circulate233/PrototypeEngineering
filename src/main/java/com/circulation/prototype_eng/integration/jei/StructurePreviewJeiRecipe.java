@@ -12,7 +12,6 @@ import com.circulation.prototype_eng.client.preview.StructurePreviewView;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import mcp.MethodsReturnNonnullByDefault;
 import mezz.jei.api.gui.IRecipeLayout;
 import mezz.jei.api.ingredients.IIngredients;
@@ -25,11 +24,11 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
  * One machine's native controller R output. Each wrapper has independent camera, choices and owned meshes.
+ * Controller stacks and lists are borrowed read-only for the wrapper's lifetime.
  */
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
@@ -45,23 +44,14 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
     private Object transferToken, transferMaterials;
 
     public StructurePreviewJeiRecipe(MachineType machine, List<ItemStack> controllers) {
-        this.machine = Objects.requireNonNull(machine);
-        this.controllers = copyControllers(controllers);
-    }
-
-    private static List<ItemStack> copyControllers(List<ItemStack> controllers) {
-        var result = new ObjectArrayList<ItemStack>(controllers.size());
-        for (int index2 = 0; index2 < controllers.size(); index2++) {
-            var controller = controllers.get(index2);
-            result.add(controller.copy());
-        }
-        return ObjectLists.unmodifiable(result);
+        this.machine = machine;
+        this.controllers = controllers;
     }
 
     @Override
     public void getIngredients(IIngredients ingredients) {
         if (!controllers.isEmpty())
-            ingredients.setOutputs(VanillaTypes.ITEM, copyControllers(controllers));
+            ingredients.setOutputs(VanillaTypes.ITEM, controllers);
     }
 
     @Override
@@ -94,14 +84,14 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
     }
 
     private void showIngredient(int index, ItemStack stack, int x, int y) {
-        var slots = Objects.requireNonNull(layout).getItemStacks();
+        var slots = layout.getItemStacks();
         visibleIngredients.add(index);
         var previous = ingredientSlots.get(index);
         boolean moved = previous == null || previous.x != x || previous.y != y || !slots.getGuiIngredients().containsKey(index);
         if (moved) slots.init(index, true, x, y);
         if (moved || !ItemStack.areItemStacksEqual(previous.stack, stack)) {
             slots.set(index, stack);
-            ingredientSlots.put(index, new IngredientSlot(stack.copy(), x, y));
+            ingredientSlots.put(index, new IngredientSlot(stack, x, y));
         }
     }
 
@@ -133,7 +123,7 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
 
     public void bindLayout(IRecipeLayout next) {
         retirePanel();
-        layout = Objects.requireNonNull(next);
+        layout = next;
         layout.getItemStacks().addTooltipCallback((index, _, _, tooltip) -> {
             if (panel != null) tooltip.addAll(panel.ingredientTooltip(index));
         });
@@ -148,12 +138,11 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
         for (int index3 = 0; index3 < controllers.size(); index3++) {
             var controller = controllers.get(index3);
             if (!controller.isEmpty()) {
-                output = controller.copy();
+                output = controller;
                 break;
             }
         }
         if (output.isEmpty()) return null;
-        output.setCount(1);
         var key = AEItemKey.of(output);
         if (key == null) return null;
         var inputs = new ObjectArrayList<List<GenericStack>>(materials.size());

@@ -6,7 +6,6 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -50,7 +49,7 @@ public interface MachineLifecycleHost {
     }
 
     default MinecraftServer server() {
-        return Objects.requireNonNull(world().getMinecraftServer(), "Machine host has no server");
+        return world().getMinecraftServer();
     }
 
     /**

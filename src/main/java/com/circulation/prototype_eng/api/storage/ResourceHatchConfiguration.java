@@ -6,7 +6,6 @@ import it.unimi.dsi.fastutil.objects.Reference2LongMap;
 import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Independent per-side layouts and capacities in each key type's native units.
@@ -51,7 +50,6 @@ public record ResourceHatchConfiguration(@Nullable Side input, @Nullable Side ou
             if (slots <= 0 || capacities.isEmpty())
                 throw new IllegalArgumentException("A side needs slots and resource types");
             for (var entry : capacities.reference2LongEntrySet()) {
-                Objects.requireNonNull(entry.getKey());
                 if (entry.getLongValue() <= 0) throw new IllegalArgumentException("Capacity must be positive");
             }
             if (basis != null) {
@@ -77,14 +75,12 @@ public record ResourceHatchConfiguration(@Nullable Side input, @Nullable Side ou
         public static Side fromItemEquivalent(int slots, long itemEquivalent, Iterable<AEKeyType> types,
                                               Reference2LongMap<AEKeyType> ratioOverrides) {
             if (itemEquivalent <= 0) throw new IllegalArgumentException("Item-equivalent capacity must be positive");
-            Objects.requireNonNull(types);
             for (var entry : ratioOverrides.reference2LongEntrySet())
                 if (entry.getLongValue() <= 0)
                     throw new IllegalArgumentException("Resource capacity ratio must be positive: " + entry.getKey().getId());
             var capacities = new Reference2LongArrayMap<AEKeyType>(2);
             var effectiveRatios = new Reference2LongArrayMap<AEKeyType>(2);
             for (var type : types) {
-                Objects.requireNonNull(type);
                 long ratio = ratioOverrides.containsKey(type) ? ratioOverrides.getLong(type) : type.getAmountPerUnit();
                 if (ratio <= 0)
                     throw new IllegalArgumentException("Resource unit amount must be positive: " + type.getId());

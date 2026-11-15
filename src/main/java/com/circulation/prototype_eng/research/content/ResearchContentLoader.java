@@ -13,8 +13,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Objects;
-import java.util.Set;
 
 /**
  * Strict PN direct-display JSON schema at the new library's client configuration path.
@@ -22,19 +20,20 @@ import java.util.Set;
 public final class ResearchContentLoader {
     private static final System.Logger LOGGER = System.getLogger("prototype_eng/research_content");
     private static final Gson GSON = new Gson();
-    private static final Set<String> ROOT_FIELDS = Set.of("title", "summary", "description", "icon");
-    private static final Set<String> ICON_FIELDS = Set.of("kind", "id", "meta");
     private final Path configRoot;
 
     public ResearchContentLoader(Path configRoot) {
-        this.configRoot = Objects.requireNonNull(configRoot).toAbsolutePath().normalize();
+        this.configRoot = configRoot.toAbsolutePath().normalize();
     }
 
     private static ObjectArrayList<String> description(JsonObject root) {
         var value = required(root, "description");
         if (!value.isJsonArray()) throw new IllegalArgumentException("Research description must be a string array");
-        var lines = new ObjectArrayList<String>();
-        for (var entry : value.getAsJsonArray()) lines.add(string(entry, "description entry"));
+        var entries = value.getAsJsonArray();
+        if (entries.isEmpty()) throw new IllegalArgumentException("Research content requires description lines");
+        var lines = new ObjectArrayList<String>(entries.size());
+        for (int index = 0; index < entries.size(); index++)
+            lines.add(requiredText(string(entries.get(index), "description entry")));
         return lines;
     }
 
@@ -42,23 +41,22 @@ public final class ResearchContentLoader {
         var value = required(root, "icon");
         if (!value.isJsonObject()) throw new IllegalArgumentException("Research icon must be an object");
         var icon = value.getAsJsonObject();
-        requireFields(icon, ICON_FIELDS);
         var kind = switch (string(icon, "kind").trim()) {
             case "item" -> ResearchContent.Kind.ITEM;
             case "icon" -> ResearchContent.Kind.ICON;
             default -> throw new IllegalArgumentException("Unknown research content icon kind");
         };
-        if (kind == ResearchContent.Kind.ICON && icon.has("meta"))
-            throw new IllegalArgumentException("Icon-map entries must not define metadata");
         var id = checkedId(new ResourceLocation(string(icon, "id").trim()));
-        int meta = icon.has("meta") ? meta(required(icon, "meta")) : 0;
+        int meta = kind == ResearchContent.Kind.ITEM && icon.has("meta") ? meta(required(icon, "meta")) : 0;
         return new ResearchContent.Icon(kind, id, meta);
     }
 
     private static int meta(JsonElement value) {
         if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber())
             throw new IllegalArgumentException("Item icon metadata must be an integer");
-        return value.getAsBigDecimal().intValueExact();
+        int meta = value.getAsBigDecimal().intValueExact();
+        if (meta < 0) throw new IllegalArgumentException("Item icon metadata must be nonnegative");
+        return meta;
     }
 
     private static String string(JsonObject object, String key) {
@@ -78,10 +76,10 @@ public final class ResearchContentLoader {
         return value;
     }
 
-    private static void requireFields(JsonObject object, Set<String> allowed) {
-        for (var field : object.entrySet())
-            if (!allowed.contains(field.getKey()))
-                throw new IllegalArgumentException("Unknown research content field: " + field.getKey());
+    private static String requiredText(String text) {
+        var trimmed = text.trim();
+        if (trimmed.isEmpty()) throw new IllegalArgumentException("Research content text must not be blank");
+        return trimmed;
     }
 
     private static ResourceLocation checkedId(ResourceLocation id) {
@@ -98,8 +96,8 @@ public final class ResearchContentLoader {
     }
 
     public ResearchContentLoadResult load(ResourceLocation researchId, String language) {
-        var id = checkedId(Objects.requireNonNull(researchId));
-        var locale = Objects.requireNonNull(language).trim();
+        var id = checkedId(researchId);
+        var locale = language.trim();
         if (!locale.matches("[a-z0-9_]+"))
             throw new IllegalArgumentException("Invalid research content language: " + language);
         var requested = contentPath(locale, id);
@@ -113,10 +111,7 @@ public final class ResearchContentLoader {
 
     private Path contentPath(String language, ResourceLocation id) {
         var languageRoot = configRoot.resolve("prototype_eng").resolve("research_content").resolve(language).normalize();
-        var path = languageRoot.resolve(id.getNamespace()).resolve(id.getPath() + ".json").normalize();
-        if (!path.startsWith(languageRoot))
-            throw new IllegalArgumentException("Research content path escaped its language root");
-        return path;
+        return languageRoot.resolve(id.getNamespace()).resolve(id.getPath() + ".json");
     }
 
     private ResearchContent loadFile(Path path) {
@@ -125,8 +120,7 @@ public final class ResearchContentLoader {
             if (element == null || !element.isJsonObject())
                 throw new IllegalArgumentException("Research content root must be an object");
             var root = element.getAsJsonObject();
-            requireFields(root, ROOT_FIELDS);
-            return new ResearchContent(string(root, "title"), root.has("summary") ? string(root, "summary") : "", description(root), icon(root));
+            return new ResearchContent(requiredText(string(root, "title")), root.has("summary") ? string(root, "summary") : "", description(root), icon(root));
         } catch (IOException | RuntimeException failure) {
             var message = "Research content load failed at " + path;
             LOGGER.log(System.Logger.Level.ERROR, message, failure);

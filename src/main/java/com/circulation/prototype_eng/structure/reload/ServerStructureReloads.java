@@ -26,7 +26,6 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
-import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -65,7 +64,7 @@ public final class ServerStructureReloads {
 
             @Override
             public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
-                var lifecycle = Objects.requireNonNull(event.context().machine().lifecycle());
+                var lifecycle = event.context().machine().lifecycle();
                 coordinator.unloaded(lifecycle);
             }
         });
@@ -147,9 +146,10 @@ public final class ServerStructureReloads {
     }
 
     @SubscribeEvent
+    @SuppressWarnings("DataFlowIssue") // PlayerLoggedInEvent supplies an attached server player.
     public static void loggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.player instanceof EntityPlayerMP player)) return;
-        var server = Objects.requireNonNull(player.getServer());
+        var server = player.getServer();
         var current = requireSession(server);
         var connection = player.connection;
         current.scheduler.runAtBoundary(() -> {

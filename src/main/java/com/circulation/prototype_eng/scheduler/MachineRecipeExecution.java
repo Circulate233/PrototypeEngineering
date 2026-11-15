@@ -24,7 +24,6 @@ import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 
@@ -54,10 +53,10 @@ final class MachineRecipeExecution implements PlannedExecution {
 
     MachineRecipeExecution(PlannedTaskExecutor tasks, List<Candidate> candidates, PlannedDeadline forwardDeadline,
                            Runnable refresh, BooleanSupplier tickCurrent) {
-        this.tasks = Objects.requireNonNull(tasks);
-        this.forwardDeadline = Objects.requireNonNull(forwardDeadline);
-        this.refresh = Objects.requireNonNull(refresh);
-        this.tickCurrent = Objects.requireNonNull(tickCurrent);
+        this.tasks = tasks;
+        this.forwardDeadline = forwardDeadline;
+        this.refresh = refresh;
+        this.tickCurrent = tickCurrent;
         boolean needsGroups = false;
         for (int index21 = 0; index21 < candidates.size(); index21++) {
             var candidate = candidates.get(index21);
@@ -70,7 +69,7 @@ final class MachineRecipeExecution implements PlannedExecution {
         owners.defaultReturnValue(-1);
         for (int index = 0; index < entries.size(); index++)
             for (var key : entries.get(index).candidate.affinities) {
-                int previous = owners.putIfAbsent(Objects.requireNonNull(key), index);
+                int previous = owners.putIfAbsent(key, index);
                 if (previous >= 0) union.union(index, previous);
             }
         var groups = new Int2ObjectLinkedOpenHashMap<ObjectArrayList<Entry>>();
@@ -110,7 +109,6 @@ final class MachineRecipeExecution implements PlannedExecution {
     @Override
     public boolean advance(PlannedDeadline cleanupDeadline) {
         requireOwner();
-        Objects.requireNonNull(cleanupDeadline);
         if (finished) {
             return true;
         }
@@ -318,6 +316,7 @@ final class MachineRecipeExecution implements PlannedExecution {
     }
 
     @Nullable
+    @SuppressWarnings("DataFlowIssue")
     private Throwable reclaimWorkers(List<Entry> delegated, @Nullable Throwable failure) {
         var batch = workerBatch;
         if (batch != null) {
@@ -332,7 +331,7 @@ final class MachineRecipeExecution implements PlannedExecution {
         for (int index = 0; index < delegated.size(); index++) {
             var entry = delegated.get(index);
             try {
-                if (entry.worker != null) Objects.requireNonNull(entry.handle).finishWorker(entry.worker);
+                if (entry.worker != null) entry.handle.finishWorker(entry.worker);
                 entry.worker = null;
             } catch (RuntimeException | Error observed) {
                 failure = appendFailure(failure, observed);
@@ -372,9 +371,10 @@ final class MachineRecipeExecution implements PlannedExecution {
             && entry.candidate.lifecycle.schedulingAllowed();
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void advanceWorkerCursor(Entry entry) {
-        var dispatch = Objects.requireNonNull(entry.dispatch);
-        var handle = Objects.requireNonNull(entry.handle);
+        var dispatch = entry.dispatch;
+        var handle = entry.handle;
         if (!entry.begun) {
             if (!workerAllowed(entry)) return;
             entry.begun = true;
@@ -391,6 +391,7 @@ final class MachineRecipeExecution implements PlannedExecution {
         }
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private boolean settlePolicyWork(PlannedDeadline cleanupDeadline) {
         var delegated = workerClaims;
         var jobs = new ObjectArrayList<PlannedTaskExecutor.SourceJob<Boolean>>(entries.size());
@@ -400,7 +401,7 @@ final class MachineRecipeExecution implements PlannedExecution {
                 var entry = entries.get(index17);
                 var work = entry.policyWork;
                 if (work == null) continue;
-                var handle = Objects.requireNonNull(entry.handle);
+                var handle = entry.handle;
                 if (work.asynchronous) {
                     delegated.add(entry);
                     var action = handle.delegateWorker(() -> work.advance(cleanupDeadline));
@@ -423,7 +424,7 @@ final class MachineRecipeExecution implements PlannedExecution {
             var entry = entries.get(index15);
             var work = entry.policyWork;
             if (work == null) continue;
-            var handle = Objects.requireNonNull(entry.handle);
+            var handle = entry.handle;
             if (work.complete) {
                 entry.workedHosts.addAll(work.hosts);
                 if (work.failure != null) handle.recordFailure(work.failure);
@@ -462,7 +463,7 @@ final class MachineRecipeExecution implements PlannedExecution {
                     }
                     entry.scan = new ScanWork(request);
                     // Capture before any callback can throw. The consumed onTick is never replayed.
-                    var originalScan = Objects.requireNonNull(entry.scan);
+                    var originalScan = entry.scan;
                     handle.run(() -> originalScan.attempt = request.scanner().beginScan(request.limits(), policy != null && policy.scanAsync()));
                     if (entry.scan.attempt == null) {
                         handle.finishDeferredRecipeScan(request);
@@ -490,11 +491,12 @@ final class MachineRecipeExecution implements PlannedExecution {
         }
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private boolean advanceScan(Entry entry, PlannedDeadline cleanupDeadline, ObjectArrayList<ScanWork> discoveries,
                                 ObjectArrayList<PlannedTaskExecutor.Job<Boolean>> discoveryJobs) {
-        var scan = Objects.requireNonNull(entry.scan);
-        var handle = Objects.requireNonNull(entry.handle);
-        var attempt = Objects.requireNonNull(scan.attempt);
+        var scan = entry.scan;
+        var handle = entry.handle;
+        var attempt = scan.attempt;
         if (scan.barrier == null && !forwardAllowed()) scan.work = new RecipeWorkBudget(SCAN_WORK_PER_ADVANCE);
         while (true) {
             if (scan.barrier != null) {
@@ -631,8 +633,9 @@ final class MachineRecipeExecution implements PlannedExecution {
         }
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private boolean settleCoordinator(PlannedDeadline cleanupDeadline) {
-        var current = Objects.requireNonNull(coordinator);
+        var current = coordinator;
         // A source barrier can finish within the original forward budget. UNKNOWN business/source
         // states have no active barrier and return pending rather than renewing or busy retrying.
         while (!current.finished()) {
@@ -787,7 +790,7 @@ final class MachineRecipeExecution implements PlannedExecution {
     @Override
     public void cancel(Reason reason) {
         requireOwner();
-        cancellation.cancel(Objects.requireNonNull(reason));
+        cancellation.cancel(reason);
     }
 
     private void requireOwner() {
@@ -877,11 +880,12 @@ final class MachineRecipeExecution implements PlannedExecution {
             return false;
         }
 
+        @SuppressWarnings("DataFlowIssue")
         private PolicyWork(Entry entry, MachineWorkSlots host) {
             this.entry = entry;
             this.host = host;
             hosts = entry.candidate.machine instanceof CrossRecipeController ? entry.candidate.machine.recipeHosts() : List.of(host);
-            boolean workAsync = Objects.requireNonNull(entry.candidate.policy).workAsync();
+            boolean workAsync = entry.candidate.policy.workAsync();
             boolean ownerRequired = workAsync && requiresOwnerThread(hosts);
             asynchronous = workAsync && !ownerRequired;
             runner = !workAsync ? tasks.synchronous() : ownerRequired ? tasks : tasks.synchronousSources();

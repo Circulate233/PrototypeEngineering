@@ -10,7 +10,6 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
-import java.util.Objects;
 
 /**
  * Loading-thread registration, followed by one atomic validated publication for runtime readers.
@@ -56,7 +55,6 @@ public final class ResearchRegistry {
         if (frozen != null) {
             throw new IllegalStateException("Research registration has ended");
         }
-        Objects.requireNonNull(definition);
         if (registrations.putIfAbsent(definition.id(), definition) != null) {
             throw new IllegalArgumentException("Duplicate research " + definition.id());
         }
@@ -94,7 +92,7 @@ public final class ResearchRegistry {
     }
 
     public ResearchDefinition require(ResourceLocation id) {
-        var definition = requireFrozen().byId.get(Objects.requireNonNull(id));
+        var definition = requireFrozen().byId.get(id);
         if (definition == null) {
             throw new IllegalArgumentException("Unknown research " + id);
         }

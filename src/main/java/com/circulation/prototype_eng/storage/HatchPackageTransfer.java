@@ -4,7 +4,6 @@ import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Routes one unpacked AE resource package to a single hatch side and keeps any remainder.
@@ -16,7 +15,6 @@ public final class HatchPackageTransfer {
     public static @Nullable GenericStack insert(@Nullable SlottedResourceStorage input,
                                                 @Nullable SlottedResourceStorage output,
                                                 GenericStack packaged) {
-        Objects.requireNonNull(packaged);
         if (input != null) {
             var remaining = HatchSlotActions.insertPackage(input, -1, packaged);
             if (remaining != packaged || output == null) return remaining;

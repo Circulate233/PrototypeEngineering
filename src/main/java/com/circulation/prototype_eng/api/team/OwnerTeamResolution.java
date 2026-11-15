@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.team;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -44,9 +43,6 @@ public final class OwnerTeamResolution {
      * Creates a normal denial without exposing any accepted-team payload.
      */
     public static OwnerTeamResolution rejected(UUID ownerId, OwnerTeamResolutionStatus status, String message) {
-        Objects.requireNonNull(ownerId, "ownerId");
-        Objects.requireNonNull(status, "status");
-        Objects.requireNonNull(message, "message");
         if (status == OwnerTeamResolutionStatus.RESOLVED || message.isBlank()) {
             throw new IllegalArgumentException("Rejected resolution requires a rejection status and failure context");
         }

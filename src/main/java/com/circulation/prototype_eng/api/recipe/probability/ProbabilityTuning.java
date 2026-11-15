@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.api.recipe.probability;
 
-import java.util.Objects;
 
 /**
  * Sampler policy without a dependency on Forge configuration. Publish one immutable policy for new
@@ -25,6 +24,6 @@ public record ProbabilityTuning(boolean exactSmallBinomial, int exactSmallBinomi
      */
     @SuppressWarnings("unused")
     public static void setDefault(ProbabilityTuning tuning) {
-        defaultTuning = Objects.requireNonNull(tuning, "tuning");
+        defaultTuning = tuning;
     }
 }

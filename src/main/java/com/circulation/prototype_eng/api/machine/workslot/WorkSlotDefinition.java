@@ -4,7 +4,6 @@ import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.util.ResourceLocation;
 
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -18,8 +17,6 @@ public record WorkSlotDefinition(String name, Set<ResourceLocation> allowedRecip
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Work slot name is required");
         }
-        Objects.requireNonNull(allowedRecipeGroups, "allowedRecipeGroups");
-        Objects.requireNonNull(restartPolicy, "restartPolicy");
     }
 
     public WorkSlotDefinition(String name) {
@@ -34,7 +31,10 @@ public record WorkSlotDefinition(String name, Set<ResourceLocation> allowedRecip
      * Shared compatibility rule for scanning, direct admission and restoration.
      */
     public boolean accepts(MachineRecipe recipe) {
-        Objects.requireNonNull(recipe, "recipe");
+        return accepts(allowedRecipeGroups, recipe);
+    }
+
+    static boolean accepts(Set<ResourceLocation> allowedRecipeGroups, MachineRecipe recipe) {
         if (allowedRecipeGroups.isEmpty()) {
             return true;
         }

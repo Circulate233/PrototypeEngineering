@@ -13,7 +13,6 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -28,15 +27,14 @@ public final class ZenRecipeUpdates {
     private final UUID session;
 
     public ZenRecipeUpdates(RecipeDefinitionUpdates updates) {
-        this.updates = Objects.requireNonNull(updates);
+        this.updates = updates;
         snapshot = updates.snapshot();
         session = updates.sessionId();
     }
 
     @ZenMethod
     public static ZenRecipeUpdates forServer(IServer server) {
-        return new ZenRecipeUpdates(RecipeDefinitionUpdates.forServer(Objects.requireNonNull(
-            CraftTweakerMC.getMCServer(Objects.requireNonNull(server)), "No actual server")));
+        return new ZenRecipeUpdates(RecipeDefinitionUpdates.forServer(CraftTweakerMC.getMCServer(server)));
     }
 
     @ZenGetter("session")

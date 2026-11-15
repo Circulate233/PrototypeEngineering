@@ -17,6 +17,7 @@ import java.util.List;
  * Panel groups and candidate cycles are shared read-only for this layout's lifetime.
  */
 public class RecipePanelLayout {
+    private static final JeiRenderOptions EXPANDED = new JeiRenderOptions(true, JeiRenderOptions.CandidateMode.EXPANDED, 0);
     public static final int COLUMNS = 4;
     public static final int RESOURCE_CAPACITY = 16;
     /**
@@ -33,7 +34,7 @@ public class RecipePanelLayout {
     private final boolean repeatInput;
 
     public RecipePanelLayout(JeiRecipeDisplay display) {
-        this(display, new JeiRenderOptions(true, JeiRenderOptions.CandidateMode.EXPANDED, 0), null);
+        this(display, EXPANDED, null);
     }
 
     public RecipePanelLayout(JeiRecipeDisplay display, JeiRenderOptions options, @Nullable JeiRecipeIngredients ingredients) {
@@ -63,27 +64,31 @@ public class RecipePanelLayout {
             pages(outputGroups.size(), outputCapacity)));
     }
 
+    @SuppressWarnings("DataFlowIssue") // A retained candidate group was indexed only from a non-null group descriptor.
     private static List<List<JeiRecipeDisplay.Resource>> groups(List<JeiRecipeDisplay.Resource> rows,
                                                                 JeiRenderOptions options, @Nullable JeiRecipeIngredients ingredients) {
-        var grouped = new Reference2ObjectOpenHashMap<JeiRecipeDisplay.CandidateGroup, ObjectArrayList<JeiRecipeDisplay.Resource>>(rows.size());
+        Reference2ObjectOpenHashMap<JeiRecipeDisplay.CandidateGroup, ObjectArrayList<JeiRecipeDisplay.Resource>> grouped = null;
         if (options.candidates() == JeiRenderOptions.CandidateMode.ALTERNATIVES && ingredients != null) {
+            grouped = new Reference2ObjectOpenHashMap<>(rows.size());
             for (int index3 = 0; index3 < rows.size(); index3++) {
                 var row = rows.get(index3);
                 if (row.candidates() != null)
                     grouped.computeIfAbsent(row.candidates(), _ -> new ObjectArrayList<>()).add(row);
             }
+            for (var entries = grouped.reference2ObjectEntrySet().fastIterator(); entries.hasNext(); )
+                if (!ingredients.canCombine(entries.next().getValue())) entries.remove();
         }
         var result = new ObjectArrayList<List<JeiRecipeDisplay.Resource>>(rows.size());
         for (int index5 = 0; index5 < rows.size(); index5++) {
             var row = rows.get(index5);
             var group = row.candidates();
-            var candidates = grouped.get(group);
-            if (group != null && candidates != null && ingredients != null && ingredients.canCombine(candidates)) {
+            var candidates = grouped == null ? null : grouped.get(group);
+            if (candidates != null) {
                 if (candidates.getFirst() == row) {
                     for (int pick = 0; pick < group.alternativeSlots(); pick++) result.add(candidates);
                 }
             } else {
-                result.add(ObjectArrayList.of(row));
+                result.add(List.of(row));
             }
         }
         return result;

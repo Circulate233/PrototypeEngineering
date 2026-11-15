@@ -5,7 +5,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.BiConsumer;
 
 /**
@@ -19,7 +18,6 @@ public final class RecipeDeclarations {
     private final ObjectArrayList<BiConsumer<RecipeDeclarationKey, RecipeRegistry.Snapshot>> listeners = new ObjectArrayList<>();
 
     public void register(RecipeDeclarationKey key, RecipeRegistry.Snapshot snapshot) {
-        Objects.requireNonNull(key);
         RecipeDefinitionManifest.describe(snapshot);
         ObjectArrayList<BiConsumer<RecipeDeclarationKey, RecipeRegistry.Snapshot>> callbacks;
         synchronized (this) {
@@ -62,6 +60,6 @@ public final class RecipeDeclarations {
      * Lifecycle services retain a permanent narrow listener; callbacks run outside the table monitor.
      */
     public synchronized void onRegistered(BiConsumer<RecipeDeclarationKey, RecipeRegistry.Snapshot> callback) {
-        listeners.add(Objects.requireNonNull(callback));
+        listeners.add(callback);
     }
 }

@@ -22,10 +22,9 @@ public final class PlayerDataPersistence {
     }
 
     public static void persist(EntityPlayerMP player, Runnable ownerCheck, Verification verifySaved) {
-        Objects.requireNonNull(ownerCheck).run();
-        Objects.requireNonNull(verifySaved);
-        var server = Objects.requireNonNull(player.getServer());
-        var overworld = Objects.requireNonNull(server.getWorld(0));
+        ownerCheck.run();
+        var server = player.server;
+        var overworld = server.getWorld(0);
         if (!(overworld.getSaveHandler() instanceof SaveHandler handler) || handler.getPlayerNBTManager() != handler) {
             throw new IllegalStateException("Research persistence requires the authoritative vanilla player save handler");
         }
@@ -59,7 +58,7 @@ public final class PlayerDataPersistence {
             saved = CompressedStreamTools.readCompressed(Channels.newInputStream(channel));
         }
         if (host) saved = saved.getCompoundTag("Data").getCompoundTag("Player");
-        if (!saved.hasUniqueId("UUID") || !Objects.requireNonNull(player).equals(saved.getUniqueId("UUID"))) {
+        if (!saved.hasUniqueId("UUID") || !player.equals(saved.getUniqueId("UUID"))) {
             throw new IOException("Saved research player identity differs");
         }
         return saved;

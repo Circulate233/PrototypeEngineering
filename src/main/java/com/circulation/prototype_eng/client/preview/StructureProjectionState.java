@@ -7,7 +7,6 @@ import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Incremental presentation state; the native adapter supplies only observations on the client thread.
@@ -28,7 +27,7 @@ public final class StructureProjectionState {
     private int renderCursor;
 
     public StructureProjectionState(StructurePreviews previews) {
-        this.previews = Objects.requireNonNull(previews);
+        this.previews = previews;
     }
 
     private static BlockPos add(BlockPos left, BlockPos right) {
@@ -36,7 +35,6 @@ public final class StructureProjectionState {
     }
 
     public void tick(@Nullable Object currentWorld, Observer observer) {
-        Objects.requireNonNull(observer);
         if (previews.closed()) {
             clear();
             return;
@@ -50,6 +48,7 @@ public final class StructureProjectionState {
         }
     }
 
+    @SuppressWarnings("DataFlowIssue") // FAILED is published together with the request failure.
     private void advance(@Nullable Object currentWorld, @Nullable StructurePreviews.Projection nextIntent, Observer observer) {
         if (world != null && world != currentWorld) {
             previews.stopProjection();
@@ -73,7 +72,7 @@ public final class StructureProjectionState {
             intent = nextIntent;
             request = nextRequest;
         }
-        if (nextRequest.state() == StructurePreviews.State.FAILED) throw Objects.requireNonNull(nextRequest.failure());
+        if (nextRequest.state() == StructurePreviews.State.FAILED) throw nextRequest.failure();
         nextRequest.advance(nextIntent.options().expansionStepsPerTick());
         var completed = nextRequest.model();
         if (completed == null) {

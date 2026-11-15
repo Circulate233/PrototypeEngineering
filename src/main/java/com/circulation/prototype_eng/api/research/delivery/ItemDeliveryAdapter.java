@@ -8,7 +8,6 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import net.minecraft.nbt.NBTTagCompound;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -37,7 +36,7 @@ public interface ItemDeliveryAdapter {
      * Failures propagate unchanged and prevent the corresponding delivery from starting.
      */
     default void prepare(ItemDeliveryFragment fragment) {
-        var status = Objects.requireNonNull(fragment).status();
+        var status = fragment.status();
         if (status != ItemDeliveryFragment.Status.PLANNED && status != ItemDeliveryFragment.Status.RETRY_PLANNED) {
             throw new IllegalArgumentException("Only planned item delivery fragments may prepare their delivery evidence");
         }
@@ -61,7 +60,7 @@ public interface ItemDeliveryAdapter {
      * this again for confirmed leaves, including already claimed rewards.
      */
     default void release(ItemDeliveryFragment fragment) {
-        if (Objects.requireNonNull(fragment).status() != ItemDeliveryFragment.Status.CONFIRMED) {
+        if (fragment.status() != ItemDeliveryFragment.Status.CONFIRMED) {
             throw new IllegalArgumentException("Only confirmed item delivery fragments may release their delivery evidence");
         }
     }

@@ -4,12 +4,9 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeParallelismSelection;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.util.ResourceLocation;
@@ -18,7 +15,6 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -55,24 +51,21 @@ public final class MachineRecipe {
 
     public MachineRecipe(ResourceLocation id, int durationTicks, Collection<? extends RecipeRequirement<?>> requirements,
                          Collection<ResourceLocation> recipeGroups, int maxConcurrentThreads, RecipeParallelismSelection parallelismSelection) {
-        this.id = Objects.requireNonNull(id);
+        this.id = id;
         if (durationTicks < 0) {
             throw new IllegalArgumentException("Negative recipe duration");
         }
         this.durationTicks = durationTicks;
         if (maxConcurrentThreads < 1) throw new IllegalArgumentException("Recipe thread limit must be positive");
         this.maxConcurrentThreads = maxConcurrentThreads;
-        this.parallelismSelection = Objects.requireNonNull(parallelismSelection);
+        this.parallelismSelection = parallelismSelection;
         var groups = new ObjectLinkedOpenHashSet<ResourceLocation>(recipeGroups.size());
-        for (var group : recipeGroups) {
-            groups.add(Objects.requireNonNull(group));
-        }
-        this.recipeGroups = ObjectSets.unmodifiable(groups);
+        groups.addAll(recipeGroups);
+        this.recipeGroups = groups;
         var typesById = new Object2ObjectOpenHashMap<ResourceLocation, RecipeRequirementType<?>>(requirements.size());
         var requirementIds = new ObjectOpenHashSet<ResourceLocation>(requirements.size());
         var sorted = new ObjectArrayList<RecipeRequirement<?>>(requirements.size());
         for (var requirement : requirements) {
-            Objects.requireNonNull(requirement);
             var previousType = typesById.putIfAbsent(requirement.type().id(), requirement.type());
             if (previousType != null && previousType != requirement.type()) {
                 throw new IllegalArgumentException("Different requirement types share id " + requirement.type().id());
@@ -83,14 +76,13 @@ public final class MachineRecipe {
             sorted.add(requirement);
         }
         sorted.sort(Comparator.comparing(requirement -> requirement.type().id()));
-        orderedRequirements = ObjectLists.unmodifiable(sorted);
-        var grouped = new Object2ObjectLinkedOpenHashMap<RecipeRequirementType<?>, ObjectList<RecipeRequirement<?>>>(typesById.size());
+        orderedRequirements = sorted;
+        var grouped = new Object2ObjectLinkedOpenHashMap<RecipeRequirementType<?>, List<RecipeRequirement<?>>>(typesById.size());
         for (int index = 0; index < sorted.size(); index++) {
             var requirement = sorted.get(index);
             grouped.computeIfAbsent(requirement.type(), ignored -> new ObjectArrayList<>(6)).add(requirement);
         }
-        grouped.replaceAll((_, list) -> ObjectLists.unmodifiable(list));
-        this.requirements = Object2ObjectMaps.unmodifiable(grouped);
+        this.requirements = grouped;
     }
 
     public ResourceLocation id() {

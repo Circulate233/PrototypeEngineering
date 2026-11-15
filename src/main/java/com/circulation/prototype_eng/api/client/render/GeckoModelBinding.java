@@ -8,7 +8,6 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Resource declarations only; each later render owner creates its own mutable Gecko instance.
@@ -20,9 +19,6 @@ public record GeckoModelBinding(ResourceLocation geo, ResourceLocation texture, 
                                 MachineRenderPass pass, boolean forceGlobalRenderer,
                                 @Nullable String animationStateKey, @Nullable String animationLayersStateKey) {
     public GeckoModelBinding {
-        Objects.requireNonNull(geo);
-        Objects.requireNonNull(texture);
-        Objects.requireNonNull(pass);
         layers = new MachineAnimationState.Snapshot(0, layers).layers();
         if (defaultAnimationName != null) new MachineAnimationState.Snapshot(0, List.of(defaultAnimationName));
         animationStateKey = key(animationStateKey);

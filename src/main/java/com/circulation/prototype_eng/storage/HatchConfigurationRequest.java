@@ -26,7 +26,7 @@ public final class HatchConfigurationRequest {
      * Native host observation. Thread ownership is checked before touching world/position ownership.
      */
     public static Boundary boundary(AEBaseTile tile) {
-        var world = Objects.requireNonNull(tile.getWorld(), "Native hatch boundary requires a world");
+        var world = tile.getWorld();
         var server = world.getMinecraftServer();
         if (world.isRemote || server == null || !server.isCallingFromMinecraftThread())
             throw new IllegalStateException("Hatch configuration requires the server owner");
@@ -90,10 +90,7 @@ public final class HatchConfigurationRequest {
      * A fresh host observation for one request. It is neither stored in NBT nor retained as authority.
      */
     public record Boundary(TaskScheduler scheduler, BooleanSupplier current) {
-        public Boundary {
-            Objects.requireNonNull(scheduler);
-            Objects.requireNonNull(current);
-        }
+
 
         public void requireOwner() {
             var status = scheduler.status(); // The scheduler itself verifies its exact owner thread.

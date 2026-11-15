@@ -36,7 +36,6 @@ import net.minecraftforge.client.event.ModelRegistryEvent;
 import net.minecraftforge.client.model.ModelLoader;
 import net.minecraftforge.event.RegistryEvent;
 import net.minecraftforge.fluids.FluidRegistry;
-import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
@@ -89,7 +88,7 @@ public final class ComputerExamples {
 
     @SubscribeEvent
     public static void machines(MachineTypeRegistrationEvent event) {
-        var water = AEFluidKey.of(new FluidStack(FluidRegistry.WATER, 1));
+        var water = AEFluidKey.of(FluidRegistry.WATER);
         var maintenance = new ComputerInputRecipe(id("java_maintenance"), "v1", 20,
             List.of(RecipeRequirements.RESOURCES.requirement(id("maintenance_input"), new ResourceRequirement(
                     List.of(new GenericStack(water, 10)), List.of(new GenericStack(water, 1)), List.of(), List.of(), false)),
@@ -116,7 +115,7 @@ public final class ComputerExamples {
         event.structure(StructureDefinitions.template(SHAPE, BlockOrientation.NORTH_UP, BlockPos.ORIGIN,
             false, new StructurePattern(cells), List.of(), List.of()));
         var cooling = new ComputerRecipe(id("java_cooling"), List.of(new GenericStack(
-            AEFluidKey.of(new FluidStack(FluidRegistry.WATER, 1)), 1)), Reference2DoubleMaps.singleton(COOLING, 1));
+            AEFluidKey.of(FluidRegistry.WATER), 1)), Reference2DoubleMaps.singleton(COOLING, 1));
         var recipes = List.of(cooling);
         event.assembly(MachineAssembly.builder(Objects.requireNonNull(event.registry().get(ID)), "computer-v2")
                                       .instanceFactory(type -> new ComputerController(type, 8, Reference2DoubleMaps.singleton(ExampleResources.COMPUTE, 1_000), recipes))

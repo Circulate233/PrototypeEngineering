@@ -393,8 +393,8 @@ class FixedIoScanConstraintTest {
             assertEquals(0, stats.completes);
             assertEquals(0, stats.starts);
             assertEquals(0, stats.ends);
-            assertThrows(NullPointerException.class, process::tickContext);
-            assertThrows(NullPointerException.class, process::requirementPath);
+            assertNull(process.tickContext());
+            assertNull(process.requirementPath());
             process.requirePersistenceBoundary();
             env.assertReleased();
         }
@@ -422,8 +422,8 @@ class FixedIoScanConstraintTest {
         env.assertReleased();
         assertEquals(20, env.input.amount(MATERIAL));
         assertEquals(50, env.energy.storedEnergy());
-        assertThrows(NullPointerException.class, process::tickContext);
-        assertThrows(NullPointerException.class, process::requirementPath);
+        assertNull(process.tickContext());
+        assertNull(process.requirementPath());
         assertThrows(IllegalStateException.class, process::requirePersistenceBoundary);
     }
 

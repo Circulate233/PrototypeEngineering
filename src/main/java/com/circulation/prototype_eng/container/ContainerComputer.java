@@ -131,7 +131,6 @@ public final class ContainerComputer extends AEBaseContainer {
 
     @Override
     public void addListener(IContainerListener listener) {
-        details = new ComputerDetailsPacket(components);
         demandUpdate = demands.fullPacket();
         outputUpdate = output.fullPacket();
         super.addListener(listener);

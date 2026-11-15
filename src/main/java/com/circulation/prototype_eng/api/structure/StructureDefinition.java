@@ -6,22 +6,23 @@ import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Complete catalog entry: intrinsic shape presentation plus explicit per-cell overrides.
+ * Supplied display maps are borrowed read-only for the definition's lifetime.
  */
 public record StructureDefinition(MachineStructure shape, @Nullable String translationKey,
                                   BlockPos2ObjectMap<StructureDisplay> displays) {
     public StructureDefinition {
-        Objects.requireNonNull(shape);
-        Objects.requireNonNull(shape.id());
         if (translationKey != null && translationKey.isBlank())
             throw new IllegalArgumentException("Empty structure translation key");
-        var copy = new BlockPos2ObjectMap<>(shape.displays());
-        for (var entry : displays.long2ObjectEntrySet())
-            copy.put(entry.getLongKey(), Objects.requireNonNull(entry.getValue()));
-        displays = copy;
+        var intrinsic = shape.displays();
+        if (displays.isEmpty()) displays = intrinsic;
+        else if (!intrinsic.isEmpty() && displays != intrinsic) {
+            var merged = new BlockPos2ObjectMap<>(intrinsic);
+            merged.putAll(displays);
+            displays = merged;
+        }
     }
 
     public StructureDefinition(MachineStructure shape) {

@@ -12,7 +12,6 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 /**
  * A concrete recipe/revision binding. Later name declarations never modify this recipe.
@@ -26,7 +25,7 @@ public final class ZenRecipe {
     private final RecipeProcessNbt codec;
 
     public ZenRecipe(MachineRecipe recipe, String revision) {
-        this(RecipeProcessNbt.builder(Objects.requireNonNull(recipe), revision)
+        this(RecipeProcessNbt.builder(recipe, revision)
                              .component(DataComponents.PROCESS, DataComponents.PROCESS_CODEC).build());
     }
 
@@ -34,7 +33,7 @@ public final class ZenRecipe {
      * Addons supply the complete frozen codec, including their components, overlays and validators.
      */
     public ZenRecipe(RecipeProcessNbt codec) {
-        this.codec = Objects.requireNonNull(codec);
+        this.codec = codec;
         definition = new RecipeRegistry.Definition(codec.recipe(), codec.revision());
     }
 

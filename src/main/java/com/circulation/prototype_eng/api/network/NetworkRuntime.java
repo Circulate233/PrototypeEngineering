@@ -25,7 +25,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
@@ -57,9 +56,9 @@ public final class NetworkRuntime implements AutoCloseable {
     private boolean closing;
 
     public NetworkRuntime(MachineIdentityRegistry identities, OwnerTeamResolver teams, Runnable ownerCheck) {
-        this.identities = Objects.requireNonNull(identities);
-        this.teams = Objects.requireNonNull(teams);
-        this.ownerCheck = Objects.requireNonNull(ownerCheck);
+        this.identities = identities;
+        this.teams = teams;
+        this.ownerCheck = ownerCheck;
         participants = new NetworkParticipants(this, teams, ownerCheck);
     }
 
@@ -107,18 +106,16 @@ public final class NetworkRuntime implements AutoCloseable {
      * The source and validation proof run only on the owner thread, never on a recipe worker.
      */
     public Registration register(MachineIdentityRegistry.Registration identity, Supplier<@Nullable Capture> source) {
-        Objects.requireNonNull(source);
         return register(identity, _ -> source.get());
     }
 
     /**
      * Supplies the identity already owned by this registration to the capture callback.
+     * Captures must retain that identity and load order; runtime data centers include their research snapshot.
      */
     public Registration register(MachineIdentityRegistry.Registration identity,
                                  Function<MachineIdentityRegistry.Registration, @Nullable Capture> source) {
         requireMutation();
-        Objects.requireNonNull(identity);
-        Objects.requireNonNull(source);
         if (!identity.current() || !identities.owns(identity)) {
             throw new IllegalArgumentException("Network device needs this registry's current identity");
         }
@@ -163,7 +160,6 @@ public final class NetworkRuntime implements AutoCloseable {
         if (!ticking) {
             throw new IllegalStateException("Network capture requires an active server tick");
         }
-        Objects.requireNonNull(participants);
         revoke();
         if (!this.participants.beforeRefresh()) return false;
         long epoch = nextEpoch;
@@ -187,18 +183,12 @@ public final class NetworkRuntime implements AutoCloseable {
                     continue;
                 }
                 var snapshot = capture.snapshot();
-                if (!snapshot.identity().equals(registration.identity.identity()) || snapshot.loadOrder() != registration.identity.loadOrder()) {
-                    throw new IllegalArgumentException("Network source changed its registered identity or load order");
-                }
-                if (snapshot.role() == NetworkDeviceRole.DATA_CENTER && snapshot.dataCenterResearch() == null) {
-                    throw new IllegalArgumentException("Runtime data centers require captured research contents, not only a count");
-                }
                 captures.put(registration, capture);
                 devices.add(snapshot);
             }
             var external = this.participants.capture(tick, epoch);
             var contributions = new ObjectArrayList<>(external.contributions);
-            contributions.addAll(Objects.requireNonNull(participants.apply(epoch)));
+            contributions.addAll(participants.apply(epoch));
             prepareDeviceEvents(epoch, captures, devices, contributions);
             var states = new Reference2ObjectOpenHashMap<Registration, NetworkWorkState>(captures.size());
             NetworkPlan plan;
@@ -257,7 +247,7 @@ public final class NetworkRuntime implements AutoCloseable {
                 }
             }
             for (var registration : captures.keySet()) {
-                states.put(registration, Objects.requireNonNull(plan.workStates().get(registration.identity.identity().machineId())));
+                states.put(registration, plan.workStates().get(registration.identity.identity().machineId()));
             }
             if (captureRevoked || identities.revision() != revision) {
                 return false;
@@ -579,7 +569,7 @@ public final class NetworkRuntime implements AutoCloseable {
     }
 
     NetworkTeamBudget participantBudget(String teamId) {
-        return Objects.requireNonNull(budgets.get(teamId));
+        return budgets.get(teamId);
     }
 
     /**
@@ -691,8 +681,8 @@ public final class NetworkRuntime implements AutoCloseable {
             if (current == null || !allowsNetworkWork()) {
                 return null;
             }
-            var teamId = Objects.requireNonNull(current.plan.teamIds().get(identity.identity().machineId()));
-            var permit = new WorkPermit(this, current, teamId, Objects.requireNonNull(runtime.budgets.get(teamId)));
+            var teamId = current.plan.teamIds().get(identity.identity().machineId());
+            var permit = new WorkPermit(this, current, teamId, runtime.budgets.get(teamId));
             return permit.authorized() ? permit : null;
         }
 
@@ -747,7 +737,7 @@ public final class NetworkRuntime implements AutoCloseable {
          * This exact attachment's frozen device in the issuing publication; never re-samples a source.
          */
         public NetworkDeviceSnapshot deviceSnapshot() {
-            return Objects.requireNonNull(publication.captures.get(registration)).snapshot();
+            return publication.captures.get(registration).snapshot();
         }
 
         @SuppressWarnings("unused")
@@ -761,7 +751,7 @@ public final class NetworkRuntime implements AutoCloseable {
          */
         @Nullable
         public DataCenterResearchSnapshot dataCenterResearch() {
-            return Objects.requireNonNull(publication.plan.teams().get(teamId)).dataCenterResearch();
+            return publication.plan.teams().get(teamId).dataCenterResearch();
         }
 
         /**

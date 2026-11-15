@@ -7,7 +7,6 @@ import net.minecraft.util.ResourceLocation;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 /**
  * ZenScript research stage definition; duration is measured in ticks.
@@ -19,7 +18,7 @@ public final class ZenResearchStage {
     private final ResearchLevelStage.Builder builder;
 
     public ZenResearchStage(ResearchLevelStage.Builder builder) {
-        this.builder = Objects.requireNonNull(builder);
+        this.builder = builder;
     }
 
     @ZenMethod

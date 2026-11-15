@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.api.scheduler.planned;
 
 import java.time.Duration;
-import java.util.Objects;
 
 /**
  * One monotonic time budget shared across execution phases and joins.
@@ -14,7 +13,6 @@ public record PlannedDeadline(long startedAtNanos, long timeoutNanos) {
     }
 
     public static PlannedDeadline after(Duration duration, long currentNanos) {
-        Objects.requireNonNull(duration, "Planned execution duration");
         if (duration.isNegative() || duration.isZero()) {
             throw new IllegalArgumentException("Planned execution duration must be positive");
         }

@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Ordered business effects sharing a terminal decision, retaining each exact cleanup receipt.
@@ -245,7 +244,7 @@ final class TransactionGroup implements ReversibleTransaction {
             }
             rethrow(failure);
             if (allTerminal()) {
-                return Objects.requireNonNull(decision);
+                return decision;
             }
             return retryable ? Resolution.REVERSIBLE : Resolution.UNKNOWN;
         } finally {
@@ -254,7 +253,7 @@ final class TransactionGroup implements ReversibleTransaction {
     }
 
     private boolean confirmOrRetry(int index, ReversibleTransaction transaction) {
-        var actual = Objects.requireNonNull(transaction.resolution());
+        var actual = transaction.resolution();
         if (actual == decision) {
             confirm(index);
             return false;

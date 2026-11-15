@@ -16,7 +16,6 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.registry.GameRegistry;
 
 import java.util.List;
-import java.util.Objects;
 
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class MachineControllerBlocks {
@@ -48,7 +47,7 @@ public final class MachineControllerBlocks {
             var type = elements.get(index1);
             var factory = factories.get(type.id());
             var block = factory == null ? new BasicMachineControllerBlock(type)
-                : Objects.requireNonNull(factory.apply(type), "Controller factory returned null");
+                : factory.apply(type);
             if (block.type() != type || block.getRegistryName() == null) {
                 throw new IllegalArgumentException("Controller factory must bind its canonical machine type and registry name");
             }
@@ -64,15 +63,16 @@ public final class MachineControllerBlocks {
     }
 
     @SubscribeEvent
+    @SuppressWarnings("DataFlowIssue")
     public static void registerItems(RegistryEvent.Register<Item> event) {
         var generated = new ObjectArrayList<Item>(blocks.size());
         for (int index = 0; index < blocks.size(); index++) {
             var block = blocks.get(index);
-            var item = Objects.requireNonNull(block.createItem(), "Controller item factory returned null");
+            var item = block.createItem();
             if (item.getBlock() != block) {
                 throw new IllegalArgumentException("Controller item factory must target its own block");
             }
-            generated.add(item.setRegistryName(Objects.requireNonNull(block.getRegistryName())));
+            generated.add(item.setRegistryName(block.getRegistryName()));
         }
         event.getRegistry().registerAll(generated.toArray(Item[]::new));
     }

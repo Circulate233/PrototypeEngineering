@@ -2,43 +2,29 @@ package com.circulation.prototype_eng.client.render.gecko;
 
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.render.GeckoModelBinding;
-import com.circulation.prototype_eng.api.machine.render.MachineAnimationState;
 import com.circulation.prototype_eng.client.render.StructureRenderAnchors;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Frozen CPU input. Owner and epoch tokens carry identity, never a World/TE callback.
+ * The layer list is borrowed read-only until the build completes.
  */
 public record GeckoRenderRequest(Owner owner, StructureRenderAnchors.Part part, Epoch bindingEpoch, Epoch resourceEpoch,
                                  GeckoModelBinding binding, List<String> layers, GeckoModelBaker.BakeMode mode,
                                  BlockPos position, BlockPos origin, BlockOrientation orientation, Vec3d localOffset,
                                  Sample sample) {
     public GeckoRenderRequest {
-        Objects.requireNonNull(owner);
-        Objects.requireNonNull(part);
-        Objects.requireNonNull(bindingEpoch);
-        Objects.requireNonNull(resourceEpoch);
-        Objects.requireNonNull(binding);
-        Objects.requireNonNull(mode);
-        Objects.requireNonNull(orientation);
-        Objects.requireNonNull(localOffset);
-        Objects.requireNonNull(sample);
         position = position.toImmutable();
         origin = origin.toImmutable();
-        layers = new MachineAnimationState.Snapshot(0, layers).layers();
-        if (!Double.isFinite(localOffset.x) || !Double.isFinite(localOffset.y) || !Double.isFinite(localOffset.z))
-            throw new IllegalArgumentException("Model offset must be finite");
     }
 
     public static GeckoRenderRequest from(Owner owner, Epoch bindingEpoch, Epoch resourceEpoch,
                                           StructureRenderAnchors.Anchor anchor, BlockPos origin,
                                           GeckoModelBaker.BakeMode mode, Sample sample) {
         var model = anchor.binding();
-        // Anchor.modelOffset is already world rotated and includes yOffset. The baker consumes raw local units once.
         return new GeckoRenderRequest(owner, anchor.part(), bindingEpoch, resourceEpoch, model, anchor.layers(),
             mode, anchor.origin(), origin, anchor.orientation(), new Vec3d(model.offsetX(), model.offsetY(), model.offsetZ()), sample);
     }

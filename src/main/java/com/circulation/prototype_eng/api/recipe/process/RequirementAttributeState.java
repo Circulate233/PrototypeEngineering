@@ -12,7 +12,6 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Exact local attribute ownership for built-in requirements, including nested canonical paths.
@@ -46,7 +45,7 @@ public final class RequirementAttributeState implements ProcessAbortListener {
             requireInstalled(reference, previous);
             return null;
         }
-        var renamed = new RenamedAttributeModifier(reference.modifierId(), Objects.requireNonNull(modifier));
+        var renamed = new RenamedAttributeModifier(reference.modifierId(), modifier);
         if (!process.attributes().addModifier(attribute, renamed)) {
             return null;
         }
@@ -65,7 +64,7 @@ public final class RequirementAttributeState implements ProcessAbortListener {
                 result.add(new Installation(reference, modifier));
             }
         });
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     /**
@@ -170,10 +169,7 @@ public final class RequirementAttributeState implements ProcessAbortListener {
     }
 
     public record Reference(RequirementPath path, ResourceLocation attribute) {
-        public Reference {
-            Objects.requireNonNull(path);
-            Objects.requireNonNull(attribute);
-        }
+
 
         public String modifierId() {
             return "req:" + path + ":" + attribute;
@@ -181,10 +177,7 @@ public final class RequirementAttributeState implements ProcessAbortListener {
     }
 
     public record Installation(Reference reference, AttributeModifier modifier) {
-        public Installation {
-            Objects.requireNonNull(reference);
-            Objects.requireNonNull(modifier);
-        }
+
     }
 
     /**

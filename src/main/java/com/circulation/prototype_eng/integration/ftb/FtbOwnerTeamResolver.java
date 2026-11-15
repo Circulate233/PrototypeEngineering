@@ -11,7 +11,6 @@ import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.server.MinecraftServer;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -22,7 +21,7 @@ public final class FtbOwnerTeamResolver implements OwnerTeamResolver {
     private final MinecraftServer server;
 
     public FtbOwnerTeamResolver(MinecraftServer server) {
-        this.server = Objects.requireNonNull(server, "server");
+        this.server = server;
     }
 
     private static UUID requirePlayerId(@Nullable ForgePlayer player, String teamId, String role) {
@@ -48,7 +47,6 @@ public final class FtbOwnerTeamResolver implements OwnerTeamResolver {
 
     @Override
     public OwnerTeamResolution resolve(UUID ownerId) {
-        Objects.requireNonNull(ownerId, "ownerId");
         if (!server.isCallingFromMinecraftThread()) {
             throw new IllegalStateException("FTBLib owner resolution requires the bound server thread");
         }

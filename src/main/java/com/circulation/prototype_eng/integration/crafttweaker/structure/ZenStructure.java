@@ -15,15 +15,11 @@ import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 
 @ZenRegister
 @ZenClass("mods.prototype_eng.structure.Structure")
 @SuppressWarnings("unused") // ZenScript resolves the registered public factories.
 public record ZenStructure(StructureDefinition definition) {
-    public ZenStructure {
-        Objects.requireNonNull(definition);
-    }
 
     @ZenMethod
     public static ZenStructure template(String id, String orientation, int x, int y, int z, boolean hideWorldBlocks,

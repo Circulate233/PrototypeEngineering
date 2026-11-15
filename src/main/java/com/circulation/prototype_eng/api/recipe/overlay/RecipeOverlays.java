@@ -15,7 +15,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
@@ -92,15 +91,13 @@ public final class RecipeOverlays {
     }
 
     private static void validatePath(RecipeRequirement<?> target, RequirementPath path) {
-        Objects.requireNonNull(target);
-        Objects.requireNonNull(path);
         if (!target.id().equals(path.requirementId()) || !target.type().id().equals(path.typeId())) {
             throw new IllegalArgumentException("Overlay path does not identify its target requirement");
         }
     }
 
     private static void validateLayerId(String layerId) {
-        if (Objects.requireNonNull(layerId).isBlank()) {
+        if (layerId.isBlank()) {
             throw new IllegalArgumentException("Blank overlay layer id");
         }
     }
@@ -126,7 +123,7 @@ public final class RecipeOverlays {
         }
         result.sort(Comparator.comparing((LayerSnapshot<?, ?> layer) -> layer.path().toString())
                               .thenComparingLong(LayerSnapshot::order));
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     /**
@@ -140,7 +137,7 @@ public final class RecipeOverlays {
             var orders = new Object2ObjectOpenHashMap<RequirementPath, LongOpenHashSet>(snapshot.size());
             for (int index2 = 0; index2 < snapshot.size(); index2++) {
                 var layer = snapshot.get(index2);
-                restoreLayer(replacement, orders, Objects.requireNonNull(layer));
+                restoreLayer(replacement, orders, layer);
             }
             for (var binding : replacement.values()) {
                 binding.recompute();
@@ -192,8 +189,6 @@ public final class RecipeOverlays {
                              RecipeOverlayType<C, D> type, D data) {
         validatePath(target, path);
         validateLayerId(layerId);
-        Objects.requireNonNull(type);
-        Objects.requireNonNull(data);
         if (target.type() != type.requirementType()) {
             throw new IllegalArgumentException("Overlay applier targets a different requirement type");
         }
@@ -208,7 +203,7 @@ public final class RecipeOverlays {
             var next = new Object2ObjectOpenHashMap<>(binding.layers);
             next.put(layerId, replacement);
             var effective = binding.compute(next);
-            var change = change(binding, previous, replacement);
+            var change = change(binding, layerId, previous, replacement);
             binding.install(next, effective);
             binding.nextOrder = nextOrder;
             if (existing == null) {
@@ -246,7 +241,7 @@ public final class RecipeOverlays {
         var next = new Object2ObjectOpenHashMap<>(binding.layers);
         next.remove(layerId);
         var effective = binding.compute(next);
-        var change = change(binding, previous, null);
+        var change = change(binding, layerId, previous, null);
         binding.install(next, effective);
         return change;
     }
@@ -266,12 +261,11 @@ public final class RecipeOverlays {
         }
     }
 
-    private <C> Change change(Binding<C> binding, @Nullable Layer<C, ?> previous, @Nullable Layer<C, ?> installed) {
+    private <C> Change change(Binding<C> binding, String id, @Nullable Layer<C, ?> previous, @Nullable Layer<C, ?> installed) {
         acquiredChanges = Math.incrementExact(acquiredChanges);
         return new Change(this, () -> {
             beginEdit();
             try {
-                String id = Objects.requireNonNull(installed == null ? previous : installed).id();
                 if (binding.layers.get(id) != installed) {
                     throw new IllegalStateException("Overlay layer changed before rollback: " + id);
                 }
@@ -285,7 +279,7 @@ public final class RecipeOverlays {
             } finally {
                 editing = false;
             }
-        }, () -> beginLayerEdit(binding, Objects.requireNonNull(installed == null ? previous : installed).id(), installed, previous));
+        }, () -> beginLayerEdit(binding, id, installed, previous));
     }
 
     private <C> LayerEdit<C> beginLayerEdit(Binding<C> binding, String id, @Nullable Object expected,
@@ -339,13 +333,7 @@ public final class RecipeOverlays {
      */
     public record LayerSnapshot<C, D>(RequirementPath path, RecipeRequirement<C> target, String layerId,
                                       long order, RecipeOverlayType<C, D> type, D data) {
-        public LayerSnapshot {
-            Objects.requireNonNull(path);
-            Objects.requireNonNull(target);
-            Objects.requireNonNull(layerId);
-            Objects.requireNonNull(type);
-            Objects.requireNonNull(data);
-        }
+
     }
 
     private static final class Binding<C> {
@@ -381,7 +369,7 @@ public final class RecipeOverlays {
                     }
                 }
             }
-            return new Computed<>(base.withPayload(payload), ObjectLists.unmodifiable(ordered));
+            return new Computed<>(base.withPayload(payload), ordered);
         }
 
         private void install(Object2ObjectOpenHashMap<String, Layer<C, ?>> next, Computed<C> result) {
@@ -426,6 +414,7 @@ public final class RecipeOverlays {
             source = binding.ordered;
         }
 
+        @SuppressWarnings("DataFlowIssue")
         private boolean advance(RecipeWorkBudget budget) {
             if (done) return true;
             while (index < source.size() || replacement != null && !inserted) {
@@ -437,14 +426,14 @@ public final class RecipeOverlays {
                     inserted = true;
                 } else {
                     index++;
-                    if (!Objects.requireNonNull(old).id().equals(id)) {
+                    if (!old.id().equals(id)) {
                         next.put(old.id(), old);
                         ordered.add(old);
                     }
                 }
             }
             if (computation == null)
-                computation = new ComputeCapture<>(binding.base, ObjectLists.unmodifiable(ordered));
+                computation = new ComputeCapture<>(binding.base, ordered);
             if (!computation.advance(budget)) return false;
             if (!budget.take()) return false;
             if (binding.layers != original || original.get(id) != expected)
@@ -480,6 +469,7 @@ public final class RecipeOverlays {
             payload = base.payload();
         }
 
+        @SuppressWarnings("DataFlowIssue")
         private boolean advance(RecipeWorkBudget budget) {
             if (done) return true;
             if (ordered.isEmpty()) {
@@ -488,7 +478,7 @@ public final class RecipeOverlays {
             }
             if (children == null) {
                 if (!budget.take()) return false;
-                children = Objects.requireNonNull(base.type().system().children(payload));
+                children = base.type().system().children(payload);
             }
             while (layer < ordered.size()) {
                 if (phase == 0) {
@@ -498,7 +488,7 @@ public final class RecipeOverlays {
                 }
                 if (phase == 1) {
                     if (!budget.take()) return false;
-                    effectiveChildren = Objects.requireNonNull(base.type().system().children(payload));
+                    effectiveChildren = base.type().system().children(payload);
                     if (children.size() != effectiveChildren.size())
                         throw new IllegalArgumentException("Overlay changed structural child count");
                     child = 0;
@@ -506,7 +496,7 @@ public final class RecipeOverlays {
                 }
                 while (child < children.size()) {
                     if (!budget.take()) return false;
-                    if (children.get(child).definition() != Objects.requireNonNull(effectiveChildren).get(child).definition())
+                    if (children.get(child).definition() != effectiveChildren.get(child).definition())
                         throw new IllegalArgumentException("Overlay changed structural child identity or order");
                     child++;
                 }
@@ -526,7 +516,7 @@ public final class RecipeOverlays {
 
     private record Layer<C, D>(String id, long order, RecipeOverlayType<C, D> type, D data) {
         private C apply(C base) {
-            return Objects.requireNonNull(type.applier().apply(base, data), "effective requirement payload");
+            return type.applier().apply(base, data);
         }
     }
 
@@ -653,12 +643,13 @@ public final class RecipeOverlays {
             undoEdit = null;
         }
 
+        @SuppressWarnings("DataFlowIssue")
         public boolean rollbackWithinBudget(RecipeWorkBudget budget) {
             if (undo == null) return true;
             if (!undone) {
                 if (pending == null) {
                     if (!budget.take()) return false;
-                    pending = Objects.requireNonNull(undoEdit, "budgeted overlay undo").get();
+                    pending = undoEdit.get();
                 }
                 try {
                     if (!pending.advance(budget)) return false;

@@ -23,6 +23,7 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2LongMap;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.text.ITextComponent;
 import org.jetbrains.annotations.Nullable;
 
@@ -52,7 +53,6 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
     }
 
     public BufferedResourceHatch(ResourceHatchConfiguration configuration, Runnable onChanged) {
-        Objects.requireNonNull(onChanged, "onChanged");
         var in = configuration.input();
         var out = configuration.output();
         input = in == null ? null : new SlottedResourceBuffer(in.slots(), in.capacities(), onChanged);
@@ -175,15 +175,7 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
             if (entry.hasKey("Key")) {
                 stack = new GenericStack(KEYS.decode(entry.getCompoundTag("Key")), entry.getLong("Quantity"));
             } else {
-                // Decode the former GenericStack shape strictly; AE's missing-content fallback changes identity.
-                var key = new NBTTagCompound();
-                key.setString("Type", entry.getString(AEKey.TYPE_FIELD));
-                var data = entry.copy();
-                data.removeTag(AEKey.TYPE_FIELD);
-                data.removeTag("#");
-                data.removeTag("Slot");
-                key.setTag("Data", data);
-                stack = new GenericStack(KEYS.decode(key), entry.getLong("#"));
+                stack = new GenericStack(KEYS.decode(new ResourceLocation(entry.getString(AEKey.TYPE_FIELD)), entry), entry.getLong("#"));
             }
             if (result.get(slot) != null || stack.amount() <= 0 || !storage.isAllowedIn(slot, stack.what())
                 || stack.amount() > storage.getMaxAmount(stack.what())) {
@@ -200,7 +192,7 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
     }
 
     public void setInputGroup(ResourceInputGroup group) {
-        inputGroup = Objects.requireNonNull(group);
+        inputGroup = group;
     }
 
     boolean hasTransferReservation() {
@@ -292,7 +284,6 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
      * Eject each independent side once; unresolved tokens deliver their final balance later.
      */
     public List<GenericStack> removeForDrops(Consumer<List<GenericStack>> deferredDrops) {
-        Objects.requireNonNull(deferredDrops);
         var drops = new ObjectArrayList<GenericStack>(6);
         locked(() -> {
             if (input != null) drops.addAll(input.removeForDrops(deferredDrops));
@@ -322,10 +313,10 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
             var nextInput = input == null ? null : input.prepareRestore(inputContents);
             var nextOutput = output == null ? null : output.prepareRestore(outputContents);
             if (input != null) {
-                input.restorePrepared(Objects.requireNonNull(nextInput));
+                input.restorePrepared(nextInput);
             }
             if (output != null) {
-                output.restorePrepared(Objects.requireNonNull(nextOutput));
+                output.restorePrepared(nextOutput);
             }
         });
     }

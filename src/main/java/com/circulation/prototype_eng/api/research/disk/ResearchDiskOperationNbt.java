@@ -7,7 +7,6 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -18,7 +17,6 @@ public final class ResearchDiskOperationNbt {
     }
 
     public static NBTTagCompound encode(ResearchDiskOperation value) {
-        Objects.requireNonNull(value);
         var tag = new NBTTagCompound();
         tag.setString("nonce", value.intent().nonce().toString());
         tag.setString("owner", value.target().ownerId().toString());
@@ -45,9 +43,11 @@ public final class ResearchDiskOperationNbt {
         var target = new ResearchDataCenters.Target(commit.before().dataCenterId(), uuid(tag, "owner"),
             new MachineIdentity(new ResourceLocation(location.getString("type")), location.getInteger("dimension"),
                 new BlockPos(location.getInteger("x"), location.getInteger("y"), location.getInteger("z"))));
-        return new ResearchDiskOperation(new ResearchDiskOperation.Intent(commit.actor(), uuid(tag, "nonce"), commit.before().dataCenterId(),
+        var operation = new ResearchDiskOperation(new ResearchDiskOperation.Intent(commit.actor(), uuid(tag, "nonce"), commit.before().dataCenterId(),
             commit.teamId(), material.slot()), target, commit, material, tag.getLong("createdAt"),
             ResearchDiskOperation.Status.valueOf(tag.getString("status")), tag.getBoolean("databaseArmed"));
+        operation.validateSaved();
+        return operation;
     }
 
     private static UUID uuid(NBTTagCompound tag, String field) {

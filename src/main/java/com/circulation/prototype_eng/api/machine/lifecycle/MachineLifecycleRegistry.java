@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdent
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Ordered, thread-safe registrations for machine lifecycle listeners.
@@ -25,7 +24,6 @@ public final class MachineLifecycleRegistry {
      * @throws IllegalArgumentException if the same listener object already has an active registration
      */
     public synchronized Subscription register(MachineLifecycleListener listener) {
-        Objects.requireNonNull(listener, "listener");
         for (int index3 = 0; index3 < entries.size(); index3++) {
             var entry = entries.get(index3);
             if (entry.listener == listener) {
@@ -43,7 +41,6 @@ public final class MachineLifecycleRegistry {
      * Removes the active registration for the listener by object identity.
      */
     public synchronized boolean unregister(MachineLifecycleListener listener) {
-        Objects.requireNonNull(listener, "listener");
         for (int index2 = 0; index2 < entries.size(); index2++) {
             var entry = entries.get(index2);
             if (entry.listener == listener) {
@@ -54,7 +51,7 @@ public final class MachineLifecycleRegistry {
     }
 
     /**
-     * Returns an immutable registration-order snapshot that remains valid after cancellation.
+     * Returns a read-only registration-order snapshot that remains valid after cancellation.
      */
     public List<MachineLifecycleListener> snapshot() {
         return snapshot;
@@ -65,11 +62,12 @@ public final class MachineLifecycleRegistry {
      * Cleanup attempts the captured listeners once and preserves the first failure.
      */
     public void unassembledControllerBroken(MachineLifecycleHost host, PersistentMachineIdentity ownership) {
-        Objects.requireNonNull(host).requireServerThread();
+        host.requireServerThread();
         var event = new MachineLifecycleEvent.UnassembledControllerBroken(host, host.identity(), ownership);
+        var captured = snapshot;
         Throwable failure = null;
-        for (int index4 = 0; index4 < snapshot.size(); index4++) {
-            var listener = snapshot.get(index4);
+        for (int index4 = 0; index4 < captured.size(); index4++) {
+            var listener = captured.get(index4);
             try {
                 listener.onUnassembledControllerBroken(event);
             } catch (RuntimeException | Error cleanup) {
@@ -104,7 +102,7 @@ public final class MachineLifecycleRegistry {
             var entry = entries.get(index);
             listeners.add(entry.listener);
         }
-        snapshot = List.copyOf(listeners);
+        snapshot = listeners;
     }
 
     /**

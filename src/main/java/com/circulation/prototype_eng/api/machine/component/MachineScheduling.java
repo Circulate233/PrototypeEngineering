@@ -9,7 +9,6 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Replace this immutable selection only at the scheduler's exclusive machine boundary.
@@ -25,7 +24,4 @@ public record MachineScheduling(ExecutionMode mode, @Nullable ControllerExecutio
         this(mode, null);
     }
 
-    public MachineScheduling {
-        Objects.requireNonNull(mode);
-    }
 }

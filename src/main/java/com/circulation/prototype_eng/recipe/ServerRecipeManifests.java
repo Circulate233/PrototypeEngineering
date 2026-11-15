@@ -13,7 +13,6 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -103,12 +102,13 @@ public final class ServerRecipeManifests {
         }
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private static void sendTo(Current captured, EntityPlayerMP player,
                                @Nullable RecipeDefinitionManifest manifest, byte @Nullable [] payload) {
         if (manifest == null)
             InitNetwork.announceRecipeDefinitions(captured.session, captured.snapshot.generation(),
                 captured.snapshot.generation() != 0 || RecipeDeclarations.INSTANCE.key(captured.snapshot) != null, player);
-        else InitNetwork.sendRecipeDefinitions(manifest, Objects.requireNonNull(payload), player);
+        else InitNetwork.sendRecipeDefinitions(manifest, payload, player);
     }
 
     private record Current(MinecraftServer server, UUID session, RecipeRegistry.Snapshot snapshot) {

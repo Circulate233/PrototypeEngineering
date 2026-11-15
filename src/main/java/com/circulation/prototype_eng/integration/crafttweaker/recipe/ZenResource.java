@@ -16,7 +16,6 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 /**
  * AEKey identity and a long quantity; item and fluid conversions do not narrow the stored amount.
@@ -27,22 +26,23 @@ import java.util.Objects;
 @ZenClass("mods.prototype_eng.recipe.Resource")
 public final class ZenResource {
     private final GenericStack stack;
+    private IData keyData;
 
     public ZenResource(AEKey key, long amount) {
         if (amount <= 0) throw new IllegalArgumentException("Resource amount must be positive");
-        stack = new GenericStack(Objects.requireNonNull(key), amount);
+        stack = new GenericStack(key, amount);
     }
 
     @ZenMethod
     public static ZenResource item(IItemStack item, long amount) {
-        var key = AEItemKey.of(CraftTweakerMC.getItemStack(Objects.requireNonNull(item)));
+        var key = AEItemKey.of(CraftTweakerMC.getItemStack(item));
         if (key == null) throw new IllegalArgumentException("Empty item resource");
         return new ZenResource(key, amount);
     }
 
     @ZenMethod
     public static ZenResource fluid(ILiquidStack fluid, long amount) {
-        var key = AEFluidKey.of(CraftTweakerMC.getLiquidStack(Objects.requireNonNull(fluid)));
+        var key = AEFluidKey.of(CraftTweakerMC.getLiquidStack(fluid));
         if (key == null) throw new IllegalArgumentException("Empty fluid resource");
         return new ZenResource(key, amount);
     }
@@ -52,7 +52,7 @@ public final class ZenResource {
      */
     @ZenMethod
     public static ZenResource fromTag(IData data, long amount) {
-        var tag = NBTConverter.from(Objects.requireNonNull(data));
+        var tag = NBTConverter.from(data);
         if (!(tag instanceof NBTTagCompound compound))
             throw new IllegalArgumentException("Resource key requires a compound");
         return new ZenResource(ResourceKeyNbt.INSTANCE.decode(compound), amount);
@@ -65,7 +65,8 @@ public final class ZenResource {
 
     @ZenMethod
     public IData keyData() {
-        return NBTConverter.from(key().toTag(), true);
+        if (keyData == null) keyData = NBTConverter.from(key().toTag(), true);
+        return keyData;
     }
 
     @ZenMethod

@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.client.render.gecko;
 
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.client.resources.IResourceManager;
 import net.minecraft.util.ResourceLocation;
 import software.bernie.geckolib3.core.IAnimatable;
@@ -65,7 +64,7 @@ public class GeckoAnimationDriver implements IAnimatable {
             var name = value.trim();
             if (!name.isEmpty() && file.getAnimation(name) != null) chosen.add(name);
         }
-        if (!chosen.isEmpty()) return ObjectLists.unmodifiable(chosen);
+        if (!chosen.isEmpty()) return chosen;
         String first = null;
         for (var animation : file.getAllAnimations()) {
             var name = animation.animationName;
@@ -84,8 +83,9 @@ public class GeckoAnimationDriver implements IAnimatable {
         target.setResetSpeedInTicks(1);
         for (int i = 0; i < selected.size(); i++) {
             String animation = selected.get(i);
+            var sequence = new AnimationBuilder().addAnimation(animation);
             target.addAnimationController(new AnimationController<>(this, "pe_gecko_" + i, .001f, event -> {
-                event.getController().setAnimation(new AnimationBuilder().addAnimation(animation));
+                event.getController().setAnimation(sequence);
                 return PlayState.CONTINUE;
             }));
         }

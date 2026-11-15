@@ -13,7 +13,6 @@ import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Immutable PN research definition. Continuous stages cover exactly 1..maxLevel.
@@ -41,7 +40,7 @@ public final class ResearchDefinition {
         }
         maxLevel = builder.maxLevel;
         specialOnly = builder.specialOnly;
-        deliveryPolicy = Objects.requireNonNull(builder.deliveryPolicy, "Research download delivery policy");
+        deliveryPolicy = builder.deliveryPolicy;
         if (builder.itemDownloadLevelCost > maxLevel) {
             throw new IllegalArgumentException("Item download level cost exceeds maxLevel: " + id);
         }
@@ -155,7 +154,6 @@ public final class ResearchDefinition {
     }
 
     public boolean unlocks(ResearchUnlockQuery query) {
-        Objects.requireNonNull(query);
         int required = unlockLevels.getInt(new UnlockKey(query.effectId(), query.targetId()));
         return required > 0 && query.completedLevel() >= required;
     }
@@ -179,7 +177,7 @@ public final class ResearchDefinition {
         private ResearchStartCondition startCondition = ResearchStartCondition.ALWAYS_ALLOWED;
 
         private Builder(ResourceLocation id) {
-            this.id = Objects.requireNonNull(id);
+            this.id = id;
         }
 
         public Builder displayName(LocalizationEnum name) {
@@ -210,7 +208,7 @@ public final class ResearchDefinition {
         }
 
         public Builder deliveryPolicy(ResearchDownloadDeliveryPolicy policy) {
-            deliveryPolicy = Objects.requireNonNull(policy);
+            deliveryPolicy = policy;
             return this;
         }
 
@@ -223,12 +221,12 @@ public final class ResearchDefinition {
         }
 
         public Builder stage(ResearchLevelStage stage) {
-            stages.add(Objects.requireNonNull(stage));
+            stages.add(stage);
             return this;
         }
 
         public Builder unlock(ResourceLocation effect, ResourceLocation target, int level) {
-            var key = new UnlockKey(Objects.requireNonNull(effect), Objects.requireNonNull(target));
+            var key = new UnlockKey(effect, target);
             if (level < 1 || unlockLevels.containsKey(key)) {
                 throw new IllegalArgumentException("Invalid or duplicate research unlock");
             }
@@ -237,7 +235,7 @@ public final class ResearchDefinition {
         }
 
         public Builder startCondition(ResearchStartCondition condition) {
-            startCondition = Objects.requireNonNull(condition);
+            startCondition = condition;
             return this;
         }
 

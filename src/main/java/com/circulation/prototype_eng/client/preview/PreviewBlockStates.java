@@ -30,7 +30,7 @@ final class PreviewBlockStates {
         var display = cell.display();
         if (display == null) return null;
         var explicit = model.settings().explicitOption(cell);
-        if (explicit != null) return selected(model, display, explicit);
+        if (explicit >= 0) return selected(model, display, explicit);
         var root = model.generation().entries().get(model.structureId());
         var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
         var elements2 = display.options();
@@ -49,12 +49,12 @@ final class PreviewBlockStates {
         return resolve(option, rotation);
     }
 
-    @SuppressWarnings("deprecation")
+    @SuppressWarnings({"deprecation", "DataFlowIssue"})
+    // The preceding registry membership lookup requires a registered block.
     static IBlockState resolve(StructureDisplay.BlockOption option, StructureTransform rotation) {
         // Missing registry lookups can return AIR; resolve this boundary once per option.
         if (!ForgeRegistries.BLOCKS.containsKey(option.blockId())) return null;
         var block = ForgeRegistries.BLOCKS.getValue(option.blockId());
-        if (block == null) return null;
         var state = option.resolveProperties(block.getStateFromMeta(option.meta()));
         return state == null ? null : rotate(state, rotation);
     }

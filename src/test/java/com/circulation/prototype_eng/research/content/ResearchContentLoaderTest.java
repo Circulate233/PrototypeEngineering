@@ -86,16 +86,6 @@ class ResearchContentLoaderTest {
     }
 
     @Test
-    void unsupportedCategorySectionsAndLegacyTranslationFieldsAreRejected() throws IOException {
-        for (var extra : new String[]{"\"category\":\"network\"", "\"sections\":[]", "\"nameTranslationKey\":\"old.key\""}) {
-            write("zh_cn", "{\"title\":\"T\",\"description\":[\"D\"],\"icon\":{\"kind\":\"item\",\"id\":\"minecraft:paper\"}," + extra + "}");
-            assertThrows(IllegalStateException.class, () -> loader().load(RESEARCH, "zh_cn"));
-        }
-        write("zh_cn", "{\"title\":\"T\",\"description\":[\"D\"],\"icon\":{\"kind\":\"item\",\"id\":\"minecraft:paper\",\"unknown\":true}}");
-        assertThrows(IllegalStateException.class, () -> loader().load(RESEARCH, "zh_cn"));
-    }
-
-    @Test
     void textFieldsMustHaveTheirDeclaredTypesAndNonemptyRequiredText() throws IOException {
         for (var fields : new String[]{
             "\"title\":\" \",\"description\":[\"D\"]", "\"title\":42,\"description\":[\"D\"]",
@@ -110,13 +100,11 @@ class ResearchContentLoaderTest {
     }
 
     @Test
-    void itemMetadataMustBeAnExactNonnegativeIntAndMapIconsCannotDeclareIt() throws IOException {
+    void itemMetadataMustBeAnExactNonnegativeInt() throws IOException {
         for (var meta : new String[]{"-1", "1.5", "2147483648", "true", "null", "\"1\""}) {
             writeIcon("{\"kind\":\"item\",\"id\":\"minecraft:paper\",\"meta\":" + meta + "}");
             assertThrows(IllegalStateException.class, () -> loader().load(RESEARCH, "zh_cn"));
         }
-        writeIcon("{\"kind\":\"icon\",\"id\":\"addon:map_entry\",\"meta\":0}");
-        assertThrows(IllegalStateException.class, () -> loader().load(RESEARCH, "zh_cn"));
         writeIcon("{\"kind\":\"item\",\"id\":\"minecraft:paper\"}");
         var content = loader().load(RESEARCH, "zh_cn").content();
         assertNotNull(content);

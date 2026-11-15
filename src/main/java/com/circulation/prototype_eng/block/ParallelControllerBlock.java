@@ -27,7 +27,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * AE physical block with an external definition and shared controller entity contract.
@@ -38,7 +37,7 @@ public class ParallelControllerBlock extends AEBaseTileBlock<ParallelControllerB
 
     public ParallelControllerBlock(ParallelControllerType type) {
         super(Material.IRON);
-        this.type = Objects.requireNonNull(type);
+        this.type = type;
         setTileEntity(ParallelControllerBlockEntity.class);
         setRegistryName(type.id());
         setTranslationKey(type.displayName().getTranslationKey());

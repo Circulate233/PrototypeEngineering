@@ -8,7 +8,6 @@ import com.google.gson.JsonPrimitive;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -19,7 +18,6 @@ import java.io.Reader;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -42,8 +40,7 @@ public final class StructureJsonParameters {
      */
     @SuppressWarnings("deprecation") // setLenient is retained for the bundled Gson 2.2.4 API.
     public static StructureJsonParameters read(String source, Reader input) {
-        Objects.requireNonNull(source);
-        var reader = new JsonReader(new LiteralCheckedReader(Objects.requireNonNull(input)));
+        var reader = new JsonReader(new LiteralCheckedReader(input));
         reader.setLenient(false);
         try {
             var value = readValue(reader, source, "$", 0);
@@ -155,7 +152,7 @@ public final class StructureJsonParameters {
         var entries = child.value.getAsJsonArray();
         for (int i = 0; i < entries.size(); i++)
             result.add(new StructureJsonParameters(source, child.path + "[" + i + "]", entries.get(i)));
-        return List.copyOf(result);
+        return result;
     }
 
     public String string() {
@@ -228,7 +225,7 @@ public final class StructureJsonParameters {
             if (entry.getKey().isEmpty()) throw map.at(entry.getKey()).error("Empty NBT field name");
             result.put(entry.getKey(), map.at(entry.getKey()).string());
         }
-        return Object2ObjectMaps.unmodifiable(result);
+        return result;
     }
 
     /**

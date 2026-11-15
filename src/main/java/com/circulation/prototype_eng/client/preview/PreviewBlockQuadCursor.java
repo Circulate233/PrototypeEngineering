@@ -8,18 +8,19 @@ import net.minecraft.client.renderer.block.model.IBakedModel;
 import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.client.ForgeHooksClient;
 import net.minecraftforge.client.MinecraftForgeClient;
 
-import java.nio.ByteOrder;
-import java.util.Arrays;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
 /**
  * One published cell's actual state/layer/getQuads/quad work; shared by VBO and filtered CPU paths.
  */
-final class PreviewBlockQuadCursor {
+final class PreviewBlockQuadCursor implements PreviewSampleBlockModels.Preparation {
     private static final BlockRenderLayer[] LAYERS = {BlockRenderLayer.SOLID, BlockRenderLayer.CUTOUT_MIPPED, BlockRenderLayer.CUTOUT, BlockRenderLayer.TRANSLUCENT};
     private final Thread owner = Thread.currentThread();
     private final StructurePreviewModel model;
@@ -46,7 +47,8 @@ final class PreviewBlockQuadCursor {
     /**
      * Each call consumes exactly one library work visit, including empty/unsupported face/layer results.
      */
-    boolean step(QuadSink sink) {
+    @Override
+    public boolean step(QuadSink sink) {
         if (Thread.currentThread() != owner)
             throw new IllegalStateException("Preview quad cursor requires its client owner thread");
         if (!current.getAsBoolean() || complete) return complete;
@@ -83,7 +85,7 @@ final class PreviewBlockQuadCursor {
                     return false;
                 }
                 if (!current.getAsBoolean()) return false;
-                sink.put(layer, Arrays.copyOfRange(nativeVertices, nativeOffset, nativeOffset + 28));
+                sink.put(layer, nativeVertices, nativeOffset, -1, null);
                 nativeOffset += 28;
                 return false;
             }
@@ -120,16 +122,7 @@ final class PreviewBlockQuadCursor {
             var source = quads.get(quad++);
             int tint = source.hasTintIndex() ? Minecraft.getMinecraft().getBlockColors().colorMultiplier(state, access, access == null ? null : cell.position(), source.getTintIndex()) : -1;
             if (!current.getAsBoolean()) return false;
-            var data = PreviewBlockVertices.prepare(source.getVertexData(), tint, ByteOrder.nativeOrder());
-            // Positions were expanded/rotated by C; translate only, exactly once, in relative model space.
-            for (int vertex = 0; vertex < 4; vertex++) {
-                int offset = vertex * 7;
-                data[offset] = Float.floatToRawIntBits(Float.intBitsToFloat(data[offset]) + cell.position().getX());
-                data[offset + 1] = Float.floatToRawIntBits(Float.intBitsToFloat(data[offset + 1]) + cell.position().getY());
-                data[offset + 2] = Float.floatToRawIntBits(Float.intBitsToFloat(data[offset + 2]) + cell.position().getZ());
-            }
-            if (!current.getAsBoolean()) return false;
-            sink.put(layer, data);
+            sink.put(layer, source.getVertexData(), 0, tint, cell.position());
             if (quad == quads.size()) quads = null;
             return false;
         } finally {
@@ -137,8 +130,11 @@ final class PreviewBlockQuadCursor {
         }
     }
 
+    /**
+     * Consumes one four-vertex BLOCK span immediately; source arrays are borrowed read-only.
+     */
     @FunctionalInterface
     interface QuadSink {
-        void put(int layer, int[] vertices);
+        void put(int layer, int[] vertices, int offset, int tint, @Nullable BlockPos translation);
     }
 }

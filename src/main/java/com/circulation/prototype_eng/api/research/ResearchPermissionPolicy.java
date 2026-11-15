@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.api.research;
 
-import java.util.Objects;
 
 /**
  * Shared permission decisions for Java, packets, commands and later script adapters.
@@ -10,8 +9,7 @@ public interface ResearchPermissionPolicy {
     ResearchPermissionPolicy DEFAULT = ResearchPermissionPolicy::standard;
 
     private static Decision standard(Action action, ResearchPermissionContext context) {
-        Objects.requireNonNull(context);
-        return switch (Objects.requireNonNull(action)) {
+        return switch (action) {
             case VIEW_OWN_RESEARCH -> context.actorId().equals(context.personalTarget()) || context.serverOperator()
                 ? Decision.ALLOWED : Decision.TARGET_PLAYER_MISMATCH;
             case VIEW_TEAM_RESEARCH, REQUEST_DATA_CENTER_STATE, REQUEST_QUEUE_STATE,

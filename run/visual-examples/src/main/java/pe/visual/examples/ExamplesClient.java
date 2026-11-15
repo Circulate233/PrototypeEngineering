@@ -17,6 +17,7 @@ import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectMaps;
 import mcp.MethodsReturnNonnullByDefault;
 import mezz.jei.api.gui.IDrawable;
 import mezz.jei.api.gui.IRecipeLayout;
@@ -54,7 +55,9 @@ public final class ExamplesClient {
     @SubscribeEvent
     public static void registerPage(RecipePoolJeiRegistrationEvent event) {
         ClientCommandHandler.instance.registerCommand(new CompositePreviewCommand());
-        for (var pool : event.pools()) {
+        var pools = event.pools();
+        for (int index = 0; index < pools.size(); index++) {
+            var pool = pools.get(index);
             if (pool.id().equals(VisualExamples.SORTER_POOL)) event.pages().register(pool.id(), new SorterPage(pool));
         }
     }
@@ -63,6 +66,14 @@ public final class ExamplesClient {
      * An explicit count/orientation reaches the same production panel without changing any World block.
      */
     public static final class CompositePreviewCommand extends CommandBase {
+        private static final List<String> ORIENTATIONS = orientations();
+
+        private static List<String> orientations() {
+            var names = new ObjectArrayList<String>(ExternalEnumValues.BLOCK_ORIENTATIONS.length);
+            for (var orientation : ExternalEnumValues.BLOCK_ORIENTATIONS) names.add(orientation.name());
+            return names;
+        }
+
         @Override
         public String getName() {
             return "pe_structure_example";
@@ -115,7 +126,7 @@ public final class ExamplesClient {
                 return getListOfStringsMatchingLastWord(args, CompositeStructureExamples.NESTED, CompositeStructureExamples.EXPANDABLE);
             if (args.length == 2) return getListOfStringsMatchingLastWord(args, "1", "2", "3", "4");
             if (args.length == 3)
-                return getListOfStringsMatchingLastWord(args, java.util.Arrays.stream(ExternalEnumValues.BLOCK_ORIENTATIONS).map(Enum::name).toList());
+                return getListOfStringsMatchingLastWord(args, ORIENTATIONS);
             return List.of();
         }
     }
@@ -142,10 +153,10 @@ public final class ExamplesClient {
         }
 
         private static List<JeiSlot> slots(int x) {
-            var result = new ObjectArrayList<JeiSlot>();
+            var result = new ObjectArrayList<JeiSlot>(3);
             for (int index = 0; index < 3; index++)
                 result.add(new JeiSlot(x + index % 2 * 22, 28 + index / 2 * 22, 18, 18, 1, JeiVisuals.AUTOMATIC));
-            return List.copyOf(result);
+            return result;
         }
 
         @Override
@@ -200,32 +211,40 @@ public final class ExamplesClient {
         private static List<List<JeiRecipeDisplay.Resource>> rows(JeiRecipeDisplay display, JeiRecipeDisplay.Role role,
                                                                   JeiRecipeIngredients ingredients) {
             var groups = new Reference2ObjectOpenHashMap<JeiRecipeDisplay.CandidateGroup, ObjectArrayList<JeiRecipeDisplay.Resource>>();
-            for (var row : display.resources()) {
+            var resources = display.resources();
+            for (int index = 0; index < resources.size(); index++) {
+                var row = resources.get(index);
                 if (row.role() == role && row.candidates() != null)
                     groups.computeIfAbsent(row.candidates(), ignored -> new ObjectArrayList<>()).add(row);
             }
+            for (var iterator = Reference2ObjectMaps.fastIterator(groups); iterator.hasNext(); )
+                if (!ingredients.canCombine(iterator.next().getValue())) iterator.remove();
             var result = new ObjectArrayList<List<JeiRecipeDisplay.Resource>>();
-            for (var row : display.resources()) {
+            for (int index = 0; index < resources.size(); index++) {
+                var row = resources.get(index);
                 if (row.role() != role) continue;
                 var candidates = row.candidates();
                 var group = groups.get(candidates);
-                if (candidates != null && group != null && ingredients.canCombine(group)) {
+                if (group != null) {
                     if (group.getFirst() == row) {
-                        for (int pick = 0; pick < candidates.alternativeSlots(); pick++) result.add(List.copyOf(group));
+                        for (int pick = 0; pick < candidates.alternativeSlots(); pick++) result.add(group);
                     }
                 } else result.add(List.of(row));
             }
-            return List.copyOf(result);
+            return result;
         }
 
         @Override
         public void drawInfo(Minecraft minecraft, int width, int height, int mouseX, int mouseY) {
             super.drawInfo(minecraft, width, height, mouseX, mouseY);
-            for (var decoration : page.decorations) decoration.draw(minecraft, this);
+            for (int index = 0; index < page.decorations.size(); index++)
+                page.decorations.get(index).draw(minecraft, this);
             fallback(minecraft, inputs, page.inputs);
             fallback(minecraft, outputs, page.outputs);
             int y = 83;
-            for (var text : display().information()) {
+            var information = display().information();
+            for (int index = 0; index < information.size(); index++) {
+                var text = information.get(index);
                 if (y > 121) break;
                 if (text.energy() != null)
                     JeiVisuals.Energy.ONE_1.draw(minecraft, 6, y, 10, 10, text.energy().role(), 0);
@@ -249,7 +268,10 @@ public final class ExamplesClient {
             var result = new ObjectArrayList<String>();
             tooltip(result, inputs, page.inputs, mouseX, mouseY);
             tooltip(result, outputs, page.outputs, mouseX, mouseY);
-            if (mouseY >= 83 && mouseY < 124) for (var line : display().information()) result.add(line.local());
+            if (mouseY >= 83 && mouseY < 124) {
+                var information = display().information();
+                for (int index = 0; index < information.size(); index++) result.add(information.get(index).local());
+            }
             if (mouseY >= 143 && mouseY < 154) result.add(ExampleText.CustomPage.getLocal());
             return result;
         }

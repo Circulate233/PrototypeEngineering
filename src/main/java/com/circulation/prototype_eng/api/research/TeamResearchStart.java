@@ -7,7 +7,6 @@ import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -25,11 +24,11 @@ public final class TeamResearchStart {
 
     public TeamResearchStart(ResearchRegistry registry,
                              ResearchPermissionPolicy permissions) {
-        this.registry = Objects.requireNonNull(registry);
+        this.registry = registry;
         if (!registry.isFrozen()) {
             throw new IllegalStateException("Research start requires frozen definitions");
         }
-        this.permissions = Objects.requireNonNull(permissions);
+        this.permissions = permissions;
         eligibility = new ResearchEligibility(registry);
     }
 
@@ -41,7 +40,6 @@ public final class TeamResearchStart {
         if (Thread.currentThread() != owner || executing) {
             throw new IllegalStateException("Research start requires its idle owner thread");
         }
-        Objects.requireNonNull(request);
         executing = true;
         try {
             return admit(request);
@@ -69,7 +67,7 @@ public final class TeamResearchStart {
         if (!request.current().getAsBoolean()) {
             return denied(Status.STALE_CONTEXT);
         }
-        var permission = Objects.requireNonNull(permissions.can(ResearchPermissionPolicy.Action.START_RESEARCH, actor));
+        var permission = permissions.can(ResearchPermissionPolicy.Action.START_RESEARCH, actor);
         if (permission != ResearchPermissionPolicy.Decision.ALLOWED) {
             return new Result(Status.PERMISSION_DENIED, null, permission);
         }
@@ -134,12 +132,6 @@ public final class TeamResearchStart {
                           ResourceLocation researchId, int targetLevel, Environment environment,
                           long serverTime, BooleanSupplier current) {
         public Request {
-            Objects.requireNonNull(queue);
-            Objects.requireNonNull(view);
-            Objects.requireNonNull(permission);
-            Objects.requireNonNull(researchId);
-            Objects.requireNonNull(environment);
-            Objects.requireNonNull(current);
             if (targetLevel < 1 || serverTime < 0) {
                 throw new IllegalArgumentException("Invalid research start target or time");
             }
@@ -148,17 +140,5 @@ public final class TeamResearchStart {
 
     public record Result(Status status, @Nullable TeamResearchQueue.Entry entry,
                          @Nullable ResearchPermissionPolicy.Decision denial) {
-        public Result {
-            Objects.requireNonNull(status);
-            boolean valid = switch (status) {
-                case STARTED -> entry != null && denial == null;
-                case PERMISSION_DENIED ->
-                    entry == null && denial != null && denial != ResearchPermissionPolicy.Decision.ALLOWED;
-                default -> entry == null && denial == null;
-            };
-            if (!valid) {
-                throw new IllegalArgumentException("Inconsistent research admission result");
-            }
-        }
     }
 }

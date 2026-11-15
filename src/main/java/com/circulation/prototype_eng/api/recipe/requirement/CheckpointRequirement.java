@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.api.recipe.requirement;
 
-import java.util.Objects;
 
 /**
  * Runs one nested requirement's complete lifecycle when the process crosses a scaled or unscaled
@@ -12,7 +11,6 @@ public record CheckpointRequirement(int time, RecipeRequirement<?> requirement, 
         if (time < 0) {
             throw new IllegalArgumentException("Negative checkpoint time");
         }
-        Objects.requireNonNull(requirement);
     }
 
     public CheckpointRequirement(int time, RecipeRequirement<?> requirement) {

@@ -6,10 +6,10 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -56,16 +56,13 @@ public final class PlannedTaskExecutor {
         this(workers, sourceLanes, System::nanoTime);
     }
 
-    PlannedTaskExecutor(ExecutorService workers, ExecutorService[] sourceLanes, LongSupplier nanoTime) {
-        this.workers = Objects.requireNonNull(workers);
+    PlannedTaskExecutor(@NotNull ExecutorService workers, ExecutorService[] sourceLanes, LongSupplier nanoTime) {
+        this.workers = workers;
         this.sourceLanes = sourceLanes;
         if (sourceLanes.length == 0) {
             throw new IllegalArgumentException("Planned source execution needs at least one serial lane");
         }
-        for (var lane : this.sourceLanes) {
-            Objects.requireNonNull(lane);
-        }
-        this.nanoTime = Objects.requireNonNull(nanoTime);
+        this.nanoTime = nanoTime;
         mode = DispatchMode.ASYNC;
         original = this;
         synchronousView = new PlannedTaskExecutor(this, DispatchMode.SYNCHRONOUS);
@@ -92,7 +89,7 @@ public final class PlannedTaskExecutor {
      * a synchronous callback; its exact batch remains nonquiescent until that callback returns.
      */
     public PlannedTaskExecutor synchronous() {
-        return Objects.requireNonNull(original.synchronousView);
+        return original.synchronousView;
     }
 
     /**
@@ -101,7 +98,7 @@ public final class PlannedTaskExecutor {
      * source lane, so nested source dispatch must not wait for that same occupied lane.
      */
     public PlannedTaskExecutor synchronousSources() {
-        return Objects.requireNonNull(original.synchronousSourcesView);
+        return original.synchronousSourcesView;
     }
 
     public <T> Batch<T> runPrepare(List<Job<T>> jobs, PlannedDeadline deadline) {
@@ -121,7 +118,7 @@ public final class PlannedTaskExecutor {
             var job = jobs.get(index2);
             dispatches.add(new Dispatch<>(workers, job));
         }
-        return run(dispatches, deadline, Objects.requireNonNull(beforeDispatch), mode == DispatchMode.SYNCHRONOUS);
+        return run(dispatches, deadline, beforeDispatch, mode == DispatchMode.SYNCHRONOUS);
     }
 
     /**
@@ -144,12 +141,13 @@ public final class PlannedTaskExecutor {
             var job = jobs.get(index4);
             dispatches.add(new Dispatch<>(mode == DispatchMode.SYNCHRONOUS ? null : sourceLanes[laneIndex(job.affinity())], job.job()));
         }
-        return run(dispatches, deadline, Objects.requireNonNull(beforeDispatch), mode != DispatchMode.ASYNC);
+        return run(dispatches, deadline, beforeDispatch, mode != DispatchMode.ASYNC);
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private <T> Batch<T> run(ObjectList<Dispatch<T>> dispatches, PlannedDeadline deadline,
                              Consumer<Batch<T>> beforeDispatch, boolean synchronous) {
-        var batch = new Batch<>(dispatches, Objects.requireNonNull(deadline), nanoTime, synchronous);
+        var batch = new Batch<>(dispatches, deadline, nanoTime, synchronous);
         var registrations = new ObjectArrayList<PlannedCancellationToken.Registration>();
         var tokens = new ReferenceOpenHashSet<PlannedCancellationToken>();
         boolean interrupted = Thread.interrupted();
@@ -179,7 +177,7 @@ public final class PlannedTaskExecutor {
                             interrupted = true;
                             batch.stop(Reason.INTERRUPTED);
                         }
-                    } else Objects.requireNonNull(entry.executor).execute(() -> batch.execute(entry));
+                    } else entry.executor.execute(() -> batch.execute(entry));
                 } catch (RuntimeException | Error failure) {
                     batch.rejected(entry, failure);
                 }
@@ -267,15 +265,10 @@ public final class PlannedTaskExecutor {
             this(cancellation, action, null);
         }
 
-        public Job {
-            Objects.requireNonNull(action);
-        }
     }
 
     public record SourceJob<T>(String affinity, Job<T> job) {
         public SourceJob {
-            Objects.requireNonNull(affinity);
-            Objects.requireNonNull(job);
             if (affinity.isBlank()) {
                 throw new IllegalArgumentException("Planned source affinity must not be blank");
             }
@@ -286,18 +279,14 @@ public final class PlannedTaskExecutor {
     }
 
     public record Failure<T>(Throwable failure) implements Result<T> {
-        public Failure {
-            Objects.requireNonNull(failure);
-        }
+
     }
 
     /**
      * started=true is uncertain: interruption does not prove whether source effects happened.
      */
     public record Stopped<T>(Reason reason, boolean started) implements Result<T> {
-        public Stopped {
-            Objects.requireNonNull(reason);
-        }
+
     }
 
     public static final class Batch<T> {
@@ -346,7 +335,7 @@ public final class PlannedTaskExecutor {
          * Immutable ordered terminal snapshots. Late task returns never overwrite these outcomes.
          */
         public ObjectList<Result<T>> results() {
-            return Objects.requireNonNull(results);
+            return results;
         }
 
         @Nullable
@@ -545,13 +534,14 @@ public final class PlannedTaskExecutor {
             }
         }
 
+        @SuppressWarnings("DataFlowIssue")
         private void stopEntryLocked(Entry<T> entry, Reason reason) {
             if (entry.result != null) return;
             boolean running = entry.stage == Stage.RUNNING;
             publish(entry, new Stopped<>(reason, running));
             if (running && !synchronous) {
                 // Pin the exact running entry under the lock until interrupt has been delivered.
-                Objects.requireNonNull(entry.thread).interrupt();
+                entry.thread.interrupt();
             } else if (!running) finish(entry);
         }
 
@@ -590,7 +580,7 @@ public final class PlannedTaskExecutor {
                 var copy = new ObjectArrayList<Result<T>>(entries.size());
                 for (int index3 = 0; index3 < entries.size(); index3++) {
                     var entry = entries.get(index3);
-                    copy.add(Objects.requireNonNull(entry.result));
+                    copy.add(entry.result);
                 }
                 results = copy;
             }

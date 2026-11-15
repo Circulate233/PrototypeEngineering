@@ -5,7 +5,6 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -28,10 +27,6 @@ public final class ItemDelivery {
     public static Status advance(Supplier<? extends Iterable<ItemDeliveryFragment>> fragments,
                                  Consumer<ItemDeliveryFragment> checkpoint,
                                  ItemDeliveryAdapter adapter, BooleanSupplier current) {
-        Objects.requireNonNull(fragments);
-        Objects.requireNonNull(checkpoint);
-        Objects.requireNonNull(adapter);
-        Objects.requireNonNull(current);
         if (!current.getAsBoolean()) return Status.STALE_CONTEXT;
         var delivering = new ObjectArrayList<ItemDeliveryFragment>();
         for (var fragment : fragments.get()) {

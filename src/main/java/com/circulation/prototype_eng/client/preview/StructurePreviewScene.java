@@ -6,6 +6,7 @@ import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
+import com.circulation.prototype_eng.api.structure.StructureBounds;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.block.MachineControllerBlock;
@@ -21,7 +22,6 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
@@ -56,7 +56,6 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -64,6 +63,9 @@ import java.util.Set;
  */
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
 public final class StructurePreviewScene implements AutoCloseable {
+    private static final StructurePreviewText[] COMPASS_LABELS = {StructurePreviewText.North, StructurePreviewText.East,
+        StructurePreviewText.South, StructurePreviewText.West};
+    private static final int[] COMPASS_X = {0, 1, 0, -1}, COMPASS_Z = {-1, 0, 1, 0};
     private final StructurePreviewView view;
     private final StructurePreviewCamera camera = new StructurePreviewCamera();
     private final PreviewBlockModels meshes;
@@ -78,6 +80,7 @@ public final class StructurePreviewScene implements AutoCloseable {
     private final FloatBuffer modelview = BufferUtils.createFloatBuffer(16), projection = BufferUtils.createFloatBuffer(16), projected = BufferUtils.createFloatBuffer(3);
     private final IntBuffer nativeViewport = BufferUtils.createIntBuffer(4);
     private final IntBuffer oldScissor = BufferUtils.createIntBuffer(4);
+    private final int[] screenScissor = new int[4];
     private final WorldVertexBufferUploader controllerUploader = new WorldVertexBufferUploader();
     private final Map<ItemChoice, ItemStack> itemChoices = new Object2ObjectOpenHashMap<>();
     private final Map<StructureDisplay, BlockPos> representativePositions = new Object2ObjectOpenHashMap<>();
@@ -184,6 +187,7 @@ public final class StructurePreviewScene implements AutoCloseable {
         PreviewBlockModelCache.rethrow(failure);
     }
 
+    @SuppressWarnings("DataFlowIssue") // The viewport center lies inside the positive-size viewport accepted above.
     public void draw(StructurePreviewCamera.Viewport screenViewport, float partialTicks) {
         if (closed) return;
         viewport = screenViewport;
@@ -217,12 +221,13 @@ public final class StructurePreviewScene implements AutoCloseable {
         hovered = pointerEnabled ? pick(viewport.x() + pointerX, viewport.y() + pointerY) : null;
         var before = PreviewBlockModels.State.capture(colors);
         int lighting = GuiItemLighting.capture();
-        var oldViewport = new int[4];
         nativeViewport.clear();
         GL11.glGetInteger(GL11.GL_VIEWPORT, nativeViewport);
-        nativeViewport.get(oldViewport);
+        int viewportX = nativeViewport.get(0), viewportY = nativeViewport.get(1);
+        int viewportWidth = nativeViewport.get(2), viewportHeight = nativeViewport.get(3);
         var scale = new ScaledResolution(mc).getScaleFactor();
-        int[] rect = screenViewport.scissor(scale, mc.displayHeight);
+        int[] rect = screenScissor;
+        screenViewport.scissor(scale, mc.displayHeight, rect);
         int oldMatrix = GL11.glGetInteger(GL11.GL_MATRIX_MODE);
         int oldDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
         int clippedX = rect[0], clippedY = rect[1], clippedWidth = rect[2], clippedHeight = rect[3];
@@ -262,7 +267,7 @@ public final class StructurePreviewScene implements AutoCloseable {
                     GlStateManager.rotate((float) camera.pitch(), 1, 0, 0);
                     GlStateManager.rotate((float) camera.yaw(), 0, 1, 0);
                     GlStateManager.translate(-center.x, -center.y, -center.z);
-                    var ray = Objects.requireNonNull(camera.ray(viewport, viewport.x() + viewport.width() / 2, viewport.y() + viewport.height() / 2, bounds));
+                    var ray = camera.ray(viewport, viewport.x() + viewport.width() / 2, viewport.y() + viewport.height() / 2, bounds);
                     if (controllerState != null) drawController(controllerState);
                     meshes.renderScene(view, access, ray.origin().x, ray.origin().y, ray.origin().z);
                     tiles.draw(view, partialTicks, 512);
@@ -277,7 +282,7 @@ public final class StructurePreviewScene implements AutoCloseable {
                                 RenderGlobal.drawSelectionBoundingBox(new AxisAlignedBB(position).grow(.002), .18f, .42f, 1, 1);
                         GlStateManager.enableDepth();
                     }
-                    if (view.wireframe) drawWireframe(controller != null);
+                    if (view.wireframe) drawWireframe(model, bounds, controller);
                     float lineWidth = GL11.glGetFloat(GL11.GL_LINE_WIDTH);
                     GlStateManager.disableDepth();
                     GlStateManager.depthMask(false);
@@ -307,7 +312,7 @@ public final class StructurePreviewScene implements AutoCloseable {
             try {
                 if (pickWorld != null) pickWorld.close();
             } finally {
-                GL11.glViewport(oldViewport[0], oldViewport[1], oldViewport[2], oldViewport[3]);
+                GL11.glViewport(viewportX, viewportY, viewportWidth, viewportHeight);
                 GL11.glPopAttrib();
                 GlStateManager.matrixMode(oldMatrix);
                 GlStateManager.depthFunc(oldDepthFunc);
@@ -354,9 +359,9 @@ public final class StructurePreviewScene implements AutoCloseable {
         }
     }
 
-    private void drawWireframe(boolean independentController) {
-        var model = Objects.requireNonNull(view.model());
-        var bounds = Objects.requireNonNull(view.sceneBounds());
+    @SuppressWarnings("DataFlowIssue") // An independent controller is resolved from the registered machine block.
+    private void drawWireframe(StructurePreviewModel model, StructureBounds bounds, @Nullable MachineControllerBlock<?> controller) {
+        boolean independentController = controller != null;
         var tessellator = Tessellator.getInstance();
         var buffer = tessellator.getBuffer();
         var min = bounds.min();
@@ -382,7 +387,7 @@ public final class StructurePreviewScene implements AutoCloseable {
         }
         if (independentController && (view.threeDimensional || view.layer == 0)) {
             boolean selected = picked == view.controllerCell();
-            int color = selected ? 0xff2e6bff : wireColor(null, Objects.requireNonNull(controller.getRegistryName()).toString().hashCode());
+            int color = selected ? 0xff2e6bff : wireColor(null, controller.getRegistryName().toString().hashCode());
             if (picked != null && !selected) color = 0x55000000 | color & 0xffffff;
             drawWireBox(BlockPos.ORIGIN, color);
         }
@@ -396,12 +401,10 @@ public final class StructurePreviewScene implements AutoCloseable {
             Gui.drawRect(x, y, x + 34, y + 34, 0x66000000);
             var right = camera.right();
             var up = camera.up();
-            var texts = new StructurePreviewText[]{StructurePreviewText.North, StructurePreviewText.East, StructurePreviewText.South, StructurePreviewText.West};
-            int[] dx = {0, 1, 0, -1}, dz = {-1, 0, 1, 0};
             for (int i = 0; i < 4; i++) {
-                var text = texts[i].getLocal();
-                float px = x + 17 + (float) ((dx[i] * right.x + dz[i] * right.z) * 11);
-                float py = y + 17 - (float) ((dx[i] * up.x + dz[i] * up.z) * 11);
+                var text = COMPASS_LABELS[i].getLocal();
+                float px = x + 17 + (float) ((COMPASS_X[i] * right.x + COMPASS_Z[i] * right.z) * 11);
+                float py = y + 17 - (float) ((COMPASS_X[i] * up.x + COMPASS_Z[i] * up.z) * 11);
                 font.drawStringWithShadow(text, px - font.getStringWidth(text) / 2f, py - font.FONT_HEIGHT / 2f, i == 0 ? 0xffff5555 : 0xffececec);
             }
             font.drawStringWithShadow("+", x + 17 - font.getStringWidth("+") / 2f, y + 17 - font.FONT_HEIGHT / 2f, 0xffaaaaaa);
@@ -410,8 +413,11 @@ public final class StructurePreviewScene implements AutoCloseable {
         }
     }
 
+    /**
+     * Positions are borrowed read-only until replaced by the next selection.
+     */
     public void highlighted(Set<BlockPos> positions) {
-        highlighted = Set.copyOf(positions);
+        highlighted = positions;
     }
 
     public boolean press(double x, double y, int button) {
@@ -508,7 +514,7 @@ public final class StructurePreviewScene implements AutoCloseable {
             var display = cell.display();
             if (display == null || !display.complete()) return null;
             int option = model.settings().option(cell);
-            if (model.settings().explicitOption(cell) == null) {
+            if (model.settings().explicitOption(cell) < 0) {
                 var represented = currentAccess.represented(cell.position());
                 option = -1;
                 for (int index = 0; index < display.options().size(); index++) {
@@ -560,7 +566,7 @@ public final class StructurePreviewScene implements AutoCloseable {
             return null;
         var result = new ObjectArrayList<GenericStack>(totals.size());
         totals.forEachEntry((key, amount) -> result.add(new GenericStack(key, amount)));
-        materialStacks = ObjectLists.unmodifiable(result);
+        materialStacks = result;
         return materialStacks;
     }
 
@@ -628,7 +634,7 @@ public final class StructurePreviewScene implements AutoCloseable {
             if (block.type() == view.machine()) {
                 controller = block;
                 controllerResolved = true;
-                var id = Objects.requireNonNull(block.getRegistryName());
+                var id = block.getRegistryName();
                 view.controllerDisplay(new StructureDisplay("state:" + id + ":0",
                     List.of(new StructureDisplay.BlockOption(id, 0, Map.of())), null));
                 return;
@@ -698,9 +704,7 @@ public final class StructurePreviewScene implements AutoCloseable {
             try {
                 tile.setWorld(world);
                 tile.setPos(pos.toImmutable());
-                if (ownTag != null) tile.handleUpdateTag(ownTag.copy());
-                tile.setWorld(world);
-                tile.setPos(pos.toImmutable());
+                if (ownTag != null) tile.handleUpdateTag(ownTag);
                 return tile;
             } catch (RuntimeException | Error failure) {
                 Throwable combined = failure;

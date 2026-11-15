@@ -8,7 +8,6 @@ import com.circulation.prototype_eng.api.recipe.requirement.RequirementPreparati
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -27,7 +26,6 @@ public class PreparedRequirement implements RequirementTransaction, RequirementC
     private Resolution terminal = Resolution.REVERSIBLE;
 
     public PreparedRequirement(RequirementPreparation binding) {
-        Objects.requireNonNull(binding);
         computation = binding.computation();
         acquire = binding::acquire;
         retainFacts = binding::retainPureFacts;
@@ -40,7 +38,7 @@ public class PreparedRequirement implements RequirementTransaction, RequirementC
      * Opaque callbacks are deferred at the same cursor, and only the owner invokes them once.
      */
     public PreparedRequirement(Supplier<RequirementTransaction> acquire) {
-        this.acquire = Objects.requireNonNull(acquire);
+        this.acquire = acquire;
         computation = null;
         retainFacts = () -> {
         };
@@ -101,7 +99,7 @@ public class PreparedRequirement implements RequirementTransaction, RequirementC
             return null;
         }
         entered = true;
-        return Objects.requireNonNull(acquire.get());
+        return acquire.get();
     }
 
     @Override

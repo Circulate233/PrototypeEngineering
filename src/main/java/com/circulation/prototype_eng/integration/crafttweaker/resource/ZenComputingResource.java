@@ -7,15 +7,11 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 @ZenRegister
 @ZenClass("mods.prototype_eng.resource.ComputingResource")
 @SuppressWarnings("unused")
 public record ZenComputingResource(NetworkResourceType value) {
-    public ZenComputingResource {
-        Objects.requireNonNull(value);
-    }
 
     @ZenMethod
     public static ZenComputingResource network(String id, String translationKey, String pattern) {

@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.integration.jei;
 
 import com.circulation.prototype_eng.api.client.jei.RecipePoolJeiRecipe;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import mezz.jei.api.recipe.IFocus;
 import mezz.jei.api.recipe.IIngredientType;
 import mezz.jei.config.Config;
@@ -60,11 +59,15 @@ final class HeiRecipeGeneration {
     }
 
     static <R> void hideAll(Access<R> access, List<R> previous, List<R> next) {
-        Throwable failure = null;
-        var all = new ObjectArrayList<>(previous);
-        all.addAll(next);
-        for (int index = 0; index < all.size(); index++) {
-            var recipe = all.get(index);
+        var failure = hide(access, previous, null);
+        failure = hide(access, next, failure);
+        if (failure instanceof RuntimeException problem) throw problem;
+        if (failure instanceof Error problem) throw problem;
+    }
+
+    private static <R> Throwable hide(Access<R> access, List<R> recipes, Throwable failure) {
+        for (int index = 0; index < recipes.size(); index++) {
+            var recipe = recipes.get(index);
             try {
                 access.hide(recipe);
             } catch (RuntimeException | Error problem) {
@@ -72,15 +75,12 @@ final class HeiRecipeGeneration {
                 else if (failure != problem) failure.addSuppressed(problem);
             }
         }
-        if (failure instanceof RuntimeException problem) throw problem;
-        if (failure instanceof Error problem) throw problem;
+        return failure;
     }
 
     static void closeLayout(Minecraft minecraft, RecipesGui gui) {
         if (minecraft.currentScreen == gui) {
             gui.close();
-            if (minecraft.currentScreen == gui)
-                throw new IllegalStateException("HEI could not close the current recipe layout");
         }
     }
 

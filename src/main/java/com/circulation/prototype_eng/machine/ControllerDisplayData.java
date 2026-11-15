@@ -7,7 +7,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
-import java.util.Objects;
 
 /**
  * Public display snapshot only; generation and sequence are not machine or owner permissions.
@@ -27,8 +26,6 @@ public record ControllerDisplayData(ResourceLocation type, BlockOrientation orie
     }
 
     public ControllerDisplayData {
-        Objects.requireNonNull(type);
-        Objects.requireNonNull(orientation);
         if (generation <= 0 || sequence < 0) {
             throw new IllegalArgumentException("Invalid controller display generation/sequence");
         }

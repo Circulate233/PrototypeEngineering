@@ -38,7 +38,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Strict PreInit DTO capture, followed by explicit PostInit resolution of one complete candidate.
@@ -47,7 +46,7 @@ public final class StructureJsonLoader {
     private final List<Data> definitions;
 
     private StructureJsonLoader(List<Data> definitions) {
-        this.definitions = List.copyOf(definitions);
+        this.definitions = definitions;
     }
 
     public static StructureJsonLoader empty() {
@@ -97,7 +96,7 @@ public final class StructureJsonLoader {
         orderedSources.sort(Comparator.naturalOrder());
         for (int index9 = 0; index9 < orderedSources.size(); index9++) {
             var source = orderedSources.get(index9);
-            var root = StructureJsonParameters.read(source, new StringReader(Objects.requireNonNull(sources.get(source))));
+            var root = StructureJsonParameters.read(source, new StringReader(sources.get(source)));
             var definition = data(root);
             var prior = definitions.putIfAbsent(definition.id, definition);
             if (prior != null)
@@ -150,8 +149,8 @@ public final class StructureJsonLoader {
             }
         }
         return new Data(id, root.has("translationKey") ? root.nonBlank("translationKey") : null, type,
-            root.position("offset", BlockPos.ORIGIN), root.bool("hideWorldBlocks", false), List.copyOf(elements),
-            specs(root, "validators"), List.copyOf(children), min, max, sliceOffset, root);
+            root.position("offset", BlockPos.ORIGIN), root.bool("hideWorldBlocks", false), elements,
+            specs(root, "validators"), children, min, max, sliceOffset, root);
     }
 
     private static Cell cell(StructureJsonParameters entry) {
@@ -193,10 +192,10 @@ public final class StructureJsonLoader {
                 }
             }
             if (blocks.isEmpty() && regex.isEmpty()) throw spec.error("Display needs blocks or blockIdRegex");
-            display = new Display(spec.has("key") ? spec.nonBlank("key") : null, List.copyOf(blocks), List.copyOf(regex),
+            display = new Display(spec.has("key") ? spec.nonBlank("key") : null, blocks, regex,
                 spec.has("tileNbt") ? spec.nonBlank("tileNbt") : null, spec);
         }
-        return new Cell(entry.position("pos", BlockPos.ORIGIN), List.copyOf(options), predicates, display);
+        return new Cell(entry.position("pos", BlockPos.ORIGIN), options, predicates, display);
     }
 
     private static Option option(StructureJsonParameters entry, boolean checkFields) {
@@ -215,7 +214,7 @@ public final class StructureJsonLoader {
                 specs.add(new Spec(entry.at("id"), entry.parameters("params")));
             }
         }
-        return List.copyOf(specs);
+        return specs;
     }
 
     private static StructureDefinition build(Data data, List<MachineStructure> children,
@@ -229,7 +228,7 @@ public final class StructureJsonLoader {
             for (int index16 = 0; index16 < cell.options.size(); index16++) {
                 var option = cell.options.get(index16);
                 try {
-                    alternatives.add(Objects.requireNonNull(blocks.resolveState(option.id, option.meta, option.nbt, option.properties)));
+                    alternatives.add(blocks.resolveState(option.id, option.meta, option.nbt, option.properties));
                 } catch (RuntimeException failure) {
                     throw option.location.at("blockId").error("Cannot resolve block state " + option.id, failure);
                 }
@@ -260,7 +259,7 @@ public final class StructureJsonLoader {
         for (int index15 = 0; index15 < data.blocks.size(); index15++) {
             var option = data.blocks.get(index15);
             try {
-                choices.add(Objects.requireNonNull(blocks.displayState(option.id, option.meta, option.nbt, option.properties)));
+                choices.add(blocks.displayState(option.id, option.meta, option.nbt, option.properties));
             } catch (RuntimeException failure) {
                 throw option.location.at("blockId").error("Cannot resolve display state " + option.id, failure);
             }
@@ -268,11 +267,7 @@ public final class StructureJsonLoader {
         for (int index14 = 0; index14 < data.regex.size(); index14++) {
             var regex = data.regex.get(index14);
             try {
-                var elements10 = blocks.displayRegex(regex.string());
-                for (int index10 = 0; index10 < elements10.size(); index10++) {
-                    var option = elements10.get(index10);
-                    choices.add(Objects.requireNonNull(option));
-                }
+                choices.addAll(blocks.displayRegex(regex.string()));
             } catch (RuntimeException failure) {
                 throw regex.error("Cannot resolve display regex", failure);
             }
@@ -292,8 +287,6 @@ public final class StructureJsonLoader {
      * Resolves JSON/Java references together, never consulting the already published catalog.
      */
     public StructureCatalog resolve(StructureCatalog javaDefinitions, StructurePredicateRegistry factories, StructureBlockResolver blocks) {
-        Objects.requireNonNull(factories);
-        Objects.requireNonNull(blocks);
         var pending = new Object2ObjectLinkedOpenHashMap<ResourceLocation, Data>(definitions.size());
         var resolved = new Object2ObjectLinkedOpenHashMap<>(javaDefinitions.definitions());
         for (int index13 = 0; index13 < definitions.size(); index13++) {

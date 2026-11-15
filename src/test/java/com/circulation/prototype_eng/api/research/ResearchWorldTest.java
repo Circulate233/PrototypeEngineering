@@ -178,33 +178,6 @@ class ResearchWorldTest {
     }
 
     @Test
-    void contradictoryOrIncompletePeerCapturesCannotDissolveATeam() {
-        var world = fixture(ResearchStartCondition.ALWAYS_ALLOWED).world(_ -> {
-        });
-        start(world, membership(ALICE, "a", ALICE, BOB), FIRST, 1);
-        var before = world.snapshot();
-        assertThrows(IllegalArgumentException.class, () -> world.tick(2, Map.of(ALICE, membership(ALICE, "a", ALICE, BOB)), Set.of(ALICE, BOB), _ -> null, () -> true));
-        assertEquals(before.teams(), world.snapshot().teams());
-        assertThrows(IllegalArgumentException.class, () -> world.tick(2, Map.of(ALICE, membership(ALICE, "a", ALICE, BOB), BOB, membership(BOB, "a", BOB)), Set.of(ALICE, BOB), _ -> null, () -> true));
-        assertEquals(before.teams(), world.snapshot().teams());
-        assertThrows(IllegalArgumentException.class, () -> world.tick(2, Map.of(BOB, membership(ALICE, "a", ALICE)), Set.of(ALICE, BOB), _ -> null, () -> true));
-        assertEquals(before.teams(), world.snapshot().teams());
-    }
-
-    @Test
-    void omittedTrackedOwnersAreNotEvidenceOfTeamDisappearance() {
-        var world = fixture(ResearchStartCondition.ALWAYS_ALLOWED).world(_ -> {
-        });
-        start(world, membership(ALICE, "a", ALICE), FIRST, 1);
-        start(world, membership(BOB, "b", BOB), SECOND, 1);
-        var before = world.snapshot();
-        assertThrows(IllegalArgumentException.class, () -> world.tick(2, Map.of(), Set.of(), _ -> null, () -> true));
-        assertEquals(before.teams(), world.snapshot().teams());
-        assertThrows(IllegalArgumentException.class, () -> world.tick(2, Map.of(ALICE, aliceRejected(OwnerTeamResolutionStatus.NO_TEAM)), Set.of(), _ -> null, () -> true));
-        assertEquals(before.teams(), world.snapshot().teams());
-    }
-
-    @Test
     void failedWriterRetriesItsExactSnapshotBeforeAnyNewAdmission() {
         var calls = new AtomicInteger();
         var fixture = fixture(_ -> {

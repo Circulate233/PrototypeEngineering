@@ -171,7 +171,7 @@ final class StructurePredicateDisplays {
         text.append('t');
         field(text, tileNbt == null ? "" : tileNbt);
         text.append(";complete=").append(complete);
-        return new StructureDisplay("intrinsic:" + UUID.nameUUIDFromBytes(text.toString().getBytes(StandardCharsets.UTF_8)), List.copyOf(options), tileNbt, complete);
+        return new StructureDisplay("intrinsic:" + UUID.nameUUIDFromBytes(text.toString().getBytes(StandardCharsets.UTF_8)), new ObjectArrayList<>(options), tileNbt, complete);
     }
 
     private static Support stateSupport(StructurePredicate root, Reference2ObjectOpenHashMap<StructurePredicate, Fact> facts, Seed seed) {
@@ -251,12 +251,13 @@ final class StructurePredicateDisplays {
 
     private static @Nullable Map<String, String> merge(Map<String, String> first, Map<String, String> second) {
         if (second.isEmpty()) return first;
+        if (first.isEmpty()) return second;
         var merged = new Object2ObjectLinkedOpenHashMap<>(first);
         for (var entry : second.entrySet()) {
             var prior = merged.putIfAbsent(entry.getKey(), entry.getValue());
             if (prior != null && !prior.equals(entry.getValue())) return null;
         }
-        return Map.copyOf(merged);
+        return merged;
     }
 
     enum Unknown implements Fact {INSTANCE}

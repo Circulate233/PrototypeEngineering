@@ -2,12 +2,10 @@ package com.circulation.prototype_eng.integration.crafttweaker.jei;
 
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Server-safe startup declarations; retained snapshots replay only the client category phase.
@@ -24,13 +22,13 @@ public final class ClientJeiDeclarations {
 
     static synchronized void defaults(ZenJeiOptions options) {
         requireOpen();
-        defaults = Objects.requireNonNull(options);
+        defaults = options;
     }
 
     public static synchronized void declare(ResourceLocation pool, @Nullable ZenJeiOptions options, @Nullable ZenJeiPage page) {
         if (options == null && page == null) return;
         requireOpen();
-        var binding = new Binding(Objects.requireNonNull(pool), options, page);
+        var binding = new Binding(pool, options, page);
         var previous = PENDING.putIfAbsent(pool, binding);
         if (previous != null && !previous.equals(binding))
             throw new IllegalArgumentException("Conflicting client page declaration: " + pool);
@@ -38,7 +36,7 @@ public final class ClientJeiDeclarations {
 
     static synchronized List<Binding> freeze() {
         if (frozen == null) {
-            frozen = ObjectLists.unmodifiable(new ObjectArrayList<>(PENDING.values()));
+            frozen = new ObjectArrayList<>(PENDING.values());
             PENDING.clear();
         }
         return frozen;

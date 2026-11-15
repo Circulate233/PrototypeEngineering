@@ -30,7 +30,6 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * PM's first available alternative, with provisional selection and one enclosing stage settlement.
@@ -68,14 +67,14 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
     }
 
     private static CapturedTransaction capture(RecipeProcess process, RecipeRequirement<?> requirement, RecipeStage stage) {
-        return capture(Objects.requireNonNull(requirement.acquire(process, stage), "selected child transaction"));
+        return capture(requirement.acquire(process, stage));
     }
 
     private static CapturedTransaction capture(RequirementTransaction child) {
         List<? extends ResourceReservation> reservations = List.of();
         try {
             reservations = child.reservations();
-            var result = Objects.requireNonNull(child.result(), "selected child result");
+            var result = child.result();
             return new CapturedTransaction(result, reservations, child);
         } catch (RuntimeException | Error failure) {
             rollbackAfterFailure(child, reservations, failure);
@@ -362,7 +361,7 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
 
                         @Override
                         public RequirementTransaction acquire() {
-                            return finishCandidate(Objects.requireNonNull(continuation.acquireNext(), "Prepared candidate must produce its actual result"));
+                            return finishCandidate(continuation.acquireNext());
                         }
                     };
                     return new OriginalPrepared(binding, transaction, transaction.reservations());
@@ -414,31 +413,36 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
             if (!candidate.capture(budget)) return new PreparedRequirement(this);
             if (candidate.preparationPending()) {
                 if (!budget.take()) return new PreparedRequirement(this);
-                var continuation = Objects.requireNonNull(candidate.continuation());
+                var continuation = candidate.continuation();
                 var binding = new RequirementPreparation() {
                     @Override
+                    @SuppressWarnings("DataFlowIssue")
                     public boolean ownerWorkMetered() {
                         return continuation.ownerWorkMetered();
                     }
 
                     @Override
+                    @SuppressWarnings("DataFlowIssue")
                     public @Nullable RecipePureComputation computation() {
                         return continuation.computation();
                     }
 
                     @Override
+                    @SuppressWarnings("DataFlowIssue")
                     public void retainPureFacts() {
                         continuation.retainPureFacts();
                     }
 
                     @Override
+                    @SuppressWarnings("DataFlowIssue")
                     public void withdrawPureFacts(RecipePureComputation expected) {
                         continuation.withdrawPureFacts(expected);
                     }
 
                     @Override
+                    @SuppressWarnings("DataFlowIssue")
                     public RequirementTransaction acquire() {
-                        candidate.continueWith(Objects.requireNonNull(continuation.acquireNext(), "Prepared candidate must produce its actual result"));
+                        candidate.continueWith(continuation.acquireNext());
                         return new PreparedRequirement(new FlatCapture(preparation, candidate));
                     }
                 };
@@ -1144,8 +1148,7 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
             if (!active) {
                 throw new IllegalStateException("Selective modifier context is no longer active");
             }
-            Objects.requireNonNull(modifier);
-            String rawId = Objects.requireNonNull(modifier.id(), "modifier id");
+            String rawId = modifier.id();
             if (rawId.isBlank()) {
                 throw new IllegalArgumentException("Blank modifier id");
             }
@@ -1159,7 +1162,6 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
             if (!active) {
                 throw new IllegalStateException("Selective modifier context is no longer active");
             }
-            Objects.requireNonNull(layerId);
             if (layerId.isBlank()) {
                 throw new IllegalArgumentException("Blank overlay layer id");
             }

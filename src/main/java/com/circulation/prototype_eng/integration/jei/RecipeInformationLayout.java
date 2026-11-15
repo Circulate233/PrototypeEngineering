@@ -4,7 +4,6 @@ import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Measures the complete explanation with the same font and wrapping used for drawing.
@@ -36,7 +35,6 @@ public record RecipeInformationLayout(List<Paragraph> paragraphs, int height) {
     public record Font(int lineHeight, TextWrapper wrap) {
         public Font {
             if (lineHeight <= 0) throw new IllegalArgumentException("Non-positive font height");
-            Objects.requireNonNull(wrap);
         }
     }
 

@@ -9,7 +9,6 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Immutable declared display data. No machine, process, matcher or chance callback is evaluated.
@@ -26,9 +25,6 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
     public record Resource(GenericStack stack, Role role, List<Text> details, @Nullable Chance chance,
                            @Nullable CandidateGroup candidates) {
         public Resource {
-            Objects.requireNonNull(stack);
-            Objects.requireNonNull(stack.what());
-            Objects.requireNonNull(role);
             if (stack.amount() <= 0) {
                 throw new IllegalArgumentException("Display quantities must be positive");
             }
@@ -53,7 +49,6 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
      */
     public record CandidateGroup(String name, int alternativeSlots) {
         public CandidateGroup {
-            Objects.requireNonNull(name);
             if (alternativeSlots <= 0) throw new IllegalArgumentException("Non-positive candidate slot count");
         }
 
@@ -68,15 +63,11 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
         }
 
         public Energy {
-            Objects.requireNonNull(role);
             if (amount <= 0) throw new IllegalArgumentException("Non-positive display energy");
         }
     }
 
     public record Text(LocalizationEnum text, List<Object> arguments, List<Text> context, @Nullable Energy energy) {
-        public Text {
-            Objects.requireNonNull(text);
-        }
 
         public Text(LocalizationEnum text, List<Object> arguments) {
             this(text, arguments, ObjectLists.emptyList(), null);
@@ -143,7 +134,7 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
         }
 
         public Builder candidates(CandidateGroup group) {
-            return new Builder(resources, information, scope, chance, Objects.requireNonNull(group));
+            return new Builder(resources, information, scope, chance, group);
         }
 
         public void resource(GenericStack stack, Role role, Text... details) {
@@ -154,7 +145,7 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
 
         public void information(Text line) {
             // A single line carries its complete scope, even when panel boundaries split information.
-            information.add(Objects.requireNonNull(line).scoped(scope));
+            information.add(line.scoped(scope));
         }
 
         public void energy(long amount, Role role, Text line) {

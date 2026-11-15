@@ -4,7 +4,6 @@ import com.circulation.prototype_eng.api.persistence.NbtCodec;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import net.minecraft.nbt.NBTTagCompound;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -14,7 +13,7 @@ public final class ItemDeliveryFragmentNbt implements NbtCodec<ItemDeliveryFragm
     private final ResourceKeyNbt resources;
 
     public ItemDeliveryFragmentNbt(ResourceKeyNbt resources) {
-        this.resources = Objects.requireNonNull(resources);
+        this.resources = resources;
     }
 
     private static NBTTagCompound encodeTarget(ItemDeliveryFragment.Target destination) {

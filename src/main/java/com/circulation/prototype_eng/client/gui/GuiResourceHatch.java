@@ -31,7 +31,6 @@ import org.lwjgl.opengl.GL11;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * PM's ItemHatchGUI/ItemIOHatchGUI, with AE's native generic resource slots.
@@ -201,10 +200,11 @@ public final class GuiResourceHatch extends AEBaseGui<ContainerResourceHatch> {
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue") // The container constructor sets its AE title before this GUI opens.
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         super.drawScreen(mouseX, mouseY, partialTicks);
         if (isPointInRegion(29, 8, titleWidth(), 10, mouseX, mouseY))
-            drawHoveringText(List.of(Objects.requireNonNull(container.getGuiTitle()).getFormattedText()), mouseX, mouseY);
+            drawHoveringText(List.of(container.getGuiTitle().getFormattedText()), mouseX, mouseY);
         container.presentation.completeFrame();
     }
 

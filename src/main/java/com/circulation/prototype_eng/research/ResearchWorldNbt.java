@@ -23,7 +23,6 @@ import net.minecraft.nbt.NBTTagString;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -45,7 +44,6 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
 
     @Override
     public NBTTagCompound encode(ResearchWorldSnapshot value) {
-        Objects.requireNonNull(value);
         var tag = new NBTTagCompound();
         tag.setInteger("Version", 6);
         tag.setLong("ServerTime", value.serverTime());

@@ -7,7 +7,6 @@ import com.circulation.prototype_eng.structure.reload.StructureReloadCoordinator
 import io.netty.buffer.ByteBuf;
 
 import java.util.Arrays;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -25,7 +24,7 @@ public final class StructureCatalogPacket extends ConnectionClientboundPacket {
     }
 
     public StructureCatalogPacket(UUID session, long sequence, int totalBytes, int index, byte[] bytes) {
-        this.session = Objects.requireNonNull(session);
+        this.session = session;
         this.sequence = sequence;
         this.totalBytes = totalBytes;
         this.index = index;

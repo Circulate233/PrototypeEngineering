@@ -10,7 +10,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
@@ -19,7 +18,6 @@ import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -35,7 +33,7 @@ public final class StructureComponents implements AffinityKeyProvider {
     private final Reference2ObjectMap<ComponentType<MachineInstance, ?>, ObjectList<Binding<?>>> byType;
 
     public StructureComponents(List<Binding<?>> bindings) {
-        var built = Objects.requireNonNull(beginCreate(bindings).run());
+        var built = beginCreate(bindings).run();
         this.bindings = built.bindings;
         byType = built.byType;
     }
@@ -50,8 +48,8 @@ public final class StructureComponents implements AffinityKeyProvider {
      * Validates and indexes the supplied completed list without copying it.
      */
     public static StructureOperation<StructureComponents> beginCreate(List<Binding<?>> bindings) {
-        var iterator = bindings.iterator();
         return new StructureOperation<>() {
+            private int index;
             private final Reference2ObjectOpenHashMap<ComponentType<MachineInstance, ?>, ObjectList<Binding<?>>> indexed = new Reference2ObjectOpenHashMap<>();
             private final ObjectLinkedOpenHashSet<Port> identities = new ObjectLinkedOpenHashSet<>();
             private final ReferenceOpenHashSet<Object> components = new ReferenceOpenHashSet<>();
@@ -60,9 +58,9 @@ public final class StructureComponents implements AffinityKeyProvider {
             @Override
             public boolean advance(RecipeWorkBudget work) {
                 if (complete()) return true;
-                while (iterator.hasNext()) {
+                while (index < bindings.size()) {
                     if (!work.take()) return false;
-                    var binding = Objects.requireNonNull(iterator.next());
+                    var binding = bindings.get(index++);
                     var entry = binding.entry();
                     if (!components.add(entry.component()))
                         throw new IllegalArgumentException("A structure port instance was registered twice");
@@ -89,14 +87,11 @@ public final class StructureComponents implements AffinityKeyProvider {
      */
     @SuppressWarnings("unchecked") // Each Entry<C> ties its value to its canonical descriptor identity.
     public <C> List<Binding<C>> get(ComponentType<MachineInstance, C> type) {
-        Objects.requireNonNull(type);
         return (List<Binding<C>>) (List<?>) byType.getOrDefault(type, ObjectLists.emptyList());
     }
 
     @Nullable
     public <C> C find(ComponentType<MachineInstance, C> type, BlockPos providerPos, String portId) {
-        Objects.requireNonNull(providerPos);
-        Objects.requireNonNull(portId);
         var elements = get(type);
         for (int index = 0; index < elements.size(); index++) {
             var binding = elements.get(index);
@@ -113,19 +108,13 @@ public final class StructureComponents implements AffinityKeyProvider {
         for (int index2 = 0; index2 < bindings.size(); index2++) {
             var binding = bindings.get(index2);
             if (binding.entry().component() instanceof AffinityKeyProvider provider) {
-                for (var key : Objects.requireNonNull(provider.affinityKeys())) {
-                    keys.add(Objects.requireNonNull(key));
-                }
+                keys.addAll(provider.affinityKeys());
             }
         }
-        return ObjectSets.unmodifiable(keys);
+        return keys;
     }
 
     public record Binding<C>(StructureComponentProvider.Context context, StructureComponentProvider.Entry<C> entry) {
-        public Binding {
-            Objects.requireNonNull(context);
-            Objects.requireNonNull(entry);
-        }
     }
 
     private record Port(BlockPos providerPos, ComponentType<MachineInstance, ?> type, String portId) {

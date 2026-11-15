@@ -7,11 +7,8 @@ import com.circulation.prototype_eng.api.client.render.MachineRenderBindings;
 import com.circulation.prototype_eng.api.data.ComponentData;
 import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
-import it.unimi.dsi.fastutil.ints.IntLists;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -56,9 +53,10 @@ public final class StructureRenderAnchors {
                 if (binding == null) continue;
                 boolean perSlice = perSlice(occurrence, binding);
                 int count = perSlice ? occurrence.repetitions() : 1;
+                var path = snapshot.path(index);
                 for (int slice = 0; slice < count; slice++) {
                     var origin = perSlice ? MachineRenderSnapshot.sliceAnchor(occurrence.origin(), occurrence.sliceStep(), slice) : occurrence.origin();
-                    result.add(anchor(snapshot, new Part(Kind.STRUCTURE, occurrence.structure(), snapshot.path(index), perSlice ? slice : -1), origin, binding.model(), data));
+                    result.add(anchor(snapshot, new Part(Kind.STRUCTURE, occurrence.structure(), path, perSlice ? slice : -1), origin, binding.model(), data));
                 }
             }
         } else {
@@ -74,7 +72,7 @@ public final class StructureRenderAnchors {
                     result.add(anchor(snapshot, new Part(Kind.COMPONENT, id, IntList.of(), -1), snapshot.controller(), binding, data));
             }
         }
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     /**
@@ -126,10 +124,10 @@ public final class StructureRenderAnchors {
 
     public enum Kind {MACHINE, COMPONENT, STRUCTURE}
 
+    /**
+     * Borrows the completed occurrence path; producers and consumers must retain it unchanged.
+     */
     public record Part(Kind kind, ResourceLocation id, IntList occurrencePath, int slice) {
-        public Part {
-            occurrencePath = IntLists.unmodifiable(new IntArrayList(occurrencePath));
-        }
     }
 
     public record Anchor(Part part, BlockPos origin, BlockOrientation orientation, Vec3d modelOffset,

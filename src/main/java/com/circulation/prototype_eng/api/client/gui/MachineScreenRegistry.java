@@ -16,7 +16,6 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
-import java.util.Objects;
 import java.util.function.BiFunction;
 
 /**
@@ -32,9 +31,7 @@ public final class MachineScreenRegistry {
     @SuppressWarnings("unused") // Called only from a downstream mod's client initialization.
     public static <C extends AEBaseContainer> void register(ResourceLocation type, Class<C> containerClass,
                                                             BiFunction<C, InventoryPlayer, ? extends AEBaseGui<C>> factory) {
-        Objects.requireNonNull(containerClass);
-        Objects.requireNonNull(factory);
-        if (FACTORIES.putIfAbsent(Objects.requireNonNull(type), (container, player) -> factory.apply(containerClass.cast(container), player)) != null) {
+        if (FACTORIES.putIfAbsent(type, (container, player) -> factory.apply(containerClass.cast(container), player)) != null) {
             throw new IllegalArgumentException("Machine screen already registered: " + type);
         }
     }
@@ -42,7 +39,7 @@ public final class MachineScreenRegistry {
     public static AEBaseGui<?> create(ResourceLocation type, AEBaseContainer container, InventoryPlayer player) {
         var factory = FACTORIES.get(type);
         if (factory != null) {
-            return Objects.requireNonNull(factory.apply(container, player), "Machine screen factory returned null");
+            return factory.apply(container, player);
         }
         if (container instanceof ContainerMachine machine) {
             return new GuiMachine(machine, player);

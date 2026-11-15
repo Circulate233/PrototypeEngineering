@@ -8,7 +8,6 @@ import net.minecraft.nbt.NBTTagString;
 import net.minecraftforge.common.util.Constants;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Shared strict business-result schema for process and host state.
@@ -25,7 +24,7 @@ public final class ProcessResultNbt implements NbtCodec<ProcessResult> {
         var list = new NBTTagList();
         for (int index1 = 0; index1 < arguments.size(); index1++) {
             var argument = arguments.get(index1);
-            list.appendTag(new NBTTagString(Objects.requireNonNull(argument)));
+            list.appendTag(new NBTTagString(argument));
         }
         tag.setTag("Arguments", list);
     }
@@ -33,7 +32,7 @@ public final class ProcessResultNbt implements NbtCodec<ProcessResult> {
     @Override
     public NBTTagCompound encode(ProcessResult value) {
         var tag = new NBTTagCompound();
-        switch (Objects.requireNonNull(value, "value")) {
+        switch (value) {
             case ProcessResult.Success ignored -> tag.setString("Kind", "SUCCESS");
             case ProcessResult.Blocked(var reason, var arguments) -> writeDetails(tag, "BLOCKED", reason, arguments);
             case ProcessResult.Failure(var reason, var arguments) -> writeDetails(tag, "FAILURE", reason, arguments);

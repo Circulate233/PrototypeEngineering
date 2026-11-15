@@ -16,7 +16,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.Objects;
 
 /**
  * Sole owner of the research file; compressed data uses PN's sync, atomic replace and final force.
@@ -27,8 +26,8 @@ public final class ResearchStateFile {
     private final ResearchWorldNbt codec;
 
     public ResearchStateFile(Path target, ResearchWorldNbt codec) {
-        this.target = Objects.requireNonNull(target).toAbsolutePath().normalize();
-        this.codec = Objects.requireNonNull(codec);
+        this.target = target.toAbsolutePath().normalize();
+        this.codec = codec;
     }
 
     /**

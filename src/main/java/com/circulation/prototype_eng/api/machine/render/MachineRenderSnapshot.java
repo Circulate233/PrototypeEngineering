@@ -12,7 +12,6 @@ import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -65,17 +64,20 @@ public record MachineRenderSnapshot(ControllerDisplayData display, CatalogToken 
     }
 
     public IntList path(int index) {
-        var reversed = new IntArrayList();
+        if (occurrences.get(index).parent() < 0) return IntList.of();
+        var path = new IntArrayList();
         for (int current = index; occurrences.get(current).parent() >= 0; current = occurrences.get(current).parent())
-            reversed.add(occurrences.get(current).childEdge());
-        var result = new IntArrayList(reversed.size());
-        for (int i = reversed.size() - 1; i >= 0; i--) result.add(reversed.getInt(i));
-        return result;
+            path.add(occurrences.get(current).childEdge());
+        for (int first = 0, last = path.size() - 1; first < last; first++, last--) {
+            int edge = path.getInt(first);
+            path.set(first, path.getInt(last));
+            path.set(last, edge);
+        }
+        return path;
     }
 
     public record CatalogToken(UUID session, long sequence) {
         public CatalogToken {
-            Objects.requireNonNull(session);
             if (sequence < 0) throw new IllegalArgumentException("Negative render catalog sequence");
         }
     }

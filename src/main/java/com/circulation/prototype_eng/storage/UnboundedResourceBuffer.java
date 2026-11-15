@@ -15,7 +15,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -33,7 +32,6 @@ public final class UnboundedResourceBuffer implements ResourceStorage {
     private @Nullable StorageSnapshot cachedSnapshot;
 
     public UnboundedResourceBuffer(Runnable onChanged) {
-        Objects.requireNonNull(onChanged);
         context = new StorageContext(() -> {
             try {
                 onChanged.run();
@@ -81,7 +79,6 @@ public final class UnboundedResourceBuffer implements ResourceStorage {
 
     @Override
     public StorageSnapshot snapshotFor(AEKey key) {
-        Objects.requireNonNull(key);
         context.lock();
         try {
             long available = context.isValid() ? totals.getLong(key) - extractHolds.getLong(key) : 0;
@@ -93,7 +90,6 @@ public final class UnboundedResourceBuffer implements ResourceStorage {
 
     @Override
     public long amount(AEKey key) {
-        Objects.requireNonNull(key);
         context.lock();
         try {
             return context.isValid() ? totals.getLong(key) : 0;
@@ -104,7 +100,6 @@ public final class UnboundedResourceBuffer implements ResourceStorage {
 
     @Override
     public long availableAmount(AEKey key) {
-        Objects.requireNonNull(key);
         context.lock();
         try {
             return context.isValid() ? totals.getLong(key) - extractHolds.getLong(key) : 0;
@@ -128,8 +123,6 @@ public final class UnboundedResourceBuffer implements ResourceStorage {
     }
 
     private long transfer(AEKey key, long amount, Actionable mode, boolean insert) {
-        Objects.requireNonNull(key);
-        Objects.requireNonNull(mode);
         if (amount < 0) throw new IllegalArgumentException("Negative output transfer");
         context.lock();
         try {
@@ -148,16 +141,15 @@ public final class UnboundedResourceBuffer implements ResourceStorage {
 
     @Override
     public ReservationResult reserveExtract(StorageSnapshot snapshot, AEKey key, long amount) {
-        return reserve(Objects.requireNonNull(snapshot), key, amount, false);
+        return reserve(snapshot, key, amount, false);
     }
 
     @Override
     public ReservationResult reserveInsert(StorageSnapshot snapshot, AEKey key, long amount) {
-        return reserve(Objects.requireNonNull(snapshot), key, amount, true);
+        return reserve(snapshot, key, amount, true);
     }
 
     private ReservationResult reserve(@Nullable StorageSnapshot snapshot, AEKey key, long amount, boolean insert) {
-        Objects.requireNonNull(key);
         if (amount <= 0) throw new IllegalArgumentException("A reservation needs a positive amount");
         context.lock();
         try {
@@ -239,11 +231,9 @@ public final class UnboundedResourceBuffer implements ResourceStorage {
      * Validate all entries before replacing any part of the live balance.
      */
     public void restore(List<GenericStack> contents) {
-        Objects.requireNonNull(contents);
         var next = new AEKey2LongMap.OpenHashMap(contents.size());
         for (int index = 0; index < contents.size(); index++) {
             var stack = contents.get(index);
-            Objects.requireNonNull(stack);
             if (stack.amount() <= 0 || stack.amount() > Long.MAX_VALUE - next.getLong(stack.what()))
                 throw new IllegalArgumentException("Invalid saved output resource amount");
             next.addTo(stack.what(), stack.amount());
@@ -266,7 +256,7 @@ public final class UnboundedResourceBuffer implements ResourceStorage {
         if (destroyed) return List.of();
         context.invalidate();
         destroyed = true;
-        destructionDrops = Objects.requireNonNull(deferredDrops);
+        destructionDrops = deferredDrops;
         if (reservations != 0) return List.of();
         return takeDestructionDrops();
     }

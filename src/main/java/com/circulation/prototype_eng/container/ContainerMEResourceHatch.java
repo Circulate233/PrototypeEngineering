@@ -25,7 +25,6 @@ import net.minecraft.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * ME-only stock controls: no player path can transfer the actual input or output buffers.
@@ -54,7 +53,7 @@ public final class ContainerMEResourceHatch extends AEBaseContainer {
 
     public ContainerMEResourceHatch(InventoryPlayer player, MEResourceHatchBlockEntity tile) {
         super(player, tile);
-        this.tile = Objects.requireNonNull(tile);
+        this.tile = tile;
         mode = tile.mode();
         boolean mixed = mode == HatchMode.MIXED;
         guiHeight = mixed ? 256 : 186;

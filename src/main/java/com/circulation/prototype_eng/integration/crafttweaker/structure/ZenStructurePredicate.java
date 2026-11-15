@@ -22,16 +22,12 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 
 @ZenRegister
 @ZenClass("mods.prototype_eng.structure.Predicate")
 @SuppressWarnings("unused") // ZenScript resolves the registered public factories.
 public record ZenStructurePredicate(StructurePredicate value) {
-    public ZenStructurePredicate {
-        Objects.requireNonNull(value);
-    }
 
     /**
      * The common base facts are available without additional query declarations.
@@ -57,11 +53,10 @@ public record ZenStructurePredicate(StructurePredicate value) {
     public static ZenStructurePredicate custom(String[] facts, ZenStructureQuery[] customFacts, int[][] offsets,
                                                int[][] controllerOffsets, ZenStructureValidator validator) {
         var queries = new ObjectArrayList<StructureQuery<?>>(facts.length);
-        for (var fact : facts) queries.add(query(Objects.requireNonNull(fact)));
+        for (var fact : facts) queries.add(query(fact));
         for (var fact : customFacts) queries.add(fact.value());
-        var callback = Objects.requireNonNull(validator);
         return new ZenStructurePredicate(StructurePredicates.custom(queries, positions(offsets), positions(controllerOffsets),
-            captured -> callback.validate(new ZenStructureFacts(captured))));
+            captured -> validator.validate(new ZenStructureFacts(captured))));
     }
 
     private static List<BlockPos> positions(int[][] offsets) {
@@ -111,12 +106,12 @@ public record ZenStructurePredicate(StructurePredicate value) {
 
     @ZenMethod
     public static ZenStructurePredicate state(IBlockState state) {
-        return new ZenStructurePredicate(StructurePredicates.state(CraftTweakerMC.getBlockState(Objects.requireNonNull(state))));
+        return new ZenStructurePredicate(StructurePredicates.state(CraftTweakerMC.getBlockState(state)));
     }
 
     @ZenMethod
     public static ZenStructurePredicate nbt(IData expected) {
-        var tag = NBTConverter.from(Objects.requireNonNull(expected));
+        var tag = NBTConverter.from(expected);
         if (!(tag instanceof NBTTagCompound compound))
             throw new IllegalArgumentException("Structure NBT requires a map");
         var fields = new Object2ObjectLinkedOpenHashMap<String, String>(compound.getSize());

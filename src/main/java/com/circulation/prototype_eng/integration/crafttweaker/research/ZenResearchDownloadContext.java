@@ -9,7 +9,6 @@ import crafttweaker.api.world.IWorld;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 
-import java.util.Objects;
 
 /**
  * Authoritative same-tick download context; callbacks must not mutate inventories or the world.
@@ -18,9 +17,6 @@ import java.util.Objects;
 @ZenClass("mods.prototype_eng.research.ResearchDownloadContext")
 @SuppressWarnings("unused") // Public adapters are discovered by ZenScript.
 public record ZenResearchDownloadContext(ResearchItemDownloadContext value) {
-    public ZenResearchDownloadContext {
-        Objects.requireNonNull(value);
-    }
 
     @ZenGetter("research")
     public ZenResearch research() {

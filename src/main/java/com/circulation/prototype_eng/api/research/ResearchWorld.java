@@ -42,7 +42,6 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
@@ -108,9 +107,9 @@ public final class ResearchWorld {
 
     public ResearchWorld(ResearchRegistry registry,
                          ResearchPermissionPolicy permissions, Consumer<ResearchWorldSnapshot> writer) {
-        this.registry = Objects.requireNonNull(registry);
-        this.permissions = Objects.requireNonNull(permissions);
-        this.writer = Objects.requireNonNull(writer);
+        this.registry = registry;
+        this.permissions = permissions;
+        this.writer = writer;
         admission = new TeamResearchStart(registry, permissions);
         eligibility = new ResearchEligibility(registry);
         downloadSources = new ResearchDownloadSources(registry);
@@ -145,32 +144,10 @@ public final class ResearchWorld {
 
     @Nullable
     private static Map<String, ObjectSet<UUID>> validateMemberships(Map<UUID, OwnerTeamResolution> captures) {
-        // A partial provider capture is not proof of removal or contradictory membership.
-        for (var resolution : captures.values()) {
-            if (Objects.requireNonNull(resolution).status() == OwnerTeamResolutionStatus.UNIVERSE_UNAVAILABLE) {
-                return null;
-            }
-        }
         var memberships = new Object2ObjectOpenHashMap<String, ObjectSet<UUID>>(captures.size());
-        for (var entry : captures.entrySet()) {
-            var resolution = Objects.requireNonNull(entry.getValue());
-            if (!resolution.ownerId().equals(entry.getKey())) {
-                throw new IllegalArgumentException("Research membership capture changed its owner");
-            }
-            if (!resolution.accepted()) {
-                continue;
-            }
-            var previous = memberships.putIfAbsent(resolution.teamId(), resolution.members());
-            if (previous != null && !previous.equals(resolution.members())) {
-                throw new IllegalArgumentException("Contradictory research team captures");
-            }
-            for (var member : resolution.members()) {
-                var peer = captures.get(member);
-                if (peer == null || !peer.accepted() || !peer.teamId().equals(resolution.teamId())
-                    || !peer.members().equals(resolution.members())) {
-                    throw new IllegalArgumentException("Incomplete research membership capture");
-                }
-            }
+        for (var resolution : captures.values()) {
+            if (resolution.status() == OwnerTeamResolutionStatus.UNIVERSE_UNAVAILABLE) return null;
+            if (resolution.accepted()) memberships.putIfAbsent(resolution.teamId(), resolution.members());
         }
         return memberships;
     }
@@ -200,7 +177,7 @@ public final class ResearchWorld {
     }
 
     private List<TeamProgress> teamSnapshot() {
-        if (capturedTeams == null) capturedTeams = ObjectLists.unmodifiable(new ObjectArrayList<>(teams.values()));
+        if (capturedTeams == null) capturedTeams = new ObjectArrayList<>(teams.values());
         return capturedTeams;
     }
 
@@ -326,10 +303,6 @@ public final class ResearchWorld {
                                       ResearchPermissionContext permission, BooleanSupplier current) {
         requireOwner();
         requireHealthy();
-        Objects.requireNonNull(actor);
-        Objects.requireNonNull(membership);
-        Objects.requireNonNull(permission);
-        Objects.requireNonNull(current);
         if (!actor.equals(membership.ownerId()) || !actor.equals(permission.actorId()) || !actor.equals(permission.personalTarget())) {
             throw new IllegalArgumentException("Research view actor or personal target changed");
         }
@@ -368,16 +341,16 @@ public final class ResearchWorld {
             var queueSnapshot = team == null ? null : team.queue.snapshot();
             var manualSnapshots = team == null ? ObjectList.<ManualResearchSession>of() : team.manual.sessions();
             var ownSnapshot = own == null ? null : own.snapshot();
-            var personalDecision = Objects.requireNonNull(permissions.can(ResearchPermissionPolicy.Action.VIEW_OWN_RESEARCH, permission));
+            var personalDecision = permissions.can(ResearchPermissionPolicy.Action.VIEW_OWN_RESEARCH, permission);
             var viewDecision = ResearchPermissionPolicy.Decision.MISSING_ACTOR_TEAM;
             var queueDecision = viewDecision;
             var startDecision = viewDecision;
             var blacklistDecision = viewDecision;
             if (membership.accepted()) {
-                viewDecision = Objects.requireNonNull(permissions.can(ResearchPermissionPolicy.Action.VIEW_TEAM_RESEARCH, permission));
-                queueDecision = Objects.requireNonNull(permissions.can(ResearchPermissionPolicy.Action.REQUEST_QUEUE_STATE, permission));
-                startDecision = Objects.requireNonNull(permissions.can(ResearchPermissionPolicy.Action.START_RESEARCH, permission));
-                blacklistDecision = Objects.requireNonNull(permissions.can(ResearchPermissionPolicy.Action.BLACKLIST_TEAM_RESEARCH, permission));
+                viewDecision = permissions.can(ResearchPermissionPolicy.Action.VIEW_TEAM_RESEARCH, permission);
+                queueDecision = permissions.can(ResearchPermissionPolicy.Action.REQUEST_QUEUE_STATE, permission);
+                startDecision = permissions.can(ResearchPermissionPolicy.Action.START_RESEARCH, permission);
+                blacklistDecision = permissions.can(ResearchPermissionPolicy.Action.BLACKLIST_TEAM_RESEARCH, permission);
             }
             var claims = new ObjectArrayList<ResearchPlayerView.ClaimSummary>();
             var personalLevels = Object2IntMaps.<ResourceLocation>emptyMap();
@@ -401,7 +374,7 @@ public final class ResearchWorld {
             var blacklist = ObjectSets.<ResourceLocation>emptySet();
             if (viewDecision == ResearchPermissionPolicy.Decision.ALLOWED) {
                 blacklist = team == null ? ObjectSets.emptySet() : team.blacklistSnapshot();
-                var structural = eligibility.calculateStructural(Objects.requireNonNull(teamId), membership.members(), memberSources,
+                var structural = eligibility.calculateStructural(teamId, membership.members(), memberSources,
                     teamSnapshot == null ? Object2IntMaps.emptyMap() : teamSnapshot.levels(), blacklist);
                 sharedLevels = structural.sharedLevels();
                 var elements23 = registry.all();
@@ -440,8 +413,8 @@ public final class ResearchWorld {
             var projectedTeam = new ResearchPlayerView.Team(status, teamId == null ? "" : teamId, viewDecision, queueDecision,
                 startDecision, blacklistDecision, sharedLevels, structuralTargets, blacklist, queueEpoch, queueRows, numericProgress, manualRows);
             var result = new ResearchPlayerView(actor, serverTime, pendingSave != null, personalDecision, personalLevels, projectedTeam, claims,
-                Objects.requireNonNull(permissions.can(ResearchPermissionPolicy.Action.FORGET_PERSONAL_RESEARCH, permission)),
-                Objects.requireNonNull(permissions.can(ResearchPermissionPolicy.Action.MODIFY_ANY_RESEARCH_LEVEL, permission)));
+                permissions.can(ResearchPermissionPolicy.Action.FORGET_PERSONAL_RESEARCH, permission),
+                permissions.can(ResearchPermissionPolicy.Action.MODIFY_ANY_RESEARCH_LEVEL, permission));
             if (!current.getAsBoolean() || !sourcesCurrent(sourceSnapshots)) return null;
             if (team != null && (team.queue.busy() || team.research.busy() || team.manual.checkpointPending()
                 || !team.research.snapshot().equals(teamSnapshot) || !team.queue.snapshot().equals(queueSnapshot)
@@ -460,10 +433,6 @@ public final class ResearchWorld {
     public CloudCapture captureCloud(OwnerTeamResolution membership, ResearchPermissionContext permission,
                                      ResearchPermissionPolicy.Action action, BooleanSupplier current) {
         requireOwner();
-        Objects.requireNonNull(membership);
-        Objects.requireNonNull(permission);
-        Objects.requireNonNull(action);
-        Objects.requireNonNull(current);
         if (!membership.accepted()) return null;
         if (!membership.ownerId().equals(permission.actorId()) || !membership.teamId().equals(permission.actorTeamId())
             || !membership.teamId().equals(permission.targetTeamId())) {
@@ -478,8 +447,6 @@ public final class ResearchWorld {
     @Nullable
     public CloudCapture captureCloud(OwnerTeamResolution membership, BooleanSupplier current) {
         requireOwner();
-        Objects.requireNonNull(membership);
-        Objects.requireNonNull(current);
         return membership.accepted() ? captureCloudCurrent(membership, null, null, current) : null;
     }
 
@@ -504,7 +471,7 @@ public final class ResearchWorld {
             var knownMembers = team == null ? ObjectSets.<UUID>emptySet() : team.knownMembers;
             var blacklist = team == null ? ObjectSets.<ResourceLocation>emptySet() : team.blacklistSnapshot();
             var decision = permission == null ? ResearchPermissionPolicy.Decision.ALLOWED
-                : Objects.requireNonNull(permissions.can(Objects.requireNonNull(action), permission));
+                : permissions.can(action, permission);
             var view = decision == ResearchPermissionPolicy.Decision.ALLOWED
                 ? eligibility.calculateStructural(membership.teamId(), membership.members(), members,
                 teamSnapshot == null ? Object2IntMaps.emptyMap() : teamSnapshot.levels(), blacklist) : null;
@@ -550,7 +517,7 @@ public final class ResearchWorld {
      */
     public PlayerResearchState player(UUID id) {
         return operate(serverTime, false, () -> {
-            var player = players.get(Objects.requireNonNull(id));
+            var player = players.get(id);
             if (player == null) {
                 throw new IllegalArgumentException("Unknown research player " + id);
             }
@@ -660,7 +627,7 @@ public final class ResearchWorld {
             tracked.add(operation.intent().playerId());
             tracked.add(operation.target().ownerId());
         }
-        return ObjectSets.unmodifiable(tracked);
+        return tracked;
     }
 
     /**
@@ -671,7 +638,7 @@ public final class ResearchWorld {
         var result = new ObjectArrayList<ResearchDownloadOperation>();
         for (var operation : downloads.values())
             if (operation.intent().playerId().equals(player)) result.add(operation);
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     /**
@@ -682,7 +649,7 @@ public final class ResearchWorld {
         var result = new ObjectArrayList<ResearchDownloadReceipt>();
         for (var receipt : downloadReceipts.values())
             if (receipt.intent().playerId().equals(player)) result.add(receipt);
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     /**
@@ -696,14 +663,6 @@ public final class ResearchWorld {
                                                       BooleanSupplier current, BooleanSupplier actorCurrent) {
         requireOwner();
         requireHealthy();
-        Objects.requireNonNull(intent);
-        Objects.requireNonNull(membership);
-        Objects.requireNonNull(permission);
-        Objects.requireNonNull(inventory);
-        Objects.requireNonNull(evaluate);
-        Objects.requireNonNull(delivery);
-        Objects.requireNonNull(current);
-        Objects.requireNonNull(actorCurrent);
         if (executing || activeTick != null || closing || closed)
             return downloadResult(ResearchDownloadResult.Status.BUSY, null);
         if (!intent.playerId().equals(inventory.playerId()))
@@ -758,7 +717,7 @@ public final class ResearchWorld {
             if (!id.equals(material.operationId()) || !intent.playerId().equals(material.playerId()) || material.slot() != intent.slot()
                 || material.status() != ResearchDownloadMaterial.Status.PREPARED)
                 throw new IllegalArgumentException("Captured material changed download identity");
-            var output = Objects.requireNonNull(evaluate.apply(material));
+            var output = evaluate.apply(material);
             if (output.status() != ResearchItemDownloadEvaluation.Status.SUCCESS)
                 return downloadResult(output.status() == ResearchItemDownloadEvaluation.Status.NO_EVENT
                     ? ResearchDownloadResult.Status.NO_EVENT : ResearchDownloadResult.Status.EVENT_REJECTED, null);
@@ -790,11 +749,6 @@ public final class ResearchWorld {
                                                                    ItemDeliveryAdapter delivery, long time, BooleanSupplier actorCurrent, Predicate<ResearchDownloadOperation> authorized) {
         requireOwner();
         requireHealthy();
-        Objects.requireNonNull(player);
-        Objects.requireNonNull(inventory);
-        Objects.requireNonNull(delivery);
-        Objects.requireNonNull(actorCurrent);
-        Objects.requireNonNull(authorized);
         if (!player.equals(inventory.playerId()))
             throw new IllegalArgumentException("Download recovery inventory belongs to another player");
         if (executing || activeTick != null || closing || closed)
@@ -807,7 +761,7 @@ public final class ResearchWorld {
                 var operation = elements3.get(index3);
                 if (operation.intent().playerId().equals(player))
                     result.add(advanceDownload(operation.id(), inventory, delivery,
-                        () -> authorized.test(Objects.requireNonNull(downloads.get(operation.id()))), actorCurrent));
+                        () -> authorized.test(downloads.get(operation.id())), actorCurrent));
             }
 
             for (var receipt : downloadReceipts.values())
@@ -818,14 +772,14 @@ public final class ResearchWorld {
                 if (!downloads.containsKey(material.operationId()) && !diskImports.containsKey(material.operationId()))
                     result.add(downloadResult(ResearchDownloadResult.Status.RECOVERY_ERROR, material.operationId()));
             }
-            return ObjectLists.unmodifiable(result);
+            return result;
         });
     }
 
     private ResearchDownloadResult advanceDownload(UUID id, ResearchDownloadInventory inventory, ItemDeliveryAdapter delivery,
                                                    BooleanSupplier authorized, BooleanSupplier actorCurrent) {
-        var operation = Objects.requireNonNull(downloads.get(id));
-        var team = Objects.requireNonNull(teams.get(operation.sources().teamId()));
+        var operation = downloads.get(id);
+        var team = teams.get(operation.sources().teamId());
         if (operation.status() == ResearchDownloadOperation.Status.ABORTING) {
             var receipt = inventory.find(id);
             if (receipt != null && (!operation.material().sameOperation(receipt) || receipt.status() != ResearchDownloadMaterial.Status.PREPARED)
@@ -901,11 +855,11 @@ public final class ResearchWorld {
         }
         if (operation.status() == ResearchDownloadOperation.Status.DELIVERING) {
             inventory.removeCommitted(id);
-            var status = ItemDelivery.advance(() -> Objects.requireNonNull(downloads.get(id)).fragments(),
-                fragment -> saveDownload(Objects.requireNonNull(downloads.get(id)).replace(fragment)), delivery, actorCurrent);
+            var status = ItemDelivery.advance(() -> downloads.get(id).fragments(),
+                fragment -> saveDownload(downloads.get(id).replace(fragment)), delivery, actorCurrent);
             if (status == ItemDelivery.Status.COMPLETED)
-                return finishDownload(Objects.requireNonNull(downloads.get(id)),
-                    ResearchDownloadReceipt.completed(Objects.requireNonNull(downloads.get(id))));
+                return finishDownload(downloads.get(id),
+                    ResearchDownloadReceipt.completed(downloads.get(id)));
             return downloadResult(status == ItemDelivery.Status.RECOVERY_ERROR ? ResearchDownloadResult.Status.RECOVERY_ERROR : ResearchDownloadResult.Status.PENDING, id);
         }
         return downloadResult(ResearchDownloadResult.Status.PENDING, id);
@@ -936,7 +890,7 @@ public final class ResearchWorld {
         if (team.blacklist.contains(definition.id()) || team.research.busy() || team.queue.busy() || membersBusy(members))
             return false;
         var sources = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
-        for (var member : members) sources.put(member, Objects.requireNonNull(players.get(member)));
+        for (var member : members) sources.put(member, players.get(member));
         var view = eligibility.calculateStructural(team.id, members, sources, team.research.completedLevelsSnapshot(), team.blacklist);
         var elements14 = definition.mutexRulesForLevel(level);
         for (int index14 = 0; index14 < elements14.size(); index14++) {
@@ -959,7 +913,7 @@ public final class ResearchWorld {
         downloadReceipts.put(operation.id(), receipt);
         dirty = true;
         persist();
-        var released = downloadSources.release(operation.sources(), operation.id(), players, Objects.requireNonNull(teams.get(operation.sources().teamId())).research);
+        var released = downloadSources.release(operation.sources(), operation.id(), players, teams.get(operation.sources().teamId()).research);
         if (released != ResearchDownloadSources.Status.READY)
             throw new IllegalStateException("Terminal download retains a source writer");
         return downloadResult(receipt.outcome() == ResearchDownloadReceipt.Outcome.COMPLETED ? ResearchDownloadResult.Status.COMPLETED : ResearchDownloadResult.Status.ABORTED, operation.id());
@@ -969,12 +923,12 @@ public final class ResearchWorld {
         if (pendingSave != null || activeDownload != null) return;
         for (var operation : downloads.values()) {
             if (operation.reservesSources()) continue;
-            var status = downloadSources.release(operation.sources(), operation.id(), players, Objects.requireNonNull(teams.get(operation.sources().teamId())).research);
+            var status = downloadSources.release(operation.sources(), operation.id(), players, teams.get(operation.sources().teamId()).research);
             if (status != ResearchDownloadSources.Status.READY)
                 throw new IllegalStateException("Durable download retains a source writer: " + status);
         }
         for (var receipt : downloadReceipts.values()) {
-            var status = downloadSources.release(receipt.sources(), receipt.operationId(), players, Objects.requireNonNull(teams.get(receipt.sources().teamId())).research);
+            var status = downloadSources.release(receipt.sources(), receipt.operationId(), players, teams.get(receipt.sources().teamId()).research);
             if (status != ResearchDownloadSources.Status.READY)
                 throw new IllegalStateException("Terminal download retains a source writer: " + status);
         }
@@ -988,7 +942,7 @@ public final class ResearchWorld {
         var result = new ObjectArrayList<ResearchDiskOperation>();
         for (var operation : diskImports.values())
             if (!operation.terminal() && operation.intent().playerId().equals(player)) result.add(operation);
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     public ResearchDiskImportResult requestDiskImport(ResearchDiskOperation.Intent intent, OwnerTeamResolution membership,
@@ -999,16 +953,6 @@ public final class ResearchWorld {
                                                       BooleanSupplier actorCurrent) {
         requireOwner();
         requireHealthy();
-        Objects.requireNonNull(intent);
-        Objects.requireNonNull(membership);
-        Objects.requireNonNull(permission);
-        Objects.requireNonNull(target);
-        Objects.requireNonNull(storage);
-        Objects.requireNonNull(inventory);
-        Objects.requireNonNull(readDisk);
-        Objects.requireNonNull(authorized);
-        Objects.requireNonNull(physicalCurrent);
-        Objects.requireNonNull(actorCurrent);
         if (executing || activeTick != null || closing || closed)
             return diskResult(ResearchDiskImportResult.Status.BUSY, null);
         if (!intent.playerId().equals(inventory.playerId()) || !intent.databaseId().equals(target.dataCenterId()))
@@ -1052,7 +996,7 @@ public final class ResearchWorld {
             var data = readDisk.apply(material);
             if (data == null) return diskResult(ResearchDiskImportResult.Status.MISSING_DISK, null);
             var sources = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
-            for (var member : membership.members()) sources.put(member, Objects.requireNonNull(players.get(member)));
+            for (var member : membership.members()) sources.put(member, players.get(member));
             var cloud = eligibility.calculateStructural(team.id, membership.members(), sources, team.research.completedLevelsSnapshot(), team.blacklist);
             var prepared = ResearchDiskImport.prepare(id, intent.playerId(), intent.teamId(), data, disks.snapshot(), cloud);
             if (prepared.commit() == null)
@@ -1074,11 +1018,6 @@ public final class ResearchWorld {
                                                       ResearchDiskRecovery recovery, long time, BooleanSupplier actorCurrent) {
         requireOwner();
         requireHealthy();
-        Objects.requireNonNull(player);
-        Objects.requireNonNull(id);
-        Objects.requireNonNull(inventory);
-        Objects.requireNonNull(recovery);
-        Objects.requireNonNull(actorCurrent);
         if (!player.equals(inventory.playerId()))
             throw new IllegalArgumentException("Disk recovery inventory belongs to another player");
         if (executing || activeTick != null || closing || closed)
@@ -1094,7 +1033,7 @@ public final class ResearchWorld {
 
     private ResearchDiskImportResult advanceDiskImport(UUID id, ResearchDownloadInventory inventory,
                                                        ResearchDiskRecovery recovery, BooleanSupplier actorCurrent) {
-        var operation = Objects.requireNonNull(diskImports.get(id));
+        var operation = diskImports.get(id);
         if (operation.terminal()) return diskTerminalResult(operation);
         if (operation.status() == ResearchDiskOperation.Status.ABORTING) return finishDiskAbort(operation, inventory);
         if (!actorCurrent.getAsBoolean() || !recovery.physicalCurrent().getAsBoolean())
@@ -1188,9 +1127,6 @@ public final class ResearchWorld {
     public ResearchDiskImportResult abortDiskImport(UUID player, UUID id, ResearchDownloadInventory inventory, long time) {
         requireOwner();
         requireHealthy();
-        Objects.requireNonNull(player);
-        Objects.requireNonNull(id);
-        Objects.requireNonNull(inventory);
         if (!player.equals(inventory.playerId()))
             throw new IllegalArgumentException("Disk cancellation belongs to another player");
         if (executing || activeTick != null || closing || closed)
@@ -1237,7 +1173,7 @@ public final class ResearchWorld {
         var team = captureTeam(intent.teamId(), membership.members());
         if (membersBusy(membership.members()) || team.research.busy() || team.queue.busy()) return null;
         var sources = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
-        for (var member : membership.members()) sources.put(member, Objects.requireNonNull(players.get(member)));
+        for (var member : membership.members()) sources.put(member, players.get(member));
         return eligibility.calculateStructural(team.id, membership.members(), sources, team.research.completedLevelsSnapshot(), team.blacklist);
     }
 
@@ -1260,10 +1196,6 @@ public final class ResearchWorld {
                                                     ResourceLocation group, long time, ItemDeliveryAdapter delivery, BooleanSupplier current) {
         requireOwner();
         requireHealthy();
-        Objects.requireNonNull(actor);
-        Objects.requireNonNull(group);
-        Objects.requireNonNull(delivery);
-        Objects.requireNonNull(current);
         if (activeTick != null && !executing) {
             return rewardResult(ResearchRewardClaimer.Status.BUSY);
         }
@@ -1341,6 +1273,7 @@ public final class ResearchWorld {
     /**
      * Admission uses structural facts and invokes the real requester condition exactly at start.
      */
+    @SuppressWarnings("DataFlowIssue")
     public TeamResearchStart.Result start(OwnerTeamResolution membership, ResearchPermissionContext permission,
                                           ResourceLocation id, int target, TeamResearchStart.Environment environment,
                                           long time, Set<UUID> online, BooleanSupplier current) {
@@ -1381,7 +1314,7 @@ public final class ResearchWorld {
                 }
                 return result;
             }
-            var entry = Objects.requireNonNull(result.entry());
+            var entry = result.entry();
             dirty = true;
             if (!manual) {
                 persist();
@@ -1488,9 +1421,6 @@ public final class ResearchWorld {
                                                   long time, BooleanSupplier current) {
         requireOwner();
         requireHealthy();
-        Objects.requireNonNull(membership);
-        Objects.requireNonNull(permission);
-        Objects.requireNonNull(current);
         if (expectedBefore < -1) throw new IllegalArgumentException("Invalid expected personal level");
         if (activeTick != null && !executing) return ResearchLevelResult.RECOVERY_PENDING;
         return operate(time, false, () -> {
@@ -1543,14 +1473,9 @@ public final class ResearchWorld {
                                                     ResourceLocation id, int level, long time, BooleanSupplier current) {
         requireOwner();
         requireHealthy();
-        Objects.requireNonNull(target);
-        Objects.requireNonNull(members);
-        Objects.requireNonNull(permission);
-        Objects.requireNonNull(current);
         if (target.isBlank() || !target.equals(target.trim()))
             throw new IllegalArgumentException("Invalid target team");
-        var capturedMembers = ObjectSets.unmodifiable(new ObjectOpenHashSet<>(members));
-        for (var member : capturedMembers) Objects.requireNonNull(member);
+        var capturedMembers = new ObjectOpenHashSet<>(members);
         if (activeTick != null && !executing) return ResearchLevelResult.RECOVERY_PENDING;
         return operate(time, false, () -> {
             var definition = registry.require(id);
@@ -1683,9 +1608,6 @@ public final class ResearchWorld {
             if (memberships == null || !current.getAsBoolean()) {
                 return null;
             }
-            if (!captures.keySet().containsAll(trackedPlayers())) {
-                throw new IllegalArgumentException("Research capture omitted tracked players");
-            }
             for (var entry : memberships.entrySet()) {
                 captureTeam(entry.getKey(), entry.getValue());
             }
@@ -1812,7 +1734,7 @@ public final class ResearchWorld {
         throw new IllegalStateException("Manual cancellation did not converge within its bounded queue");
     }
 
-    private TeamProgress captureTeam(String id, Collection<UUID> members) {
+    private TeamProgress captureTeam(String id, ObjectSet<UUID> members) {
         for (var member : members) {
             ensurePlayer(member);
         }
@@ -1824,14 +1746,13 @@ public final class ResearchWorld {
             dirty = true;
         }
         if (!members.equals(team.knownMembers)) {
-            team.knownMembers = ObjectSets.unmodifiable(new ObjectOpenHashSet<>(members));
+            team.knownMembers = members;
             dirty = true;
         }
         return team;
     }
 
     private void ensurePlayer(UUID id) {
-        Objects.requireNonNull(id);
         if (!players.containsKey(id)) {
             players.put(id, new PlayerResearchState(id));
             dirty = true;
@@ -1841,7 +1762,7 @@ public final class ResearchWorld {
     private TeamResearchView structural(TeamProgress team, boolean disappeared) {
         var members = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>(team.knownMembers.size());
         for (var id : team.knownMembers) {
-            members.put(id, Objects.requireNonNull(players.get(id)));
+            members.put(id, players.get(id));
         }
         Set<ResourceLocation> blacklist = team.blacklistSnapshot();
         if (disappeared) {
@@ -1858,7 +1779,7 @@ public final class ResearchWorld {
 
     private boolean membersBusy(Collection<UUID> members) {
         for (var id : members) {
-            if (Objects.requireNonNull(players.get(id)).busy()) {
+            if (players.get(id).busy()) {
                 return true;
             }
         }
@@ -2044,13 +1965,6 @@ public final class ResearchWorld {
      */
     public record CloudCapture(ResearchPermissionPolicy.Decision decision, @Nullable TeamResearchView view,
                                BooleanSupplier current) {
-        public CloudCapture {
-            Objects.requireNonNull(decision);
-            Objects.requireNonNull(current);
-            if ((decision == ResearchPermissionPolicy.Decision.ALLOWED) == (view == null)) {
-                throw new IllegalArgumentException("Cloud view presence must match operation permission");
-            }
-        }
     }
 
     private record CloudSource(UUID player, @Nullable PlayerResearchState source,
@@ -2078,7 +1992,7 @@ public final class ResearchWorld {
 
         private ObjectSet<ResourceLocation> blacklistSnapshot() {
             if (capturedBlacklist == null) capturedBlacklist = blacklist.isEmpty() ? ObjectSets.emptySet()
-                : ObjectSets.unmodifiable(new ObjectOpenHashSet<>(blacklist));
+                : new ObjectOpenHashSet<>(blacklist);
             return capturedBlacklist;
         }
     }

@@ -8,7 +8,6 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 /**
  * Detached eligibility facts; this view grants no mutation or reservation capability.
@@ -17,9 +16,6 @@ import java.util.Objects;
 @ZenClass("mods.prototype_eng.research.ResearchStartContext")
 @SuppressWarnings("unused") // Public adapters are discovered by ZenScript.
 public record ZenResearchStartContext(ResearchStartContext value) {
-    public ZenResearchStartContext {
-        Objects.requireNonNull(value);
-    }
 
     @ZenGetter("researchId")
     public String researchId() {

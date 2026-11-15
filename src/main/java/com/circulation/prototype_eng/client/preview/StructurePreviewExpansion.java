@@ -19,7 +19,6 @@ import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Iterator;
-import java.util.Objects;
 
 /**
  * PM preview traversal over the published graph; no world, predicate or definition factory access.
@@ -49,9 +48,8 @@ public final class StructurePreviewExpansion {
     private int occurrenceCount;
 
     public StructurePreviewExpansion(StructureCatalogView view, ResourceLocation id, StructurePreviewSettings settings) {
-        this.view = Objects.requireNonNull(view);
-        Objects.requireNonNull(id);
-        this.settings = Objects.requireNonNull(settings);
+        this.view = view;
+        this.settings = settings;
         output = new StructurePreviewModel.Builder(view, id, settings);
         var entry = view.entries().get(id);
         if (entry == null) throw new IllegalArgumentException("Structure has no published preview: " + id);

@@ -5,7 +5,6 @@ import ae2.api.orientation.RelativeSide;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.Vec3d;
 
-import java.util.Objects;
 
 /**
  * The same face frame and cell boundaries drive server clicks and the client nine-cell overlay.
@@ -17,8 +16,6 @@ public final class OrientationToolOrientations {
     }
 
     public static BlockOrientation apply(BlockOrientation current, EnumFacing clickedSide, Part part) {
-        Objects.requireNonNull(current);
-        Objects.requireNonNull(clickedSide);
         var front = current.getSide(RelativeSide.FRONT);
         if (part == Part.CORNER) return current;
         if (part == Part.CENTER && clickedSide == front) return current.rotateClockwiseAround(front);
@@ -90,7 +87,6 @@ public final class OrientationToolOrientations {
      * PM differs from AE2's default for DOWN: its canonical top is SOUTH.
      */
     public static BlockOrientation canonical(EnumFacing front) {
-        Objects.requireNonNull(front);
         return BlockOrientation.get(front, switch (front) {
             case UP -> EnumFacing.NORTH;
             case DOWN -> EnumFacing.SOUTH;

@@ -6,7 +6,6 @@ import org.jetbrains.annotations.Nullable;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 
-import java.util.Objects;
 
 /**
  * Detached projection facts; no process, storage, lease or owner is exposed.
@@ -22,7 +21,6 @@ public final class ZenAllocationContext {
     private final ZenAllocationSource[] sources;
 
     public ZenAllocationContext(InputAllocation.Context context) {
-        Objects.requireNonNull(context);
         stage = context.stage().name();
         projection = context.projection();
         amount = context.amount();

@@ -11,7 +11,6 @@ import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Complete presentation result. A retained model needs an exact-current catalog check before use.
@@ -34,10 +33,10 @@ public final class StructurePreviewModel {
     private StructurePreviewModel(StructureCatalogView generation, ResourceLocation structureId, StructurePreviewSettings settings,
                                   ObjectArrayList<Cell> cells, StructureBounds bounds, ObjectArrayList<BomLine> bom,
                                   ObjectArrayList<Occurrence> occurrences) {
-        this.generation = Objects.requireNonNull(generation);
-        this.structureId = Objects.requireNonNull(structureId);
-        this.settings = Objects.requireNonNull(settings);
-        this.bounds = Objects.requireNonNull(bounds);
+        this.generation = generation;
+        this.structureId = structureId;
+        this.settings = settings;
+        this.bounds = bounds;
         this.cells = cells;
         this.bom = bom;
         this.occurrences = occurrences;
@@ -89,9 +88,9 @@ public final class StructurePreviewModel {
         private final ObjectArrayList<Occurrence> occurrences = new ObjectArrayList<>();
 
         public Builder(StructureCatalogView generation, ResourceLocation id, StructurePreviewSettings settings) {
-            this.generation = Objects.requireNonNull(generation);
-            this.id = Objects.requireNonNull(id);
-            this.settings = Objects.requireNonNull(settings);
+            this.generation = generation;
+            this.id = id;
+            this.settings = settings;
             if (!generation.entries().containsKey(id))
                 throw new IllegalArgumentException("Unknown preview entry: " + id);
         }
@@ -99,17 +98,17 @@ public final class StructurePreviewModel {
         public void addCell(Cell cell) {
             if (cells.size() == settings.maxCellVisits())
                 throw new IllegalArgumentException("Preview cell limit exceeded");
-            cells.add(Objects.requireNonNull(cell));
+            cells.add(cell);
         }
 
         public void addBom(BomLine line) {
-            bom.add(Objects.requireNonNull(line));
+            bom.add(line);
         }
 
         public void addOccurrence(Occurrence occurrence) {
             if (occurrences.size() == settings.maxOccurrences())
                 throw new IllegalArgumentException("Preview occurrence limit exceeded");
-            occurrences.add(Objects.requireNonNull(occurrence));
+            occurrences.add(occurrence);
         }
 
         /**
@@ -133,8 +132,7 @@ public final class StructurePreviewModel {
     public record Cell(BlockPos position, StructurePreviewPath occurrence, int node, int slice,
                        @Nullable StructureDisplay display, boolean hideWorldBlocks) {
         public Cell {
-            position = Objects.requireNonNull(position).toImmutable();
-            Objects.requireNonNull(occurrence);
+            position = position.toImmutable();
         }
     }
 
@@ -150,8 +148,7 @@ public final class StructurePreviewModel {
     public record Occurrence(StructurePreviewPath path, int node, BlockPos origin, int selectedSlices,
                              boolean opaque) {
         public Occurrence {
-            Objects.requireNonNull(path);
-            origin = Objects.requireNonNull(origin).toImmutable();
+            origin = origin.toImmutable();
         }
     }
 }

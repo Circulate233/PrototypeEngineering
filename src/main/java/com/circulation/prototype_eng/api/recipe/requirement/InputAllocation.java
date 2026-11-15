@@ -7,7 +7,6 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Source allocation for each independent input projection, after quantity scaling. Outputs keep
@@ -27,7 +26,7 @@ public final class InputAllocation {
 
     private InputAllocation(Kind kind, ResourceLocation id, @Nullable Strategy strategy) {
         this.kind = kind;
-        this.id = Objects.requireNonNull(id);
+        this.id = id;
         this.strategy = strategy;
     }
 
@@ -35,7 +34,7 @@ public final class InputAllocation {
      * The strategy and its captured state must remain immutable for the definition's lifetime.
      */
     public static InputAllocation custom(ResourceLocation id, Strategy strategy) {
-        return new InputAllocation(Kind.CUSTOM, id, Objects.requireNonNull(strategy));
+        return new InputAllocation(Kind.CUSTOM, id, strategy);
     }
 
     public Kind kind() {
@@ -51,7 +50,7 @@ public final class InputAllocation {
      */
     public List<Portion> allocate(Context context) {
         if (strategy == null) throw new IllegalStateException("Built-in allocation has no custom callback");
-        return Objects.requireNonNull(strategy.allocate(context), "Custom allocation returned null");
+        return strategy.allocate(context);
     }
 
     public enum Kind {SPLITTABLE, SINGLE_SOURCE, CUSTOM}
@@ -93,7 +92,6 @@ public final class InputAllocation {
     public record Source(int index, long revision, long available,
                          AEKey2LongMap resources, long energyAvailable, long maxExtract) {
         public Source {
-            Objects.requireNonNull(resources);
             if (index < 0 || revision < 0 || available < 0 || energyAvailable < 0 || maxExtract < 0)
                 throw new IllegalArgumentException("Invalid allocation source");
         }

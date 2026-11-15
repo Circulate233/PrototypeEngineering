@@ -12,7 +12,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Published collections are read-only by contract; consumers must not modify them.
@@ -32,12 +31,11 @@ public final class MachineTypeRegistry {
     private boolean frozen;
 
     private static Map<ResourceLocation, MachineStructure> validateStructures(Map<ResourceLocation, ? extends MachineStructure> definitions) {
-        Objects.requireNonNull(definitions, "structure definitions");
         var checked = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineStructure>(definitions.size());
         for (var entry : definitions.entrySet()) {
-            var key = Objects.requireNonNull(entry.getKey(), "structure key");
-            var definition = Objects.requireNonNull(entry.getValue(), "structure definition");
-            if (!key.equals(Objects.requireNonNull(definition.id(), "structure ID"))) {
+            var key = entry.getKey();
+            var definition = entry.getValue();
+            if (!key.equals(definition.id())) {
                 throw new IllegalArgumentException("Structure key does not match its ID: " + key);
             }
             if (checked.putIfAbsent(key, definition) != null) {
@@ -48,7 +46,7 @@ public final class MachineTypeRegistry {
     }
 
     public synchronized void register(MachineType type) {
-        registerAll(List.of(Objects.requireNonNull(type)));
+        registerAll(List.of(type));
     }
 
     /**
@@ -58,10 +56,8 @@ public final class MachineTypeRegistry {
         if (frozen) {
             throw new IllegalStateException("Machine declarations are already frozen");
         }
-        Objects.requireNonNull(batch, "machine batch");
         var additions = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineType>(batch.size());
         for (var type : batch) {
-            Objects.requireNonNull(type, "machine type");
             if (declarations.containsKey(type.id()) || additions.putIfAbsent(type.id(), type) != null) {
                 throw new IllegalArgumentException("Duplicate machine type ID: " + type.id());
             }
@@ -88,7 +84,7 @@ public final class MachineTypeRegistry {
     @Nullable
     public synchronized MachineType get(ResourceLocation id) {
         requireFrozen();
-        return declarations.get(Objects.requireNonNull(id));
+        return declarations.get(id);
     }
 
     /**
@@ -118,17 +114,15 @@ public final class MachineTypeRegistry {
      */
     public synchronized void resolveRuntime(StructureCatalog catalog,
                                             Collection<? extends MachineAssembly> assemblyDefinitions) {
-        resolveRuntimeCandidate(Objects.requireNonNull(catalog), assemblyDefinitions);
+        resolveRuntimeCandidate(catalog, assemblyDefinitions);
     }
 
     private void resolveRuntimeCandidate(StructureCatalog catalog, Collection<? extends MachineAssembly> assemblyDefinitions) {
         requireFrozen();
         if (runtime != null) throw new IllegalStateException("Machine structures are already resolved");
         var resolvedStructures = resolveStructureReferences(catalog);
-        Objects.requireNonNull(assemblyDefinitions, "machine assemblies");
         var checked = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAssembly>(assemblyDefinitions.size());
         for (var assembly : assemblyDefinitions) {
-            Objects.requireNonNull(assembly, "machine assembly");
             var type = assembly.type();
             requireCanonical(type);
             if (checked.putIfAbsent(type.id(), assembly) != null) {
@@ -149,7 +143,7 @@ public final class MachineTypeRegistry {
 
     private Map<ResourceLocation, MachineStructure> resolveStructureReferences(StructureCatalog catalog) {
         for (var entry : catalog.definitions().entrySet()) {
-            if (!entry.getKey().equals(Objects.requireNonNull(entry.getValue().id())))
+            if (!entry.getKey().equals(entry.getValue().id()))
                 throw new IllegalArgumentException("Structure key does not match its ID: " + entry.getKey());
         }
         var resolved = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineStructure>(types.size());
@@ -170,7 +164,7 @@ public final class MachineTypeRegistry {
         if (runtime == null) {
             throw new IllegalStateException("Machine structures have not been resolved");
         }
-        return Objects.requireNonNull(runtime.structures.get(type.id()));
+        return runtime.structures.get(type.id());
     }
 
     public synchronized MachineAssembly assembly(MachineType type) {
@@ -179,7 +173,7 @@ public final class MachineTypeRegistry {
         if (runtime == null || runtime.assemblies == null) {
             throw new IllegalStateException("Machine runtime has not been resolved");
         }
-        return Objects.requireNonNull(runtime.assemblies.get(type.id()));
+        return runtime.assemblies.get(type.id());
     }
 
     /**
@@ -194,11 +188,12 @@ public final class MachineTypeRegistry {
     /**
      * Preflight without changing either the complete catalog or canonical assembly bindings.
      */
+    @SuppressWarnings("DataFlowIssue")
     public synchronized Replacement prepareReplacement(StructureCatalog catalog) {
         requireFrozen();
-        var previous = Objects.requireNonNull(runtime, "Machine runtime has not been resolved");
+        var previous = runtime;
         if (previous.assemblies == null) throw new IllegalStateException("Machine runtime has no assemblies");
-        return new Replacement(this, previous, new ResolvedRuntime(Objects.requireNonNull(catalog),
+        return new Replacement(this, previous, new ResolvedRuntime(catalog,
             resolveStructureReferences(catalog), previous.assemblies));
     }
 
@@ -215,7 +210,6 @@ public final class MachineTypeRegistry {
     }
 
     private void requireCanonical(MachineType type) {
-        Objects.requireNonNull(type, "machine type");
         if (declarations.get(type.id()) != type) {
             throw new IllegalArgumentException("Machine type is not the canonical declaration: " + type.id());
         }

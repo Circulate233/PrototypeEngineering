@@ -10,7 +10,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Budgeted pure proposal over one frozen projection; it owns no storage or reservation.
@@ -31,7 +30,7 @@ final class InputAllocationPlan {
     private boolean complete;
 
     /**
-     * The caller transfers exclusive ownership of sources; only an immutable view escapes.
+     * The source list is borrowed read-only for this plan's lifetime.
      */
     InputAllocationPlan(InputAllocation policy, RecipeStage stage, int projection, @Nullable AEKey resource,
                         long amount, ObjectArrayList<InputAllocation.Source> sources) {
@@ -41,6 +40,7 @@ final class InputAllocationPlan {
         missing = amount;
     }
 
+    @SuppressWarnings("DataFlowIssue")
     boolean advance(RecipeWorkBudget budget) {
         if (complete) return true;
         while (source < amounts.length) {
@@ -65,13 +65,12 @@ final class InputAllocationPlan {
         if (!invoked) {
             if (!budget.take()) return false;
             invoked = true;
-            // The callback transfers a stable proposal. Membership and quantity validation remains budgeted.
             var returned = policy.allocate(facts);
             if (returned.size() > amounts.length)
                 throw new IllegalArgumentException("Allocation has more portions than distinct sources: " + policy.id());
             proposed = returned;
         }
-        var values = Objects.requireNonNull(proposed);
+        var values = proposed;
         while (portion < values.size()) {
             if (!budget.take()) return false;
             var value = values.get(portion++);

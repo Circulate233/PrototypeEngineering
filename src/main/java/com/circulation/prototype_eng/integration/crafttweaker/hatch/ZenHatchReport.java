@@ -5,15 +5,11 @@ import crafttweaker.annotations.ZenRegister;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 
-import java.util.Objects;
 
 @ZenRegister
 @ZenClass("mods.prototype_eng.hatch.Report")
 @SuppressWarnings("unused") // ZenScript observes the actual immutable Java report.
 public record ZenHatchReport(HatchConfigurationUpdates.Report value) {
-    public ZenHatchReport {
-        Objects.requireNonNull(value);
-    }
 
     @ZenGetter("revision")
     public long revision() {

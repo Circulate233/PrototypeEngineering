@@ -10,7 +10,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Structural parallelism is sampled with the machine allowance and revalidated at admission.
@@ -33,7 +32,7 @@ public final class ParallelControllers {
     }
 
     public static LimitCapture beginLimitCapture(MachineInstance machine) {
-        return new LimitCapture(Objects.requireNonNull(machine));
+        return new LimitCapture(machine);
     }
 
     public static final class LimitCapture {
@@ -61,7 +60,7 @@ public final class ParallelControllers {
             if (!base.advance(work) || !maximum.advance(work)) return false;
             while (snapshots.size() < bindings.size()) {
                 if (!work.take()) return false;
-                var state = Objects.requireNonNull(bindings.get(snapshots.size()).entry().component().snapshot());
+                var state = bindings.get(snapshots.size()).entry().component().snapshot();
                 snapshots.add(state);
                 if (state.valid()) contribution = Math.min(Integer.MAX_VALUE, contribution + state.selected());
             }

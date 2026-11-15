@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay.Energy;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay.Role;
 import com.circulation.prototype_eng.localization.JeiEnergyText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import mezz.jei.api.gui.IRecipeLayout;
 import mezz.jei.api.ingredients.IIngredientHelper;
 import mezz.jei.api.ingredients.IIngredientRenderer;
@@ -50,7 +49,7 @@ public final class JeiEnergyIngredients {
             var line = elements.get(index1);
             if (line.energy() != null && line.energy().role() == role) result.add(line.energy());
         }
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     public static void index(IIngredients ingredients, JeiRecipeDisplay display) {

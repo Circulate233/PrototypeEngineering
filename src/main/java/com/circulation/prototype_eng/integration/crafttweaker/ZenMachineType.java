@@ -46,7 +46,6 @@ import com.circulation.prototype_eng.integration.crafttweaker.resource.ZenComput
 
 import java.util.Locale;
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -74,7 +73,6 @@ public final class ZenMachineType {
 
     private ZenMachineType(String id, String translationKey, String structureId) {
         this.id = new ResourceLocation(id);
-        Objects.requireNonNull(translationKey);
         builder = MachineType.builder(this.id, () -> translationKey, new ResourceLocation(structureId));
     }
 
@@ -196,7 +194,7 @@ public final class ZenMachineType {
     @ZenMethod
     public ZenMachineType factory(ZenMachineFactory handle) {
         open();
-        factory = Objects.requireNonNull(handle);
+        factory = handle;
         return this;
     }
 
@@ -261,7 +259,7 @@ public final class ZenMachineType {
             controllerContext = true;
         }
         builder.controllerInventorySlots(count == null ? null : machine ->
-            count.slots(Objects.requireNonNull(machine.components().get(ZenControllerContext.TYPE))));
+            count.slots(machine.components().get(ZenControllerContext.TYPE)));
         return this;
     }
 
@@ -276,7 +274,7 @@ public final class ZenMachineType {
     public ZenMachineType network(ZenNetworkConfiguration configuration) {
         open();
         if (network != null) throw new IllegalStateException("Network configuration is already declared");
-        network = Objects.requireNonNull(configuration);
+        network = configuration;
         network.configure(builder);
         return this;
     }
@@ -314,7 +312,7 @@ public final class ZenMachineType {
         if (data) assembly.component(DataComponents.MACHINE, DataComponents.MACHINE_CODEC);
         if (controllerContext) assembly.recreated(ZenControllerContext.TYPE);
         if (scanner != null) {
-            assembly.workSlots(new MachineWorkSlotsNbt(revision, Objects.requireNonNull(processCodecs))).recreated(scanner);
+            assembly.workSlots(new MachineWorkSlotsNbt(revision, processCodecs)).recreated(scanner);
         } else if (!type.workSlots().isEmpty() && !type.componentTypes().contains(MachineWorkSlots.TYPE)) {
             throw new IllegalArgumentException("Work slots require explicit recipe processing");
         }

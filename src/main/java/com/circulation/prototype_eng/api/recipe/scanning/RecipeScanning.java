@@ -29,8 +29,7 @@ public final class RecipeScanning {
      */
     public static ComponentType<MachineInstance, RecipeScanner> component(ResourceLocation id,
                                                                           Supplier<RecipeCatalog> catalog, ScanLimits limits) {
-        Objects.requireNonNull(catalog, "catalog");
-        return component(id, host -> host.owner().createRecipeScanner(host, Objects.requireNonNull(catalog.get(), "catalog result"),
+        return component(id, host -> host.owner().createRecipeScanner(host, catalog.get(),
             () -> ThreadLocalRandom.current().nextLong()), limits, _ -> true);
     }
 
@@ -39,7 +38,6 @@ public final class RecipeScanning {
      */
     public static ComponentType<MachineInstance, RecipeScanner> component(ResourceLocation id,
                                                                           RecipeRegistry registry, ScanLimits limits) {
-        Objects.requireNonNull(registry, "registry");
         return component(id, host -> host.owner().createRecipeScanner(host, registry.snapshot().catalog(),
             () -> ThreadLocalRandom.current().nextLong()).follow(registry,
             Objects.requireNonNull(registry.processCodecs(), "Persistent recipe source requires process codecs")), limits, _ -> true);
@@ -50,14 +48,13 @@ public final class RecipeScanning {
      */
     public static ComponentType<MachineInstance, RecipeScanner> component(ResourceLocation id,
                                                                           Function<MachineWorkSlots, RecipeScanner> factory, ScanLimits limits, Predicate<MachineInstance> ready) {
-        Objects.requireNonNull(factory, "factory");
         var system = new RecipeScanningSystem(limits, ready);
         return new ComponentType<>(id, owner -> {
             var host = owner.components().get(MachineWorkSlots.TYPE);
             if (host == null || host.owner() != owner) {
                 throw new IllegalArgumentException("Automatic recipe scanning requires this machine's declared work slots");
             }
-            var scanner = Objects.requireNonNull(factory.apply(host), "scanner factory result");
+            var scanner = factory.apply(host);
             if (scanner.host() != host) {
                 throw new IllegalArgumentException("Scanner factory changed its work-slot host");
             }

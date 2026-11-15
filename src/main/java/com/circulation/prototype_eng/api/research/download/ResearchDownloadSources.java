@@ -20,7 +20,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -34,7 +33,7 @@ public final class ResearchDownloadSources {
     private final NbtCodec<Plan> codec = new PlanCodec();
 
     public ResearchDownloadSources(ResearchRegistry registry) {
-        this.registry = Objects.requireNonNull(registry);
+        this.registry = registry;
         if (!registry.isFrozen())
             throw new IllegalStateException("Download sources require frozen research definitions");
     }
@@ -112,10 +111,6 @@ public final class ResearchDownloadSources {
     public Evaluation evaluate(ResearchDefinition definition, int downloadLevel, OwnerTeamResolution membership,
                                @Nullable DataCenterResearchSnapshot database, Map<UUID, PlayerResearchState> players, TeamOwnedResearch team) {
         requireOwner();
-        Objects.requireNonNull(definition);
-        Objects.requireNonNull(membership);
-        Objects.requireNonNull(players);
-        Objects.requireNonNull(team);
         if (registry.require(definition.id()) != definition)
             throw new IllegalArgumentException("Download definition is not canonical");
         definition.stageForLevel(downloadLevel);
@@ -163,8 +158,6 @@ public final class ResearchDownloadSources {
     public Status reserve(Plan plan, UUID operationId, Map<UUID, PlayerResearchState> players, TeamOwnedResearch team) {
         requireOwner();
         validate(plan);
-        Objects.requireNonNull(operationId);
-        Objects.requireNonNull(players);
         requireTeam(plan.teamId(), team);
         var acquired = new ObjectArrayList<PlayerResearchState>(plan.memberChanges().size());
         try {
@@ -208,8 +201,6 @@ public final class ResearchDownloadSources {
     public Status release(Plan plan, UUID operationId, Map<UUID, PlayerResearchState> players, TeamOwnedResearch team) {
         requireOwner();
         validate(plan);
-        Objects.requireNonNull(operationId);
-        Objects.requireNonNull(players);
         requireTeam(plan.teamId(), team);
         if (plan.policy() == ResearchDownloadDeliveryPolicy.ITEM_ONLY) {
             return team.releaseSource(plan.researchId(), operationId) ? Status.READY : Status.SOURCE_BUSY;
@@ -243,7 +234,6 @@ public final class ResearchDownloadSources {
     public Preparation prepare(Plan plan, @Nullable UUID operationId, Map<UUID, PlayerResearchState> players, TeamOwnedResearch team) {
         requireOwner();
         validate(plan);
-        Objects.requireNonNull(players);
         requireTeam(plan.teamId(), team);
         var held = new ObjectArrayList<HeldPlayer>();
         TeamOwnedResearch.Completion teamMutation = null;
@@ -296,7 +286,6 @@ public final class ResearchDownloadSources {
     public Status verifyCommitted(Plan plan, Map<UUID, PlayerResearchState> players, TeamOwnedResearch team) {
         requireOwner();
         validate(plan);
-        Objects.requireNonNull(players);
         requireTeam(plan.teamId(), team);
         if (plan.policy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM) {
             var elements12 = plan.memberChanges();
@@ -322,7 +311,6 @@ public final class ResearchDownloadSources {
     }
 
     private void validate(Plan plan) {
-        Objects.requireNonNull(plan);
         var definition = registry.require(plan.researchId());
         definition.stageForLevel(plan.downloadLevel());
         if (definition.specialOnly() || definition.deliveryPolicy() != plan.policy() || plan.cost() > definition.maxLevel()) {
@@ -339,7 +327,7 @@ public final class ResearchDownloadSources {
     }
 
     private void requireTeam(String teamId, TeamOwnedResearch team) {
-        if (Objects.requireNonNull(team).registry() != registry || !teamId.equals(team.teamId())) {
+        if (team.registry() != registry || !teamId.equals(team.teamId())) {
             throw new IllegalArgumentException("Download sources belong to another team or registry");
         }
     }
@@ -355,27 +343,12 @@ public final class ResearchDownloadSources {
     }
 
     public record Evaluation(Status status, @Nullable Plan plan) {
-        public Evaluation {
-            Objects.requireNonNull(status);
-            if ((status == Status.READY) == (plan == null))
-                throw new IllegalArgumentException("Only ready source evaluation has a plan");
-        }
     }
 
     public record Preparation(Status status, @Nullable Prepared prepared) {
-        public Preparation {
-            Objects.requireNonNull(status);
-            if ((status == Status.READY) == (prepared == null))
-                throw new IllegalArgumentException("Only ready source preparation has held transactions");
-        }
     }
 
     public record MemberChange(UUID memberId, int beforeLevel, int afterLevel) {
-        public MemberChange {
-            Objects.requireNonNull(memberId);
-            if (afterLevel < 0 || afterLevel > beforeLevel)
-                throw new IllegalArgumentException("Invalid member source change");
-        }
     }
 
     /**
@@ -430,7 +403,8 @@ public final class ResearchDownloadSources {
             requireOwner();
             for (int index9 = 0; index9 < players.size(); index9++) {
                 var held = players.get(index9);
-                if (held.source() == source && owns(source)) return held.mutation().snapshot();
+                if (held.source() == source && terminal == Resolution.REVERSIBLE && held.mutation().owns(source))
+                    return held.mutation().snapshot();
             }
             throw new IllegalStateException("Download does not own this personal source snapshot");
         }
@@ -442,8 +416,9 @@ public final class ResearchDownloadSources {
 
         public TeamOwnedResearch.Snapshot snapshot(TeamOwnedResearch source) {
             requireOwner();
-            if (!owns(source)) throw new IllegalStateException("Download does not own this team source snapshot");
-            return Objects.requireNonNull(teamMutation).snapshot();
+            if (terminal != Resolution.REVERSIBLE || team != source || teamMutation == null || !teamMutation.owns(source))
+                throw new IllegalStateException("Download does not own this team source snapshot");
+            return teamMutation.snapshot();
         }
 
         @Override

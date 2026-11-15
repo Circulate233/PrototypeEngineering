@@ -14,7 +14,6 @@ import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * One reusable script view per attached machine; inventory access requires the server owner.
@@ -30,7 +29,7 @@ public final class ZenControllerContext {
     private ZenComponentData data;
 
     private ZenControllerContext(MachineInstance machine) {
-        this.machine = Objects.requireNonNull(machine);
+        this.machine = machine;
     }
 
     @ZenGetter("data")
@@ -51,7 +50,6 @@ public final class ZenControllerContext {
 
     @ZenMethod
     public void forEachInventory(ZenControllerSlotVisitor visitor) {
-        Objects.requireNonNull(visitor);
         int count = inventorySize();
         for (int slot = 0; slot < count; slot++) visitor.visit(slot, inventoryStack(slot));
     }

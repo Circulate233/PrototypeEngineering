@@ -5,7 +5,6 @@ import net.minecraftforge.fml.common.eventhandler.Event;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
-import java.util.Objects;
 
 /**
  * Explicit local declaration registration after initial pages/providers freeze. No key is inferred.
@@ -18,9 +17,9 @@ public final class ClientRecipeDeclarationRegistrationEvent extends Event {
 
     public ClientRecipeDeclarationRegistrationEvent(ClientRecipeDeclarations declarations, RecipeRegistry.Snapshot snapshot,
                                                     RecipeJeiDisplays displays) {
-        this.declarations = Objects.requireNonNull(declarations);
-        this.snapshot = Objects.requireNonNull(snapshot);
-        this.displays = Objects.requireNonNull(displays);
+        this.declarations = declarations;
+        this.snapshot = snapshot;
+        this.displays = displays;
     }
 
     public ClientRecipeDeclarations declarations() {

@@ -7,7 +7,6 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Frozen potential reads, including optional slices and validator positions outside the pattern.
@@ -35,8 +34,7 @@ public final class StructureReadPlan {
 
     public record Read<T>(BlockPos position, StructureQuery<T> query) {
         public Read {
-            position = Objects.requireNonNull(position).toImmutable();
-            Objects.requireNonNull(query);
+            position = position.toImmutable();
         }
     }
 
@@ -66,7 +64,7 @@ public final class StructureReadPlan {
         }
 
         public StructureReadPlan build() {
-            return Objects.requireNonNull(beginBuild().run());
+            return beginBuild().run();
         }
 
         /**

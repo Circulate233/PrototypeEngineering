@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ReferenceSet;
-import it.unimi.dsi.fastutil.objects.ReferenceSets;
 import net.minecraft.block.Block;
 import net.minecraft.block.properties.IProperty;
 import net.minecraft.block.state.IBlockState;
@@ -16,16 +15,15 @@ import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
  * Built-in PM predicate behavior composed over declared, detached queries.
+ * List declarations are borrowed read-only and must support constant-time indexed access.
  */
 @SuppressWarnings({"unused", "ReturnOfInnerClass"})
 // Public factories; private retained cursors own their detached predicate data.
@@ -37,8 +35,6 @@ public final class StructurePredicates {
      * Query descriptors must be reused by identity when the same fact is referenced repeatedly.
      */
     public static <T> StructurePredicate test(StructureQuery<T> query, Predicate<? super T> condition) {
-        Objects.requireNonNull(query);
-        Objects.requireNonNull(condition);
         return new StructurePredicate() {
             @Override
             public boolean planReusable() {
@@ -68,7 +64,7 @@ public final class StructurePredicates {
      * The supplied display is rotation-invariant; directional custom predicates should override display/transform together.
      */
     public static StructurePredicate withDisplay(StructurePredicate predicate, StructureDisplay display) {
-        return new Displayed(Objects.requireNonNull(predicate), Objects.requireNonNull(display));
+        return new Displayed(predicate, display);
     }
 
     public static StructurePredicate all(Collection<? extends StructurePredicate> predicates) {
@@ -80,13 +76,16 @@ public final class StructurePredicates {
     }
 
     private static StructurePredicate composite(Collection<? extends StructurePredicate> predicates, boolean all) {
-        var copied = new ObjectArrayList<StructurePredicate>(predicates.size());
+        List<StructurePredicate> indexed = indexed(predicates);
         boolean reusable = true;
-        for (var predicate : predicates) {
-            copied.add(Objects.requireNonNull(predicate));
-            reusable = reusable && predicate.planReusable();
-        }
-        return new Composite(Collections.unmodifiableList(copied), all, reusable);
+        for (int index = 0; reusable && index < indexed.size(); index++)
+            reusable = indexed.get(index).planReusable();
+        return new Composite(indexed, all, reusable);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> List<T> indexed(Collection<? extends T> source) {
+        return source instanceof List<?> list ? (List<T>) list : new ObjectArrayList<>(source);
     }
 
     /**
@@ -103,14 +102,14 @@ public final class StructurePredicates {
      */
     public static StructurePredicate custom(Collection<StructureQuery<?>> queries, Collection<BlockPos> offsets,
                                             Collection<BlockPos> controllerOffsets, Predicate<StructureFacts> validator) {
-        return new Custom(List.copyOf(queries), positions(offsets), positions(controllerOffsets),
-            StructureTransform.of(BlockOrientation.NORTH_UP), Objects.requireNonNull(validator));
+        return new Custom(indexed(queries), positions(offsets), positions(controllerOffsets),
+            StructureTransform.of(BlockOrientation.NORTH_UP), validator);
     }
 
     private static List<BlockPos> positions(Collection<BlockPos> source) {
         var positions = new ObjectArrayList<BlockPos>(source.size());
-        for (var position : source) positions.add(Objects.requireNonNull(position).toImmutable());
-        return List.copyOf(positions);
+        for (var position : source) positions.add(position.toImmutable());
+        return positions;
     }
 
     public static StructurePredicate notAir() {
@@ -125,15 +124,12 @@ public final class StructurePredicates {
      * Block regex expansion belongs to definition loading; matching uses this frozen membership.
      */
     public static StructurePredicate blocks(Collection<Block> blocks) {
-        var accepted = new ReferenceLinkedOpenHashSet<Block>(blocks.size());
-        for (var block : blocks) {
-            accepted.add(Objects.requireNonNull(block));
-        }
-        return new Blocks(ReferenceSets.unmodifiable(accepted));
+        var accepted = new ReferenceLinkedOpenHashSet<>(blocks);
+        return new Blocks(accepted);
     }
 
     public static StructurePredicate state(IBlockState state) {
-        return new State(Objects.requireNonNull(state));
+        return new State(state);
     }
 
     public static StructurePredicate stateWithNbt(IBlockState state, Map<String, String> expected) {
@@ -224,12 +220,11 @@ public final class StructurePredicates {
         }
 
         @Override
-        public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
-            Objects.requireNonNull(plan);
-            return declarations(plan, Objects.requireNonNull(position).toImmutable(), Objects.requireNonNull(controller).toImmutable());
+        public StructureOperation<@Nullable Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+            return declarations(plan, position.toImmutable(), controller.toImmutable());
         }
 
-        private StructureOperation<Void> declarations(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+        private StructureOperation<@Nullable Void> declarations(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
             return new StructureOperation<>() {
                 private int offsetIndex, queryIndex;
                 private boolean controllers, baseDeclared, areaDeclared;
@@ -332,7 +327,7 @@ public final class StructurePredicates {
         }
 
         @Override
-        public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+        public StructureOperation<@Nullable Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
             return predicate.beginCollectReads(plan, position, controller);
         }
 
@@ -354,7 +349,7 @@ public final class StructurePredicates {
                 public boolean advance(RecipeWorkBudget work) {
                     if (complete()) return true;
                     if (!child.advance(work) || !work.take()) return false;
-                    finish(new Displayed(Objects.requireNonNull(child.result()), display));
+                    finish(new Displayed(child.result(), display));
                     return true;
                 }
             };
@@ -374,15 +369,15 @@ public final class StructurePredicates {
         }
 
         @Override
-        public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+        public StructureOperation<@Nullable Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
             return visit(child -> child.beginCollectReads(plan, position, controller));
         }
 
-        private StructureOperation<Void> visit(Function<StructurePredicate, StructureOperation<Void>> factory) {
+        private StructureOperation<@Nullable Void> visit(Function<StructurePredicate, StructureOperation<@Nullable Void>> factory) {
             return new StructureOperation<>() {
                 private int index;
                 @Nullable
-                private StructureOperation<Void> current;
+                private StructureOperation<@Nullable Void> current;
 
                 @Override
                 public boolean advance(RecipeWorkBudget work) {
@@ -420,13 +415,13 @@ public final class StructurePredicates {
                             current = children.get(index).beginTransform(rotation);
                         }
                         if (!current.advance(work)) return false;
-                        transformed.add(Objects.requireNonNull(current.result()));
-                        reusable = reusable && Objects.requireNonNull(current.result()).planReusable();
+                        transformed.add(current.result());
+                        reusable = reusable && current.result().planReusable();
                         current = null;
                         index++;
                     }
                     if (!work.take()) return false;
-                    finish(new Composite(Collections.unmodifiableList(transformed), all, reusable));
+                    finish(new Composite(transformed, all, reusable));
                     return true;
                 }
             };
@@ -449,7 +444,7 @@ public final class StructurePredicates {
                             current = children.get(index).beginMatch(snapshot, position, controller);
                         }
                         if (!current.advance(work)) return false;
-                        var result = Objects.requireNonNull(current.result());
+                        var result = current.result();
                         current = null;
                         index++;
                         if (all && result != StructurePredicateResult.MATCHED || !all && result == StructurePredicateResult.MATCHED) {
@@ -489,23 +484,22 @@ public final class StructurePredicates {
             boolean reusable = planReusable;
             for (int index3 = 0; index3 < children.size(); index3++) {
                 var child = children.get(index3);
-                var result = Objects.requireNonNull(child.transform(rotation));
+                var result = child.transform(rotation);
                 transformed.add(result);
                 reusable = reusable && result.planReusable();
             }
-            return new Composite(Collections.unmodifiableList(transformed), all, reusable);
+            return new Composite(transformed, all, reusable);
         }
     }
 
     private record Offset(BlockPos offset, StructurePredicate predicate,
                           boolean planReusable) implements StructurePredicate.ControllerAware {
         private Offset(BlockPos offset, StructurePredicate predicate) {
-            this(offset, predicate, Objects.requireNonNull(predicate).planReusable());
+            this(offset, predicate, predicate.planReusable());
         }
 
         private Offset {
-            offset = Objects.requireNonNull(offset).toImmutable();
-            Objects.requireNonNull(predicate);
+            offset = offset.toImmutable();
         }
 
         @Override
@@ -514,10 +508,10 @@ public final class StructurePredicates {
         }
 
         @Override
-        public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+        public StructureOperation<@Nullable Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
             return new StructureOperation<>() {
                 @Nullable
-                private StructureOperation<Void> child;
+                private StructureOperation<@Nullable Void> child;
 
                 @Override
                 public boolean advance(RecipeWorkBudget work) {
@@ -567,7 +561,7 @@ public final class StructurePredicates {
                         child = predicate.beginTransform(rotation);
                     }
                     if (!child.advance(work) || !work.take()) return false;
-                    var result = Objects.requireNonNull(child.result());
+                    var result = child.result();
                     finish(new Offset(rotation.apply(offset), result, planReusable && result.planReusable()));
                     return true;
                 }
@@ -586,7 +580,7 @@ public final class StructurePredicates {
 
         @Override
         public StructurePredicate transform(StructureTransform rotation) {
-            var result = Objects.requireNonNull(predicate.transform(rotation));
+            var result = predicate.transform(rotation);
             return new Offset(rotation.apply(offset), result, planReusable && result.planReusable());
         }
     }
@@ -668,6 +662,8 @@ public final class StructurePredicates {
                 private boolean captured;
 
                 @Override
+                @SuppressWarnings("DataFlowIssue")
+                // A missing captured tag completes the operation before entry matching.
                 public boolean advance(RecipeWorkBudget work) {
                     if (complete()) return true;
                     if (!captured) {
@@ -686,7 +682,7 @@ public final class StructurePredicates {
                     while (entries.hasNext()) {
                         if (!work.take()) return false;
                         var entry = entries.next();
-                        var value = Objects.requireNonNull(tag).getTag(entry.getKey());
+                        var value = tag.getTag(entry.getKey());
                         if (value == null || !entry.getValue().equals(value instanceof NBTTagString string ? string.getString() : value.toString())) {
                             finish(StructurePredicateResult.MISMATCH);
                             return true;

@@ -13,7 +13,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.function.Function;
 
 /**
@@ -29,8 +28,8 @@ public final class SchedulerCommand extends CommandBase {
 
     SchedulerCommand(Function<MinecraftServer, TaskScheduler> scheduler,
                      Function<MinecraftServer, SchedulerConfig.Settings> reload) {
-        this.scheduler = Objects.requireNonNull(scheduler);
-        this.reload = Objects.requireNonNull(reload);
+        this.scheduler = scheduler;
+        this.reload = reload;
     }
 
     private static void settings(ICommandSender sender, SchedulerText state, SchedulerConfig.Settings settings) {
@@ -103,7 +102,7 @@ public final class SchedulerCommand extends CommandBase {
             return;
         }
         try {
-            var current = Objects.requireNonNull(scheduler.apply(server));
+            var current = scheduler.apply(server);
             switch (operation) {
                 case "status" -> {
                     var status = current.status();
@@ -115,7 +114,7 @@ public final class SchedulerCommand extends CommandBase {
                 }
                 case "report" -> report(sender, current.snapshotReport());
                 case "reload" -> {
-                    var requested = Objects.requireNonNull(reload.apply(server));
+                    var requested = reload.apply(server);
                     sender.sendMessage(SchedulerText.ReloadRequested.text());
                     settings(sender, SchedulerText.Pending, requested);
                 }

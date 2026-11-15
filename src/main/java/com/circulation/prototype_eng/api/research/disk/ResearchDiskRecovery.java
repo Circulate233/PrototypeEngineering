@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.research.ResearchPermissionContext;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -17,10 +16,6 @@ public record ResearchDiskRecovery(ResearchDiskStorage storage, ResearchDataCent
                                    @Nullable ResearchPermissionContext permission,
                                    BooleanSupplier authorized) {
     public ResearchDiskRecovery {
-        Objects.requireNonNull(storage);
-        Objects.requireNonNull(target);
-        Objects.requireNonNull(physicalCurrent);
-        Objects.requireNonNull(authorized);
         if ((membership == null) != (permission == null))
             throw new IllegalArgumentException("Disk authority capture is incomplete");
     }

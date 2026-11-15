@@ -2,9 +2,7 @@ package com.circulation.prototype_eng.api.structure;
 
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.math.BlockPos;
-import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
@@ -16,29 +14,35 @@ import java.util.function.Supplier;
 public final class StructureReadWindow<T> implements AutoCloseable {
     private final Thread owner;
     private final Supplier<? extends T> reader;
+    private final boolean detached;
     private boolean closed;
 
-    private StructureReadWindow(Supplier<? extends T> reader) {
+    private StructureReadWindow(Supplier<? extends T> reader, boolean detached) {
         owner = Thread.currentThread();
-        this.reader = Objects.requireNonNull(reader);
+        this.reader = reader;
+        this.detached = detached;
     }
 
-    public static <T> StructureReadWindow<T> detached(@Nullable T fact) {
-        return new StructureReadWindow<>(() -> fact);
+    public static <T> StructureReadWindow<T> detached(T fact) {
+        return new StructureReadWindow<>(() -> fact, true);
     }
 
     /**
      * The callback must neither load chunks nor access the live provider map.
      */
     public static <T> StructureReadWindow<T> joined(Supplier<? extends T> reader) {
-        return new StructureReadWindow<>(reader);
+        return new StructureReadWindow<>(reader, false);
     }
 
-    @Nullable
     public T read() {
         if (Thread.currentThread() == owner || closed)
             throw new IllegalStateException("Structure window read requires its joined worker");
         return reader.get();
+    }
+
+    T capture(StructureQuery<T> query) {
+        var value = read();
+        return detached ? value : query.copy(value);
     }
 
     @Override

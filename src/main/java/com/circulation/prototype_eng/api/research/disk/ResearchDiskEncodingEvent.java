@@ -7,7 +7,6 @@ import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadR
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import net.minecraft.item.ItemStack;
 
-import java.util.Objects;
 
 /**
  * Adapts a registered material's item-download event to one research-bearing disk output template.
@@ -23,7 +22,7 @@ public final class ResearchDiskEncodingEvent implements ResearchItemDownloadEven
     private final ItemStack outputTemplate;
 
     public ResearchDiskEncodingEvent(ResearchRegistry registry, int diskTier, ItemStack outputTemplate) {
-        this.registry = Objects.requireNonNull(registry, "Research registry");
+        this.registry = registry;
         if (!registry.isFrozen()) {
             throw new IllegalStateException("Research disk event requires frozen research");
         }
@@ -40,16 +39,15 @@ public final class ResearchDiskEncodingEvent implements ResearchItemDownloadEven
     @SuppressWarnings("unused") // Consumer registration through the existing Java item-download event.
     public static void register(ResearchItemDownloadRegistry downloads, ResearchRegistry research, ItemStack material,
                                 ItemStack outputTemplate) {
-        if (!(Objects.requireNonNull(outputTemplate).getItem() instanceof ResearchDiskCarrier carrier)) {
+        if (!(outputTemplate.getItem() instanceof ResearchDiskCarrier carrier)) {
             throw new IllegalArgumentException("Research disk template must expose its physical tier");
         }
-        Objects.requireNonNull(downloads).register(material,
+        downloads.register(material,
             new ResearchDiskEncodingEvent(research, carrier.researchDiskTier(outputTemplate), outputTemplate));
     }
 
     @Override
     public ItemStack createOutput(ResearchItemDownloadContext context) {
-        Objects.requireNonNull(context, "Research download context");
         var definition = context.research();
         if (definition.researchTierForLevel(context.downloadLevel()) > diskTier) {
             return ItemStack.EMPTY;

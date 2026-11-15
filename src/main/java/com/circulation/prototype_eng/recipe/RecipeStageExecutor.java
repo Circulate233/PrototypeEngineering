@@ -28,7 +28,6 @@ import java.util.AbstractList;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -70,7 +69,6 @@ public final class RecipeStageExecutor {
      */
     public static ProcessResult probeStage(RecipeProcess process, RecipeStage stage) {
         requireProbeBoundary(process);
-        Objects.requireNonNull(stage);
         try {
             var result = process.withProbeContext(() -> {
                 if (stage == RecipeStage.TICK) {
@@ -124,9 +122,6 @@ public final class RecipeStageExecutor {
      * Creates a framework-owned handle before any real requirement acquisition can throw.
      */
     public static Acquisition prepare(RecipeProcess process, RecipeStage stage, RequirementTransaction transition) {
-        Objects.requireNonNull(process);
-        Objects.requireNonNull(stage);
-        Objects.requireNonNull(transition);
         if (transition.result() != ProcessResult.SUCCESS || !transition.reservations().isEmpty()) {
             throw new IllegalArgumentException("A process transition must be successful and have no storage reservations");
         }
@@ -134,7 +129,7 @@ public final class RecipeStageExecutor {
     }
 
     private static void requireProbeBoundary(RecipeProcess process) {
-        Objects.requireNonNull(process).requirePersistenceBoundary();
+        process.requirePersistenceBoundary();
         if (process.host() != null || process.state().lifecycle() != RecipeProcess.Lifecycle.NEW) {
             throw new IllegalArgumentException("Stage probe requires an unattached NEW process");
         }
@@ -245,7 +240,7 @@ public final class RecipeStageExecutor {
         private Probe(RecipeProcess process, RecipeStage stage) {
             requireProbeBoundary(process);
             this.process = process;
-            this.stage = Objects.requireNonNull(stage);
+            this.stage = stage;
             acquisition = prepare(process, stage, RequirementTransaction.SUCCESS);
             process.claimProbe(this);
         }
@@ -270,30 +265,33 @@ public final class RecipeStageExecutor {
          */
         public void finishComputation(RecipePureComputation expected) {
             requireOwner();
-            if (acquisition.computation() != Objects.requireNonNull(expected))
+            if (acquisition.computation() != expected)
                 throw new IllegalArgumentException("Different probe computation");
             prepared.add(expected);
         }
 
+        @SuppressWarnings("DataFlowIssue")
         public List<ResourceBatch.Source> sources() {
             requireOwner();
             if (acquisition.flatCleanupPending())
-                return Objects.requireNonNull(acquisition.cleanupCandidate()).sources();
+                return acquisition.cleanupCandidate().sources();
             return batch == null || !sourceActionsRequired ? ObjectLists.emptyList() : batch.sources();
         }
 
+        @SuppressWarnings("DataFlowIssue")
         public boolean resolvingSources() {
             requireOwner();
-            return acquisition.flatCleanupPending() ? !Objects.requireNonNull(acquisition.cleanupCandidate()).sources().isEmpty() : sourceActionsRequired && sourceResolution;
+            return acquisition.flatCleanupPending() ? !acquisition.cleanupCandidate().sources().isEmpty() : sourceActionsRequired && sourceResolution;
         }
 
         /**
          * Consumes the exact source job's returned proof only after its physical exit.
          */
+        @SuppressWarnings("DataFlowIssue")
         public void finishSourceResolution(ResourceBatch.Source expected, boolean resolved) {
             requireOwner();
             if (acquisition.flatCleanupPending()) {
-                Objects.requireNonNull(acquisition.cleanupCandidate()).finishSourceResolution(expected, resolved);
+                acquisition.cleanupCandidate().finishSourceResolution(expected, resolved);
                 return;
             }
             if (activeSourceBatch() == null || !sourceActionsRequired || !sourceResolution || !observedSourceIdentities.contains(expected)) {
@@ -304,8 +302,6 @@ public final class RecipeStageExecutor {
 
         public boolean advance(RecipeWorkBudget budget, BooleanSupplier forwardAllowed) {
             requireOwner();
-            Objects.requireNonNull(budget);
-            Objects.requireNonNull(forwardAllowed);
             if (finished) return true;
             executing = true;
             try {
@@ -468,6 +464,7 @@ public final class RecipeStageExecutor {
         /**
          * Classifies the exact returned inventory without widening the original fence.
          */
+        @SuppressWarnings("DataFlowIssue")
         private boolean appendStep(RecipeWorkBudget budget, boolean rollbackOnly) {
             if (appendInput == null) {
                 appendInput = acquisition.stepReservations();
@@ -478,8 +475,8 @@ public final class RecipeStageExecutor {
             while (appendCursor < appendInput.size()) {
                 if (!budget.take()) return false;
                 var token = appendInput.get(appendCursor);
-                if (Objects.requireNonNull(batch).ownsContext(Objects.requireNonNull(token.context()))) {
-                    Objects.requireNonNull(appendOwnedTokens).add(token);
+                if (batch.ownsContext(token.context())) {
+                    appendOwnedTokens.add(token);
                     if (!rollbackOnly && !token.supportsSequentialUse()) appendViolation = true;
                 } else {
                     if (foreignTokenIdentities.add(token)) foreignTokens.add(token);
@@ -487,7 +484,7 @@ public final class RecipeStageExecutor {
                 }
                 appendCursor++;
             }
-            if (!Objects.requireNonNull(batch).appendWithinBudget(Objects.requireNonNull(appendOwnedTokens),
+            if (!batch.appendWithinBudget(appendOwnedTokens,
                 acquisition.stepTransactions(), rollbackOnly || appendViolation, budget)) return false;
             boolean rejected = appendViolation;
             appendInput = null;
@@ -497,9 +494,10 @@ public final class RecipeStageExecutor {
             return true;
         }
 
+        @SuppressWarnings("DataFlowIssue")
         private boolean observeSources(RecipeWorkBudget budget, boolean resolving) {
             if (sourceActionsRequired) beginSourceObservation(resolving);
-            var observing = Objects.requireNonNull(activeSourceBatch());
+            var observing = activeSourceBatch();
             while (sourceCursor < observing.sources().size()) {
                 if (!budget.take()) return false;
                 var source = observing.sources().get(sourceCursor++);
@@ -750,7 +748,7 @@ public final class RecipeStageExecutor {
             requireOwner();
             if (state != AcquisitionState.NEW || initialPreparation != null)
                 throw new IllegalStateException("Stage preparation was already initialized");
-            initialPreparation = Objects.requireNonNull(preparation);
+            initialPreparation = preparation;
         }
 
         @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
@@ -758,7 +756,7 @@ public final class RecipeStageExecutor {
             requireOwner();
             if (state != AcquisitionState.ACQUIRING)
                 throw new IllegalStateException("Prepared child requires its exact acquiring stage");
-            flat = new FlatCandidate(Objects.requireNonNull(transaction), false);
+            flat = new FlatCandidate(transaction, false);
             return flat;
         }
 
@@ -767,7 +765,7 @@ public final class RecipeStageExecutor {
             requireOwner();
             if (state != AcquisitionState.ACQUIRING || cleanupCancelled)
                 throw new IllegalStateException("Cleanup inventory requires its exact acquiring stage");
-            var candidate = new FlatCandidate(Objects.requireNonNull(transaction), true);
+            var candidate = new FlatCandidate(transaction, true);
             cleanupCandidates.add(candidate);
             cleanupRejectionComplete = false;
             return candidate;
@@ -804,7 +802,7 @@ public final class RecipeStageExecutor {
         }
 
         public void attachFlatParent(ResourceBatch parent) {
-            flatParentBatch = Objects.requireNonNull(parent);
+            flatParentBatch = parent;
         }
 
         public void acquire() {
@@ -831,7 +829,7 @@ public final class RecipeStageExecutor {
 
         private void withinBudget(RecipeWorkBudget budget, Runnable action) {
             var previous = acquisitionWork;
-            acquisitionWork = Objects.requireNonNull(budget);
+            acquisitionWork = budget;
             try {
                 action.run();
             } finally {
@@ -892,6 +890,7 @@ public final class RecipeStageExecutor {
             acquireStep(true);
         }
 
+        @SuppressWarnings("DataFlowIssue")
         private void acquireStep(boolean beginsSegment) {
             state = AcquisitionState.ACQUIRING;
             if (beginsSegment) {
@@ -919,7 +918,7 @@ public final class RecipeStageExecutor {
                         if (!continuations.isEmpty()) break;
                     }
                     if (capturedContinuation) {
-                        var tail = Objects.requireNonNull(capturedTail);
+                        var tail = capturedTail;
                         if (tail.preparation && !continuations.isEmpty() && continuations.getLast() == tail) {
                             if (!takeWork()) {
                                 workPending = true;
@@ -1011,7 +1010,7 @@ public final class RecipeStageExecutor {
                     }
                     var transaction = requirements.get(requirementCursor++).acquire(process, stage);
                     capturedRequirement = true;
-                    capture(Objects.requireNonNull(transaction, "requirement transaction"));
+                    capture(transaction);
                     if (capturing != null) {
                         workPending = true;
                         break;
@@ -1056,7 +1055,7 @@ public final class RecipeStageExecutor {
             capturing = transaction;
             inventoryComplete = false;
             try {
-                capturingTokens = Objects.requireNonNull(transaction.reservations(), "transaction reservations").iterator();
+                capturingTokens = transaction.reservations().iterator();
                 finishCapture();
             } catch (RuntimeException | Error listingFailure) {
                 if (capturing != null) inventoryComplete = false;
@@ -1069,13 +1068,14 @@ public final class RecipeStageExecutor {
             return finishCapture(true);
         }
 
+        @SuppressWarnings("DataFlowIssue")
         private boolean finishCapture(boolean inspectResult) {
-            var transaction = Objects.requireNonNull(capturing);
+            var transaction = capturing;
             try {
-                while (Objects.requireNonNull(capturingTokens).hasNext()) {
+                while (capturingTokens.hasNext()) {
                     if (!takeWork()) return false;
                     var token = capturingTokens.next();
-                    reservations.add(Objects.requireNonNull(token));
+                    reservations.add(token);
                     var observation = sourceIdentities.get(token);
                     if (observation == null) {
                         observation = new SourceObservation(token);
@@ -1095,7 +1095,7 @@ public final class RecipeStageExecutor {
             capturingTokens = null;
             inventoryComplete = true;
             if (!inspectResult) return true;
-            result = Objects.requireNonNull(transaction.result(), "transaction result");
+            result = transaction.result();
             if (result == ProcessResult.SUCCESS) {
                 var tail = transaction.continuation();
                 if (tail != null) {
@@ -1205,17 +1205,19 @@ public final class RecipeStageExecutor {
             return rejectedAlternative != null;
         }
 
+        @SuppressWarnings("DataFlowIssue")
         public ResourceBatch.Savepoint rejectedSavepoint() {
-            return Objects.requireNonNull(Objects.requireNonNull(rejectedAlternative, "No rejected candidate").savepoint);
+            return rejectedAlternative.savepoint;
         }
 
         /**
          * Advances the original cursor only after the batch confirms every suffix participant.
          */
+        @SuppressWarnings("DataFlowIssue")
         public boolean finishAlternativeRollback(ResourceBatch batch) {
             requireOwner();
-            var frame = Objects.requireNonNull(rejectedAlternative, "No rejected candidate");
-            if (!batch.finishRollbackTo(Objects.requireNonNull(frame.savepoint))) {
+            var frame = rejectedAlternative;
+            if (!batch.finishRollbackTo(frame.savepoint)) {
                 return false;
             }
             batch.access(() -> {
@@ -1244,11 +1246,12 @@ public final class RecipeStageExecutor {
         /**
          * Resumes the same batch trim before touching local suffix identities or the cursor.
          */
+        @SuppressWarnings("DataFlowIssue")
         public boolean finishAlternativeRollbackWithinBudget(ResourceBatch batch, RecipeWorkBudget budget) {
             requireOwner();
-            var frame = Objects.requireNonNull(rejectedAlternative, "No rejected candidate");
+            var frame = rejectedAlternative;
             if (rollbackTrimPhase == 0) {
-                if (!batch.finishRollbackToWithinBudget(Objects.requireNonNull(frame.savepoint), budget)) return false;
+                if (!batch.finishRollbackToWithinBudget(frame.savepoint, budget)) return false;
                 rollbackTrimPhase = 1;
             }
             if (rollbackTrimPhase == 1) {
@@ -1519,8 +1522,9 @@ public final class RecipeStageExecutor {
         /**
          * UNKNOWN or an unenumerated acquisition retains the exact batch and its original fence.
          */
+        @SuppressWarnings("DataFlowIssue")
         private boolean resolveSequentialBatch() {
-            var batch = Objects.requireNonNull(synchronousBatch);
+            var batch = synchronousBatch;
             if (!inventoryComplete) {
                 return false;
             }
@@ -1853,12 +1857,13 @@ public final class RecipeStageExecutor {
                 childIdentities.add(child);
             }
 
+            @SuppressWarnings("DataFlowIssue")
             public boolean capture(RecipeWorkBudget budget) {
                 if (inventoryUnknown) return false;
                 if (capturePhase == 0) {
                     if (!budget.take()) return false;
                     try {
-                        inventory = Objects.requireNonNull(child.reservations()).iterator();
+                        inventory = child.reservations().iterator();
                         capturePhase = 1;
                     } catch (RuntimeException | Error failure) {
                         inventoryUnknown = true;
@@ -1868,7 +1873,7 @@ public final class RecipeStageExecutor {
                 while (capturePhase == 1) {
                     boolean more;
                     try {
-                        more = Objects.requireNonNull(inventory).hasNext();
+                        more = inventory.hasNext();
                     } catch (RuntimeException | Error failure) {
                         inventoryUnknown = true;
                         throw failure;
@@ -1877,7 +1882,7 @@ public final class RecipeStageExecutor {
                     if (!budget.take()) return false;
                     ResourceReservation token;
                     try {
-                        token = Objects.requireNonNull(inventory.next());
+                        token = inventory.next();
                     } catch (RuntimeException | Error failure) {
                         inventoryUnknown = true;
                         throw failure;
@@ -1902,7 +1907,7 @@ public final class RecipeStageExecutor {
                 if (capturePhase == 4) {
                     if (!budget.take()) return false;
                     capturePhase = 5;
-                    childResult = preparing ? ProcessResult.SUCCESS : Objects.requireNonNull(child.result());
+                    childResult = preparing ? ProcessResult.SUCCESS : child.result();
                 }
                 return true;
             }
@@ -1928,9 +1933,10 @@ public final class RecipeStageExecutor {
                 sawSourceAction = false;
             }
 
+            @SuppressWarnings("DataFlowIssue")
             private boolean observeSources(RecipeWorkBudget budget) {
                 if (sourceActionsRequired) beginSourceObservation();
-                while (sourceCursor < Objects.requireNonNull(cleanupBatch).sources().size()) {
+                while (sourceCursor < cleanupBatch.sources().size()) {
                     if (!budget.take()) return false;
                     var source = cleanupBatch.sources().get(sourceCursor++);
                     observedSources.add(source);
@@ -1942,7 +1948,7 @@ public final class RecipeStageExecutor {
             }
 
             public ProcessResult result() {
-                return Objects.requireNonNull(childResult);
+                return childResult;
             }
 
             public List<ResourceReservation> reservations() {
@@ -1960,7 +1966,7 @@ public final class RecipeStageExecutor {
             public void continueWith(RequirementTransaction transaction) {
                 if (auxiliary || rejected || released || !preparing || capturePhase != 5)
                     throw new IllegalStateException("Prepared child continuation has no exact capture owner");
-                child = Objects.requireNonNull(transaction);
+                child = transaction;
                 if (childIdentities.add(child)) business.add(child);
                 childResult = null;
                 childContinuation = null;
@@ -2000,6 +2006,7 @@ public final class RecipeStageExecutor {
                 released = true;
             }
 
+            @SuppressWarnings("DataFlowIssue")
             public boolean advanceCleanup(RecipeWorkBudget budget) {
                 if (cleaned) return true;
                 if (!capture(budget)) return false;
@@ -2007,7 +2014,7 @@ public final class RecipeStageExecutor {
                     if (!budget.take()) return false;
                     var token = tokens.get(partitionCursor);
                     if (!tokenIdentities.contains(token)) {
-                        if (flatParentBatch == null || flatParentBatch.ownsContext(Objects.requireNonNull(token.context())))
+                        if (flatParentBatch == null || flatParentBatch.ownsContext(token.context()))
                             ownedTokens.add(token);
                         else outsideTokens.add(token);
                         tokenIdentities.add(token);
@@ -2028,7 +2035,7 @@ public final class RecipeStageExecutor {
                     if (!advanceClaim(outsideTokens, ObjectLists.emptyList(), budget)) return false;
                     cleanupStep = 1;
                 }
-                var bound = Objects.requireNonNull(cleanupBatch);
+                var bound = cleanupBatch;
                 if (cleanupStep == 1) {
                     boolean resolved = borrowed ? bound.resolveBusinessWithinBudget(budget)
                         : bound.decision() == ResourceBatch.Decision.OPEN ? bound.rollbackWithinBudget(budget)
@@ -2133,7 +2140,7 @@ public final class RecipeStageExecutor {
                 if (terminal || !uncertain) {
                     return true;
                 }
-                var actual = Objects.requireNonNull(transaction.resolution());
+                var actual = transaction.resolution();
                 var expected = decision == Settlement.COMPLETE ? ReversibleTransaction.Resolution.COMPLETED : ReversibleTransaction.Resolution.ROLLED_BACK;
                 if (actual == expected) {
                     terminal = true;
@@ -2294,7 +2301,7 @@ public final class RecipeStageExecutor {
                 if (terminal || !uncertain) {
                     return true;
                 }
-                var actual = Objects.requireNonNull(token.resolution());
+                var actual = token.resolution();
                 var expected = decision == Settlement.COMPLETE ? Resolution.COMPLETED : Resolution.ROLLED_BACK;
                 if (actual == expected) {
                     terminal = true;

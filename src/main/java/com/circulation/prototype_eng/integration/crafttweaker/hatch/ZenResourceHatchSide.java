@@ -10,15 +10,11 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.List;
-import java.util.Objects;
 
 @ZenRegister
 @ZenClass("mods.prototype_eng.hatch.ResourceSide")
 @SuppressWarnings("unused") // ZenScript resolves the registered public factories.
 public record ZenResourceHatchSide(ResourceHatchConfiguration.Side value) {
-    public ZenResourceHatchSide {
-        Objects.requireNonNull(value);
-    }
 
     @ZenMethod
     public static ZenResourceHatchSide itemEquivalent(int slots, long capacity) {
@@ -40,7 +36,7 @@ public record ZenResourceHatchSide(ResourceHatchConfiguration.Side value) {
         var types = new ObjectArrayList<AEKeyType>(representatives.length);
         var overrides = new Reference2LongOpenHashMap<AEKeyType>(2);
         for (int i = 0; i < representatives.length; i++) {
-            var type = Objects.requireNonNull(representatives[i]).key().getType();
+            var type = representatives[i].key().getType();
             types.add(type);
             if (overrides.containsKey(type))
                 throw new IllegalArgumentException("Duplicate resource type: " + type.getId());

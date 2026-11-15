@@ -9,7 +9,6 @@ import net.minecraft.util.ResourceLocation;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 @ZenRegister
 @ZenClass("mods.prototype_eng.network.NetworkRequirements")
@@ -19,7 +18,7 @@ public final class ZenNetworkRequirements {
     private NetworkWorkRequirements captured;
 
     public ZenNetworkRequirements(NetworkWorkRequirements.Builder builder) {
-        this.builder = Objects.requireNonNull(builder);
+        this.builder = builder;
     }
 
     @ZenMethod

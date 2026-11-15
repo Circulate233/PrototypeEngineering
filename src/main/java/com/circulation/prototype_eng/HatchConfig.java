@@ -10,24 +10,22 @@ import com.circulation.prototype_eng.api.storage.HatchTier;
 import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
 import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
 import com.circulation.prototype_eng.storage.ServerHatchConfigurations;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import it.unimi.dsi.fastutil.objects.Reference2LongMap;
 import net.minecraftforge.common.config.Configuration;
 
 import java.io.File;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
  * File defaults and explicit script targets are published as a single immutable generation.
  */
 public final class HatchConfig {
-    private static volatile State state = new State(0, defaults(), Map.of());
+    private static volatile State state = new State(0, defaults(), Int2ObjectMaps.emptyMap());
 
     private HatchConfig() {
     }
@@ -38,7 +36,7 @@ public final class HatchConfig {
             result.add(new Defaults(
                 tier.slotsPerSide(HatchMode.INPUT), tier.slotsPerSide(HatchMode.MIXED), tier.itemsPerSlot(),
                 tier.energyCapacity(), tier.energyTransfer()));
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     public static synchronized void load(File directory) {
@@ -57,7 +55,7 @@ public final class HatchConfig {
         }
         if (config.hasChanged()) config.save();
         // Script targets set before the Forge file load keep their explicit precedence.
-        state = new State(Math.incrementExact(before.revision), List.copyOf(next), before.overrides);
+        state = new State(Math.incrementExact(before.revision), next, before.overrides);
         ServerHatchConfigurations.changed();
     }
 
@@ -83,19 +81,19 @@ public final class HatchConfig {
     public static synchronized long installTargets(List<HatchConfigurationUpdates.Target> targets) {
         ServerHatchConfigurations.requireConfigurationOwner();
         var before = state;
-        var next = new Object2ObjectOpenHashMap<>(before.overrides);
+        var next = new Int2ObjectOpenHashMap<>(before.overrides);
         for (int index = 0; index < targets.size(); index++) {
             var target = targets.get(index);
-            next.put(Key.of(target.tier(), target.configuration()), target.configuration());
+            next.put(key(target.tier(), target.configuration().mode(), target.configuration() instanceof EnergyHatchConfiguration), target.configuration());
         }
         long revision = Math.incrementExact(before.revision);
-        state = new State(revision, before.defaults, Map.copyOf(next));
+        state = new State(revision, before.defaults, next);
         ServerHatchConfigurations.changed();
         return revision;
     }
 
     public static boolean hasTarget(HatchTier tier, HatchConfiguration configuration) {
-        return state.overrides.containsKey(Key.of(tier, configuration));
+        return state.overrides.containsKey(key(tier, configuration.mode(), configuration instanceof EnergyHatchConfiguration));
     }
 
     public static long targetRevision() {
@@ -114,7 +112,7 @@ public final class HatchConfig {
 
     public static ResourceHatchConfiguration resourceConfiguration(HatchTier tier, HatchMode mode) {
         var current = state;
-        var override = current.overrides.get(new Key(tier, mode, false));
+        var override = current.overrides.get(key(tier, mode, false));
         if (override instanceof ResourceHatchConfiguration resource) return resource;
         var values = current.defaults.get(tier.ordinal());
         var side = ResourceHatchConfiguration.Side.fromItemEquivalent(mode == HatchMode.MIXED ? values.mixedSlots : values.slots, values.items, AEKeyTypes.getAll());
@@ -123,17 +121,18 @@ public final class HatchConfig {
 
     public static EnergyHatchConfiguration energyConfiguration(HatchTier tier, HatchMode mode) {
         var current = state;
-        var override = current.overrides.get(new Key(tier, mode, true));
+        var override = current.overrides.get(key(tier, mode, true));
         if (override instanceof EnergyHatchConfiguration energy) return energy;
         var values = current.defaults.get(tier.ordinal());
         return EnergyHatchConfiguration.symmetric(mode, values.energy, values.transfer);
     }
 
+    @SuppressWarnings("DataFlowIssue")
     public static int slotsPerSide(HatchTier tier, HatchMode mode) {
         var current = state;
-        var override = current.overrides.get(new Key(tier, mode, false));
+        var override = current.overrides.get(key(tier, mode, false));
         if (override instanceof ResourceHatchConfiguration(var input, var output))
-            return Objects.requireNonNull(input == null ? output : input).slots();
+            return (input == null ? output : input).slots();
         var values = current.defaults.get(tier.ordinal());
         return mode == HatchMode.MIXED ? values.mixedSlots : values.slots;
     }
@@ -153,23 +152,20 @@ public final class HatchConfig {
 
     private static Reference2LongMap<AEKeyType> capacities(Defaults values) {
         var side = ResourceHatchConfiguration.Side.fromItemEquivalent(1, values.items, AEKeyTypes.getAll());
-        return new Reference2LongArrayMap<>(side.capacities());
+        return side.capacities();
     }
 
     private record Defaults(int slots, int mixedSlots, long items, long energy, long transfer) {
         @SuppressWarnings("ResultOfMethodCallIgnored")
-        // Checked addition validates both mixed sides before state publication.
         private Defaults {
-            Math.addExact(mixedSlots, mixedSlots); // Validate the native combined int slot view before publication.
+            Math.addExact(mixedSlots, mixedSlots);
         }
     }
 
-    private record Key(HatchTier tier, HatchMode mode, boolean energy) {
-        private static Key of(HatchTier tier, HatchConfiguration configuration) {
-            return new Key(tier, configuration.mode(), configuration instanceof EnergyHatchConfiguration);
-        }
+    private static int key(HatchTier tier, HatchMode mode, boolean energy) {
+        return (tier.ordinal() * HatchMode.VALUES.length + mode.ordinal()) * 2 + (energy ? 1 : 0);
     }
 
-    private record State(long revision, List<Defaults> defaults, Map<Key, HatchConfiguration> overrides) {
+    private record State(long revision, List<Defaults> defaults, Int2ObjectMap<HatchConfiguration> overrides) {
     }
 }

@@ -67,7 +67,7 @@ public interface RecipePool {
      * Create this implementation's immutable canonical definition with complete registrations and
      * static reverse bindings. Retain strategy/configuration and exactly the supplied instances/order.
      * The supplied lists are complete and borrowed read-only for the definition's lifetime.
-     * Registry validates the result before publishing any pool or index.
+     * Implementations must preserve the pool ID, title and JEI metadata without changing list entries.
      */
     RecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines);
 

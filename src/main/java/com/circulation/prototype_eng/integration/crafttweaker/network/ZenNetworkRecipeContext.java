@@ -9,15 +9,11 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 @ZenRegister
 @ZenClass("mods.prototype_eng.network.NetworkRecipeContext")
 @SuppressWarnings("unused") // Script parameter conversion delegates to public Java contracts.
 public record ZenNetworkRecipeContext(MachineRecipe value) {
-    public ZenNetworkRecipeContext {
-        Objects.requireNonNull(value);
-    }
 
     @ZenGetter("id")
     public String id() {

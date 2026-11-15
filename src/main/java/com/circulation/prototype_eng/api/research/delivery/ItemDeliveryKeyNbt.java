@@ -5,7 +5,6 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -17,8 +16,8 @@ public final class ItemDeliveryKeyNbt {
 
     public static NBTTagCompound identity(ItemDeliveryKey key, UUID fragmentId) {
         var tag = new NBTTagCompound();
-        tag.setString("Player", Objects.requireNonNull(key).playerUuid().toString());
-        tag.setString("Fragment", Objects.requireNonNull(fragmentId).toString());
+        tag.setString("Player", key.playerUuid().toString());
+        tag.setString("Fragment", fragmentId.toString());
         switch (key) {
             case RewardEventKey reward -> {
                 tag.setString("Research", reward.researchId().toString());
@@ -53,7 +52,7 @@ public final class ItemDeliveryKeyNbt {
 
     public static UUID fragmentId(ItemDeliveryKey key, int index) {
         if (index < 0) throw new IllegalArgumentException("Negative item delivery fragment index");
-        var encoded = switch (Objects.requireNonNull(key)) {
+        var encoded = switch (key) {
             case RewardEventKey reward -> frame(reward.playerUuid().toString()) + frame(reward.researchId().toString())
                 + frame(Integer.toString(reward.level())) + frame(reward.groupId().toString())
                 + frame(reward.childId().toString()) + frame(Integer.toString(index));

@@ -5,7 +5,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Startup-only definitions. Register from preinit scripts or ParallelControllerRegistrationEvent.
@@ -21,7 +20,7 @@ public final class ParallelControllerRegistry {
 
     public synchronized void register(ParallelControllerType type) {
         if (frozen) throw new IllegalStateException("Parallel controller registration is closed");
-        if (types.putIfAbsent(Objects.requireNonNull(type).id(), type) != null)
+        if (types.putIfAbsent(type.id(), type) != null)
             throw new IllegalArgumentException("Duplicate parallel controller: " + type.id());
     }
 
@@ -32,7 +31,7 @@ public final class ParallelControllerRegistry {
     }
 
     public synchronized ParallelControllerType require(ResourceLocation id) {
-        var type = types.get(Objects.requireNonNull(id));
+        var type = types.get(id);
         if (type == null) throw new IllegalArgumentException("Unknown parallel controller: " + id);
         return type;
     }

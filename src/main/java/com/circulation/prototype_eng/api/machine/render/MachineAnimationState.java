@@ -13,14 +13,12 @@ import net.minecraftforge.common.util.Constants;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Owner-context state only. No World callback, synchronization permission or transient TE owner.
  */
 public class MachineAnimationState {
     public static final int MAX_LAYERS = 256;
-    public static final int MAX_NAME_LENGTH = 1024;
     public static final ComponentType<MachineInstance, MachineAnimationState> TYPE =
         new ComponentType<>(new ResourceLocation(Tags.MOD_ID, "machine_animation"), _ -> new MachineAnimationState(), List.of());
     public static final MachineComponentCodec<MachineAnimationState> CODEC = new MachineComponentCodec<>() {
@@ -62,7 +60,7 @@ public class MachineAnimationState {
     /**
      * Called in the machine's current execution context; changing state never calls TE/World.
      * The supplied layer list is borrowed and must stay unchanged until replaced; snapshot readers
-     * must not modify it.
+     * must not modify it. The list must fit MAX_LAYERS.
      */
     public void setLayers(List<String> layers) {
         if (!layers.equals(state.layers()))
@@ -78,15 +76,5 @@ public class MachineAnimationState {
     }
 
     public record Snapshot(long revision, List<String> layers) {
-        public Snapshot {
-            if (revision < 0 || layers.size() > MAX_LAYERS)
-                throw new IllegalArgumentException("Invalid animation revision/layer count");
-            for (int index2 = 0; index2 < layers.size(); index2++) {
-                var name = layers.get(index2);
-                Objects.requireNonNull(name, "animation layer");
-                if (name.isBlank() || !name.equals(name.trim()) || name.length() > MAX_NAME_LENGTH)
-                    throw new IllegalArgumentException("Animation layer must be a nonempty, trimmed bounded name");
-            }
-        }
     }
 }

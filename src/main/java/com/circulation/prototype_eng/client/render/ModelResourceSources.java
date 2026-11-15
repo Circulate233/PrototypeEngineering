@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.client.render;
 
-import com.circulation.prototype_eng.mixin.client.FallbackResourceManagerAccessor;
-import com.circulation.prototype_eng.mixin.client.SimpleReloadableResourceManagerAccessor;
 import net.minecraft.client.resources.FallbackResourceManager;
 import net.minecraft.client.resources.FileResourcePack;
 import net.minecraft.client.resources.FolderResourcePack;
@@ -30,23 +28,18 @@ final class ModelResourceSources {
      */
     static InputStream capture(IResourceManager manager, ResourceLocation location) throws IOException {
         if (manager.getClass() == SimpleReloadableResourceManager.class) {
-            var domains = ((SimpleReloadableResourceManagerAccessor) manager).prototype_eng$domainResourceManagers();
+            var domains = ((SimpleReloadableResourceManager) manager).domainResourceManagers;
             var domain = domains.get(location.getNamespace());
             if (domain == null) throw new FileNotFoundException(location.toString());
             if (domain.getClass() == FallbackResourceManager.class)
-                return captureNativeFallback(domain, location);
+                return capturePacks(domain.resourcePacks, location);
         } else if (manager.getClass() == FallbackResourceManager.class) {
-            return captureNativeFallback((FallbackResourceManager) manager, location);
+            return capturePacks(((FallbackResourceManager) manager).resourcePacks, location);
         }
         // An overridden manager or native subclass may change selection semantics; freeze its native result.
         try (var resource = manager.getResource(location)) {
             return new ByteArrayInputStream(resource.getInputStream().readAllBytes());
         }
-    }
-
-    private static InputStream captureNativeFallback(FallbackResourceManager manager, ResourceLocation location) throws IOException {
-        // The required client accessor mixin adds the native pack-list interface.
-        return capturePacks(((FallbackResourceManagerAccessor) manager).prototype_eng$resourcePacks(), location);
     }
 
     static InputStream capturePacks(List<IResourcePack> packs, ResourceLocation location) throws IOException {

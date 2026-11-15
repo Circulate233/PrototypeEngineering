@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.api.research.download;
 
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -10,9 +9,6 @@ import java.util.UUID;
  */
 public record ResearchDownloadResult(Status status, @Nullable UUID operationId,
                                      @Nullable ResearchDownloadSources.Status sourceStatus) {
-    public ResearchDownloadResult {
-        Objects.requireNonNull(status);
-    }
 
     public enum Status {
         COMPLETED, ABORTED, PENDING, BUSY, STALE_CONTEXT, PERMISSION_DENIED, SOURCE_REJECTED,

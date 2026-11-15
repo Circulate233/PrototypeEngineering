@@ -8,7 +8,6 @@ import crafttweaker.annotations.ZenRegister;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 import java.util.function.Function;
 
 /**
@@ -18,9 +17,6 @@ import java.util.function.Function;
 @ZenClass("mods.prototype_eng.MachineFactory")
 @SuppressWarnings("unused") // ZenScript/addons supply these handles.
 public record ZenMachineFactory(Function<MachineType, ? extends MachineInstance> value) {
-    public ZenMachineFactory {
-        Objects.requireNonNull(value);
-    }
 
     @ZenMethod
     public static ZenMachineFactory multithreaded() {

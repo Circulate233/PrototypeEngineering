@@ -26,10 +26,10 @@ import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
@@ -78,8 +78,8 @@ public class MachineInstance implements PlannedMachineTask {
      * Retains the canonical declaration only. The controller must attach its host before creating
      * declared components; construction never invokes factories or reads an unattached world.
      */
-    public MachineInstance(MachineType type) {
-        this.type = Objects.requireNonNull(type);
+    public MachineInstance(@NotNull MachineType type) {
+        this.type = type;
     }
 
     /**
@@ -149,7 +149,7 @@ public class MachineInstance implements PlannedMachineTask {
      * All logical hosts share this machine's allowance, including explicitly constructed external hosts.
      */
     public void registerRecipeHost(MachineWorkSlots host) {
-        if (Objects.requireNonNull(host).owner() != this) throw new IllegalArgumentException("Foreign recipe host");
+        if (host.owner() != this) throw new IllegalArgumentException("Foreign recipe host");
         if (!recipeHosts.add(host)) return;
         var hosts = new ObjectArrayList<>(recipeHostView);
         hosts.add(host);
@@ -250,7 +250,6 @@ public class MachineInstance implements PlannedMachineTask {
      * Host assembly boundary; an attached lifecycle cannot be replaced or shared across machines.
      */
     public void attachLifecycle(MachineLifecycle lifecycle) {
-        Objects.requireNonNull(lifecycle);
         if (this.lifecycle != null || lifecycle.machine() != this) {
             throw new IllegalStateException("Machine lifecycle is already attached or belongs to another machine");
         }
@@ -292,7 +291,6 @@ public class MachineInstance implements PlannedMachineTask {
      */
     @SuppressWarnings("unused") // Public extension for additional recipe permissions.
     public void addRecipeWorkGate(BooleanSupplier permission) {
-        Objects.requireNonNull(permission);
         if (lifecycle != null) {
             lifecycle.host().requireServerThread();
             if (lifecycle.state() != MachineLifecycle.State.CREATED) {
@@ -377,20 +375,18 @@ public class MachineInstance implements PlannedMachineTask {
         var elements2 = hatches.energyInputs();
         for (int index2 = 0; index2 < elements2.size(); index2++) {
             var input = elements2.get(index2);
-            keys.add(Objects.requireNonNull(input.storageIdentity()));
+            keys.add(input.storageIdentity());
         }
         var elements3 = hatches.energyOutputs();
         for (int index3 = 0; index3 < elements3.size(); index3++) {
             var output = elements3.get(index3);
-            keys.add(Objects.requireNonNull(output.storageIdentity()));
+            keys.add(output.storageIdentity());
         }
         var elements4 = components.assemblyBindings();
         for (int index4 = 0; index4 < elements4.size(); index4++) {
             var binding = elements4.get(index4);
             if (binding.component() instanceof AffinityKeyProvider provider) {
-                for (var key : Objects.requireNonNull(provider.affinityKeys())) {
-                    keys.add(Objects.requireNonNull(key));
-                }
+                keys.addAll(provider.affinityKeys());
             }
         }
         return keys;

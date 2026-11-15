@@ -26,13 +26,11 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
@@ -147,14 +145,14 @@ public final class RecipeScanner {
                           ControllerMode mode, boolean stablePipeline) {
         this.mode = mode;
         this.stablePipeline = stablePipeline;
-        this.host = Objects.requireNonNull(host);
-        this.catalog = Objects.requireNonNull(catalog);
-        this.factory = Objects.requireNonNull(factory);
+        this.host = host;
+        this.catalog = catalog;
+        this.factory = factory;
         this.constraints = constraints;
         this.indexes = indexes;
         this.preparations = preparations;
-        this.monotonicStart = Objects.requireNonNull(monotonicStart);
-        this.seeds = Objects.requireNonNull(seeds);
+        this.monotonicStart = monotonicStart;
+        this.seeds = seeds;
         var scope = new ObjectLinkedOpenHashSet<ResourceLocation>();
         boolean unrestricted = false;
 
@@ -173,7 +171,7 @@ public final class RecipeScanner {
             if (host.dynamicRecipeGroups().isEmpty()) scope.clear();
             else scope.addAll(host.dynamicRecipeGroups());
         }
-        groups = ObjectSets.unmodifiable(scope);
+        groups = scope;
         host.owner().registerRecipeScanner(this);
     }
 
@@ -225,7 +223,7 @@ public final class RecipeScanner {
                                                 boolean preservesFixedInputLowerBounds) {
         if (started || source != null || scanning || faulted || activeAttempt != null)
             throw new IllegalStateException("Decorate the process factory before source binding or scanning");
-        factory = Objects.requireNonNull(Objects.requireNonNull(decorator).apply(factory), "Decorated process factory");
+        factory = decorator.apply(factory);
         stablePipeline &= preservesFixedInputLowerBounds;
         return this;
     }
@@ -244,7 +242,6 @@ public final class RecipeScanner {
      */
     public RecipeScanner follow(RecipeRegistry registry, @Nullable RecipeProcessCodecs codecs,
                                 @Nullable Function<RecipeCatalog, List<RecipeCandidateIndex>> rebuildIndexes) {
-        Objects.requireNonNull(registry, "registry");
         if (started || source != null || scanning || faulted || activeAttempt != null)
             throw new IllegalStateException("Bind the recipe source before scanning");
         var captured = registry.snapshot();
@@ -266,19 +263,18 @@ public final class RecipeScanner {
      * Pure assembly validation; it never upgrades a fixed or independent scanner's contract.
      */
     public void validateProcessCodecs(RecipeProcessCodecs actual) {
-        Objects.requireNonNull(actual, "actual");
         if (source != null && (requiredCodecs == null || requiredCodecs != actual || source.processCodecs() != actual))
             throw new IllegalArgumentException("Persistent following scanner and work slots require the source's process codecs");
     }
 
     private boolean generationCurrent() {
-        return source == null || source.isCurrent(Objects.requireNonNull(generation));
+        return source == null || source.isCurrent(generation);
     }
 
     private BooleanSupplier captureGeneration() {
         var capturedSource = source;
         var captured = generation;
-        return capturedSource == null ? () -> true : () -> capturedSource.isCurrent(Objects.requireNonNull(captured));
+        return capturedSource == null ? () -> true : () -> capturedSource.isCurrent(captured);
     }
 
     private void requireCandidateCodec(MachineRecipe recipe) {
@@ -343,7 +339,6 @@ public final class RecipeScanner {
      * Call at most once per scheduled machine tick.
      */
     public Result scan(ScanLimits limits) {
-        Objects.requireNonNull(limits);
         if (scanning || faulted || activeAttempt != null) {
             throw new IllegalStateException("Recipe scanner is executing or faulted");
         }
@@ -379,7 +374,6 @@ public final class RecipeScanner {
      */
     @SuppressWarnings("ReturnOfInnerClass") // The exact attempt retains this scanner's owner and pending obligations.
     public ScanAttempt beginScan(ScanLimits limits, boolean asynchronousDiscovery) {
-        Objects.requireNonNull(limits);
         if (scanning || faulted || activeAttempt != null)
             throw new IllegalStateException("Recipe scanner is executing or faulted");
         started = true;
@@ -410,7 +404,8 @@ public final class RecipeScanner {
         }
     }
 
-    @SuppressWarnings("StatementWithEmptyBody") // Explicit synchronous callers drain the retained pool capture.
+    @SuppressWarnings({"StatementWithEmptyBody", "DataFlowIssue"})
+    // Explicit synchronous callers drain the retained pool capture.
     private Result advancePass(ScanLimits limits) {
         ensureInputGroups();
         var active = host.activeProcesses();
@@ -484,7 +479,7 @@ public final class RecipeScanner {
             }
             int parentLimit = mode == ControllerMode.LEGACY
                 ? Math.max(1, ParallelControllers.limit(host.owner()))
-                : (int) Math.min(Integer.MAX_VALUE, Objects.requireNonNull(candidateBasis).available());
+                : (int) Math.min(Integer.MAX_VALUE, candidateBasis.available());
             if (search == null || search.parentLimit != parentLimit) {
                 search = begin(recipe, parentLimit);
             }
@@ -577,10 +572,11 @@ public final class RecipeScanner {
         return new Search(recipe, parentLimit, limit, monotonicStart.test(recipe), seeds.getAsLong(), ProbabilityTuning.defaultTuning());
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private int inputBound(MachineRecipe recipe, int currentLimit) {
         if (!linearFixedInputs(recipe)) return currentLimit;
         if (preferredActive && preferredInventoryReady)
-            return Math.min(currentLimit, Objects.requireNonNull(preferredInventory).inputParallelismLimit(recipe));
+            return Math.min(currentLimit, preferredInventory.inputParallelismLimit(recipe));
         return discovery == null ? currentLimit : Math.min(currentLimit, discovery.inputParallelismLimit(recipe));
     }
 
@@ -597,10 +593,11 @@ public final class RecipeScanner {
 
     private RecipeProcess candidate(MachineRecipe recipe, int amount, Search current) {
         requireCandidateCodec(recipe);
-        var process = Objects.requireNonNull(factory.create(host.owner(), recipe, current.seed, current.tuning));
+        var process = factory.create(host.owner(), recipe, current.seed, current.tuning);
         return configureCandidate(process, recipe, amount, current);
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private RecipeProcess configureCandidate(RecipeProcess process, MachineRecipe recipe, int amount, Search current) {
         if (process.owner() != host.owner() || process.recipe() != recipe || process.host() != null || process.seed() != current.seed
             || !process.probabilityTuning().equals(current.tuning) || process.state().lifecycle() != RecipeProcess.Lifecycle.NEW) {
@@ -608,7 +605,7 @@ public final class RecipeScanner {
         }
         process.requirePersistenceBoundary();
         ensureInputGroups();
-        process.selectInputGroup(Objects.requireNonNull(inputGroups).groups().get(inputGroupIndex));
+        process.selectInputGroup(inputGroups.groups().get(inputGroupIndex));
         // amount includes the machine baseline, but NOT this process's local modifier operations.
         process.attributes().setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, amount);
         recipe.parallelismSelection().select(process);
@@ -627,7 +624,7 @@ public final class RecipeScanner {
             if (workPaused()) {
                 return RecipeText.Cancelled.blocked();
             }
-            var result = Objects.requireNonNull(constraint.test(process));
+            var result = constraint.test(process);
             if (result != ProcessResult.SUCCESS) {
                 return result;
             }
@@ -645,8 +642,8 @@ public final class RecipeScanner {
             return result(Status.PAUSED, examined, probes);
         }
         requireCandidateCodec(process.recipe());
-        var admission = mode == ControllerMode.LEGACY ? host.beginAdmission(slot.name(), process, Objects.requireNonNull(selection))
-            : host.beginAdmission(slot.name(), process, Objects.requireNonNull(selection), Objects.requireNonNull(candidateBasis));
+        var admission = mode == ControllerMode.LEGACY ? host.beginAdmission(slot.name(), process, selection)
+            : host.beginAdmission(slot.name(), process, selection, candidateBasis);
         try {
             while (!admission.advance(new RecipeWorkBudget(Long.MAX_VALUE), () -> {
                 if (workPaused()) return false;
@@ -721,7 +718,7 @@ public final class RecipeScanner {
             if (mode == ControllerMode.CROSS_RECIPE && outcome.status() == Status.ADMITTED) continue;
             if (mode == ControllerMode.CROSS_RECIPE && outcome.status() == Status.EXHAUSTED && crossRoundAdmitted) {
                 crossRoundAdmitted = false;
-                if (host.sharedUsage(Objects.requireNonNull(crossRoundRecipe)).available() > 0) continue;
+                if (host.sharedUsage(crossRoundRecipe).available() > 0) continue;
             }
             if (mode == ControllerMode.MULTITHREAD && outcome.status() == Status.YIELDED)
                 nextThreadIndex = (selectedThreadIndex + 1) % host.slots().size();
@@ -776,13 +773,14 @@ public final class RecipeScanner {
     /**
      * One exact previous recipe is checked before paying for complete pool discovery.
      */
+    @SuppressWarnings("DataFlowIssue")
     private void preparePreferred() {
         if (mode != ControllerMode.MULTITHREAD || preferredAttempted) return;
         preferredAttempted = true;
         var slot = host.slots().get(selectedThreadIndex);
         var previous = slot.lastCompletedRecipe();
         var recipe = previous == null ? null : catalog.recipe(previous);
-        if (recipe == null || !slot.definition().accepts(recipe) || !Objects.requireNonNull(selection).accepts(host.owner(), recipe))
+        if (recipe == null || !slot.definition().accepts(recipe) || !selection.accepts(host.owner(), recipe))
             return;
         preferredRecipe = recipe;
         preferredActive = true;
@@ -802,21 +800,23 @@ public final class RecipeScanner {
         search = null;
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private boolean capturePreferred(RecipeWorkBudget budget) {
         if (!preferredActive || preferredInventory == null || preferredInventoryReady) return true;
         if (!preferredInventory.advance(budget)) {
             if (!preferredInventory.current())
-                preferredInventory = catalog.beginFixedInputCandidates(Objects.requireNonNull(preferredRecipe), host.owner(), passGroups());
+                preferredInventory = catalog.beginFixedInputCandidates(preferredRecipe, host.owner(), passGroups());
             return false;
         }
         preferredInventoryReady = true;
-        if (Objects.requireNonNull(preferredInventory.result()).isEmpty()) finishPreferred();
+        if (preferredInventory.result().isEmpty()) finishPreferred();
         return true;
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void next() {
         ensureInputGroups();
-        if (++inputGroupIndex >= Objects.requireNonNull(inputGroups).groups().size()) {
+        if (++inputGroupIndex >= inputGroups.groups().size()) {
             inputGroupIndex = 0;
             cursor++;
         }
@@ -1004,9 +1004,7 @@ public final class RecipeScanner {
 
         public Result advance(RecipeWorkBudget budget, BooleanSupplier forwardAllowed) {
             requireOwner();
-            Objects.requireNonNull(budget);
-            Objects.requireNonNull(forwardAllowed);
-            if (finished) return Objects.requireNonNull(terminal);
+            if (finished) return terminal;
             executing = true;
             try {
                 return advanceBody(budget, () -> !stopping && !faulted && forwardAllowed.getAsBoolean() && !workPaused());
@@ -1021,6 +1019,7 @@ public final class RecipeScanner {
             }
         }
 
+        @SuppressWarnings("DataFlowIssue")
         private Result advanceBody(RecipeWorkBudget budget, BooleanSupplier allowed) {
             ensureInputGroups();
             while (true) {
@@ -1072,7 +1071,7 @@ public final class RecipeScanner {
                         if (mode == ControllerMode.CROSS_RECIPE && crossRoundAdmitted) {
                             if (examined >= limits.candidates() || probes >= limits.probes()) return yielded();
                             if (sharedCapture == null)
-                                sharedCapture = host.beginSharedUsage(Objects.requireNonNull(crossRoundRecipe));
+                                sharedCapture = host.beginSharedUsage(crossRoundRecipe);
                             if (!sharedCapture.advance(budget)) {
                                 if (!sharedCapture.current()) sharedCapture = null;
                                 return yielded();
@@ -1125,7 +1124,7 @@ public final class RecipeScanner {
                                 slot = checkingSlot;
                                 break;
                             }
-                            slotGroups = Objects.requireNonNull(recipe).recipeGroups().iterator();
+                            slotGroups = recipe.recipeGroups().iterator();
                         }
                         while (slotGroups.hasNext()) {
                             if (!budget.take()) return yielded();
@@ -1155,7 +1154,7 @@ public final class RecipeScanner {
                         parentValue = null;
                     } else {
                         if (sharedCapture == null)
-                            sharedCapture = host.beginSharedUsage(Objects.requireNonNull(recipe));
+                            sharedCapture = host.beginSharedUsage(recipe);
                         if (!sharedCapture.advance(budget)) {
                             if (!sharedCapture.current()) sharedCapture = null;
                             return yielded();
@@ -1163,7 +1162,7 @@ public final class RecipeScanner {
                         basis = sharedCapture.result();
                         sharedCapture = null;
                         if (basis.available() == 0) return finish(completed(Status.FULL));
-                        if (basis.recipeThreads() >= Objects.requireNonNull(recipe).maxConcurrentThreads()) {
+                        if (basis.recipeThreads() >= recipe.maxConcurrentThreads()) {
                             nextCandidate();
                             continue;
                         }
@@ -1181,7 +1180,7 @@ public final class RecipeScanner {
                     phase = sameSearch ? 4 : 3;
                 }
                 if (phase == 3) {
-                    bound = inputBound(Objects.requireNonNull(recipe), bound);
+                    bound = inputBound(recipe, bound);
                     while (boundCursor < constraints.size()) {
                         if (!budget.take()) return yielded();
                         int nextBound = constraints.get(boundCursor++).upperBound(host.owner(), recipe, bound);
@@ -1190,11 +1189,11 @@ public final class RecipeScanner {
                         bound = nextBound;
                     }
                     if (!budget.take()) return yielded();
-                    search = new Search(Objects.requireNonNull(recipe), parentLimit, bound, monotonicStart.test(recipe), seeds.getAsLong(), ProbabilityTuning.defaultTuning());
+                    search = new Search(recipe, parentLimit, bound, monotonicStart.test(recipe), seeds.getAsLong(), ProbabilityTuning.defaultTuning());
                     phase = 4;
                 }
                 if (phase == 4) {
-                    var current = Objects.requireNonNull(search);
+                    var current = search;
                     if (probe == null && creation == null) {
                         if (current.low > current.high && current.best == 0) {
                             nextCandidate();
@@ -1204,8 +1203,8 @@ public final class RecipeScanner {
                         if (!allowed.getAsBoolean()) continue;
                         finalBest = current.low > current.high;
                         amount = finalBest ? current.best : current.monotonic ? (int) (current.low + (current.high - current.low) / 2) : (int) current.high;
-                        requireCandidateCodec(Objects.requireNonNull(recipe));
-                        creation = Objects.requireNonNull(factory.beginCreation(host.owner(), recipe, current.seed, current.tuning));
+                        requireCandidateCodec(recipe);
+                        creation = factory.beginCreation(host.owner(), recipe, current.seed, current.tuning);
                     }
                     if (creation != null) {
                         if (!allowed.getAsBoolean()) continue;
@@ -1217,7 +1216,7 @@ public final class RecipeScanner {
                         creationProof = creation;
                         creation = null;
                         if (!allowed.getAsBoolean()) continue;
-                        requireCandidateCodec(Objects.requireNonNull(recipe));
+                        requireCandidateCodec(recipe);
                         if (mode == ControllerMode.CROSS_RECIPE && !CrossRecipeBatch.accepts(process)) {
                             nextCandidate();
                             continue;
@@ -1249,14 +1248,14 @@ public final class RecipeScanner {
                     if (admission == null) {
                         if (!budget.take()) return yielded();
                         if (!allowed.getAsBoolean()) continue;
-                        requireCandidateCodec(Objects.requireNonNull(recipe));
+                        requireCandidateCodec(recipe);
                         admission = mode == ControllerMode.LEGACY
-                            ? host.beginAdmission(Objects.requireNonNull(slot).name(), Objects.requireNonNull(process), Objects.requireNonNull(selection))
-                            : host.beginAdmission(Objects.requireNonNull(slot).name(), Objects.requireNonNull(process), Objects.requireNonNull(selection), Objects.requireNonNull(basis));
+                            ? host.beginAdmission(slot.name(), process, selection)
+                            : host.beginAdmission(slot.name(), process, selection, basis);
                     }
                     if (!admission.advance(budget, () -> {
                         if (!allowed.getAsBoolean()) return false;
-                        requireCandidateCodec(Objects.requireNonNull(recipe));
+                        requireCandidateCodec(recipe);
                         return true;
                     })) return yielded();
                     boolean admitted = admission.admitted();
@@ -1265,7 +1264,7 @@ public final class RecipeScanner {
                         search = null;
                         return finish(yielded());
                     }
-                    lastAdmitted = Objects.requireNonNull(process);
+                    lastAdmitted = process;
                     if (mode == ControllerMode.LEGACY) {
                         resetPass();
                         return finish(new Result(Status.ADMITTED, lastAdmitted, examined, probes));
@@ -1285,6 +1284,7 @@ public final class RecipeScanner {
         }
 
         @Nullable
+        @SuppressWarnings("DataFlowIssue")
         private Result discoverCandidates(RecipeWorkBudget budget, BooleanSupplier allowed) {
             if (selection == null) {
                 if (selectionCapture == null) {
@@ -1324,7 +1324,7 @@ public final class RecipeScanner {
             }
             if (candidates.isEmpty()) {
                 if (discovery == null)
-                    discovery = catalog.beginCandidates(Objects.requireNonNull(selection), passGroups(), indexes, captureGeneration());
+                    discovery = catalog.beginCandidates(selection, passGroups(), indexes, captureGeneration());
                 if (asynchronousDiscovery) {
                     if (!workerDiscoveryCompleted) {
                         workerDiscovery = discovery;
@@ -1363,12 +1363,12 @@ public final class RecipeScanner {
             if (preflight.capacity != null && !preflight.capacity.current()) preflight.capacity = null;
             if (!host.dynamicRoster() && preflight.capacity == null)
                 preflight.capacity = host.owner().attributes().beginValueCapture(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 1);
-            if (!host.dynamicRoster() && !Objects.requireNonNull(preflight.capacity).advance(budget)) {
+            if (!host.dynamicRoster() && !preflight.capacity.advance(budget)) {
                 if (!preflight.capacity.current()) preflight.capacity = null;
                 return yielded();
             }
             int capacity = host.dynamicRoster() ? Integer.MAX_VALUE
-                : Math.clamp((long) Objects.requireNonNull(preflight.capacity).result(), 0, host.slots().size());
+                : Math.clamp((long) preflight.capacity.result(), 0, host.slots().size());
             if (preflight.rosterRevision != host.owner().recipeRosterRevision()) {
                 preflight = new Preflight(host.owner().recipeRosterRevision());
                 return yielded();
@@ -1575,7 +1575,7 @@ public final class RecipeScanner {
 
         public void finishDiscovery(RecipeCatalog.CandidatePass expected, boolean completed) {
             requireOwner();
-            if (workerDiscovery != Objects.requireNonNull(expected))
+            if (workerDiscovery != expected)
                 throw new IllegalArgumentException("Different discovery pass");
             workerDiscovery = null;
             workerDiscoveryCompleted = completed;

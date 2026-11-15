@@ -1,4 +1,4 @@
-# 防御性编程审查（2026-11-13）
+# 防御性编程审查
 
 按用户指示检查整个生产源码，先追查状态和机制是否有实际职责，再清理重复条件。第一轮只简化 onLoad 条件并引入 loadedLocation 的做法已撤销；本记录以最终机制为准。审查期间已有大量未提交修改，审计基线和逐模块清单位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261113/defensive-audit/`。
 
@@ -62,3 +62,20 @@ Snapshot、手动材料凭据、发布数据、网络分片及缓存 getter 中�
 最终完整 Gradle build、Spotless 和 IDEA MCP 构建通过；1735 项测试、269 suites，零失败、错误和跳过。451 份改动 Java 已通过本机 IDEA 格式化及 errorsOnly:false 检查，449 份全级零诊断；HatchCasingModels 保留既有 CTM 依赖解析造成的 9 条 ERROR，1 份 run 文件被 IDE 排除。未将这些文件记录为全级零。27 份 Java addon 编译和 15 份真实 ZS 脚本编译、核心 API 行为检查通过。run addon 生成成功，本轮未安装。
 
 最近两个中文提交信息已重写为英文，文件树未改变；新增代码注释已扫描，未发现中文注释。证据目录为 C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261114/，最终文件包括 audit-verified-build.log、audit-idea-verified-full.json、audit-idea-verified-summary.json、audit-run-verified.log、audit-zs-verified/、audit-verified-test-counts.json、audit-added-comments-verified.json 与 list-loop-final.log。阶段本地提交，保留用户 AGENTS.md 修改。
+
+## 2026-11-15 全项目复审
+
+从 `6300da1` 的当前工作树复审851份生产 Java，逐模块检查正常调用规则、真实状态变化与对象使用范围。当前生产源码844份，完整结果及文件哈希见 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261115/review-summary.json` 和 `review-current-source-manifest.json`。
+
+| 范围 | 最终处理 |
+|---|---|
+| 参数与加载 | 删除由签名、工厂、原生生命周期和已知载荷保证的重复非空断言，以及 TE 自位置和自身身份复验。真实缺失、权限、版本、溢出和事务预检继续由对应边界处理。 |
+| 普通数据与组件 | ComponentData 借用不可再修改的子标签，快照只建立独立顶层索引并按 revision 缓存。数据组件替换、机器代际或 roster变化才重建显示；排序、参与者、装配与定义索引复用既有结果。 |
+| 配方与仓室 | 删除重复 codec/索引、DTO 防复制、同一阶段的重复检查、无用参数与空循环。工作槽恢复直接读取受控内部槽，删除临时快照和验证用 WorkSlot；资源键直接从已有 NBT 解码。 |
+| 网络与研究 | 合并设备、奖励、成员和资源汇总的重复遍历；资源/奖励/队列快照只读交付。网络来源仅保留实际后端对象和版本，后端替换使旧发布失效。 |
+| 渲染与结构 | 预览按原数组及 offset写最终缓冲，删除 clone和逐quad数组拆分；结构路径原地反转，每个结构只生成一次并供切片共用。VBO清理先保存 fastutil entry的值再移除，避免读取已经失效的entry。 |
+| Mixin与测试 | 删除5个可替换Mixin、对应无用接口和辅助类；公开API及2条AT替代方案见[mixins.md](mixins.md)。移除只要求防写、违约输入或重复验证的测试，保留实际付款、恢复、来源替换、渲染和资源释放行为。 |
+
+生产源码仅剩 `ControllerRotatedModel` 在烘焙时复制共享基础模型顶点的一处 clone，24种朝向直接读烘焙缓存。网络分片、重组和原生数组合并仍需生成其实际数据表示；异步任务、资源重载、事务预留和来源替换仍有真实版本边界。
+
+完整Gradle build、Spotless、1728项测试/269 suites、IDEA MCP构建、27份Java addon和15份真实ZS验证通过。最后删除无消费者AT后重新编译和打包通过，未重复执行已通过的行为测试。520份Java格式化及全级检查中，503份零诊断，CTM文件保留5条IDE依赖ERROR及1条弱警告，16份run被排除。详细限制、原始证据和复验入口见[实施进度](implementation-status.md)。

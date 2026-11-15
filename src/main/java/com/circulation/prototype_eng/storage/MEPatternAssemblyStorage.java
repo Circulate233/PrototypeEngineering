@@ -61,9 +61,9 @@ public final class MEPatternAssemblyStorage implements ResourceHatch {
     private MEPatternAssemblyStorage(int slots, Supplier<AEColor> color, Runnable changed, ResourceKeyNbt keys, UUID partitionId) {
         if (slots < 1) throw new IllegalArgumentException("Pattern inventory needs positive slots");
         this.partitionId = partitionId;
-        this.color = Objects.requireNonNull(color);
-        this.changed = Objects.requireNonNull(changed);
-        this.keys = Objects.requireNonNull(keys);
+        this.color = color;
+        this.changed = changed;
+        this.keys = keys;
         input = buffer(changed);
         catalyst = buffer(changed);
         output = buffer(changed);
@@ -187,7 +187,6 @@ public final class MEPatternAssemblyStorage implements ResourceHatch {
     }
 
     public synchronized boolean setMode(MEPatternAssemblyBlockEntity.Mode next) {
-        Objects.requireNonNull(next);
         if (next == mode) return true;
         if (!valid || !idle()) return false;
         mode = next;

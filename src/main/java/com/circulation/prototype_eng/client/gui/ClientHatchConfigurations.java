@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
-import java.util.Objects;
 
 /**
  * Client-owner display cache; connection and session identity reject stale network messages.
@@ -18,7 +17,6 @@ public final class ClientHatchConfigurations {
 
     public void connected(Object connection) {
         requireOwner();
-        Objects.requireNonNull(connection);
         if (this.connection == connection) return;
         this.connection = connection;
         view = null;

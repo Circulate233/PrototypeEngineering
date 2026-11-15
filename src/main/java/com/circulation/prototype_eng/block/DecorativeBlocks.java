@@ -22,7 +22,6 @@ import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Objects;
 
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class DecorativeBlocks {
@@ -68,9 +67,10 @@ public final class DecorativeBlocks {
     }
 
     @SubscribeEvent
+    @SuppressWarnings("DataFlowIssue")
     public static void registerItems(RegistryEvent.Register<Item> event) {
         for (var block : BLOCKS) {
-            event.getRegistry().register(new PrototypeBlockItem(block).setRegistryName(Objects.requireNonNull(block.getRegistryName())));
+            event.getRegistry().register(new PrototypeBlockItem(block).setRegistryName(block.getRegistryName()));
         }
     }
 

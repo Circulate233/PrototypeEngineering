@@ -11,12 +11,12 @@ import com.circulation.prototype_eng.api.research.reward.RewardEventKey;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -28,8 +28,8 @@ public final class PlayerResearchStateNbt implements NbtCodec<PlayerResearchStat
     private final ItemDeliveryFragmentNbt fragments;
 
     public PlayerResearchStateNbt(ResearchRegistry research, ResourceKeyNbt resources) {
-        this.research = Objects.requireNonNull(research, "research");
-        fragments = new ItemDeliveryFragmentNbt(Objects.requireNonNull(resources, "resources"));
+        this.research = research;
+        fragments = new ItemDeliveryFragmentNbt(resources);
     }
 
     private static long timestamp(NBTTagCompound tag, String name) {
@@ -85,8 +85,13 @@ public final class PlayerResearchStateNbt implements NbtCodec<PlayerResearchStat
         }
         var claims = new ObjectArrayList<RewardClaim>();
         var savedClaims = tag.getTagList("Claims", Constants.NBT.TAG_COMPOUND);
-        for (int index = 0; index < savedClaims.tagCount(); index++)
-            claims.add(decodeClaim(savedClaims.getCompoundTagAt(index)));
+        var keys = new ObjectOpenHashSet<RewardClaim.Key>(savedClaims.tagCount());
+        for (int index = 0; index < savedClaims.tagCount(); index++) {
+            var claim = decodeClaim(savedClaims.getCompoundTagAt(index));
+            if (!claim.key().playerUuid().equals(player) || !keys.add(claim.key()))
+                throw new IllegalArgumentException("Invalid or duplicate player reward claim");
+            claims.add(claim);
+        }
         return new PlayerResearchState.Snapshot(player, levels, claims);
     }
 
@@ -129,15 +134,18 @@ public final class PlayerResearchStateNbt implements NbtCodec<PlayerResearchStat
         for (int index = 0; index < savedChildren.tagCount(); index++) {
             var saved = savedChildren.getCompoundTagAt(index);
             var parent = new RewardEventKey(key.playerUuid(), key.researchId(), key.level(), group, new ResourceLocation(saved.getString("Child")));
+            var childStatus = enumValue(RewardClaim.ChildStatus.VALUES, saved.getString("Status"));
             var fragments = new Object2ObjectLinkedOpenHashMap<UUID, ItemDeliveryFragment>();
             var savedFragments = saved.getTagList("Fragments", Constants.NBT.TAG_COMPOUND);
             for (int fragmentIndex = 0; fragmentIndex < savedFragments.tagCount(); fragmentIndex++) {
                 var fragment = this.fragments.decodePayload(savedFragments.getCompoundTagAt(fragmentIndex), parent);
                 if (fragments.putIfAbsent(fragment.id(), fragment) != null)
                     throw new IllegalArgumentException("Duplicate reward fragment");
+                if (childStatus == RewardClaim.ChildStatus.COMPLETED && fragment.status() != ItemDeliveryFragment.Status.CONFIRMED)
+                    throw new IllegalArgumentException("Completed reward child retains an unconfirmed fragment");
             }
             children.add(new RewardClaim.Child(parent, enumValue(RewardClaim.Kind.VALUES, saved.getString("Kind")),
-                enumValue(RewardClaim.ChildStatus.VALUES, saved.getString("Status")), fragments));
+                childStatus, fragments));
         }
         var claim = new RewardClaim(key, status, tag.getLong("Eligible"), group, timestamp(tag, "Claiming"), children, timestamp(tag, "Claimed"));
         validateClaim(claim);

@@ -22,12 +22,11 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Immutable fixed pattern, followed by base validators and children anchored at its offset origin.
+ * Validator and child lists are borrowed read-only for the definition's lifetime.
  */
 @SuppressWarnings("unused") // Public extensible definitions use identity, not recursive structural equality.
 public class TemplateStructure implements MachineStructure, StructurePreviewProvider {
@@ -48,32 +47,22 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
     }
 
     private TemplateStructure(ResourceLocation id, BlockOrientation orientation, BlockPos offset, boolean hideWorldBlocks, StructurePattern pattern, List<StructurePredicate> validators, List<MachineStructure> children, boolean budgeted, boolean owned, boolean reusable) {
-        this.id = Objects.requireNonNull(id);
-        this.orientation = Objects.requireNonNull(orientation);
-        this.offset = Objects.requireNonNull(offset).toImmutable();
+        this.id = id;
+        this.orientation = orientation;
+        this.offset = offset.toImmutable();
         this.hideWorldBlocks = hideWorldBlocks;
-        this.pattern = Objects.requireNonNull(pattern);
+        this.pattern = pattern;
         this.budgeted = budgeted;
+        this.validators = validators;
+        this.children = children;
         if (owned) {
-            this.validators = Collections.unmodifiableList(validators);
-            this.children = Collections.unmodifiableList(children);
             planReusable = reusable;
         } else {
-            var copiedValidators = new ObjectArrayList<StructurePredicate>(validators.size());
-            var copiedChildren = new ObjectArrayList<MachineStructure>(children.size());
             boolean stable = budgeted && pattern.planReusable();
-            for (int index7 = 0; index7 < validators.size(); index7++) {
-                var validator = validators.get(index7);
-                copiedValidators.add(Objects.requireNonNull(validator));
-                stable = stable && validator.planReusable();
-            }
-            for (int index5 = 0; index5 < children.size(); index5++) {
-                var child = children.get(index5);
-                copiedChildren.add(Objects.requireNonNull(child));
-                stable = stable && child.planReusable();
-            }
-            this.validators = Collections.unmodifiableList(copiedValidators);
-            this.children = Collections.unmodifiableList(copiedChildren);
+            for (int index = 0; stable && index < validators.size(); index++)
+                stable = validators.get(index).planReusable();
+            for (int index = 0; stable && index < children.size(); index++)
+                stable = children.get(index).planReusable();
             planReusable = stable;
         }
     }
@@ -137,8 +126,6 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
 
     @Override
     public TemplateStructure transform(StructureTransform rotation) {
-        if (budgeted) return (TemplateStructure) Objects.requireNonNull(beginTransform(rotation).run());
-        Objects.requireNonNull(rotation);
         BlockOrientation transformedOrientation = BlockOrientation.get(
             rotation.apply(orientation.getSide(RelativeSide.FRONT)),
             rotation.apply(orientation.getSide(RelativeSide.TOP)));
@@ -162,8 +149,6 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
             beginCollectReads(plan, anchor, controller).run();
             return;
         }
-        Objects.requireNonNull(plan);
-        Objects.requireNonNull(controller);
         BlockPos origin = StructurePattern.add(anchor, offset);
         pattern.collectReads(plan, origin, controller);
         for (int index3 = 0; index3 < validators.size(); index3++) {
@@ -179,9 +164,7 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
     @Override
     @Nullable
     public StructureMatch match(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller) {
-        if (budgeted) return Objects.requireNonNull(beginMatch(snapshot, anchor, controller).run()).match();
-        Objects.requireNonNull(snapshot);
-        Objects.requireNonNull(controller);
+        if (budgeted) return beginMatch(snapshot, anchor, controller).run().match();
         BlockPos origin = StructurePattern.add(anchor, offset);
         if (!pattern.matches(snapshot, origin, controller)) {
             return null;
@@ -214,7 +197,6 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
     @Override
     @SuppressWarnings("ReturnOfInnerClass") // This private default cursor retains immutable definition data only.
     public StructureOperation<MachineStructure> beginTransform(StructureTransform rotation) {
-        Objects.requireNonNull(rotation);
         if (!budgeted) return MachineStructure.super.beginTransform(rotation);
         return new StructureOperation<>() {
             private final StructureOperation<StructurePattern> patternWork = pattern.beginTransform(rotation);
@@ -229,18 +211,17 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
 
             @Override
             public boolean advance(RecipeWorkBudget work) {
-                Objects.requireNonNull(work);
                 if (complete()) return true;
                 if (!patternWork.advance(work)) return false;
-                reusable = reusable && Objects.requireNonNull(patternWork.result()).planReusable();
+                reusable = reusable && patternWork.result().planReusable();
                 while (validatorIndex < validators.size()) {
                     if (validator == null) {
                         if (!work.take()) return false;
                         validator = validators.get(validatorIndex).beginTransform(rotation);
                     }
                     if (!validator.advance(work)) return false;
-                    transformedValidators.add(Objects.requireNonNull(validator.result()));
-                    reusable = reusable && Objects.requireNonNull(validator.result()).planReusable();
+                    transformedValidators.add(validator.result());
+                    reusable = reusable && validator.result().planReusable();
                     validator = null;
                     validatorIndex++;
                 }
@@ -250,8 +231,8 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
                         child = children.get(childIndex).beginTransform(rotation);
                     }
                     if (!child.advance(work)) return false;
-                    transformedChildren.add(Objects.requireNonNull(child.result()));
-                    reusable = reusable && Objects.requireNonNull(child.result()).planReusable();
+                    transformedChildren.add(child.result());
+                    reusable = reusable && child.result().planReusable();
                     child = null;
                     childIndex++;
                 }
@@ -259,7 +240,7 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
                 var actualOrientation = BlockOrientation.get(rotation.apply(orientation.getSide(RelativeSide.FRONT)),
                     rotation.apply(orientation.getSide(RelativeSide.TOP)));
                 finish(new TemplateStructure(id, actualOrientation, rotation.apply(offset), hideWorldBlocks,
-                    Objects.requireNonNull(patternWork.result()), transformedValidators, transformedChildren, true, true, reusable));
+                    patternWork.result(), transformedValidators, transformedChildren, true, true, reusable));
                 return true;
             }
         };
@@ -267,15 +248,12 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
 
     @Override
     @SuppressWarnings("ReturnOfInnerClass") // The default cursor retains its immutable declaration and private builder.
-    public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) {
-        Objects.requireNonNull(plan);
-        Objects.requireNonNull(anchor);
-        Objects.requireNonNull(controller);
+    public StructureOperation<@Nullable Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) {
         if (!budgeted) return MachineStructure.super.beginCollectReads(plan, anchor, controller);
         var origin = StructurePattern.add(anchor, offset);
         return new StructureOperation<>() {
             @Nullable
-            private StructureOperation<Void> pending;
+            private StructureOperation<@Nullable Void> pending;
             private long patternIndex;
             private int validatorIndex, childIndex;
             private long childCount = 1;
@@ -283,7 +261,6 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
 
             @Override
             public boolean advance(RecipeWorkBudget work) {
-                Objects.requireNonNull(work);
                 if (complete()) return true;
                 if (!begun) {
                     if (!work.take()) return false;
@@ -333,9 +310,6 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
     @Override
     @SuppressWarnings("ReturnOfInnerClass") // Only the explicit private default instance owns this matching cursor.
     public StructureOperation<StructureMatchResult> beginMatch(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller) {
-        Objects.requireNonNull(snapshot);
-        Objects.requireNonNull(anchor);
-        Objects.requireNonNull(controller);
         if (!budgeted) return MachineStructure.super.beginMatch(snapshot, anchor, controller);
         var origin = StructurePattern.add(anchor, offset);
         return new StructureOperation<>() {
@@ -353,10 +327,9 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
 
             @Override
             public boolean advance(RecipeWorkBudget work) {
-                Objects.requireNonNull(work);
                 if (complete()) return true;
                 if (!patternWork.advance(work)) return false;
-                var patternStatus = Objects.requireNonNull(patternWork.result());
+                var patternStatus = patternWork.result();
                 if (patternStatus != StructurePredicateResult.MATCHED) {
                     finish(new StructureMatchResult(patternStatus, null));
                     return true;
@@ -367,7 +340,7 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
                         validator = validators.get(validatorIndex).beginMatch(snapshot, origin, controller);
                     }
                     if (!validator.advance(work)) return false;
-                    var status = Objects.requireNonNull(validator.result());
+                    var status = validator.result();
                     if (status != StructurePredicateResult.MATCHED) {
                         finish(new StructureMatchResult(status, null));
                         return true;
@@ -381,12 +354,12 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
                         child = children.get(childIndex).beginMatch(snapshot, origin, controller);
                     }
                     if (!child.advance(work)) return false;
-                    var outcome = Objects.requireNonNull(child.result());
+                    var outcome = child.result();
                     if (outcome.status() != StructurePredicateResult.MATCHED) {
                         finish(outcome);
                         return true;
                     }
-                    matchedChildren.add(Objects.requireNonNull(outcome.match()));
+                    matchedChildren.add(outcome.match());
                     child = null;
                     childIndex++;
                 }
@@ -400,7 +373,7 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
                     freeze = StructureMatch.beginCreate(TemplateStructure.this, origin, 1, matchedBlocks, matchedChildren);
                 }
                 if (!freeze.advance(work)) return false;
-                finish(StructureMatchResult.matched(Objects.requireNonNull(freeze.result())));
+                finish(StructureMatchResult.matched(freeze.result()));
                 return true;
             }
         };

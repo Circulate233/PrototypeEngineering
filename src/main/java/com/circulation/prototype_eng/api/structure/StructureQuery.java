@@ -5,7 +5,6 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 import java.util.function.UnaryOperator;
@@ -42,10 +41,10 @@ public final class StructureQuery<T> {
     public StructureQuery(ResourceLocation id, BiFunction<World, BlockPos, T> reader, UnaryOperator<T> copier,
                           BiPredicate<T, T> equivalence,
                           @Nullable BiFunction<StructureReadWindow.BlockStates, BlockPos, T> workerReader) {
-        this.id = Objects.requireNonNull(id);
-        this.reader = Objects.requireNonNull(reader);
-        this.copier = Objects.requireNonNull(copier);
-        this.equivalence = Objects.requireNonNull(equivalence);
+        this.id = id;
+        this.reader = reader;
+        this.copier = copier;
+        this.equivalence = equivalence;
         this.workerReader = workerReader;
     }
 
@@ -56,14 +55,12 @@ public final class StructureQuery<T> {
     /**
      * World-adapter boundary. A capture callback must not force chunks to load.
      */
-    @Nullable
     public T capture(World world, BlockPos position) {
-        Objects.requireNonNull(world);
         var server = world.getMinecraftServer();
         if (world.isRemote || server == null || !server.isCallingFromMinecraftThread()) {
             throw new IllegalStateException("Structure facts must be captured on their server thread");
         }
-        return reader.apply(world, Objects.requireNonNull(position));
+        return reader.apply(world, position);
     }
 
     public boolean supportsWorkerBlocks() {
@@ -72,17 +69,17 @@ public final class StructureQuery<T> {
 
     /**
      * The source has already bound finite loaded references on the owner before this operation.
+     * Call only when supportsWorkerBlocks() is true. The worker reader must read only the supplied position.
      */
+    @SuppressWarnings("DataFlowIssue") // supportsWorkerBlocks() is required before entering this worker path.
     public StructureReadWindow<T> beginWorkerCapture(StructureReadWindow.BlockStates blocks, BlockPos position) {
-        Objects.requireNonNull(blocks);
-        var callback = Objects.requireNonNull(workerReader, "Query has no explicit block-only worker reader");
-        var immutable = Objects.requireNonNull(position).toImmutable();
+        var callback = workerReader;
+        var immutable = position.toImmutable();
         return StructureReadWindow.joined(() -> callback.apply(blocks, immutable));
     }
 
-    @Nullable
-    T copy(@Nullable T value) {
-        return value == null ? null : Objects.requireNonNull(copier.apply(value), "Copied structure fact");
+    T copy(T value) {
+        return value == null ? null : copier.apply(value);
     }
 
     boolean equivalent(@Nullable T first, @Nullable T second) {

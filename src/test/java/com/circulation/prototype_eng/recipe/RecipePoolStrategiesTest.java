@@ -151,41 +151,6 @@ class RecipePoolStrategiesTest {
     }
 
     @Test
-    void malformedFreezeDoesNotPublishAnyCatalogOrEraseTheValidStrategyForRetry() {
-        var first = recipe("first");
-        var custom = new RecipePool() {
-            @Override
-            public ResourceLocation id() {
-                return RecipePoolStrategiesTest.id("bad");
-            }
-
-            @Override
-            public String translationKey() {
-                return "pool.title";
-            }
-
-            @Override
-            public List<MachineRecipe> recipes() {
-                return List.of(first);
-            }
-
-            @Override
-            public List<MachineType> machines() {
-                return List.of();
-            }
-
-            @Override
-            public RecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines) {
-                return new DefaultRecipePool(id(), translationKey(), List.of());
-            }
-        };
-        var registry = new RecipeRegistry();
-        registry.register(custom);
-        assertThrows(IllegalArgumentException.class, registry::freeze);
-        assertThrows(IllegalStateException.class, registry::catalog);
-    }
-
-    @Test
     void actualQuantityCaptureAndPostingsReduceDiscoveryWorkAgainstTheExistingFixedInputIndex() {
         var entries = new ObjectArrayList<SimpleRecipePool.Entry>();
         entries.add(entry("too_much", INPUT, 12));

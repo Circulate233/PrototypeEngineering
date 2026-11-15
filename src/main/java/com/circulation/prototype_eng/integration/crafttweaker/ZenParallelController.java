@@ -8,7 +8,6 @@ import org.jetbrains.annotations.Nullable;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 @ZenRegister
 @ZenClass("mods.prototype_eng.ParallelController")
@@ -23,7 +22,7 @@ public final class ZenParallelController {
 
     private ZenParallelController(String id, String translationKey, int maximum) {
         this.id = new ResourceLocation(id);
-        this.translationKey = Objects.requireNonNull(translationKey);
+        this.translationKey = translationKey;
         if (maximum < 1) throw new IllegalArgumentException("Parallel maximum must be positive");
         this.maximum = maximum;
     }

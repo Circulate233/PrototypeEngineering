@@ -11,7 +11,6 @@ import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.util.ResourceLocation;
 
 import java.awt.Rectangle;
-import java.util.Objects;
 
 /**
  * Uses AE2's existing number editor and priority-dialog artwork.
@@ -42,8 +41,9 @@ public final class GuiParallelController extends AEBaseGui<ContainerParallelCont
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue") // The container constructor sets its AE title before this GUI opens.
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        GuiLabel.draw(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 8, 6, 160, 9, 0x404040, false);
+        GuiLabel.draw(fontRenderer, container.getGuiTitle().getFormattedText(), 8, 6, 160, 9, 0x404040, false);
         GuiLabel.draw(fontRenderer, ParallelControllerText.Maximum.getLocal(container.maximum), 8, 98, 160, 9, 0x404040, false);
         GuiLabel.draw(fontRenderer, ParallelControllerText.Selected.getLocal(container.selected), 8, 110, 160, 9, 0x404040, false);
     }

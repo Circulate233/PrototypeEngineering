@@ -17,7 +17,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Saved setting belongs to the physical controller; workers only observe immutable snapshots.
@@ -37,7 +36,7 @@ public class ParallelControllerBlockEntity extends AEBaseTile implements Paralle
     }
 
     private void configure(ParallelControllerType nextType, int selected) {
-        type = Objects.requireNonNull(nextType);
+        type = nextType;
         state = new Snapshot(Math.clamp(selected, 0, type.maximum()), type.maximum(), Math.incrementExact(state.revision()), !isInvalid());
     }
 
@@ -47,10 +46,11 @@ public class ParallelControllerBlockEntity extends AEBaseTile implements Paralle
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public void setSelectedParallelism(int amount) {
         if (amount < 0 || amount > state.maximum())
             throw new IllegalArgumentException("Parallelism is outside this controller's range");
-        if (world != null && (world.isRemote || !Objects.requireNonNull(world.getMinecraftServer()).isCallingFromMinecraftThread()))
+        if (world != null && (world.isRemote || !world.getMinecraftServer().isCallingFromMinecraftThread()))
             throw new IllegalStateException("Controller changes require the server thread");
         if (!state.valid()) throw new IllegalStateException("Controller is not initialized");
         if (amount != state.selected()) {

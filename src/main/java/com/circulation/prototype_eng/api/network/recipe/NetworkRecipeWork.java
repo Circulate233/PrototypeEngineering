@@ -13,7 +13,7 @@ import com.circulation.prototype_eng.recipe.requirement.NetworkRecipeWorkSystem;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
-import java.util.Objects;
+import java.util.Set;
 
 /**
  * Machine-wide PN defaults and per-recipe extensions, executed by the ordinary requirement pipeline.
@@ -44,18 +44,13 @@ public final class NetworkRecipeWork implements MachineRecipeRequirements {
     public static ComponentType<MachineInstance, NetworkRecipeWork> component(ResourceLocation id,
                                                                               ComponentType<MachineInstance, MachineNetworkDevice> device, NetworkWorkRequirements defaults,
                                                                               NetworkRecipeExtensions extensions, ResearchRegistry research) {
-        Objects.requireNonNull(id);
-        Objects.requireNonNull(device);
-        Objects.requireNonNull(defaults);
-        Objects.requireNonNull(extensions);
-        Objects.requireNonNull(research);
         return new ComponentType<>(id, _ -> {
             defaults.validate(research);
             if (!extensions.published()) {
                 throw new IllegalStateException("Network recipe requirements have not been published");
             }
             return new NetworkRecipeWork(id, device, defaults, extensions);
-        }, List.of(), List.of(device));
+        }, List.of(), Set.of(device));
     }
 
     @Override
@@ -69,10 +64,5 @@ public final class NetworkRecipeWork implements MachineRecipeRequirements {
      */
     public record Binding(ResourceLocation sourceId, ComponentType<MachineInstance, MachineNetworkDevice> device,
                           NetworkWorkRequirements requirements) {
-        public Binding {
-            Objects.requireNonNull(sourceId);
-            Objects.requireNonNull(device);
-            Objects.requireNonNull(requirements);
-        }
     }
 }

@@ -8,7 +8,6 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -29,7 +28,7 @@ public final class MachineIdentityRegistry implements AutoCloseable {
     private boolean closed;
 
     public MachineIdentityRegistry(Runnable ownerCheck) {
-        this.ownerCheck = Objects.requireNonNull(ownerCheck, "ownerCheck");
+        this.ownerCheck = ownerCheck;
     }
 
     @SuppressWarnings("resource")
@@ -46,7 +45,7 @@ public final class MachineIdentityRegistry implements AutoCloseable {
     }
 
     public boolean owns(Registration registration) {
-        return Objects.requireNonNull(registration).registry == this;
+        return registration.registry == this;
     }
 
     /**
@@ -58,10 +57,6 @@ public final class MachineIdentityRegistry implements AutoCloseable {
         if (closed) {
             throw new IllegalStateException("Machine identity registry is closed");
         }
-        Objects.requireNonNull(identity, "identity");
-        Objects.requireNonNull(location, "location");
-        Objects.requireNonNull(worldIdentity, "worldIdentity");
-        Objects.requireNonNull(runtimeIdentity, "runtimeIdentity");
         var existingRuntime = byRuntime.get(runtimeIdentity);
         if (existingRuntime != null) {
             if (!existingRuntime.identity.equals(identity) || !existingRuntime.location.equals(location) || existingRuntime.worldIdentity != worldIdentity) {
@@ -97,7 +92,6 @@ public final class MachineIdentityRegistry implements AutoCloseable {
      */
     public void unregister(Registration registration) {
         ownerCheck.run();
-        Objects.requireNonNull(registration, "registration");
         if (registration.registry != this) {
             throw new IllegalArgumentException("Registration belongs to another machine identity registry");
         }

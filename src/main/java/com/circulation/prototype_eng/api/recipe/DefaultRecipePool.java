@@ -5,18 +5,16 @@ import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
 import com.circulation.prototype_eng.api.recipe.scanning.ResourceRecipeIndex;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 
 /**
- * General immutable pool; stable input paths share a cached inventory index, others retain ordered fallback.
+ * General pool; supplied lists must stay unchanged for the pool's lifetime.
+ * Stable input paths share a cached inventory index.
  */
 public final class DefaultRecipePool implements RecipePool {
     private final ResourceLocation id;
@@ -32,22 +30,19 @@ public final class DefaultRecipePool implements RecipePool {
 
     private DefaultRecipePool(ResourceLocation id, String translationKey, List<MachineRecipe> recipes, List<MachineType> machines,
                               @Nullable String existingJeiPageId) {
-        this.id = Objects.requireNonNull(id);
+        this.id = id;
         if (translationKey == null || translationKey.isBlank())
             throw new IllegalArgumentException("Pool title is required");
         this.translationKey = translationKey;
         var ids = new ObjectOpenHashSet<ResourceLocation>(recipes.size());
-        var copy = new ObjectArrayList<MachineRecipe>(recipes.size());
         for (int index1 = 0; index1 < recipes.size(); index1++) {
             var recipe = recipes.get(index1);
-            Objects.requireNonNull(recipe);
             if (!ids.add(recipe.id()))
                 throw new IllegalArgumentException("Duplicate recipe in pool " + id + ": " + recipe.id());
-            copy.add(recipe);
         }
-        this.recipes = ObjectLists.unmodifiable(copy);
+        this.recipes = recipes;
         inputIndex = ResourceRecipeIndex.forFixedInputs(this.recipes, _ -> true);
-        this.machines = ObjectLists.unmodifiable(new ObjectArrayList<>(machines));
+        this.machines = machines;
         this.existingJeiPageId = existingJeiPageId;
     }
 
@@ -100,7 +95,16 @@ public final class DefaultRecipePool implements RecipePool {
      * Immutable addon binding; the external category is resolved when HEI registration is complete.
      */
     public DefaultRecipePool withExistingJeiPage(@Nullable String categoryUid) {
-        return new DefaultRecipePool(id, translationKey, recipes, machines, categoryUid);
+        return new DefaultRecipePool(this, categoryUid);
+    }
+
+    private DefaultRecipePool(DefaultRecipePool source, @Nullable String categoryUid) {
+        id = source.id;
+        translationKey = source.translationKey;
+        recipes = source.recipes;
+        machines = source.machines;
+        inputIndex = source.inputIndex;
+        existingJeiPageId = categoryUid;
     }
 
     @Override

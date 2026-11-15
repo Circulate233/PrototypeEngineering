@@ -8,7 +8,6 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.common.DimensionManager;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -53,13 +52,10 @@ public final class HatchConfigurationUpdates {
                 var outcomes = new ObjectArrayList<Outcome>();
                 for (var world : DimensionManager.getWorlds()) {
                     if (world.isRemote || world.getMinecraftServer() != server) continue;
-                    // No chunk lookup is used to discover hosts, and each loaded world is visited once.
-
-                    var elements = new ObjectArrayList<>(world.loadedTileEntityList);
+                    var elements = world.loadedTileEntityList;
                     for (int index = 0; index < elements.size(); index++) {
                         var tile = elements.get(index);
-                        if (tile.isInvalid() || tile.getWorld() != world || !world.isBlockLoaded(tile.getPos(), false)
-                            || world.getTileEntity(tile.getPos()) != tile || !(tile instanceof ReconfigurableHatch host))
+                        if (tile.isInvalid() || !(tile instanceof ReconfigurableHatch host))
                             continue;
                         var effective = host.effectiveConfiguration();
                         if (!HatchConfig.hasTarget(host.tier(), effective)) continue;
@@ -81,7 +77,6 @@ public final class HatchConfigurationUpdates {
 
     public record Target(HatchTier tier, HatchConfiguration configuration) {
         public Target {
-            Objects.requireNonNull(tier);
             if (!(configuration instanceof ResourceHatchConfiguration) && !(configuration instanceof EnergyHatchConfiguration))
                 throw new IllegalArgumentException("Unsupported hatch configuration family");
         }

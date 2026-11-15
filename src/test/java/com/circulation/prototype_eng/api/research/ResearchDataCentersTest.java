@@ -321,7 +321,7 @@ class ResearchDataCentersTest {
         final ComponentType<MachineInstance, MachineOwnership> ownership = new ComponentType<>(id("ownership"),
             machine -> new MachineOwnership(machine, _ -> identities), List.of());
         final ComponentType<MachineInstance, DataCenterStorage> storageType = new ComponentType<>(id("external_storage"),
-            machine -> new ExternalStorage(this, machine), List.of(), List.of(ownership));
+            machine -> new ExternalStorage(this, machine), List.of(), Set.of(ownership));
         final ComponentType<MachineInstance, MachineNetworkDevice> dataRole;
         final MachineType dataType;
         final MachineAssembly dataAssembly;
@@ -339,7 +339,8 @@ class ResearchDataCentersTest {
             player.completeAtLeast(SECOND, 1);
             network = new NetworkRuntime(identities, this::membership, this::requireOwner);
             dataRole = MachineNetworkDevice.capturedComponent(id("data_role"), ownership, (machine, identity) -> {
-                var captured = storage(machine).capture();
+                var storage = storage(machine);
+                var captured = storage.capture();
                 var contents = captured.snapshot();
                 if (advertiseDifferentContents)
                     contents = new DataCenterResearchSnapshot(contents.dataCenterId(), contents.level(),
@@ -347,7 +348,8 @@ class ResearchDataCentersTest {
                 var snapshot = new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.DATA_CENTER, 1,
                     Objects.requireNonNull(machine.lifecycle()).formed(), identity.loadOrder(), Reference2DoubleMaps.emptyMap(),
                     NetworkResourceModifier.EMPTY, contents.capacity(), contents.storedResearch().size(), contents);
-                return new NetworkRuntime.Capture(snapshot, captured.current());
+                return new NetworkRuntime.Capture(snapshot,
+                    () -> machine.components().get(storageType) == storage && captured.current().getAsBoolean());
             }, _ -> network);
             dataType = MachineType.builder(id("data_machine"), GuiText.ResourceStorage, id("structure"))
                                   .component(ownership).component(storageType).component(dataRole).build();

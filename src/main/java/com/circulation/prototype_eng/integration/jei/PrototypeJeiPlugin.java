@@ -23,7 +23,6 @@ import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
 import com.circulation.prototype_eng.block.MachineControllerBlocks;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import mcp.MethodsReturnNonnullByDefault;
@@ -45,7 +44,6 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -92,9 +90,6 @@ public class PrototypeJeiPlugin implements IModPlugin {
 
     public static void configureDefinitions(Supplier<Definitions> resolved, Runnable available, Runnable unavailable) {
         requireClientOwner();
-        Objects.requireNonNull(resolved);
-        Objects.requireNonNull(available);
-        Objects.requireNonNull(unavailable);
         desiredResolved = resolved;
         runtimeReady = available;
         runtimeUnavailable = unavailable;
@@ -106,7 +101,6 @@ public class PrototypeJeiPlugin implements IModPlugin {
 
     public static void withdrawDefinitions(String reason) {
         requireClientOwner();
-        Objects.requireNonNull(reason);
         invalidationEpoch = Math.incrementExact(invalidationEpoch);
         if (generation != null) generation.token.revoke();
         JeiRecipeInputs.reset();
@@ -143,8 +137,6 @@ public class PrototypeJeiPlugin implements IModPlugin {
     }
 
     private static ApplyResult apply(RecipeRegistry.Snapshot snapshot, RecipeJeiDisplays displays, boolean staticInitial) {
-        Objects.requireNonNull(snapshot);
-        Objects.requireNonNull(displays);
         if (runtime == null || ingredients == null) return new ApplyResult(false, true, "HEI runtime is not available");
         requireClientOwner();
         if (!(runtime.getRecipeRegistry() instanceof mezz.jei.recipes.RecipeRegistry registry)
@@ -162,10 +154,11 @@ public class PrototypeJeiPlugin implements IModPlugin {
         }
     }
 
+    @SuppressWarnings("DataFlowIssue") // The applying caller requires completed ingredient registration.
     private static ApplyResult applyPrepared(RecipeRegistry.Snapshot snapshot, RecipeJeiDisplays displays, boolean staticInitial,
                                              mezz.jei.recipes.RecipeRegistry registry, RecipesGui gui) {
         var capturedRuntime = runtime;
-        var capturedIngredients = Objects.requireNonNull(ingredients);
+        var capturedIngredients = ingredients;
         var capturedDesiredSource = desiredResolved;
         long capturedInvalidation = invalidationEpoch;
         var token = new RecipePoolJeiRecipe.DisplayToken();
@@ -210,7 +203,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
                     var recipe = elements18.get(index18);
                     var display = descriptions.describe(recipe);
                     var recipeIngredients = new JeiRecipeIngredients(display, converters, capturedIngredients, identities);
-                    var wrapper = Objects.requireNonNull(update.createRecipe(recipe, display, recipeIngredients), "JEI page returned null wrapper");
+                    var wrapper = update.createRecipe(recipe, display, recipeIngredients);
                     validateWrapper(wrapper, update.page(), update.pool(), recipe, display, recipeIngredients);
                     wrapper.bindDisplayToken(token);
                     wrappers.add(wrapper);
@@ -245,7 +238,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
                 if (!access.confirmed(wrapper, false))
                     throw new IllegalStateException("HEI category or focus mappings changed after page data installation");
             }
-            var preparedGeneration = new Generation(snapshot, displays.frozenCopy(), descriptions, identities, ObjectLists.unmodifiable(wrappers), token);
+            var preparedGeneration = new Generation(snapshot, displays.frozenCopy(), descriptions, identities, wrappers, token);
             boolean finalDesired = staticInitial || matchesDesired(snapshot, displays);
             if (!finalDesired || desiredResolved != capturedDesiredSource || invalidationEpoch != capturedInvalidation || runtime != capturedRuntime || ingredients != capturedIngredients)
                 return rejectGeneration("HEI runtime or desired declaration became obsolete during installation", capturedInvalidation, token, previous, wrappers, registry, gui);
@@ -371,7 +364,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
                 var stack = new ItemStack(block);
                 if (!stack.isEmpty()) {
                     controllers.add(stack);
-                    registration.addRecipeCatalyst(stack.copy(), StructurePreviewJeiCategory.UID);
+                    registration.addRecipeCatalyst(stack, StructurePreviewJeiCategory.UID);
                 }
             }
 
@@ -384,7 +377,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
         requireClientOwner();
         var pages = RecipePoolJeiRegistry.INSTANCE;
         var displays = registrationDisplays;
-        var descriptions = Objects.requireNonNull(registrationDescriptions, "JEI category descriptions are not captured");
+        var descriptions = registrationDescriptions;
         ingredients = registration.getIngredientRegistry();
         var token = new RecipePoolJeiRecipe.DisplayToken();
         var allWrappers = new ObjectArrayList<RecipePoolJeiRecipe>();
@@ -420,7 +413,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
                 var recipe = elements17.get(index17);
                 var display = descriptions.describe(recipe);
                 var ingredients = new JeiRecipeIngredients(display, converters, registration.getIngredientRegistry(), identities);
-                var wrapper = Objects.requireNonNull(page.createRecipe(recipe, display, ingredients), "JEI page returned null wrapper");
+                var wrapper = page.createRecipe(recipe, display, ingredients);
                 validateWrapper(wrapper, page, page.pool(), recipe, display, ingredients);
                 wrapper.bindDisplayToken(token);
                 allWrappers.add(wrapper);
@@ -451,7 +444,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
 
         allWrappers.addAll(computerRecipes.registerRecipes(registration, converters, identities, token));
         generation = new Generation(registrationSnapshot, displays.frozenCopy(), descriptions,
-            identities, ObjectLists.unmodifiable(allWrappers), token);
+            identities, allWrappers, token);
         pageDataCurrent = true;
         registerExternalCatalysts(registration);
     }
@@ -490,7 +483,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
     @Override
     public void onRuntimeAvailable(IJeiRuntime available) {
         requireClientOwner();
-        runtime = Objects.requireNonNull(available);
+        runtime = available;
         if (runtimeReady != null) runtimeReady.run();
         else apply(registrationSnapshot, registrationDisplays, true);
         if (generation != null && !generation.token.current()) withdrawDefinitions(unreadyReason);
@@ -509,7 +502,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
         if (runtimeUnavailable != null) runtimeUnavailable.run();
         var resolved = desiredResolved == null ? null : desiredResolved.get();
         var initialLocal = localStaticBaseline == null ? RecipeRegistry.INSTANCE.snapshot() : null;
-        var baselineSnapshot = initialLocal == null ? Objects.requireNonNull(localStaticBaseline).snapshot() : initialLocal;
+        var baselineSnapshot = initialLocal == null ? localStaticBaseline.snapshot() : initialLocal;
         registrationSnapshot = resolved != null ? resolved.snapshot()
             : baselineSnapshot;
         var pools = registrationSnapshot.orderedPools();
@@ -557,10 +550,6 @@ public class PrototypeJeiPlugin implements IModPlugin {
     }
 
     public record Definitions(RecipeRegistry.Snapshot snapshot, RecipeJeiDisplays displays) {
-        public Definitions {
-            Objects.requireNonNull(snapshot);
-            Objects.requireNonNull(displays);
-        }
     }
 
     public record ApplyResult(boolean ready, boolean pendingRuntime, String reason) {

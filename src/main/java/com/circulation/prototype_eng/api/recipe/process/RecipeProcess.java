@@ -40,7 +40,6 @@ import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectRBTreeMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.util.ResourceLocation;
@@ -50,7 +49,6 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 import java.util.Random;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -124,10 +122,10 @@ public final class RecipeProcess {
 
     private RecipeProcess(MachineInstance owner, MachineRecipe recipe, long seed, ProbabilityTuning probabilityTuning,
                           @Nullable MachineHatches materialHatches, @Nullable List<RecipeRequirement<?>> captured) {
-        this.owner = Objects.requireNonNull(owner);
-        this.recipe = Objects.requireNonNull(recipe);
+        this.owner = owner;
+        this.recipe = recipe;
         this.seed = seed;
-        this.probabilityTuning = Objects.requireNonNull(probabilityTuning);
+        this.probabilityTuning = probabilityTuning;
         this.materialHatches = materialHatches;
         attributes = new MachineAttributes(owner.attributes(), 1);
         if (materialHatches != null) {
@@ -135,7 +133,7 @@ public final class RecipeProcess {
             attributes.setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
         }
         orderedRequirements = captured != null ? captured : materialHatches == null ? captureRequirements(owner, recipe)
-            : canonicalRequirements(recipe.orderedRequirements());
+            : recipe.orderedRequirements();
     }
 
     public static Creation beginCreation(MachineInstance owner, MachineRecipe recipe, long seed, ProbabilityTuning tuning) {
@@ -158,11 +156,11 @@ public final class RecipeProcess {
      * Uses the canonical definition owned by a frozen material persistence binding.
      */
     public static RecipeProcess materialCycle(MachineInstance owner, MachineRecipe canonical, MachineHatches hatches, long seed) {
-        if (Objects.requireNonNull(canonical).durationTicks() != 1) {
+        if (canonical.durationTicks() != 1) {
             throw new IllegalArgumentException("Material cycle definition must declare one work tick");
         }
         return new RecipeProcess(owner, canonical, seed,
-            ProbabilityTuning.defaultTuning(), Objects.requireNonNull(hatches));
+            ProbabilityTuning.defaultTuning(), hatches);
     }
 
     private static List<RecipeRequirement<?>> captureRequirements(MachineInstance owner, MachineRecipe recipe) {
@@ -172,26 +170,25 @@ public final class RecipeProcess {
         for (int index13 = 0; index13 < elements13.size(); index13++) {
             var binding = elements13.get(index13);
             if (binding.component() instanceof MachineRecipeRequirements provider) {
+                var additional = provider.requirementsFor(recipe);
+                if (additional.isEmpty()) continue;
                 if (supplied == null) {
                     supplied = new ObjectArrayList<>(declared);
                 }
-                supplied.addAll(Objects.requireNonNull(provider.requirementsFor(recipe), "Machine recipe requirements"));
+                supplied.addAll(additional);
             }
         }
-        var roots = canonicalRequirements(supplied == null ? declared : supplied);
-        if (supplied == null) {
-            return roots;
-        }
+        if (supplied == null) return declared;
+        validateCanonicalRequirements(supplied);
         supplied.sort(Comparator.comparing(root -> root.type().id()));
-        return ObjectLists.unmodifiable(supplied);
+        return supplied;
     }
 
-    private static List<RecipeRequirement<?>> canonicalRequirements(List<RecipeRequirement<?>> roots) {
+    private static void validateCanonicalRequirements(List<RecipeRequirement<?>> roots) {
         var types = new Object2ObjectOpenHashMap<ResourceLocation, RecipeRequirementType<?>>(roots.size());
         var ids = new ObjectOpenHashSet<ResourceLocation>(roots.size());
         for (int index15 = 0; index15 < roots.size(); index15++) {
             var root = roots.get(index15);
-            Objects.requireNonNull(root, "Machine recipe requirement root");
             if (root != root.definition()) {
                 throw new IllegalArgumentException("Machine recipe requirements contain an effective view");
             }
@@ -203,7 +200,6 @@ public final class RecipeProcess {
                 throw new IllegalArgumentException("Duplicate machine recipe requirement " + root.id());
             }
         }
-        return roots;
     }
 
     /**
@@ -221,12 +217,11 @@ public final class RecipeProcess {
 
     public static RecipeProcess restored(MachineInstance owner, MachineRecipe recipe, long seed,
                                          ProbabilityTuning tuning, State state, @Nullable CrossRecipeBatch.Timing timing, UUID identity) {
-        Objects.requireNonNull(state);
         if (state.lifecycle() == Lifecycle.COMPLETED && state.progress() < (timing == null ? recipe.durationTicks() : timing.duration())) {
             throw new IllegalArgumentException("Completed process has insufficient work progress");
         }
         var process = new RecipeProcess(owner, recipe, seed, tuning);
-        process.identity = Objects.requireNonNull(identity);
+        process.identity = identity;
         process.state = state;
         process.crossRecipeTiming = timing;
         return process;
@@ -245,14 +240,13 @@ public final class RecipeProcess {
 
     public static RecipeProcess restoredMaterialCycle(MachineInstance owner, MachineRecipe recipe, long seed,
                                                       ProbabilityTuning tuning, State state, MachineHatches hatches, UUID identity) {
-        Objects.requireNonNull(state);
         if (recipe.durationTicks() != 1 || state.successfulTicks() > 1
             || state.successfulTicks() == 0 && state.progress() != 0
             || state.lifecycle() == Lifecycle.COMPLETED && state.successfulTicks() != 1) {
             throw new IllegalArgumentException("Invalid material cycle definition or confirmed state");
         }
-        var process = new RecipeProcess(owner, recipe, seed, tuning, Objects.requireNonNull(hatches));
-        process.identity = Objects.requireNonNull(identity);
+        var process = new RecipeProcess(owner, recipe, seed, tuning, hatches);
+        process.identity = identity;
         process.state = state;
         return process;
     }
@@ -279,7 +273,7 @@ public final class RecipeProcess {
         requirePersistenceBoundary();
         if (crossRecipeTiming != null || state.lifecycle() != Lifecycle.NEW || isMaterialCycle())
             throw new IllegalStateException("Only new ordinary work may join a cross-recipe batch");
-        crossRecipeTiming = Objects.requireNonNull(timing);
+        crossRecipeTiming = timing;
     }
 
     /**
@@ -291,7 +285,7 @@ public final class RecipeProcess {
             || activeSession.current != null || !state.started() || state.progress() != 0 || state.successfulTicks() != 0
             || acquiredTransactions != 0)
             throw new IllegalStateException("Cross-recipe timing can only refresh after START and before work");
-        crossRecipeTiming = Objects.requireNonNull(timing);
+        crossRecipeTiming = timing;
     }
 
     /**
@@ -319,7 +313,7 @@ public final class RecipeProcess {
      * Only owner publication after actual worker exit; never stores a preparation binding or token.
      */
     public void retainPureFacts(RecipeStage stage, RecipePureComputation computation) {
-        pureFacts.put(new PureFactPath(requirementPath(), stage), Objects.requireNonNull(computation));
+        pureFacts.put(new PureFactPath(requirementPath(), stage), computation);
     }
 
     public void clearPureFacts() {
@@ -351,7 +345,7 @@ public final class RecipeProcess {
      */
     public void attachTo(MachineWorkSlots newHost) {
         requirePersistenceBoundary();
-        if (Objects.requireNonNull(newHost).owner() != owner || host != null) {
+        if (newHost.owner() != owner || host != null) {
             throw new IllegalStateException("Process already attached or belongs to a different machine");
         }
         owner.recordRecipeOccupant(this);
@@ -399,7 +393,7 @@ public final class RecipeProcess {
             receiptHatchSource = source;
             receiptHatches = ResourceInputReceipts.bind(source, this);
         }
-        return Objects.requireNonNull(receiptHatches);
+        return receiptHatches;
     }
 
     /**
@@ -410,7 +404,7 @@ public final class RecipeProcess {
      * these transient facts are not canonical recipe estimates and are not persisted.
      */
     public @Nullable AEKey2LongMap committedInputs(RecipeStage stage) {
-        return committedInputStage == Objects.requireNonNull(stage) ? committedInputAmounts : null;
+        return committedInputStage == stage ? committedInputAmounts : null;
     }
 
     private void clearCommittedInputs() {
@@ -458,7 +452,6 @@ public final class RecipeProcess {
      * Select once before probes/admission; the accepted process never changes inventory groups.
      */
     public void selectInputGroup(ResourceInputGroups.Group group) {
-        Objects.requireNonNull(group);
         if (materialHatches != null || host != null || acquiredTransactions != 0 || state.started())
             throw new IllegalStateException("Input group selection requires a fresh ordinary process");
         if (selectedInputGroup != null && !selectedInputGroup.equals(group.id()))
@@ -474,7 +467,7 @@ public final class RecipeProcess {
     public void restoreInputGroup(ResourceInputGroup group) {
         if (materialHatches != null || selectedInputGroup != null)
             throw new IllegalStateException("Input group already restored");
-        selectedInputGroup = Objects.requireNonNull(group);
+        selectedInputGroup = group;
     }
 
     /**
@@ -516,7 +509,7 @@ public final class RecipeProcess {
                     ownerThreadRequirement = 2;
                     return true;
                 }
-                pending.addAll(Objects.requireNonNull(structuralChildren(requirement), "Requirement structural children"));
+                pending.addAll(structuralChildren(requirement));
             }
             ownerThreadRequirement = 1;
         }
@@ -617,20 +610,20 @@ public final class RecipeProcess {
     /**
      * Private preflight inventory is retained by the existing acquisition before a pause returns.
      */
-    @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
+    @SuppressWarnings({"ReturnOfInnerClass", "DataFlowIssue"})
+    // Returns the retained cursor bound to its exact original owner.
     public RecipeStageExecutor.Acquisition.FlatCandidate capturePreparedCleanup(RequirementTransaction transaction) {
         requireAcquisitionBoundary();
         if (!incrementalAcquisition())
             throw new IllegalStateException("Prepared cleanup requires an incremental acquisition");
         if (activeProbe != null) return activeProbe.captureCleanupCandidate(transaction);
-        return Objects.requireNonNull(Objects.requireNonNull(activeSession).current).acquisition.captureCleanupCandidate(transaction);
+        return activeSession.current.acquisition.captureCleanupCandidate(transaction);
     }
 
     /**
      * Independent START/TICK/END probes never grant authority to perform ordinary network work.
      */
     public <T> T withProbeContext(Supplier<T> action) {
-        Objects.requireNonNull(action);
         requirePersistenceBoundary();
         if (host != null || state.lifecycle() != Lifecycle.NEW) {
             throw new IllegalArgumentException("Probe context requires an unattached NEW process");
@@ -648,7 +641,6 @@ public final class RecipeProcess {
      * Framework ownership is installed before any probe acquisition or callback can throw.
      */
     public void claimProbe(RecipeStageExecutor.Probe expected) {
-        Objects.requireNonNull(expected);
         requirePersistenceBoundary();
         if (host != null || state.lifecycle() != Lifecycle.NEW || expected.process() != this) {
             throw new IllegalArgumentException("Probe requires its unattached NEW process");
@@ -671,10 +663,10 @@ public final class RecipeProcess {
         var previousTick = activeTick;
         probing = true;
         purePreparation = true;
-        preparationWork = Objects.requireNonNull(budget);
+        preparationWork = budget;
         activeTick = tick;
         try {
-            return Objects.requireNonNull(action).get();
+            return action.get();
         } finally {
             activeTick = previousTick;
             preparationWork = previousBudget;
@@ -722,7 +714,6 @@ public final class RecipeProcess {
      * Work-slot assembly boundary. Hosted callers use cancel(), which coordinates the slot result.
      */
     public boolean cancelFrom(@Nullable MachineWorkSlots expectedHost, ProcessResult.Failure reason) {
-        Objects.requireNonNull(reason);
         if (host != expectedHost) {
             throw new IllegalArgumentException("Process belongs to a different cancellation host");
         }
@@ -759,14 +750,14 @@ public final class RecipeProcess {
      * Frozen scaled/unscaled timeline for requirements executing the current TICK stage.
      */
     public Tick tickContext() {
-        return Objects.requireNonNull(activeTick, "No TICK stage is executing");
+        return activeTick;
     }
 
     /**
      * The executing definition's stable path, including checkpoint/selection wrapper ancestry.
      */
     public RequirementPath requirementPath() {
-        return Objects.requireNonNull(activeRequirement, "No requirement callback is executing");
+        return activeRequirement;
     }
 
     /**
@@ -774,7 +765,7 @@ public final class RecipeProcess {
      */
     public <T> T withPreparationContext(RequirementPath path, Supplier<T> action) {
         requireAcquisitionBoundary();
-        return withRequirementPath(Objects.requireNonNull(path), action);
+        return withRequirementPath(path, action);
     }
 
     public <T> T withSynchronousRequirements(Supplier<T> action) {
@@ -789,7 +780,7 @@ public final class RecipeProcess {
 
     public RecipeWorkBudget preparationBudget() {
         requireAcquisitionBoundary();
-        return Objects.requireNonNull(preparationWork, "No prepared owner work budget");
+        return preparationWork;
     }
 
     public boolean usesPurePreparation() {
@@ -802,7 +793,7 @@ public final class RecipeProcess {
             throw new IllegalStateException("Cannot acquire requirements on a terminal process");
         }
         var path = requirement.path(activeRequirement);
-        var transaction = withRequirementPath(path, () -> Objects.requireNonNull(acquisition.get(), "requirement transaction"));
+        var transaction = withRequirementPath(path, acquisition);
         if (transaction == RequirementTransaction.SUCCESS) {
             return transaction;
         }
@@ -813,6 +804,7 @@ public final class RecipeProcess {
     /**
      * Exact framework continuation while a synchronous current stage owns the process callback.
      */
+    @SuppressWarnings("DataFlowIssue")
     public void acquireContinuation(RecipeStageExecutor.Acquisition expected) {
         var session = activeSession;
         if (session == null) {
@@ -820,7 +812,7 @@ public final class RecipeProcess {
             else expected.acquireNext();
             return;
         }
-        var current = Objects.requireNonNull(session.current, "No current stage owns this continuation");
+        var current = session.current;
         current.requireLive();
         if (current.acquisition != expected || !session.executing) {
             throw new IllegalStateException("Continuation does not belong to the executing stage");
@@ -890,7 +882,7 @@ public final class RecipeProcess {
 
     private <C> void collectStorageContexts(RecipeRequirement<C> requirement, List<StorageContext> contexts) {
         withRequirementPath(requirement.path(activeRequirement), () -> {
-            contexts.addAll(Objects.requireNonNull(requirement.type().system().storageContexts(this, requirement)));
+            contexts.addAll(requirement.type().system().storageContexts(this, requirement));
 
             var elements = requirement.type().system().children(requirement.payload());
             for (int index1 = 0; index1 < elements.size(); index1++) {
@@ -945,8 +937,6 @@ public final class RecipeProcess {
      * This scope has the same exclusive-owner requirement as tick().
      */
     public <T> T withTickContext(Tick context, Supplier<T> action) {
-        Objects.requireNonNull(context);
-        Objects.requireNonNull(action);
         Tick previous = activeTick;
         activeTick = context;
         try {
@@ -1061,16 +1051,16 @@ public final class RecipeProcess {
         private final long seed;
         private final ProbabilityTuning tuning;
         private final ComponentMap<MachineInstance>.BindingCapture bindings;
-        private final ObjectArrayList<RecipeRequirement<?>> roots = new ObjectArrayList<>();
-        private final Object2ObjectOpenHashMap<ResourceLocation, RecipeRequirementType<?>> types = new Object2ObjectOpenHashMap<>();
-        private final ObjectOpenHashSet<ResourceLocation> ids = new ObjectOpenHashSet<>();
-        private final Object2ObjectRBTreeMap<ResourceLocation, ObjectArrayList<RecipeRequirement<?>>> orderedTypes = new Object2ObjectRBTreeMap<>();
-        private final ObjectArrayList<RecipeRequirement<?>> sorted = new ObjectArrayList<>();
+        private ObjectArrayList<RecipeRequirement<?>> roots;
+        private Object2ObjectOpenHashMap<ResourceLocation, RecipeRequirementType<?>> types;
+        private ObjectOpenHashSet<ResourceLocation> ids;
+        private Object2ObjectRBTreeMap<ResourceLocation, ObjectArrayList<RecipeRequirement<?>>> orderedTypes;
+        private ObjectArrayList<RecipeRequirement<?>> sorted;
         private int declaredCursor;
         private List<ComponentMap.SavedBinding<MachineInstance, ?>> assembly;
         private int bindingCursor;
-        private Iterator<RecipeRequirement<?>> supplied;
-        private boolean provider;
+        private List<RecipeRequirement<?>> supplied;
+        private int suppliedCursor;
         private int validationCursor;
         private Iterator<ObjectArrayList<RecipeRequirement<?>>> buckets;
         private ObjectArrayList<RecipeRequirement<?>> bucket;
@@ -1080,23 +1070,18 @@ public final class RecipeProcess {
         private RecipeProcess process;
 
         private Creation(MachineInstance owner, MachineRecipe recipe, long seed, ProbabilityTuning tuning) {
-            this.owner = Objects.requireNonNull(owner);
-            this.recipe = Objects.requireNonNull(recipe);
+            this.owner = owner;
+            this.recipe = recipe;
             this.seed = seed;
-            this.tuning = Objects.requireNonNull(tuning);
+            this.tuning = tuning;
             bindings = owner.components().beginAssemblyCapture();
         }
 
         @Override
         public boolean advance(RecipeWorkBudget budget) {
-            Objects.requireNonNull(budget);
             if (!current()) return false;
             if (phase == 4) return true;
             if (phase == 0) {
-                while (declaredCursor < recipe.orderedRequirements().size()) {
-                    if (!budget.take()) return false;
-                    roots.add(recipe.orderedRequirements().get(declaredCursor++));
-                }
                 if (!bindings.advance(budget)) return false;
                 assembly = bindings.result();
                 phase = 1;
@@ -1107,18 +1092,38 @@ public final class RecipeProcess {
                         if (!budget.take()) return false;
                         var binding = assembly.get(bindingCursor++);
                         if (!(binding.component() instanceof MachineRecipeRequirements requirements)) continue;
-                        provider = true;
-                        supplied = Objects.requireNonNull(requirements.requirementsFor(recipe), "Machine recipe requirements").iterator();
+                        var additional = requirements.requirementsFor(recipe);
+                        if (additional.isEmpty()) continue;
+                        supplied = additional;
+                        suppliedCursor = 0;
+                        if (roots == null)
+                            roots = new ObjectArrayList<>(recipe.orderedRequirements().size() + additional.size());
                     }
-                    while (supplied.hasNext()) {
+                    while (declaredCursor < recipe.orderedRequirements().size()) {
                         if (!budget.take()) return false;
-                        roots.add(Objects.requireNonNull(supplied.next(), "Machine recipe requirement root"));
+                        roots.add(recipe.orderedRequirements().get(declaredCursor++));
+                    }
+                    while (suppliedCursor < supplied.size()) {
+                        if (!budget.take()) return false;
+                        roots.add(supplied.get(suppliedCursor++));
                     }
                     supplied = null;
                 }
                 phase = 2;
             }
             if (phase == 2) {
+                if (roots == null) {
+                    if (!budget.take()) return false;
+                    process = new RecipeProcess(owner, recipe, seed, tuning, null, recipe.orderedRequirements());
+                    phase = 4;
+                    return true;
+                }
+                if (types == null) {
+                    types = new Object2ObjectOpenHashMap<>(roots.size());
+                    ids = new ObjectOpenHashSet<>(roots.size());
+                    orderedTypes = new Object2ObjectRBTreeMap<>();
+                    sorted = new ObjectArrayList<>(roots.size());
+                }
                 while (validationCursor < roots.size()) {
                     if (!budget.take()) return false;
                     var root = roots.get(validationCursor++);
@@ -1129,8 +1134,7 @@ public final class RecipeProcess {
                         throw new IllegalArgumentException("Different requirement types share id " + root.type().id());
                     if (!ids.add(root.id()))
                         throw new IllegalArgumentException("Duplicate machine recipe requirement " + root.id());
-                    if (provider)
-                        orderedTypes.computeIfAbsent(root.type().id(), _ -> new ObjectArrayList<>()).add(root);
+                    orderedTypes.computeIfAbsent(root.type().id(), _ -> new ObjectArrayList<>()).add(root);
                 }
                 buckets = orderedTypes.values().iterator();
                 phase = 3;
@@ -1150,7 +1154,7 @@ public final class RecipeProcess {
                 }
                 if (!budget.take()) return false;
                 process = new RecipeProcess(owner, recipe, seed, tuning, null,
-                    provider ? ObjectLists.unmodifiable(sorted) : recipe.orderedRequirements());
+                    sorted);
                 phase = 4;
             }
             return true;
@@ -1165,7 +1169,7 @@ public final class RecipeProcess {
         public RecipeProcess result() {
             if (phase != 4 || !current())
                 throw new IllegalStateException("Default factory capture is incomplete or stale");
-            return Objects.requireNonNull(process);
+            return process;
         }
     }
 
@@ -1507,7 +1511,7 @@ public final class RecipeProcess {
         private <T> T scopedBudget(RecipeWorkBudget budget, Supplier<T> action) {
             return scoped(() -> {
                 var previous = process.preparationWork;
-                process.preparationWork = Objects.requireNonNull(budget);
+                process.preparationWork = budget;
                 try {
                     return action.get();
                 } finally {
@@ -1543,7 +1547,7 @@ public final class RecipeProcess {
             }
             queryExecuting = true;
             try {
-                var actual = Objects.requireNonNull(scoped(delegate::resolution));
+                var actual = scoped(delegate::resolution);
                 if (uncertain && actual == intendedTerminal) {
                     confirmTerminal(actual);
                 }
@@ -1701,7 +1705,6 @@ public final class RecipeProcess {
          */
         public void recordFailure(Throwable cause) {
             requireThread();
-            Objects.requireNonNull(cause);
             if (failure == null) {
                 failure = cause;
             } else {
@@ -1732,6 +1735,7 @@ public final class RecipeProcess {
             return postDone;
         }
 
+        @SuppressWarnings("DataFlowIssue")
         private void finishSynchronousBody() {
             requireOwner();
             stopped = true;
@@ -1739,7 +1743,7 @@ public final class RecipeProcess {
             try {
                 if (!postDone) {
                     postDone = true;
-                    Objects.requireNonNull(callbacks).finish(failure);
+                    callbacks.finish(failure);
                 }
             } catch (RuntimeException | Error post) {
                 recordFailure(post);
@@ -1944,7 +1948,7 @@ public final class RecipeProcess {
                 reservations.addAll(stage.acquisition.reservations());
                 transactions.addAll(stage.acquisition.transactions());
             }
-            transactions.addAll(Objects.requireNonNull(participants));
+            transactions.addAll(participants);
             boolean sequential = false;
             for (int index10 = 0; index10 < stages.size(); index10++) {
                 var stage = stages.get(index10);
@@ -2049,7 +2053,7 @@ public final class RecipeProcess {
         public void acquirePreparedWithinBudget(RecipeWorkBudget budget) {
             var process = session.process;
             var previous = process.preparationWork;
-            process.preparationWork = Objects.requireNonNull(budget);
+            process.preparationWork = budget;
             try {
                 acquire(true);
             } finally {
@@ -2110,8 +2114,9 @@ public final class RecipeProcess {
                     }
 
                     @Override
+                    @SuppressWarnings("DataFlowIssue")
                     public RequirementTransaction acquire() {
-                        var capture = Objects.requireNonNull(speedCapture);
+                        var capture = speedCapture;
                         if (!capture.current()) return new RequirementTransaction() {
                             @Override
                             public ProcessResult result() {
@@ -2223,7 +2228,7 @@ public final class RecipeProcess {
             process.purePreparation = true;
             process.activeTick = tick;
             var previousWork = process.preparationWork;
-            process.preparationWork = Objects.requireNonNull(budget);
+            process.preparationWork = budget;
             try {
                 process.withCallbackScope(() -> {
                     acquisition.resumePreparedWithinBudget(budget);
@@ -2263,9 +2268,10 @@ public final class RecipeProcess {
             return candidate == null ? List.of() : candidate.sources();
         }
 
+        @SuppressWarnings("DataFlowIssue")
         public void finishPreparedCleanupSource(ResourceBatch.Source source, boolean resolved) {
             requireAcquired();
-            Objects.requireNonNull(acquisition.cleanupCandidate()).finishSourceResolution(source, resolved);
+            acquisition.cleanupCandidate().finishSourceResolution(source, resolved);
         }
 
         public boolean advancePreparedCleanup(RecipeWorkBudget budget, boolean cancel) {
@@ -2317,7 +2323,7 @@ public final class RecipeProcess {
         private void acquireNextWithinBudget(RecipeWorkBudget budget) {
             var process = session.process;
             var previous = process.preparationWork;
-            process.preparationWork = Objects.requireNonNull(budget);
+            process.preparationWork = budget;
             try {
                 acquireNext();
             } finally {
@@ -2427,9 +2433,10 @@ public final class RecipeProcess {
          * released. False leaves the stage/post obligation pinned. Pass any source/owner/finish fault
          * so a terminal notification failure cannot silently permit later stages or persistence.
          */
+        @SuppressWarnings("DataFlowIssue")
         public boolean settleBatch(@Nullable Throwable failure) {
             requireAcquired();
-            var bound = Objects.requireNonNull(batch, "Recipe stage has no bound batch");
+            var bound = batch;
             if (failure != null) {
                 session.recordFailure(failure);
             }
@@ -2754,8 +2761,8 @@ public final class RecipeProcess {
             private boolean complete;
 
             private BatchCapture(List<Stage> stages, List<? extends ReversibleTransaction> participants) {
-                input = Objects.requireNonNull(stages);
-                this.participants = Objects.requireNonNull(participants);
+                input = stages;
+                this.participants = participants;
                 if (input.isEmpty()) throw new IllegalArgumentException("Recipe round is empty");
             }
 
@@ -2807,7 +2814,7 @@ public final class RecipeProcess {
                 if (phase == 0) phase = 1;
                 while (phase == 1 && participant < participants.size()) {
                     if (!budget.take()) return false;
-                    business.add(Objects.requireNonNull(participants.get(participant++)));
+                    business.add(participants.get(participant++));
                 }
                 if (phase == 1) {
                     phase = 2;
@@ -2856,7 +2863,7 @@ public final class RecipeProcess {
                     var target = round.get(publish++);
                     target.requireAcquired();
                     target.batch = result;
-                    target.acquisition.attachFlatParent(Objects.requireNonNull(result));
+                    target.acquisition.attachFlatParent(result);
                 }
                 complete = true;
                 return true;
@@ -2879,8 +2886,6 @@ public final class RecipeProcess {
         }
 
         public State {
-            Objects.requireNonNull(lifecycle);
-            Objects.requireNonNull(result);
             if (!Double.isFinite(progress) || progress < 0 || successfulTicks < 0) {
                 throw new IllegalArgumentException("Invalid process progress");
             }
@@ -2918,7 +2923,6 @@ public final class RecipeProcess {
         private boolean resourceEntered;
 
         public boolean advance(RecipeWorkBudget budget) {
-            Objects.requireNonNull(budget);
             if (!current()) return false;
             if (phase == 4) return true;
             if (phase == 0) {
@@ -2932,7 +2936,7 @@ public final class RecipeProcess {
                         if (!budget.take()) return false;
                         var hatch = bindings.resources().get(hatchCursor);
                         var storage = side++ == 0 ? hatch.input() : hatch.output();
-                        if (storage != null) contexts.add(Objects.requireNonNull(storage.context()));
+                        if (storage != null) contexts.add(storage.context());
                     }
                     hatchCursor++;
                     resourceEntered = false;
@@ -2942,7 +2946,7 @@ public final class RecipeProcess {
             if (phase == 1) {
                 while (energyCursor < bindings.energyInputs().size()) {
                     if (!budget.take()) return false;
-                    contexts.add(Objects.requireNonNull(bindings.energyInputs().get(energyCursor++).context()));
+                    contexts.add(bindings.energyInputs().get(energyCursor++).context());
                 }
                 energyCursor = 0;
                 phase = 2;
@@ -2950,7 +2954,7 @@ public final class RecipeProcess {
             if (phase == 2) {
                 while (energyCursor < bindings.energyOutputs().size()) {
                     if (!budget.take()) return false;
-                    contexts.add(Objects.requireNonNull(bindings.energyOutputs().get(energyCursor++).context()));
+                    contexts.add(bindings.energyOutputs().get(energyCursor++).context());
                 }
                 phase = 3;
             }
@@ -2964,20 +2968,20 @@ public final class RecipeProcess {
                 if (frame.declared == null) {
                     if (!budget.take()) return false;
                     frame.declared = withRequirementPath(frame.path,
-                        () -> Objects.requireNonNull(storageDeclarations(frame.requirement)).iterator());
+                        () -> storageDeclarations(frame.requirement).iterator());
                 }
                 while (frame.declared.hasNext()) {
                     if (!budget.take()) return false;
-                    contexts.add(Objects.requireNonNull(frame.declared.next()));
+                    contexts.add(frame.declared.next());
                 }
                 if (frame.children == null) {
                     if (!budget.take()) return false;
                     frame.children = withRequirementPath(frame.path,
-                        () -> Objects.requireNonNull(structuralChildren(frame.requirement)).iterator());
+                        () -> structuralChildren(frame.requirement).iterator());
                 }
                 if (frame.children.hasNext()) {
                     if (!budget.take()) return false;
-                    var child = Objects.requireNonNull(frame.children.next());
+                    var child = frame.children.next();
                     frames.add(new ContextFrame(child, child.path(frame.path)));
                     continue;
                 }
@@ -2995,7 +2999,7 @@ public final class RecipeProcess {
         public List<StorageContext> result() {
             if (phase != 4 || !current())
                 throw new IllegalStateException("Storage context capture is incomplete or stale");
-            return ObjectLists.unmodifiable(contexts);
+            return contexts;
         }
     }
 
@@ -3009,17 +3013,16 @@ public final class RecipeProcess {
         private boolean done;
 
         private ContinuationShape(List<RecipeRequirement<?>> candidates, RequirementPath parent) {
-            this.candidates = Objects.requireNonNull(candidates);
-            this.parent = Objects.requireNonNull(parent);
+            this.candidates = candidates;
+            this.parent = parent;
         }
 
         public boolean advance(RecipeWorkBudget budget) {
-            Objects.requireNonNull(budget);
             if (done) return true;
             while (!frames.isEmpty() || root < candidates.size()) {
                 if (frames.isEmpty()) {
                     if (!budget.take()) return false;
-                    var candidate = Objects.requireNonNull(candidates.get(root++));
+                    var candidate = candidates.get(root++);
                     frames.add(new ContextFrame(candidate, candidate.path(parent)));
                     checked = false;
                 }
@@ -3036,11 +3039,11 @@ public final class RecipeProcess {
                 if (frame.children == null) {
                     if (!budget.take()) return false;
                     frame.children = withPreparationContext(frame.path,
-                        () -> Objects.requireNonNull(structuralChildren(frame.requirement)).iterator());
+                        () -> structuralChildren(frame.requirement).iterator());
                 }
                 if (frame.children.hasNext()) {
                     if (!budget.take()) return false;
-                    var child = Objects.requireNonNull(frame.children.next());
+                    var child = frame.children.next();
                     frames.add(new ContextFrame(child, child.path(frame.path)));
                     checked = false;
                 } else {

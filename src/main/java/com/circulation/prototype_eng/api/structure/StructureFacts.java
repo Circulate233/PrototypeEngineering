@@ -1,9 +1,7 @@
 package com.circulation.prototype_eng.api.structure;
 
 import net.minecraft.util.math.BlockPos;
-import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * A read-only view of already captured facts at a structure base or declared query position.
@@ -13,10 +11,8 @@ import java.util.Objects;
 public record StructureFacts(StructureSnapshot snapshot, BlockPos position, BlockPos controller,
                              StructureTransform rotation) {
     public StructureFacts {
-        Objects.requireNonNull(snapshot);
-        position = Objects.requireNonNull(position).toImmutable();
-        controller = Objects.requireNonNull(controller).toImmutable();
-        Objects.requireNonNull(rotation);
+        position = position.toImmutable();
+        controller = controller.toImmutable();
     }
 
     public boolean available() {
@@ -43,7 +39,6 @@ public record StructureFacts(StructureSnapshot snapshot, BlockPos position, Bloc
     /**
      * Undeclared, unavailable and failed reads keep the snapshot's original error semantics.
      */
-    @Nullable
     public <T> T read(StructureQuery<T> query) {
         return snapshot.read(query, position);
     }

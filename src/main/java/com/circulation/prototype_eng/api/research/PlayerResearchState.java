@@ -4,6 +4,7 @@ import com.circulation.prototype_eng.api.research.reward.RewardClaim;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import it.unimi.dsi.fastutil.ints.IntCollection;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSets;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
@@ -12,7 +13,6 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -30,7 +30,7 @@ public final class PlayerResearchState {
     private Object writer;
 
     public PlayerResearchState(UUID playerUuid) {
-        this.playerUuid = Objects.requireNonNull(playerUuid, "playerUuid");
+        this.playerUuid = playerUuid;
         state = new Snapshot(playerUuid, Object2IntMaps.emptyMap(), ObjectLists.emptyList());
     }
 
@@ -43,23 +43,21 @@ public final class PlayerResearchState {
     }
 
     public synchronized boolean canWriteResearch(ResourceLocation id) {
-        return writer == null && !sourceReservations.containsKey(Objects.requireNonNull(id));
+        return writer == null && !sourceReservations.containsKey(id);
     }
 
     public synchronized boolean sourceReserved(ResourceLocation id) {
-        return sourceReservations.containsKey(Objects.requireNonNull(id));
+        return sourceReservations.containsKey(id);
     }
 
     public synchronized boolean sourceReservedBy(ResourceLocation id, UUID operationId) {
-        return Objects.requireNonNull(operationId).equals(sourceReservations.get(Objects.requireNonNull(id)));
+        return operationId.equals(sourceReservations.get(id));
     }
 
     /**
      * Runtime-only research reservation. It never borrows the whole player's writer across ticks.
      */
     public synchronized boolean tryReserveSource(ResourceLocation id, UUID operationId) {
-        Objects.requireNonNull(id);
-        Objects.requireNonNull(operationId);
         var existing = sourceReservations.get(id);
         if (existing != null) return existing.equals(operationId);
         if (writer != null) return false;
@@ -68,8 +66,6 @@ public final class PlayerResearchState {
     }
 
     public synchronized boolean canReleaseSource(ResourceLocation id, UUID operationId) {
-        Objects.requireNonNull(id);
-        Objects.requireNonNull(operationId);
         return !(writer instanceof Completion completion && id.equals(completion.researchId)
             && operationId.equals(completion.operationId));
     }
@@ -81,7 +77,7 @@ public final class PlayerResearchState {
     }
 
     public synchronized int completedLevel(ResourceLocation id) {
-        return state.completedLevels().getInt(Objects.requireNonNull(id, "id"));
+        return state.completedLevels().getInt(id);
     }
 
     public synchronized Object2IntMap<ResourceLocation> completedLevelsSnapshot() {
@@ -110,7 +106,7 @@ public final class PlayerResearchState {
      */
     @SuppressWarnings("UnusedReturnValue") // Reports whether a caller raised the personal level.
     public boolean completeAtLeast(ResourceLocation id, int level) {
-        var mutation = tryPrepareCompletion(id, true, level, new IntOpenHashSet(), 0);
+        var mutation = tryPrepareCompletion(id, true, level, IntSets.emptySet(), 0);
         if (mutation == null) return false;
         mutation.commit();
         mutation.complete();
@@ -120,13 +116,16 @@ public final class PlayerResearchState {
     public synchronized Completion prepareCompletion(ResourceLocation id, boolean raiseCompletedLevel, int targetLevel,
                                                      IntCollection rewardEligibilityLevels, long eligibleAtWorldTime) {
         requireAvailable();
-        Objects.requireNonNull(id, "id");
         requireUnreserved(id);
-        Objects.requireNonNull(rewardEligibilityLevels, "rewardEligibilityLevels");
         if (targetLevel < 1 || eligibleAtWorldTime < 0) throw new IllegalArgumentException("Invalid completion");
-        var levels = new Object2IntOpenHashMap<>(state.completedLevels());
+        Object2IntMap<ResourceLocation> levels = state.completedLevels();
         boolean raised = raiseCompletedLevel && levels.getInt(id) < targetLevel;
-        if (raised) levels.put(id, targetLevel);
+        if (raised) {
+            levels = new Object2IntOpenHashMap<>(levels);
+            levels.put(id, targetLevel);
+        }
+        if (rewardEligibilityLevels.isEmpty())
+            return acquire(id, null, new Snapshot(playerUuid, levels, state.rewardClaims()), raised, false);
         var claims = new Object2ObjectLinkedOpenHashMap<RewardClaim.Key, RewardClaim>();
         var elements = state.rewardClaims();
         for (int index1 = 0; index1 < elements.size(); index1++) {
@@ -144,7 +143,8 @@ public final class PlayerResearchState {
                 eligibility = true;
             }
         }
-        return acquire(id, null, new Snapshot(playerUuid, levels, new ObjectArrayList<>(claims.values())), raised, eligibility);
+        return acquire(id, null, new Snapshot(playerUuid, levels,
+            eligibility ? new ObjectArrayList<>(claims.values()) : state.rewardClaims()), raised, eligibility);
     }
 
     /**
@@ -162,7 +162,6 @@ public final class PlayerResearchState {
      */
     public synchronized Completion prepareSourceMutation(ResourceLocation id, int expectedBeforeLevel, int afterLevel) {
         requireAvailable();
-        Objects.requireNonNull(id, "id");
         requireUnreserved(id);
         return prepareSourceMutation(id, expectedBeforeLevel, afterLevel, null);
     }
@@ -173,7 +172,6 @@ public final class PlayerResearchState {
     @Nullable
     public synchronized Completion tryPrepareSourceMutation(ResourceLocation id, int expectedBeforeLevel,
                                                             int afterLevel, @Nullable UUID operationId) {
-        Objects.requireNonNull(id);
         if (writer != null || (operationId == null ? sourceReserved(id) : !sourceReservedBy(id, operationId)))
             return null;
         return prepareSourceMutation(id, expectedBeforeLevel, afterLevel, operationId);
@@ -211,7 +209,6 @@ public final class PlayerResearchState {
      * One reward executor owns all player changes until it leaves the checkpoint/delivery call stack.
      */
     public synchronized RewardSession tryRewardSession(RewardClaim.Key key) {
-        Objects.requireNonNull(key, "key");
         if (!playerUuid.equals(key.playerUuid())) throw new IllegalArgumentException("Reward actor changed");
         if (writer != null) return null;
         var session = new RewardSession(this, key);
@@ -333,10 +330,20 @@ public final class PlayerResearchState {
     public static final class RewardSession implements AutoCloseable {
         private final PlayerResearchState owner;
         private final RewardClaim.Key key;
+        private final int index;
 
         private RewardSession(PlayerResearchState owner, RewardClaim.Key key) {
             this.owner = owner;
             this.key = key;
+            var claims = owner.state.rewardClaims();
+            int found = -1;
+            for (int candidate = 0; candidate < claims.size(); candidate++) {
+                if (claims.get(candidate).key().equals(key)) {
+                    found = candidate;
+                    break;
+                }
+            }
+            index = found;
         }
 
         /**
@@ -361,12 +368,7 @@ public final class PlayerResearchState {
         public RewardClaim current() {
             synchronized (owner) {
                 requireOwner();
-                var elements2 = owner.state.rewardClaims();
-                for (int index2 = 0; index2 < elements2.size(); index2++) {
-                    var claim = elements2.get(index2);
-                    if (claim.key().equals(key)) return claim;
-                }
-                return null;
+                return index < 0 ? null : owner.state.rewardClaims().get(index);
             }
         }
 
@@ -378,16 +380,11 @@ public final class PlayerResearchState {
             synchronized (owner) {
                 requireOwner();
                 if (!replacement.key().equals(key)) throw new IllegalArgumentException("Reward claim identity changed");
+                if (index < 0) throw new IllegalStateException("Reward eligibility disappeared");
                 var claims = new ObjectArrayList<>(owner.state.rewardClaims());
-                for (int index = 0; index < claims.size(); index++) {
-                    if (claims.get(index).key().equals(key)) {
-                        claims.get(index).requireTransitionTo(replacement);
-                        claims.set(index, replacement);
-                        owner.state = new Snapshot(owner.playerUuid, owner.state.completedLevels(), claims);
-                        return;
-                    }
-                }
-                throw new IllegalStateException("Reward eligibility disappeared");
+                claims.get(index).requireTransitionTo(replacement);
+                claims.set(index, replacement);
+                owner.state = new Snapshot(owner.playerUuid, owner.state.completedLevels(), claims);
             }
         }
 
@@ -403,29 +400,10 @@ public final class PlayerResearchState {
         }
     }
 
+    /**
+     * Completed zero-default levels and claims are borrowed read-only for this snapshot's lifetime.
+     */
     public record Snapshot(UUID playerUuid, Object2IntMap<ResourceLocation> completedLevels,
                            ObjectList<RewardClaim> rewardClaims) {
-        public Snapshot {
-            Objects.requireNonNull(playerUuid, "playerUuid");
-            var levels = new Object2IntOpenHashMap<ResourceLocation>(completedLevels.size());
-            for (var entry : Objects.requireNonNull(completedLevels, "completedLevels").object2IntEntrySet()) {
-                if (entry.getKey() == null || entry.getIntValue() < 1)
-                    throw new IllegalArgumentException("Invalid completed level");
-                levels.put(entry.getKey(), entry.getIntValue());
-            }
-            levels.defaultReturnValue(0);
-            completedLevels = levels;
-            var claims = new ObjectArrayList<RewardClaim>(rewardClaims.size());
-            var keys = new ObjectOpenHashSet<RewardClaim.Key>(rewardClaims.size());
-            var elements3 = Objects.requireNonNull(rewardClaims, "rewardClaims");
-            for (int index3 = 0; index3 < elements3.size(); index3++) {
-                var claim = elements3.get(index3);
-                if (!Objects.requireNonNull(claim, "claim").key().playerUuid().equals(playerUuid) || !keys.add(claim.key())) {
-                    throw new IllegalArgumentException("Invalid or duplicate player reward claim");
-                }
-                claims.add(claim);
-            }
-            rewardClaims = ObjectLists.unmodifiable(claims);
-        }
     }
 }

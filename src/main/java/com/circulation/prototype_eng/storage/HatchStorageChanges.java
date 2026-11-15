@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.storage;
 
-import java.util.Objects;
 
 /**
  * Candidate construction cannot dirty a real host before both sides have been installed.
@@ -10,7 +9,7 @@ public final class HatchStorageChanges implements Runnable {
     private volatile boolean enabled;
 
     public HatchStorageChanges(Runnable changed) {
-        this.changed = Objects.requireNonNull(changed);
+        this.changed = changed;
     }
 
     public void enable() {

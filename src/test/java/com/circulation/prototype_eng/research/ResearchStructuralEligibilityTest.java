@@ -68,12 +68,6 @@ class ResearchStructuralEligibilityTest {
         return new Object2IntOpenHashMap<>();
     }
 
-    private static Object2IntOpenHashMap<ResourceLocation> levels(ResourceLocation id, int level) {
-        var result = levels();
-        result.put(id, level);
-        return result;
-    }
-
     private static Reference2DoubleOpenHashMap<NetworkResourceType> resources(long compute) {
         var result = new Reference2DoubleOpenHashMap<NetworkResourceType>();
         if (compute > 0) {
@@ -149,7 +143,8 @@ class ResearchStructuralEligibilityTest {
         var second = new PlayerResearchState(SECOND);
         second.completeAtLeast(gate.id(), 2);
         var players = Map.of(FIRST, first, SECOND, second);
-        var team = levels(owned.id(), 5);
+        var team = levels();
+        team.put(owned.id(), 5);
         var members = new ObjectArrayList<>(List.of(FIRST));
         var partial = eligibility.calculateStructural("team", members, players, team, Set.of());
         assertEquals(1, partial.completedLevel(gate.id()));
@@ -168,16 +163,4 @@ class ResearchStructuralEligibilityTest {
         assertEquals(1, first.completedLevel(leaf.id()));
     }
 
-    @Test
-    void structuralProjectionKeepsSourcePolicy() {
-        var personal = definition("personal", 2, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage(1, 2).build()).build();
-        var owned = definition("owned", 2, ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(stage(1, 2).build()).build();
-        var eligibility = new ResearchEligibility(registry(personal, owned));
-        var first = new PlayerResearchState(FIRST);
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculateStructural("team", List.of(), Map.of(), levels(personal.id(), 1), Set.of()));
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculateStructural("team", List.of(), Map.of(), levels(owned.id(), 3), Set.of()));
-        first.completeAtLeast(owned.id(), 1);
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculateStructural("team", List.of(FIRST), Map.of(FIRST, first), levels(owned.id(), 1), Set.of()));
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculateStructural("team", List.of(FIRST), Map.of(), levels(), Set.of()));
-    }
 }

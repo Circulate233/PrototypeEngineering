@@ -22,7 +22,6 @@ import org.jetbrains.annotations.Nullable;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -112,15 +111,15 @@ public final class TaskScheduler implements AutoCloseable {
 
     TaskScheduler(Thread owner, SchedulerConfig.Settings settings, @Nullable PlannedFactory plannedFactory,
                   @Nullable PlannedFactory afterOrdinary) {
-        this.owner = Objects.requireNonNull(owner);
-        effectiveSettings = Objects.requireNonNull(settings);
+        this.owner = owner;
+        effectiveSettings = settings;
         workerThreads = settings.workerThreads();
         laneCount = settings.laneCount();
         metrics = new SchedulerMetrics(settings.metricsWindowTicks());
         defaultMachineFactory = plannedFactory == null;
         this.plannedFactory = defaultMachineFactory
             ? new MachineRecipeExecutionFactory(this::plannedCandidates, this::capturePreparation,
-            () -> tickGeneration, () -> tickOpen, _ -> false) : Objects.requireNonNull(plannedFactory);
+            () -> tickGeneration, () -> tickOpen, _ -> false) : plannedFactory;
         this.afterOrdinary = afterOrdinary;
         plannedTimeoutNanos = settings.plannedTimeout().toNanos();
     }
@@ -140,13 +139,8 @@ public final class TaskScheduler implements AutoCloseable {
     TaskScheduler(Thread owner, int workerThreads, int laneCount, ExecutorService workers, ExecutorService[] lanes,
                   @Nullable PlannedFactory plannedFactory, @Nullable PlannedFactory afterOrdinary, Duration plannedTimeout) {
         this(owner, workerThreads, laneCount, plannedFactory, afterOrdinary, plannedTimeout);
-        Objects.requireNonNull(workers);
-        Objects.requireNonNull(lanes);
         if (lanes.length != laneCount) {
             throw new IllegalArgumentException("Injected lane count differs from configuration");
-        }
-        for (ExecutorService lane : lanes) {
-            Objects.requireNonNull(lane);
         }
         this.workers = workers;
         this.lanes = lanes;
@@ -166,14 +160,13 @@ public final class TaskScheduler implements AutoCloseable {
     }
 
     private static void requireOrdinary(ExecutionMode mode) {
-        Objects.requireNonNull(mode);
         if (mode == ExecutionMode.PLANNED_PARALLEL) {
             throw new IllegalArgumentException("PLANNED_PARALLEL does not accept Runnable tasks");
         }
     }
 
     private static ExecutionMode requireScheduledMode(ScheduledTask task) {
-        var mode = Objects.requireNonNull(task.executionMode());
+        var mode = task.executionMode();
         if (mode == ExecutionMode.PLANNED_PARALLEL) {
             if (!(task instanceof PlannedMachineTask host)) {
                 throw new IllegalArgumentException("PLANNED_PARALLEL requires PlannedMachineTask");
@@ -200,7 +193,6 @@ public final class TaskScheduler implements AutoCloseable {
     public void register(ScheduledTask task) {
         State previous = enterMutation(true);
         try {
-            Objects.requireNonNull(task);
             requireScheduledMode(task);
             if (!registered.containsKey(task)) {
                 registered.put(task, new Registration(task));
@@ -213,7 +205,7 @@ public final class TaskScheduler implements AutoCloseable {
     public void unregister(ScheduledTask task) {
         State previous = enterMutation(false);
         try {
-            registered.remove(Objects.requireNonNull(task));
+            registered.remove(task);
         } finally {
             state = previous;
         }
@@ -272,7 +264,7 @@ public final class TaskScheduler implements AutoCloseable {
         if (state != State.IDLE && state != State.MAIN && state != State.BOUNDARY && state != State.PLANNED)
             throw new IllegalStateException("Settings cannot be requested from owner metadata capture");
         requireHealthy();
-        pendingSettings = Objects.requireNonNull(settings);
+        pendingSettings = settings;
     }
 
     private void applySettings(SchedulerConfig.Settings eligible, Failures failures) {
@@ -302,7 +294,6 @@ public final class TaskScheduler implements AutoCloseable {
      * Thread-safe Runnable enqueue; PLANNED_PARALLEL requires a typed scheduled host instead.
      */
     public void submit(Runnable task, ExecutionMode mode) {
-        Objects.requireNonNull(task);
         requireOrdinary(mode);
         synchronized (submissionLock) {
             if (!accepting || faulted) {
@@ -323,7 +314,6 @@ public final class TaskScheduler implements AutoCloseable {
      * actions until close can be retried. Owner metadata callbacks cannot request a boundary.
      */
     public void runAtBoundary(Runnable action) {
-        Objects.requireNonNull(action);
         boolean ownerRequest = Thread.currentThread() == owner;
         if (ownerRequest && state != State.IDLE && state != State.MAIN && state != State.PLANNED && state != State.BOUNDARY) {
             throw new IllegalStateException("Scheduler boundary cannot be requested from this owner phase");
@@ -371,9 +361,6 @@ public final class TaskScheduler implements AutoCloseable {
      */
     public void enqueueStructureCheck(Object ownerIdentity, Supplier<StructureWork> prepare, Runnable completed) {
         requireOwner();
-        Objects.requireNonNull(ownerIdentity);
-        Objects.requireNonNull(prepare);
-        Objects.requireNonNull(completed);
         if (state != State.IDLE && state != State.MAIN && state != State.PLANNED && state != State.BOUNDARY)
             throw new IllegalStateException("Structure preparation cannot be requested from this owner phase");
         synchronized (submissionLock) {
@@ -421,7 +408,7 @@ public final class TaskScheduler implements AutoCloseable {
             outcomes.clear();
             for (int index = 0; index < prepared.size(); index++) {
                 var result = results == null
-                    ? new PlannedTaskExecutor.Failure<Boolean>(Objects.requireNonNull(dispatchFailure)) : results.get(index);
+                    ? new PlannedTaskExecutor.Failure<Boolean>(dispatchFailure) : results.get(index);
                 try {
                     prepared.get(index).joined.accept(result);
                 } catch (RuntimeException | Error failure) {
@@ -477,10 +464,9 @@ public final class TaskScheduler implements AutoCloseable {
         return runStructureWorkers(List.of(new PlannedTaskExecutor.Job<T>(null, action)), deadline).getFirst();
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private <T> List<PlannedTaskExecutor.Result<T>> runStructureWorkers(List<PlannedTaskExecutor.Job<T>> jobs, PlannedDeadline deadline) {
         requireOwner();
-        Objects.requireNonNull(jobs);
-        Objects.requireNonNull(deadline);
         if (state != State.BOUNDARY || !boundaryReady)
             throw new IllegalStateException("Structure worker requires the exclusive joined owner boundary");
         requireHealthy();
@@ -495,7 +481,7 @@ public final class TaskScheduler implements AutoCloseable {
         Throwable primary = null;
         try {
             plannedTasks.runPrepare(jobs, deadline, batch -> borrowed.batch = batch);
-            var results = Objects.requireNonNull(borrowed.batch).results();
+            var results = borrowed.batch.results();
             for (int index14 = 0; index14 < results.size(); index14++) {
                 var result = results.get(index14);
                 if (result instanceof PlannedTaskExecutor.Failure<T>(var failure) && primary == null) primary = failure;
@@ -538,7 +524,6 @@ public final class TaskScheduler implements AutoCloseable {
      * and boundary-cleanup path; neither preparation nor the rejected action is retried.
      */
     public void tick(Runnable prepare) {
-        Objects.requireNonNull(prepare);
         enterTick();
         var eligibleSettings = pendingSettings; // Requests made during this tick cannot install in it.
         var tickMeasurement = new TickMeasurement(System.nanoTime());
@@ -589,7 +574,7 @@ public final class TaskScheduler implements AutoCloseable {
                         failures.interrupted(failure);
                         fault();
                     } catch (ExecutionException failure) {
-                        failures.add(Objects.requireNonNull(failure.getCause()));
+                        failures.add(failure.getCause());
                         fault();
                         completed = true;
                     }
@@ -631,15 +616,16 @@ public final class TaskScheduler implements AutoCloseable {
             state = State.IDLE;
             failures.restoreInterrupt();
             measurement = null;
-            metrics.record(tickMeasurement.sample(System.nanoTime()));
+            tickMeasurement.record(metrics, System.nanoTime());
             metrics.maybeLog(effectiveSettings.metricsLogIntervalTicks(), effectiveSettings.metricsEnabled(),
                 report -> PrototypeEngineering.LOGGER.info(report.toLogLine()));
         }
         failures.throwIfPresent();
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void executeOrdinary(Runnable prepare, ObjectArrayList<FutureTask<Void>> futures, Failures failures) {
-        var current = Objects.requireNonNull(measurement);
+        var current = measurement;
         current.mainStart = System.nanoTime();
         try {
             plannedCandidates.clear();
@@ -699,9 +685,7 @@ public final class TaskScheduler implements AutoCloseable {
                     continue;
                 }
                 var keys = new ObjectOpenHashSet<>();
-                for (Object key : Objects.requireNonNull(task.affinityKeys())) {
-                    keys.add(Objects.requireNonNull(key));
-                }
+                keys.addAll(task.affinityKeys());
                 concurrent.add(new Snapshot(task, keys));
             }
             ObjectArrayList<Group> groups = group(concurrent);
@@ -739,12 +723,13 @@ public final class TaskScheduler implements AutoCloseable {
         }
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void runMain(Runnable action, Runnable prepare, Failures failures, boolean custom) {
         try {
             state = State.CAPTURING_MAIN;
             prepare.run();
             state = State.MAIN;
-            var current = Objects.requireNonNull(measurement);
+            var current = measurement;
             if (custom) current.customMainTasks++;
             else current.mainTasks++;
             action.run();
@@ -757,8 +742,9 @@ public final class TaskScheduler implements AutoCloseable {
         failures.throwIfPresent();
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private Runnable capturePreparation() {
-        var captured = Objects.requireNonNull(tickPreparation);
+        var captured = tickPreparation;
         return () -> {
             State previous = state;
             state = State.CAPTURING_PLANNED;
@@ -868,10 +854,11 @@ public final class TaskScheduler implements AutoCloseable {
         }
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void advancePending(Failures failures) {
         pendingExitProven = false;
         try {
-            Objects.requireNonNull(pendingExecution).advance(cleanupDeadline());
+            pendingExecution.advance(cleanupDeadline());
         } catch (Throwable failure) {
             failures.add(failure);
             fault();
@@ -882,11 +869,12 @@ public final class TaskScheduler implements AutoCloseable {
         }
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private boolean pendingFinished(Failures failures) {
         State previous = state;
         state = State.CAPTURING_PLANNED;
         try {
-            return Objects.requireNonNull(pendingExecution).finished();
+            return pendingExecution.finished();
         } catch (Throwable failure) {
             failures.add(failure);
             fault();
@@ -896,6 +884,7 @@ public final class TaskScheduler implements AutoCloseable {
         }
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void cancelPending(Failures failures, Reason reason) {
         if (pendingStopConfirmed) {
             return;
@@ -907,7 +896,7 @@ public final class TaskScheduler implements AutoCloseable {
         state = State.PLANNED;
         long cleanupStart = System.nanoTime();
         try {
-            Objects.requireNonNull(pendingExecution).cancel(pendingStopReason);
+            pendingExecution.cancel(pendingStopReason);
             pendingStopConfirmed = true;
         } catch (Throwable failure) {
             failures.add(failure);
@@ -918,10 +907,11 @@ public final class TaskScheduler implements AutoCloseable {
         }
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void awaitPending(Failures failures) {
         long cleanupStart = System.nanoTime();
         try {
-            Objects.requireNonNull(pendingExecution).awaitExit();
+            pendingExecution.awaitExit();
             pendingExitProven = true;
         } catch (Throwable failure) {
             failures.add(failure);
@@ -932,7 +922,7 @@ public final class TaskScheduler implements AutoCloseable {
             failures.observeInterrupt();
             if (interrupted) {
                 try {
-                    Objects.requireNonNull(pendingExecution).awaitExit();
+                    pendingExecution.awaitExit();
                     pendingExitProven = true;
                 } catch (Throwable retryFailure) {
                     failures.add(retryFailure);
@@ -1249,12 +1239,6 @@ public final class TaskScheduler implements AutoCloseable {
             }, completed);
         }
 
-        public StructureWork {
-            Objects.requireNonNull(deadline);
-            Objects.requireNonNull(action);
-            Objects.requireNonNull(joined);
-            Objects.requireNonNull(completed);
-        }
     }
 
     private static final class TickMeasurement {
@@ -1289,8 +1273,8 @@ public final class TaskScheduler implements AutoCloseable {
             }
         }
 
-        private SchedulerMetrics.Sample sample(long end) {
-            return new SchedulerMetrics.Sample(end - tickStart, mainWallNanos, concurrentStageWallNanos, joinWallNanos,
+        private void record(SchedulerMetrics metrics, long end) {
+            metrics.record(end - tickStart, mainWallNanos, concurrentStageWallNanos, joinWallNanos,
                 plannedWallNanos, cleanupWallNanos, structureWorkerWallNanos, mainTasks, concurrentTasks,
                 customMainTasks, customConcurrentTasks, affinityGroups);
         }

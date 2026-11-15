@@ -14,9 +14,6 @@ import java.util.Objects;
 @ZenRegister
 @ZenClass("mods.prototype_eng.recipe.UpdateResult")
 public record ZenRecipeUpdateResult(RecipeDefinitionUpdates.Result value) {
-    public ZenRecipeUpdateResult {
-        Objects.requireNonNull(value);
-    }
 
     @ZenGetter("status")
     public String status() {

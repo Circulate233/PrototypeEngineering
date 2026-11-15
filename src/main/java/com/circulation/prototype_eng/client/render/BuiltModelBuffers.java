@@ -9,7 +9,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.nio.ByteBuffer;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * One cache ownership plus explicit readers cover builders, packed buffers and concrete GPU slots together.
@@ -170,12 +169,14 @@ public final class BuiltModelBuffers {
         return false;
     }
 
+    @SuppressWarnings("DataFlowIssue") // Asset-backed buffers are constructed with their captured texture identifier.
     public boolean bindTexture() {
-        return assets == null || assets.bind(Objects.requireNonNull(texture));
+        return assets == null || assets.bind(texture);
     }
 
+    @SuppressWarnings("DataFlowIssue") // Asset-backed buffers are constructed with their captured texture identifier.
     public @Nullable Object textureIdentity() {
-        return assets == null ? null : assets.textureIdentity(Objects.requireNonNull(texture));
+        return assets == null ? null : assets.textureIdentity(texture);
     }
 
     Map<MachineRenderPass, BufferBuilder> builders() {

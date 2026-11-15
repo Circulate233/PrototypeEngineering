@@ -43,19 +43,20 @@ public final class MEResourceHatch implements ResourceHatch {
     /**
      * Explicit type set supports external storage hosts without accessing the global resource registry.
      */
+    @SuppressWarnings("DataFlowIssue")
     public MEResourceHatch(HatchMode mode, int inputSlots, Runnable onChanged, Supplier<AEColor> color,
                            Iterable<AEKeyType> types) {
-        this.mode = Objects.requireNonNull(mode);
-        this.color = Objects.requireNonNull(color);
+        this.mode = mode;
+        this.color = color;
         if (inputSlots <= 0) throw new IllegalArgumentException("ME input slot count must be positive");
         var capacities = new Reference2LongOpenHashMap<AEKeyType>();
-        for (var type : Objects.requireNonNull(types)) capacities.put(Objects.requireNonNull(type), Long.MAX_VALUE);
+        for (var type : types) capacities.put(type, Long.MAX_VALUE);
         if (capacities.isEmpty()) throw new IllegalStateException("ME resources require registered AE key types");
         input = mode.hasInput() ? new SlottedResourceBuffer(inputSlots, capacities, onChanged) : null;
         output = mode.hasOutput() ? new UnboundedResourceBuffer(onChanged) : null;
         inputMarks = new GenericStack[input == null ? 0 : inputSlots];
         contexts = input != null && output != null ? List.of(input.context(), output.context())
-            : input != null ? List.of(input.context()) : List.of(Objects.requireNonNull(output).context());
+            : input != null ? List.of(input.context()) : List.of(output.context());
     }
 
     /**
@@ -126,10 +127,10 @@ public final class MEResourceHatch implements ResourceHatch {
         return inputMarks.length;
     }
 
-    @SuppressWarnings("unused") // Public downstream single-marker query; built-in GUI captures complete views.
+    @SuppressWarnings({"unused", "DataFlowIssue"})
+    // Public downstream single-marker query; built-in GUI captures complete views.
     public @Nullable GenericStack inputMark(int slot) {
-        var buffer = Objects.requireNonNull(input, "ME assembly has no input");
-        var context = buffer.context();
+        var context = input.context();
         context.lock();
         try {
             return inputMarks[Objects.checkIndex(slot, inputMarks.length)];
@@ -141,8 +142,9 @@ public final class MEResourceHatch implements ResourceHatch {
     /**
      * Marker revision is independent of refill changes, so typing does not race an ordinary ME tick.
      */
+    @SuppressWarnings("DataFlowIssue")
     public boolean compareInputMark(int slot, long expectedRevision, @Nullable GenericStack next) {
-        var buffer = Objects.requireNonNull(input, "ME assembly has no input");
+        var buffer = input;
         Objects.checkIndex(slot, inputMarks.length);
         if (next != null && (next.amount() <= 0 || !buffer.isSupportedType(next.what().getType())))
             throw new IllegalArgumentException("Invalid ME input marker");
@@ -191,7 +193,6 @@ public final class MEResourceHatch implements ResourceHatch {
      * Runs on the real ME owner thread; native receipts cover every reentrant network transfer.
      */
     public void transfer(METransfer transfer) {
-        Objects.requireNonNull(transfer);
         if (hasTransferReservation()) return;
         if (input != null) {
             var context = input.context();
@@ -328,7 +329,6 @@ public final class MEResourceHatch implements ResourceHatch {
     }
 
     public List<GenericStack> removeForDrops(Consumer<List<GenericStack>> deferredDrops) {
-        Objects.requireNonNull(deferredDrops);
         lockAll();
         try {
             var result = new ObjectArrayList<GenericStack>();

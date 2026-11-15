@@ -515,7 +515,7 @@ public final class ContainerResourceHatch extends AEBaseContainer {
         }
         getPlayerInventory().markDirty();
         if (getPlayer() instanceof EntityPlayerMP player)
-            player.connection.sendPacket(new SPacketSetSlot(-2, 40, player.inventory.getStackInSlot(40).copy()));
+            player.connection.sendPacket(new SPacketSetSlot(-2, 40, player.inventory.getStackInSlot(40)));
     }
 
     private ItemStack insertPackageFromPlayer(ItemStack packageStack) {

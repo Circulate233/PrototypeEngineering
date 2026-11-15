@@ -10,7 +10,6 @@ import net.minecraft.util.ResourceLocation;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Frozen explicit modifier codec bindings. Unknown or ambiguous implementations cannot be saved.
@@ -22,8 +21,8 @@ public final class AttributeModifierNbt implements NbtCodec<AttributeModifier> {
     public AttributeModifierNbt(Collection<Binding> bindings) {
         register(new Binding(new ResourceLocation(Tags.MOD_ID, "numeric"), new NumericCodec()));
         register(new Binding(new ResourceLocation(Tags.MOD_ID, "renamed"), new RenamedCodec()));
-        for (var binding : Objects.requireNonNull(bindings, "bindings")) {
-            register(Objects.requireNonNull(binding, "binding"));
+        for (var binding : bindings) {
+            register(binding);
         }
     }
 
@@ -54,7 +53,7 @@ public final class AttributeModifierNbt implements NbtCodec<AttributeModifier> {
             throw new IllegalArgumentException("No attribute modifier codec for " + value.id());
         }
         var tag = new NBTTagCompound();
-        tag.setString("Type", Objects.requireNonNull(typeId).toString());
+        tag.setString("Type", typeId.toString());
         tag.setTag("Data", selected.encode(value));
         return tag;
     }

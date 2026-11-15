@@ -13,7 +13,6 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -29,11 +28,10 @@ final class RewardDeliveryJournal {
     private final Object2ObjectLinkedOpenHashMap<UUID, Receipt> receipts = new Object2ObjectLinkedOpenHashMap<>();
 
     private RewardDeliveryJournal(UUID player) {
-        this.player = Objects.requireNonNull(player);
+        this.player = player;
     }
 
     static RewardDeliveryJournal read(NBTTagCompound entityData, UUID player) {
-        Objects.requireNonNull(entityData);
         var result = new RewardDeliveryJournal(player);
         if (!entityData.hasKey(EntityPlayer.PERSISTED_NBT_TAG)) return result;
         var persisted = entityData.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG);
@@ -62,8 +60,6 @@ final class RewardDeliveryJournal {
      */
     static RewardDeliveryJournal reconcile(RewardDeliveryJournal loaded, RewardDeliveryJournal playerSaved,
                                            @Nullable RewardDeliveryJournal hostSaved) {
-        Objects.requireNonNull(loaded);
-        Objects.requireNonNull(playerSaved);
         if (!loaded.player.equals(playerSaved.player) || hostSaved != null && !loaded.player.equals(hostSaved.player)) {
             throw new IllegalArgumentException("Reward receipt sources belong to different players");
         }
@@ -256,7 +252,6 @@ final class RewardDeliveryJournal {
      * Updates the receipt namespace while preserving other player data.
      */
     void writeTo(NBTTagCompound entityData) {
-        Objects.requireNonNull(entityData);
         var persisted = entityData.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG);
         var namespace = persisted.getCompoundTag(NAMESPACE);
         if (receipts.isEmpty()) namespace.removeTag(STORE);
@@ -266,7 +261,6 @@ final class RewardDeliveryJournal {
     }
 
     private Receipt receipt(ItemDeliveryFragment fragment, State state) {
-        Objects.requireNonNull(fragment);
         var receipt = new Receipt(fragment.id(), fragment.parent(), fragment.count(), fragment.taggedStackNbt(), fragment.target(), state);
         requirePlayer(receipt);
         return receipt;
@@ -282,10 +276,6 @@ final class RewardDeliveryJournal {
     private record Receipt(UUID id, ItemDeliveryKey parent, int count, NBTTagCompound stack,
                            ItemDeliveryFragment.Target target, State state) {
         private Receipt {
-            Objects.requireNonNull(id);
-            Objects.requireNonNull(parent);
-            Objects.requireNonNull(target);
-            Objects.requireNonNull(state);
 
             if (count < 1 || count > Byte.MAX_VALUE || stack.getByte("Count") != count) {
                 throw new IllegalArgumentException("Invalid reward receipt item count");

@@ -63,10 +63,10 @@ public final class StructureQueries {
         (world, position) -> HatchCapabilities.findEnergyOutput(world.getTileEntity(position), null) != null);
 
     /**
-     * Absent tiles yield null; the query copier detaches mutable NBT on capture and delivery.
+     * Absent tiles yield null; writeToNBT fills a new compound owned by the captured fact.
      */
-    public static final StructureQuery<NBTTagCompound> TILE_NBT = new StructureQuery<>(id("tile_nbt"),
-        StructureQueries::readTileNbt, NBTTagCompound::copy, Objects::equals);
+    public static final StructureQuery<@Nullable NBTTagCompound> TILE_NBT = new StructureQuery<>(id("tile_nbt"),
+        StructureQueries::readTileNbt, UnaryOperator.identity(), Objects::equals);
 
     public static final StructureQuery<Integer> DIMENSION = immutable("dimension", (world, _) -> world.provider.getDimension());
 
@@ -118,7 +118,6 @@ public final class StructureQueries {
      * unsided capability. This query retains the capability descriptor, never a live handler.
      */
     public static StructureQuery<Boolean> capability(ResourceLocation id, Capability<?> capability, @Nullable EnumFacing side) {
-        Objects.requireNonNull(capability, "capability");
         return new StructureQuery<>(id, (world, position) -> {
             var tile = world.getTileEntity(position);
             return tile != null && tile.hasCapability(capability, side);

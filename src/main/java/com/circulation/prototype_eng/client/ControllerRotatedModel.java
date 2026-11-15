@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.client;
 
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.IBakedModel;
@@ -26,13 +25,13 @@ final class ControllerRotatedModel implements IBakedModel {
     ControllerRotatedModel(IBakedModel base, EnumFacing facing, int twist) {
         this.base = base;
         for (int i = 0; i < 7; i++) quads.add(new ObjectArrayList<>());
+        float[] values = new float[4];
         for (int source = 0; source < 7; source++) {
             var elements = base.getQuads(null, source == 6 ? null : EnumFacing.VALUES[source], 0);
             for (int index = 0; index < elements.size(); index++) {
                 var quad = elements.get(index);
                 int[] data = quad.getVertexData().clone();
                 var format = quad.getFormat();
-                float[] values = new float[4];
                 for (int element = 0; element < format.getElementCount(); element++) {
                     var usage = format.getElement(element).getUsage();
                     if (usage != VertexFormatElement.EnumUsage.POSITION && usage != VertexFormatElement.EnumUsage.NORMAL)
@@ -48,7 +47,6 @@ final class ControllerRotatedModel implements IBakedModel {
                 quads.get(target).add(new BakedQuad(data, quad.getTintIndex(), face, quad.getSprite(), quad.shouldApplyDiffuseLighting(), format));
             }
         }
-        for (int i = 0; i < 7; i++) quads.set(i, ObjectLists.unmodifiable(quads.get(i)));
     }
 
     /**

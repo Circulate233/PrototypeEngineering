@@ -7,7 +7,6 @@ import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
 import net.minecraft.util.ResourceLocation;
 
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 
@@ -20,8 +19,8 @@ public final class RecipeScanningSystem implements MachineSystem<RecipeScanner> 
     private final Predicate<MachineInstance> ready;
 
     public RecipeScanningSystem(ScanLimits limits, Predicate<MachineInstance> ready) {
-        this.limits = Objects.requireNonNull(limits);
-        this.ready = Objects.requireNonNull(ready);
+        this.limits = limits;
+        this.ready = ready;
     }
 
     @Override

@@ -14,7 +14,6 @@ import net.minecraftforge.fml.client.registry.ClientRegistry;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Public typed native TESR mechanism; a concrete controller supplies its actual client view channel.
@@ -28,7 +27,7 @@ public abstract class MachineControllerRenderer<T extends AEBaseTile & MachineCo
     private @Nullable Frustum frustum;
 
     protected MachineControllerRenderer(Class<T> tileClass) {
-        this.tileClass = Objects.requireNonNull(tileClass);
+        this.tileClass = tileClass;
     }
 
     public static @Nullable AxisAlignedBB ownedBounds(TileEntity tile) {
@@ -104,6 +103,7 @@ public abstract class MachineControllerRenderer<T extends AEBaseTile & MachineCo
 
     @Override
     public void render(@NotNull T tile, double x, double y, double z, float partialTicks, int destroyStage, float alpha) {
+        if (destroyStage >= 0) return;
         var view = view(tile);
         if (view == null || !snapshots().current(view)) {
             models().withdraw(tile);

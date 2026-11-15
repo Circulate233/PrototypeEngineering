@@ -9,7 +9,6 @@ import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Separate client objects and prepared display providers; server JVM objects are never a resolution source.
@@ -24,8 +23,6 @@ public final class ClientRecipeDeclarations {
 
     public void register(RecipeDeclarationKey key, RecipeRegistry.Snapshot snapshot, RecipeJeiDisplays displays) {
         requireOwner();
-        Objects.requireNonNull(key);
-        Objects.requireNonNull(displays);
         RecipeDefinitionManifest.describe(snapshot);
         var previous = declarations.get(key);
         if (previous != null) {
@@ -38,9 +35,8 @@ public final class ClientRecipeDeclarations {
         declarations.put(key, new Binding(displays, new Declaration(snapshot, displays.frozenCopy())));
         Throwable failure = null;
 
-        var elements = new ObjectArrayList<>(listeners);
-        for (int index = 0; index < elements.size(); index++) {
-            var listener = elements.get(index);
+        for (int index = 0, size = listeners.size(); index < size; index++) {
+            var listener = listeners.get(index);
             try {
                 listener.run();
             } catch (RuntimeException | Error caught) {
@@ -61,7 +57,7 @@ public final class ClientRecipeDeclarations {
 
     public void onRegistered(Runnable callback) {
         requireOwner();
-        listeners.add(Objects.requireNonNull(callback));
+        listeners.add(callback);
     }
 
     private void requireOwner() {
@@ -70,10 +66,6 @@ public final class ClientRecipeDeclarations {
     }
 
     public record Declaration(RecipeRegistry.Snapshot snapshot, RecipeJeiDisplays displays) {
-        public Declaration {
-            Objects.requireNonNull(snapshot);
-            Objects.requireNonNull(displays);
-        }
     }
 
     private record Binding(RecipeJeiDisplays source, Declaration declaration) {

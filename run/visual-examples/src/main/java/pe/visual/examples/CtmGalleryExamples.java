@@ -21,7 +21,6 @@ import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import javax.annotation.Nullable;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Registry-derived CTM scene. One controller, three touching 3x3 faces per registered PE block.

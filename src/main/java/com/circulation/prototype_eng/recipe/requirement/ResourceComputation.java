@@ -210,6 +210,7 @@ class ResourceComputation implements RecipePureComputation {
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public boolean advance(RecipeWorkBudget budget) {
         if (complete) {
             return true;
@@ -232,7 +233,7 @@ class ResourceComputation implements RecipePureComputation {
                     proofEntries = original.object2LongEntrySet().iterator();
                     proofStarted = true;
                 }
-                var entries = Objects.requireNonNull(proofEntries);
+                var entries = proofEntries;
                 while (entries.hasNext()) {
                     if (!budget.take()) {
                         return false;

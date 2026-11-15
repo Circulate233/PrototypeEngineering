@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 
-import java.util.Objects;
 
 import net.minecraft.util.ResourceLocation;
 
@@ -115,7 +114,6 @@ public final class ResearchResourceFormula {
         private Builder add(NetworkResourceType type, double base, double slope,
                             Reference2DoubleOpenHashMap<NetworkResourceType> values,
                             Reference2DoubleOpenHashMap<NetworkResourceType> slopes) {
-            Objects.requireNonNull(type);
             if (!Double.isFinite(base) || !Double.isFinite(slope) || base < 0 || slope < 0 || type.internal()) {
                 throw new IllegalArgumentException("Invalid numeric research demand for " + type.id());
             }

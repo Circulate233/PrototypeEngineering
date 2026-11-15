@@ -27,7 +27,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -63,9 +62,9 @@ public final class StructureRefresh {
      * Independent external attachment/owner checks remain owner-only and never enter a Request.
      */
     public StructureRefresh(MachineLifecycle lifecycle, MachineStructureHost host, BooleanSupplier attachmentCurrent) {
-        this.lifecycle = Objects.requireNonNull(lifecycle);
-        this.host = Objects.requireNonNull(host);
-        this.attachmentCurrent = Objects.requireNonNull(attachmentCurrent);
+        this.lifecycle = lifecycle;
+        this.host = host;
+        this.attachmentCurrent = attachmentCurrent;
         host.requireServerThread();
         if (lifecycle.host() != host) {
             throw new IllegalArgumentException("Structure and lifecycle hosts must be identical");
@@ -140,7 +139,7 @@ public final class StructureRefresh {
      * Retained planning and capture keep one configuration; no live read window crosses advance.
      */
     @SuppressWarnings("ReturnOfInnerClass") // The retained cursor owns exact configuration and preparation authority.
-    public StructureOperation<Request> beginPrepare(@Nullable StructureSnapshot.JoinedWorker worker) {
+    public StructureOperation<@Nullable Request> beginPrepare(@Nullable StructureSnapshot.JoinedWorker worker) {
         enter();
         try {
             var owner = new Object();
@@ -153,7 +152,7 @@ public final class StructureRefresh {
                 @Nullable
                 private StructureOperation<StructurePlan> planning;
                 @Nullable
-                private StructureOperation<StructureSnapshot> capture;
+                private StructureOperation<@Nullable StructureSnapshot> capture;
 
                 @Override
                 public boolean advance(RecipeWorkBudget work) {
@@ -169,7 +168,7 @@ public final class StructureRefresh {
                             planning = beginPlan(owner, configuration);
                         }
                         if (!planning.advance(work)) return false;
-                        var plan = Objects.requireNonNull(planning.result());
+                        var plan = planning.result();
                         if (capture == null) {
                             if (!work.take()) return false;
                             capture = StructureSnapshot.beginCapture(plan.reads(), host, worker);
@@ -249,7 +248,6 @@ public final class StructureRefresh {
      * A complete actual owner capture, match, both proofs and install occupy this one transition.
      */
     public boolean publish(Result result, RecipeWorkBudget work, @Nullable StructureSnapshot.JoinedWorker worker) {
-        Objects.requireNonNull(result);
         enter();
         try {
             boolean applied = lifecycle.refreshStructure(
@@ -289,8 +287,6 @@ public final class StructureRefresh {
      * obsolete; only a still-current failure may fault this lifecycle. Errors are rethrown unchanged.
      */
     public void fail(Request request, Throwable failure) {
-        Objects.requireNonNull(request);
-        Objects.requireNonNull(failure);
         enter();
         try {
             lifecycle.refreshStructure(() -> pending == request && configurationCurrent(request.configuration), () -> {
@@ -335,7 +331,7 @@ public final class StructureRefresh {
             public boolean advance(RecipeWorkBudget work) {
                 if (complete()) return true;
                 if (!planning.advance(work)) return false;
-                var plan = Objects.requireNonNull(planning.result());
+                var plan = planning.result();
                 if (reusable && plan.planReusable() && preparationOwner == owner && lifecycle.state() == MachineLifecycle.State.LOADED
                     && !lifecycle.retired() && configurationCurrent(configuration)
                     && controller.equals(host.identity().controllerPos())) {
@@ -360,8 +356,7 @@ public final class StructureRefresh {
      */
     @SuppressWarnings("ReturnOfInnerClass")
     // The discovery cursor retains exact request authority without granting publication.
-    public StructureOperation<StructureAssembly> beginDiscovery(Result result) {
-        Objects.requireNonNull(result);
+    public StructureOperation<@Nullable StructureAssembly> beginDiscovery(Result result) {
         host.requireServerThread();
         var operation = new AssemblyOperation(result.evaluation);
         return new StructureOperation<>() {
@@ -419,7 +414,7 @@ public final class StructureRefresh {
         Runnable action = () -> completed[0] = evaluation.advance(work);
         if (worker == null) action.run();
         else if (!worker.run(action)) return null;
-        return completed[0] ? Objects.requireNonNull(evaluation.result()) : null;
+        return completed[0] ? evaluation.result() : null;
     }
 
     /**
@@ -458,7 +453,7 @@ public final class StructureRefresh {
                 public boolean advance(RecipeWorkBudget work) {
                     if (complete()) return true;
                     if (!evaluation.advance(work) || !work.take()) return false;
-                    finish(new Result(Request.this, Objects.requireNonNull(evaluation.result())));
+                    finish(new Result(Request.this, evaluation.result()));
                     return true;
                 }
             };
@@ -511,6 +506,7 @@ public final class StructureRefresh {
         }
 
         @Nullable
+        @SuppressWarnings("DataFlowIssue") // current() requires the captured configuration before planning starts.
         public Runnable prepareWorker(RecipeWorkBudget work) {
             enter();
             try {
@@ -521,10 +517,10 @@ public final class StructureRefresh {
                 }
                 if (planning == null) {
                     if (!work.take()) return null;
-                    planning = beginPlan(owner, Objects.requireNonNull(configuration));
+                    planning = beginPlan(owner, configuration);
                 }
                 if (!planning.advance(work)) return null;
-                var plan = Objects.requireNonNull(planning.result());
+                var plan = planning.result();
                 if (capture == null) {
                     if (!work.take()) return null;
                     capture = StructureSnapshot.beginParallelCapture(plan.reads(), host);
@@ -536,7 +532,7 @@ public final class StructureRefresh {
                 var snapshot = capture.result();
                 if (snapshot != null && current()) {
                     diagnostics = snapshot.failures();
-                    pending = new Request(Objects.requireNonNull(configuration), plan, snapshot);
+                    pending = new Request(configuration, plan, snapshot);
                     result = pending;
                 }
                 return null;
@@ -551,10 +547,12 @@ public final class StructureRefresh {
         /**
          * Cleanup is unconditional, even when another owner's preparation revoked this request.
          */
+        @SuppressWarnings("DataFlowIssue")
+        // A dispatched preparation action retains its capture until worker completion.
         public void finishWorker(boolean accepted, @Nullable Throwable primary) {
             enter();
             try {
-                Objects.requireNonNull(capture).finishWorker(accepted, primary);
+                capture.finishWorker(accepted, primary);
                 if (primary instanceof RuntimeException runtime) throw runtime;
                 if (primary instanceof Error error) throw error;
                 if (primary != null) throw new IllegalStateException("Structure capture worker failed", primary);
@@ -580,7 +578,7 @@ public final class StructureRefresh {
         }
     }
 
-    private final class AssemblyOperation extends StructureOperation<StructureAssembly> {
+    private final class AssemblyOperation extends StructureOperation<@Nullable StructureAssembly> {
         private final StructureEvaluation evaluation;
         @Nullable
         private final StructureMatch match;
@@ -618,6 +616,7 @@ public final class StructureRefresh {
         }
 
         @Override
+        @SuppressWarnings("DataFlowIssue") // A non-null match creates its block collection cursor in the constructor.
         public boolean advance(RecipeWorkBudget work) {
             if (complete()) return true;
             if (evaluation.status() == StructurePredicateResult.UNAVAILABLE) {
@@ -629,8 +628,8 @@ public final class StructureRefresh {
                 finish(StructureAssembly.UNFORMED);
                 return true;
             }
-            if (!Objects.requireNonNull(collect).advance(work)) return false;
-            var covered = Objects.requireNonNull(collect.result());
+            if (!collect.advance(work)) return false;
+            var covered = collect.result();
             while (copyIndex < covered.size()) {
                 if (!work.take()) return false;
                 var position = covered.get(copyIndex++);
@@ -638,7 +637,7 @@ public final class StructureRefresh {
             }
             if (sort == null) sort = sortPositions(positions);
             if (!sort.advance(work)) return false;
-            var ordered = Objects.requireNonNull(sort.result());
+            var ordered = sort.result();
             orderedPositions = ordered;
             while (index < ordered.size()) {
                 var position = ordered.get(index);
@@ -652,7 +651,7 @@ public final class StructureRefresh {
                 }
                 if (phase == 1) {
                     if (!work.take()) return false;
-                    bindings.add(Objects.requireNonNull(host.hatchesAt(position)));
+                    bindings.add(host.hatchesAt(position));
                     phase = 2;
                 }
                 if (phase == 2) {
@@ -665,14 +664,14 @@ public final class StructureRefresh {
                     var provider = providers.get(index);
                     if (provider != null) {
                         context = new StructureComponentProvider.Context(lifecycle.machine(), position, generation);
-                        entries = Objects.requireNonNull(provider.createStructureComponents(context)).iterator();
+                        entries = provider.createStructureComponents(context).iterator();
                     }
                     phase = 4;
                 }
                 if (entries != null) {
                     while (entries.hasNext()) {
                         if (!work.take()) return false;
-                        ports.add(new StructureComponents.Binding<>(Objects.requireNonNull(context), Objects.requireNonNull(entries.next())));
+                        ports.add(new StructureComponents.Binding<>(context, entries.next()));
                     }
                     entries = null;
                     context = null;
@@ -690,7 +689,7 @@ public final class StructureRefresh {
             }
             if (freezePorts == null) freezePorts = StructureComponents.beginCreate(ports);
             if (!freezePorts.advance(work) || !work.take()) return false;
-            finish(new StructureAssembly(match, new MachineHatches(resources, inputs, outputs), Objects.requireNonNull(freezePorts.result())));
+            finish(new StructureAssembly(match, new MachineHatches(resources, inputs, outputs), freezePorts.result()));
             return true;
         }
     }

@@ -215,7 +215,8 @@ class StructureCatalogSyncTest {
     @Test
     void invalidGraphsAndOversizedPresentationFailBeforeTheyCanBeBroadcast() {
         var node = new StructureCatalogView.Node(id("cyclic"), BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE, BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.of(), IntList.of(0));
-        assertThrows(IllegalArgumentException.class, () -> new StructureCatalogView(UUID.randomUUID(), 0, List.of(node), Map.of(id("cyclic"), new StructureCatalogView.Entry(0, null, BlockPos2ObjectMap.emptyMap()))));
+        var cyclic = new StructureCatalogView(UUID.randomUUID(), 0, List.of(node), Map.of(id("cyclic"), new StructureCatalogView.Entry(0, null, BlockPos2ObjectMap.emptyMap())));
+        assertThrows(IllegalArgumentException.class, () -> StructureCatalogCodec.decode(StructureCatalogCodec.encode(cyclic)));
         var base = publication(UUID.randomUUID(), 0).view();
         var entry = base.entries().get(id("parent"));
         var tooLarge = new StructureCatalogView(base.session(), 1, base.nodes(), Map.of(id("parent"), new StructureCatalogView.Entry(entry.node(), "x".repeat(65537), BlockPos2ObjectMap.emptyMap())));

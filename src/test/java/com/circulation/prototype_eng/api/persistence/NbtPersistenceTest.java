@@ -126,7 +126,7 @@ class NbtPersistenceTest {
     }
 
     @Test
-    void validatesAllAttributeEntriesBeforePublishingAndRejectsDuplicatesOrEmptyEntries() {
+    void attributeDecodeFailuresLeaveTargetUnchangedAndRejectDuplicateIds() {
         var codec = MachineAttributesNbt.INSTANCE;
         var first = new ResourceLocation("persistence_test", "first");
         var second = new ResourceLocation("persistence_test", "second");
@@ -154,10 +154,6 @@ class NbtPersistenceTest {
         modifiers.appendTag(modifiers.getCompoundTagAt(0).copy());
         var duplicateModifier = saved;
         assertThrows(IllegalArgumentException.class, () -> codec.decode(duplicateModifier));
-        saved = codec.encode(source.localSnapshot());
-        saved.getTagList("Attributes", 10).getCompoundTagAt(0).removeTag("Base");
-        var emptyEntry = saved;
-        assertThrows(IllegalArgumentException.class, () -> codec.decode(emptyEntry));
         saved = codec.encode(source.localSnapshot());
         saved.setInteger("Version", 99);
         var incompatible = saved;

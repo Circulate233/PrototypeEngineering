@@ -13,7 +13,6 @@ import net.minecraft.nbt.NBTTagList;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -24,14 +23,13 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
     private final ResearchRegistry registry;
 
     public ManualResearchSessionNbt(ResearchRegistry registry) {
-        this.registry = Objects.requireNonNull(registry);
+        this.registry = registry;
     }
 
     /**
      * Shared with the player's persistent material receipt: the whole intent remains unchanged.
      */
     public static NBTTagCompound encodeMaterialIntent(ManualResearchSession.MaterialIntent value) {
-        Objects.requireNonNull(value);
         var tag = new NBTTagCompound();
         tag.setString("Operation", value.operationId().toString());
         tag.setString("Contributor", value.contributor().toString());
@@ -44,11 +42,13 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
     }
 
     public static ManualResearchSession.MaterialIntent decodeMaterialIntent(NBTTagCompound tag) {
-        return new ManualResearchSession.MaterialIntent(uuid(tag.getString("Operation")),
+        var intent = new ManualResearchSession.MaterialIntent(uuid(tag.getString("Operation")),
             uuid(tag.getString("Contributor")), tag.getLong("Sequence"),
             decodeWork(tag.getTagList("Pending", Constants.NBT.TAG_COMPOUND)),
             decodeWork(tag.getTagList("Expected", Constants.NBT.TAG_COMPOUND)),
             tag.getLong("Elapsed"), tag.getLong("AdvancedAt"));
+        intent.validateSaved();
+        return intent;
     }
 
     public static NBTTagList encodeWork(Object2LongMap<ManualMaterialKey> work) {
@@ -71,9 +71,10 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
             if (amounts.containsKey(key)) {
                 throw new IllegalArgumentException("Duplicate saved manual material key");
             }
-            amounts.put(key, tag.getLong("Amount"));
+            long amount = tag.getLong("Amount");
+            if (amount < 0) throw new IllegalArgumentException("Negative manual work amount");
+            amounts.put(key, amount);
         }
-        ManualResearchSession.validateWork(amounts);
         return amounts;
     }
 
@@ -94,15 +95,20 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
     private static ManualResearchSession.CompletionIntent decodeCompletion(NBTTagCompound tag) {
         var saved = tag.getTagList("Baselines", Constants.NBT.TAG_COMPOUND);
         var baselines = new Object2IntOpenHashMap<UUID>(saved.tagCount());
+        baselines.defaultReturnValue(-1);
         for (int index = 0; index < saved.tagCount(); index++) {
             var baseline = saved.getCompoundTagAt(index);
             var player = uuid(baseline.getString("Player"));
             if (baselines.containsKey(player)) {
                 throw new IllegalArgumentException("Duplicate saved manual completion member");
             }
-            baselines.put(player, baseline.getInteger("Level"));
+            int level = baseline.getInteger("Level");
+            if (level < 0) throw new IllegalArgumentException("Negative manual member baseline");
+            baselines.put(player, level);
         }
-        return new ManualResearchSession.CompletionIntent(tag.getLong("WorldTime"), baselines);
+        var completion = new ManualResearchSession.CompletionIntent(tag.getLong("WorldTime"), baselines);
+        completion.validateSaved();
+        return completion;
     }
 
     private static void validateWork(Object2LongMap<ManualMaterialKey> work, Object2LongMap<ManualMaterialKey> required) {
@@ -160,6 +166,7 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
             decodeWork(tag.getTagList("Work", Constants.NBT.TAG_COMPOUND)),
             tag.hasKey("Material") ? decodeMaterialIntent(tag.getCompoundTag("Material")) : null,
             tag.hasKey("Completion") ? decodeCompletion(tag.getCompoundTag("Completion")) : null);
+        saved.validateSaved();
         validateDefinition(saved);
         return saved;
     }

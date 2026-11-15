@@ -1,13 +1,11 @@
 package com.circulation.prototype_eng.api.recipe;
 
-import java.util.Objects;
 
 /**
  * Inventory-only candidate and canonical input quantity ceiling; full admission remains authoritative.
  */
 public record RecipeInventoryMatch(MachineRecipe recipe, int maximumParallelism) {
     public RecipeInventoryMatch {
-        Objects.requireNonNull(recipe);
         if (maximumParallelism < 1) throw new IllegalArgumentException("Nonpositive matching parallelism");
     }
 

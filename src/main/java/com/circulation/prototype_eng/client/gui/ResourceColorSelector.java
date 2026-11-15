@@ -13,7 +13,6 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL14;
 
 import java.awt.Rectangle;
-import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -34,9 +33,9 @@ public final class ResourceColorSelector implements ICompositeWidget {
     private @Nullable AEColor pressedColor;
 
     public ResourceColorSelector(Supplier<AEColor> selected, Consumer<AEColor> choose, Style style) {
-        this.selected = Objects.requireNonNull(selected);
-        this.choose = Objects.requireNonNull(choose);
-        this.style = Objects.requireNonNull(style);
+        this.selected = selected;
+        this.choose = choose;
+        this.style = style;
         position = new Point(style == Style.ME ? 1 : 4, 13);
     }
 

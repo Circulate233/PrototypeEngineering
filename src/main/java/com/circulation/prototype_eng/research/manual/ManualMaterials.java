@@ -14,7 +14,6 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.util.List;
-import java.util.Objects;
 
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
@@ -43,12 +42,10 @@ public final class ManualMaterials {
      * ResearchLevelStage restricts manual research to fixed item inputs.
      */
     public static ManualMaterials from(List<RecipeRequirement<?>> requirements) {
-        Objects.requireNonNull(requirements);
         var materials = new ObjectArrayList<Material>(requirements.size());
         var requirementIds = new ObjectOpenHashSet<ResourceLocation>(requirements.size());
         for (int index7 = 0; index7 < requirements.size(); index7++) {
             var requirement = requirements.get(index7);
-            Objects.requireNonNull(requirement);
             if (!requirementIds.add(requirement.id())) {
                 throw new IllegalArgumentException("Duplicate manual material requirement " + requirement.id());
             }
@@ -136,7 +133,6 @@ public final class ManualMaterials {
     }
 
     private void validateWorkValues(Object2LongMap<ManualMaterialKey> work) {
-        Objects.requireNonNull(work);
         for (var entry : work.object2LongEntrySet()) {
             var material = byId.get(entry.getKey());
             if (material == null) {

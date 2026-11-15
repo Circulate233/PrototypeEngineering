@@ -6,7 +6,6 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.fml.common.eventhandler.Event;
 
 import java.util.Map;
-import java.util.Objects;
 import java.util.function.Function;
 
 /**
@@ -17,7 +16,7 @@ public final class MachineTypeRegistrationEvent extends Event {
     private final Map<ResourceLocation, Function<MachineType, ? extends MachineControllerBlock<?>>> controllerFactories = new Object2ObjectOpenHashMap<>();
 
     public MachineTypeRegistrationEvent(MachineTypeRegistry registry) {
-        this.registry = Objects.requireNonNull(registry);
+        this.registry = registry;
     }
 
     public MachineTypeRegistry registry() {
@@ -30,12 +29,15 @@ public final class MachineTypeRegistrationEvent extends Event {
     @SuppressWarnings("unused") // Public downstream registration entry point.
     public void controllerFactory(ResourceLocation type,
                                   Function<MachineType, ? extends MachineControllerBlock<?>> factory) {
-        if (controllerFactories.putIfAbsent(Objects.requireNonNull(type), Objects.requireNonNull(factory)) != null) {
+        if (controllerFactories.putIfAbsent(type, factory) != null) {
             throw new IllegalArgumentException("Controller factory already registered: " + type);
         }
     }
 
+    /**
+     * Read-only view of this synchronous registration event's declarations.
+     */
     public Map<ResourceLocation, Function<MachineType, ? extends MachineControllerBlock<?>>> controllerFactories() {
-        return Map.copyOf(controllerFactories);
+        return controllerFactories;
     }
 }

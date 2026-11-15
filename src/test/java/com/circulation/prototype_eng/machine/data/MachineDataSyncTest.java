@@ -14,6 +14,7 @@ import com.circulation.prototype_eng.machine.render.ControllerRenderSync;
 import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagInt;
 import net.minecraft.nbt.NBTTagString;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.network.play.server.SPacketUpdateTileEntity;
@@ -94,6 +95,10 @@ class MachineDataSyncTest {
         assertFalse(machineFact.data().getCompoundTag("nested").hasKey("foreign"));
         assertTrue(machineData.snapshot().data().getCompoundTag("nested").hasKey("foreign"));
         assertNotNull(before.hosts().getFirst().slots().getFirst().process());
+        var nextData = new ComponentData();
+        nextData.set("replacement", new NBTTagInt(9));
+        machine.components().put(DataComponents.MACHINE, nextData);
+        assertEquals(9, Objects.requireNonNull(observer.observe(machine, 1).machine()).data().getInteger("replacement"));
         machine.components().remove(DataComponents.MACHINE);
         assertNull(observer.observe(machine, 1).machine());
         observer.clear();

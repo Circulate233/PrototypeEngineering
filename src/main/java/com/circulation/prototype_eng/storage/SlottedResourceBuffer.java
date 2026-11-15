@@ -68,7 +68,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             throw new IllegalArgumentException("A buffer needs slots and supported resource types");
         }
         for (var entry : capacities.reference2LongEntrySet()) {
-            AEKeyType type = Objects.requireNonNull(entry.getKey(), "type");
+            AEKeyType type = entry.getKey();
             long capacity = entry.getLongValue();
             if (capacity <= 0) {
                 throw new IllegalArgumentException("Slot capacities must be positive");
@@ -79,7 +79,6 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         // a no-fence pending install from rehashing after its new entry has already been written.
         extractHolds = new AEKey2LongMap.OpenHashMap(slots);
         insertHolds = new AEKey2LongMap.OpenHashMap(slots);
-        Objects.requireNonNull(onChanged);
         context = new StorageContext(() -> {
             try {
                 onChanged.run();
@@ -96,9 +95,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         freeSlots.set(0, slots);
     }
 
-    private static void checkRequest(AEKey key, long amount, Actionable mode) {
-        Objects.requireNonNull(key);
-        Objects.requireNonNull(mode);
+    private static void checkRequest(long amount) {
         if (amount < 0) {
             throw new IllegalArgumentException("Negative resource amount");
         }
@@ -158,7 +155,6 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     public StorageSnapshot snapshotFor(AEKey key) {
         context.lock();
         try {
-            Objects.requireNonNull(key);
             if (key.equals(cachedSnapshotKey) && cachedKeySnapshot != null && context.current(cachedKeySnapshot.revision()))
                 return cachedKeySnapshot;
             long amount = context.isValid() ? totals.getLong(key) - extractHolds.getLong(key) : 0;
@@ -181,7 +177,6 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
 
     @Override
     public long amount(AEKey key) {
-        Objects.requireNonNull(key);
         context.lock();
         try {
             return context.isValid() ? totals.getLong(key) : 0;
@@ -192,7 +187,6 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
 
     @Override
     public long availableAmount(AEKey key) {
-        Objects.requireNonNull(key);
         context.lock();
         try {
             return context.isValid() ? totals.getLong(key) - extractHolds.getLong(key) : 0;
@@ -236,25 +230,21 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
 
     @Override
     public long getCapacity(AEKeyType type) {
-        Objects.requireNonNull(type);
         return capacities.getLong(type);
     }
 
     @Override
     public long getMaxAmount(AEKey key) {
-        Objects.requireNonNull(key);
         return accepted.test(key) ? getCapacity(key.getType()) : 0;
     }
 
     @Override
     public boolean isSupportedType(AEKeyType type) {
-        Objects.requireNonNull(type);
         return capacities.containsKey(type);
     }
 
     @Override
     public boolean isAllowedIn(int slot, AEKey key) {
-        Objects.requireNonNull(key);
         context.lock();
         try {
             checkSlot(slot);
@@ -288,7 +278,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     }
 
     private long transfer(AEKey key, long amount, Actionable mode, boolean insert, int onlySlot) {
-        checkRequest(key, amount, mode);
+        checkRequest(amount);
         context.lock();
         try {
             if (!context.isValid() || amount == 0) {
@@ -400,12 +390,10 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     }
 
     private ReservationResult reserve(StorageSnapshot snapshot, AEKey key, long amount, boolean insert) {
-        Objects.requireNonNull(snapshot);
         return reserve(snapshot, key, amount, insert, -1);
     }
 
     private ReservationResult reserve(@Nullable StorageSnapshot snapshot, AEKey key, long amount, boolean insert, int onlySlot) {
-        Objects.requireNonNull(key);
         if (amount <= 0) {
             throw new IllegalArgumentException("A reservation needs a positive amount");
         }
@@ -549,7 +537,6 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
      */
     PreparedRestore prepareRestore(List<GenericStack> stacks) {
         context.requireLock();
-        Objects.requireNonNull(stacks);
         requireRestorable();
         requireChange();
         if (stacks.size() != keys.length) {
@@ -576,7 +563,6 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
 
     void restorePrepared(PreparedRestore prepared) {
         context.requireLock();
-        Objects.requireNonNull(prepared);
         requireRestorable();
         if (prepared.context != context || prepared.revision != context.revision()) {
             throw new IllegalStateException("Prepared restoration is stale or belongs to another storage");
@@ -614,7 +600,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         if (destroyed) return List.of();
         context.invalidate();
         destroyed = true;
-        destructionDrops = Objects.requireNonNull(deferredDrops);
+        destructionDrops = deferredDrops;
         if (activeReservations != 0) return List.of();
         destructionDrops = null;
         return takeDestroyedContents();
@@ -854,7 +840,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             if (!complete) {
                 throw new IllegalStateException("Quantity capture is incomplete");
             }
-            return Objects.requireNonNull(quantities);
+            return quantities;
         }
 
         @Override
@@ -890,8 +876,8 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         private ReservationResult.Status rejection = ReservationResult.Status.INSUFFICIENT;
 
         private ReserveCapture(StorageSnapshot snapshot, AEKey key, long maximum, boolean insert) {
-            this.snapshot = Objects.requireNonNull(snapshot);
-            this.key = Objects.requireNonNull(key);
+            this.snapshot = snapshot;
+            this.key = key;
             if (maximum <= 0) {
                 throw new IllegalArgumentException("A reservation needs a positive amount");
             }
@@ -908,7 +894,6 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         @Override
         public boolean advance(RecipeWorkBudget budget) {
             requireOwner();
-            Objects.requireNonNull(budget);
             while (result == null) {
                 if (token != null && token.ambiguous) {
                     throw new IllegalStateException("Native capture retains unknown primitive effects");
@@ -1009,7 +994,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
                 part++;
                 return;
             }
-            var currentToken = Objects.requireNonNull(token);
+            var currentToken = token;
             if (phase == 4) {
                 if (part == frozenSlots.length) {
                     phase = 5;
@@ -1142,7 +1127,6 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         @Override
         public boolean cancel(RecipeWorkBudget budget) {
             context.requireLock();
-            Objects.requireNonNull(budget);
             if (transferred) {
                 return true;
             }
@@ -1367,7 +1351,6 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
 
         private boolean advance(WorkKind kind, RecipeWorkBudget budget, boolean synchronous) {
             context.requireLock();
-            Objects.requireNonNull(budget);
             // Pending reserve/cancel owns coherent live holds. Primary effects need original isolation
             // across every yielded physical scope; a version barrier never grants that isolation.
             if (mutationFence != null || !synchronous && (kind == WorkKind.APPLY || kind == WorkKind.EXPOSE
@@ -1636,7 +1619,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
                     exposedFence = null;
                 }
                 if (mutationRetained) {
-                    context.releaseSequentialReservation(Objects.requireNonNull(mutationFence));
+                    context.releaseSequentialReservation(mutationFence);
                     mutationRetained = false;
                 }
                 mutationFence = null;
@@ -1653,7 +1636,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         }
 
         private void requireExposure() {
-            var fence = Objects.requireNonNull(exposedFence, "Reservation lost its sequential fence");
+            var fence = exposedFence;
             if (context.requireFenceAccess() != fence) {
                 throw new IllegalStateException("Sequential reservation belongs to another fence");
             }

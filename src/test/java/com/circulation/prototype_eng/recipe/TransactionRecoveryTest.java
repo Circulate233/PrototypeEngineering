@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Objects;
 
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -96,7 +97,7 @@ class TransactionRecoveryTest {
         assertEquals(100, energy.savedEnergy());
         assertFalse(first.applied);
         assertFalse(second.applied);
-        assertThrows(NullPointerException.class, process::tickContext, "Recovery must restore the enclosing timeline scope");
+        assertNull(process.tickContext(), "Recovery must restore the enclosing timeline scope");
     }
 
     @Test

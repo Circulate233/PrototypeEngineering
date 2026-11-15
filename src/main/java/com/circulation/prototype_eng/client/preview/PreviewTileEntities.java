@@ -9,7 +9,6 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -24,7 +23,7 @@ public final class PreviewTileEntities<T> implements AutoCloseable {
     private boolean closed;
 
     public PreviewTileEntities(Owner<T> owner) {
-        this.owner = Objects.requireNonNull(owner);
+        this.owner = owner;
     }
 
     static @Nullable NBTTagCompound parse(@Nullable String snbt) {
@@ -121,10 +120,8 @@ public final class PreviewTileEntities<T> implements AutoCloseable {
         token = null;
         world = null;
         Throwable failure = null;
-        var retired = new ObjectArrayList<>(entries);
-        entries.clear();
-        while (!retired.isEmpty()) {
-            var tile = retired.removeLast().tile;
+        while (!entries.isEmpty()) {
+            var tile = entries.removeLast().tile;
             try {
                 owner.release(tile);
             } catch (RuntimeException | Error caught) {

@@ -21,7 +21,6 @@ import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import pe.visual.examples.run.NativeChecks;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.Executors;

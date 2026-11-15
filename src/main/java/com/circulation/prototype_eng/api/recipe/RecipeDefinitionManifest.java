@@ -6,7 +6,6 @@ import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -16,8 +15,6 @@ import java.util.UUID;
 public record RecipeDefinitionManifest(UUID serverSession, long generation, RecipeDeclarationKey declaration,
                                        List<Pool> pools) {
     public RecipeDefinitionManifest {
-        Objects.requireNonNull(serverSession);
-        Objects.requireNonNull(declaration);
         if (generation < 0) throw new IllegalArgumentException("Negative recipe manifest generation");
         var revisions = new Object2ObjectOpenHashMap<ResourceLocation, String>();
         for (int p = 0; p < pools.size(); p++) {
@@ -44,7 +41,7 @@ public record RecipeDefinitionManifest(UUID serverSession, long generation, Reci
      */
     public static List<Pool> describe(RecipeRegistry.Snapshot snapshot) {
         var pools = new ObjectArrayList<Pool>(snapshot.orderedPools().size());
-        var elements4 = Objects.requireNonNull(snapshot).orderedPools();
+        var elements4 = snapshot.orderedPools();
         for (int index4 = 0; index4 < elements4.size(); index4++) {
             var pool = elements4.get(index4);
             var members = new ObjectArrayList<RecipeDefinitionRevision>(pool.recipes().size());
@@ -86,7 +83,6 @@ public record RecipeDefinitionManifest(UUID serverSession, long generation, Reci
      */
     public record Pool(ResourceLocation id, List<RecipeDefinitionRevision> members) {
         public Pool {
-            Objects.requireNonNull(id);
             var ids = new ObjectOpenHashSet<ResourceLocation>(members.size());
             for (int index = 0; index < members.size(); index++) {
                 var member = members.get(index);

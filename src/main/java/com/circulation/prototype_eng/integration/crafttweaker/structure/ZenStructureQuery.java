@@ -18,15 +18,11 @@ import java.util.Objects;
 @ZenClass("mods.prototype_eng.structure.Query")
 @SuppressWarnings("unused") // Script query factory.
 public record ZenStructureQuery(StructureQuery<NBTBase> value) {
-    public ZenStructureQuery {
-        Objects.requireNonNull(value);
-    }
 
     @ZenMethod
     public static ZenStructureQuery create(String id, ZenStructureCapture capture) {
-        var callback = Objects.requireNonNull(capture);
         return new ZenStructureQuery(new StructureQuery<>(new ResourceLocation(id), (world, position) -> {
-            var data = callback.capture(CraftTweakerMC.getIWorld(world), CraftTweakerMC.getIBlockPos(position));
+            var data = capture.capture(CraftTweakerMC.getIWorld(world), CraftTweakerMC.getIBlockPos(position));
             return data == null ? null : NBTConverter.from(data);
         }, NBTBase::copy, Objects::equals));
     }

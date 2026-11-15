@@ -459,9 +459,6 @@ class RecipeProcessPersistenceTest {
         }
     }
 
-    /**
-     * Deliberately retains codec tags to test the enclosing process codec's defensive copying.
-     */
     private static final class Box {
         private NBTTagCompound tag = new NBTTagCompound();
         private boolean restored;
@@ -512,13 +509,13 @@ class RecipeProcessPersistenceTest {
 
         private ExtensionFixture(MachineRecipe recipe) {
             this.recipe = recipe;
-            second = type("second", List.of());
-            third = type("third", List.of());
-            first = type("first", List.of(second));
-            future = type("future", List.of());
+            second = type("second", Set.of());
+            third = type("third", Set.of());
+            first = type("first", Set.of(second));
+            future = type("future", Set.of());
         }
 
-        private ComponentType<RecipeProcess, Box> type(String name, List<ComponentType<RecipeProcess, ?>> dependencies) {
+        private ComponentType<RecipeProcess, Box> type(String name, Set<ComponentType<RecipeProcess, ?>> dependencies) {
             return new ComponentType<>(id(name), _ -> {
                 events.add("create:" + name);
                 return new Box();

@@ -10,7 +10,6 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Per-process chosen resource identities, not inventory mutexes or quantity reservations.
@@ -34,8 +33,6 @@ public final class ResourceInputLocks implements ProcessAbortListener {
      * Installs an absent choice; an existing different choice is a broken process-state contract.
      */
     public boolean putIfAbsent(Key key, AEKey chosen) {
-        Objects.requireNonNull(key);
-        Objects.requireNonNull(chosen);
         AEKey previous = choices.putIfAbsent(key, chosen);
         if (previous != null && !previous.equals(chosen)) {
             throw new IllegalStateException("Input choice changed for " + key);
@@ -78,9 +75,6 @@ public final class ResourceInputLocks implements ProcessAbortListener {
 
     public record Key(RequirementPath requirement, RecipeStage stage, Kind kind, int groupIndex) {
         public Key {
-            Objects.requireNonNull(requirement);
-            Objects.requireNonNull(stage);
-            Objects.requireNonNull(kind);
             if (groupIndex < 0) {
                 throw new IllegalArgumentException("Negative input group index");
             }

@@ -13,7 +13,6 @@ import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import net.minecraft.entity.item.EntityItem;
@@ -33,7 +32,6 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -57,10 +55,10 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
      * Optional recovery proof for this delivery, supplied by the owner of its saved records.
      */
     public MinecraftItemDeliveryAdapter(EntityPlayerMP player, AbsenceProof absenceProof) {
-        this.player = Objects.requireNonNull(player, "player");
-        server = Objects.requireNonNull(player.getServerWorld().getMinecraftServer(), "Reward server");
-        overworld = Objects.requireNonNull(server.getWorld(0), "Reward overworld");
-        this.absenceProof = Objects.requireNonNull(absenceProof, "absenceProof");
+        this.player = player;
+        server = player.server;
+        overworld = server.getWorld(0);
+        this.absenceProof = absenceProof;
         if (player instanceof FakePlayer) throw new IllegalArgumentException("Rewards require a real player");
         requireOwner();
     }
@@ -74,9 +72,10 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
 
     private static void observe(ItemStack actual, @Nullable EntityItem entity, Object2ObjectLinkedOpenHashMap<UUID, ItemDeliveryFragment> expected,
                                 ObjectOpenHashSet<UUID> observed, Object2ObjectLinkedOpenHashMap<UUID, UUID> entities) {
-        if (actual.isEmpty() || !actual.hasTagCompound() || !Objects.requireNonNull(actual.getTagCompound()).hasKey(DELIVERY_TAG))
+        var root = actual.getTagCompound();
+        if (actual.isEmpty() || root == null || !root.hasKey(DELIVERY_TAG))
             return;
-        var tag = Objects.requireNonNull(actual.getTagCompound()).getCompoundTag(DELIVERY_TAG);
+        var tag = root.getCompoundTag(DELIVERY_TAG);
         var parent = ItemDeliveryKeyNbt.readIdentity(tag);
         var fragmentId = ItemDeliveryKeyNbt.fragmentId(tag);
         var fragment = expected.get(fragmentId);
@@ -94,18 +93,20 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         return handler.getWorldDirectory().toPath().resolve("level.dat");
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private static ItemStack releasedStack(ItemStack tagged) {
         var result = tagged.copy();
-        var root = Objects.requireNonNull(result.getTagCompound());
+        var root = result.getTagCompound();
         root.removeTag(DELIVERY_TAG);
         if (root.isEmpty()) result.setTagCompound(null);
         return result;
     }
 
     private static boolean releaseCandidate(ItemStack stack, ItemDeliveryFragment fragment, ItemStack expected) {
-        if (stack.isEmpty() || !stack.hasTagCompound() || !Objects.requireNonNull(stack.getTagCompound()).hasKey(DELIVERY_TAG))
+        var root = stack.getTagCompound();
+        if (stack.isEmpty() || root == null || !root.hasKey(DELIVERY_TAG))
             return false;
-        var tag = Objects.requireNonNull(stack.getTagCompound()).getCompoundTag(DELIVERY_TAG);
+        var tag = root.getCompoundTag(DELIVERY_TAG);
         if (!fragment.id().toString().equals(tag.getString("Fragment"))) return false;
         if (!exact(stack, expected))
             throw new IllegalStateException("Confirmed reward leaf payload changed: " + fragment.id());
@@ -165,7 +166,7 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
             result.add(leaf(parent, key, template, result.size(), count, drop));
             remaining -= count;
         }
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 
     @Override
@@ -290,6 +291,7 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public void commit(ItemDeliveryFragment fragment, Delivery delivery) {
         requireOwner();
         validate(fragment);
@@ -319,7 +321,7 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         var savedChunk = world.getChunkProvider().getLoadedChunk(chunk(entity.posX), chunk(entity.posZ));
         try {
             // Use the existing exact chunk writer. A full world save would reenter WorldEvent.Save.
-            loader.saveChunk(world, Objects.requireNonNull(savedChunk));
+            loader.saveChunk(world, savedChunk);
             ThreadedFileIOBase.getThreadedIOInstance().waitForFinish();
             requireOwner();
             if (loader.getPendingSaveCount() != 0)
@@ -438,11 +440,12 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         // Cleanup is repeatable after reload. Missing/previously released leaves never create items.
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void validate(ItemDeliveryFragment fragment) {
         if (!fragment.parent().playerUuid().equals(player.getUniqueID()) || !(fragment.resource() instanceof AEItemKey key))
             throw new IllegalArgumentException("Invalid reward actor/resource");
         var stack = new ItemStack(fragment.taggedStackNbt());
-        var root = Objects.requireNonNull(stack.getTagCompound(), "Reward tagged payload");
+        var root = stack.getTagCompound();
         if (stack.isEmpty() || stack.getCount() != fragment.count() || !root.getCompoundTag(DELIVERY_TAG).equals(ItemDeliveryKeyNbt.identity(fragment.parent(), fragment.id()))) {
             throw new IllegalArgumentException("Reward save differs from tagged payload");
         }

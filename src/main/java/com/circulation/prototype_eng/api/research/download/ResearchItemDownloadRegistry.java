@@ -6,7 +6,6 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Loading-thread exact material registration, atomically frozen before runtime download evaluation.
@@ -27,7 +26,7 @@ public final class ResearchItemDownloadRegistry {
     }
 
     private void registerKey(AEItemKey key, ResearchItemDownloadEvent event) {
-        if (registrations.putIfAbsent(key, Objects.requireNonNull(event, "Download event")) != null) {
+        if (registrations.putIfAbsent(key, event) != null) {
             throw new IllegalArgumentException("Duplicate research item download material");
         }
     }
@@ -48,7 +47,7 @@ public final class ResearchItemDownloadRegistry {
 
     public void freeze(ResearchRegistry research) {
         requireLoading();
-        if (!Objects.requireNonNull(research, "Research registry").isFrozen()) {
+        if (!research.isFrozen()) {
             throw new IllegalStateException("Research must freeze before item download events");
         }
         frozen = new Frozen(registrations);
@@ -63,7 +62,7 @@ public final class ResearchItemDownloadRegistry {
         if (event == null) {
             return ResearchItemDownloadEvaluation.noEvent();
         }
-        var output = Objects.requireNonNull(event.createOutput(context), "Download event output");
+        var output = event.createOutput(context);
         if (output.isEmpty()) {
             return ResearchItemDownloadEvaluation.rejected();
         }

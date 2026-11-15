@@ -121,7 +121,7 @@ class MachineRenderSnapshotTest {
     }
 
     @Test
-    void opaqueCoveredPositionsReachBoundsAndCallbackRevocationCannotPublish() {
+    void opaqueCoveredPositionsReachBounds() {
         var shape = new Shape();
         try (var fixture = new Fixture(shape, BlockOrientation.NORTH_UP)) {
             fixture.accept();
@@ -130,8 +130,6 @@ class MachineRenderSnapshotTest {
             assertEquals(new BlockPos(-100, 0, 0), snapshot.bounds().min());
             assertEquals(new BlockPos(0, 2, 80), snapshot.bounds().max());
             assertTrue(snapshot.hidePositions().contains(new BlockPos(-100, 2, 80)));
-            shape.geometryCallback = () -> fixture.host.configuration = null;
-            assertNull(fixture.capture());
         }
     }
 
@@ -272,9 +270,6 @@ class MachineRenderSnapshotTest {
     }
 
     static final class Shape implements MachineStructure, StructurePreviewProvider {
-        Runnable geometryCallback = () -> {
-        };
-
         @Override
         public ResourceLocation id() {
             return MachineRenderSnapshotTest.id("opaque");
@@ -306,7 +301,6 @@ class MachineRenderSnapshotTest {
 
         @Override
         public Geometry previewGeometry() {
-            geometryCallback.run();
             return new Geometry(Kind.OPAQUE, BlockPos.ORIGIN, 0, 0, BlockPos.ORIGIN, List.of(), List.of());
         }
     }

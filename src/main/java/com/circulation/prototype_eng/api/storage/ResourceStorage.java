@@ -6,7 +6,6 @@ import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Independent thread-safe resource balance. AE2 provides resource identity, not storage semantics.
@@ -28,7 +27,6 @@ public interface ResourceStorage {
      */
     @SuppressWarnings("ReturnOfInnerClass") // Capture retains this storage's keyed callback and revision proof.
     default QuantityCapture beginQuantityCapture(AEKey key) {
-        Objects.requireNonNull(key);
         return new QuantityCapture() {
             private StorageSnapshot snapshot;
 
@@ -199,8 +197,8 @@ public interface ResourceStorage {
 
         private LegacyReservationCapture(ResourceStorage storage, StorageSnapshot snapshot, AEKey key, long maximum, boolean insert) {
             this.storage = storage;
-            this.snapshot = Objects.requireNonNull(snapshot);
-            this.key = Objects.requireNonNull(key);
+            this.snapshot = snapshot;
+            this.key = key;
             if (maximum <= 0) {
                 throw new IllegalArgumentException("A reservation needs a positive amount");
             }
@@ -275,27 +273,30 @@ public interface ResourceStorage {
         }
 
         @Override
+        @SuppressWarnings("DataFlowIssue")
         public ResourceReservation.Resolution resolution() {
             storage.context().requireLock();
             if (cancelled) {
                 return ResourceReservation.Resolution.ROLLED_BACK;
             }
             if (result != null && result.status() == ReservationResult.Status.ACCEPTED) {
-                return Objects.requireNonNull(result.reservation()).resolution();
+                return result.reservation().resolution();
             }
             return attempted && result == null ? ResourceReservation.Resolution.UNKNOWN : ResourceReservation.Resolution.REVERSIBLE;
         }
 
         @Override
+        @SuppressWarnings("DataFlowIssue")
         public @Nullable ResourceReservation.Resolution resolutionWithinBudget(RecipeWorkBudget budget) {
             storage.context().requireLock();
             if (!cancelled && result != null && result.status() == ReservationResult.Status.ACCEPTED) {
-                return Objects.requireNonNull(result.reservation()).resolutionWithinBudget(budget);
+                return result.reservation().resolutionWithinBudget(budget);
             }
             return budget.take() ? resolution() : null;
         }
 
         @Override
+        @SuppressWarnings("DataFlowIssue")
         public boolean cancel(RecipeWorkBudget budget) {
             storage.context().requireLock();
             if (cancelled || transferred) {
@@ -308,7 +309,7 @@ public interface ResourceStorage {
                 if (!budget.take()) {
                     return false;
                 }
-                var token = Objects.requireNonNull(result.reservation());
+                var token = result.reservation();
                 var context = token.context();
                 context.lock();
                 try {

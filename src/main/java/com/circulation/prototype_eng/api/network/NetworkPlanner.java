@@ -12,7 +12,6 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 
@@ -50,7 +49,6 @@ public final class NetworkPlanner {
      * Only immutable captures are read here; this method may run on a worker.
      */
     public static NetworkPlan plan(Inputs inputs) {
-        Objects.requireNonNull(inputs);
         var states = new Object2ObjectLinkedOpenHashMap<UUID, NetworkWorkState>();
         var teamIds = new Object2ObjectLinkedOpenHashMap<UUID, String>();
         var groups = new Object2ObjectLinkedOpenHashMap<String, ObjectArrayList<NetworkDeviceSnapshot>>();
@@ -179,7 +177,7 @@ public final class NetworkPlanner {
         }
 
         OwnerTeamResolution owner(UUID ownerId) {
-            return Objects.requireNonNull(owners.get(ownerId));
+            return owners.get(ownerId);
         }
 
         Inputs withDevices(List<NetworkDeviceSnapshot> devices) {

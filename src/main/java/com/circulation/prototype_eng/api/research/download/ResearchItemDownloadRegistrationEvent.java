@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.api.research.download;
 
 import net.minecraftforge.fml.common.eventhandler.Event;
 
-import java.util.Objects;
 
 /**
  * Java item download registration, after research freeze and before server consumers become active.
@@ -12,7 +11,7 @@ public final class ResearchItemDownloadRegistrationEvent extends Event {
     private final ResearchItemDownloadRegistry registry;
 
     public ResearchItemDownloadRegistrationEvent(ResearchItemDownloadRegistry registry) {
-        this.registry = Objects.requireNonNull(registry, "Item download registry");
+        this.registry = registry;
     }
 
     public ResearchItemDownloadRegistry registry() {

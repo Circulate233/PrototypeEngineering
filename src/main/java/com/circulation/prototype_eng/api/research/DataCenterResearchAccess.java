@@ -8,7 +8,6 @@ import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -23,9 +22,9 @@ public final class DataCenterResearchAccess {
     private boolean executing;
 
     public DataCenterResearchAccess(ResearchWorld world, NetworkRuntime network, ResearchDataCenters centers) {
-        this.world = Objects.requireNonNull(world);
-        this.network = Objects.requireNonNull(network);
-        this.centers = Objects.requireNonNull(centers);
+        this.world = world;
+        this.network = network;
+        this.centers = centers;
     }
 
     private static Result result(Status status) {
@@ -34,9 +33,6 @@ public final class DataCenterResearchAccess {
 
     public Result download(OwnerTeamResolution membership, ResearchPermissionContext permission,
                            UUID expectedDataCenterId, ResourceLocation researchId, int level, BooleanSupplier current) {
-        Objects.requireNonNull(expectedDataCenterId);
-        Objects.requireNonNull(researchId);
-        Objects.requireNonNull(current);
         enter();
         try {
             if (world.savePending()) return result(Status.SAVE_PENDING);
@@ -46,7 +42,7 @@ public final class DataCenterResearchAccess {
             var physical = centers.capture(membership.teamId(), expectedDataCenterId);
             if (physical == null) return result(Status.NO_ACTIVE_DATA_CENTER);
             return publish(physical, () -> physical.storage().downloadResearch(researchId, level,
-                Objects.requireNonNull(cloud.view()), () -> !world.savePending() && cloud.current().getAsBoolean() && physical.current()));
+                cloud.view(), () -> !world.savePending() && cloud.current().getAsBoolean() && physical.current()));
         } finally {
             executing = false;
         }
@@ -56,7 +52,6 @@ public final class DataCenterResearchAccess {
      * No player permission or source mutation is involved in the automatic upgrade of stored research.
      */
     public Result synchronize(OwnerTeamResolution membership, BooleanSupplier current) {
-        Objects.requireNonNull(current);
         enter();
         try {
             if (world.savePending()) return result(Status.SAVE_PENDING);
@@ -64,7 +59,7 @@ public final class DataCenterResearchAccess {
             if (cloud == null) return result(Status.STALE_CONTEXT);
             var physical = selected(membership.teamId());
             if (physical == null) return result(Status.NO_ACTIVE_DATA_CENTER);
-            return publish(physical, () -> physical.storage().synchronizeLoopingResearch(Objects.requireNonNull(cloud.view()),
+            return publish(physical, () -> physical.storage().synchronizeLoopingResearch(cloud.view(),
                 () -> !world.savePending() && cloud.current().getAsBoolean() && physical.current()));
         } finally {
             executing = false;
@@ -104,7 +99,7 @@ public final class DataCenterResearchAccess {
 
     private Result publish(ResearchDataCenters.Capture physical, Supplier<DataCenterStorage.Result> operation) {
         try {
-            var result = Objects.requireNonNull(operation.get());
+            var result = operation.get();
             // A dirty callback can fail after contents changed. Never restore the old publication or database.
             if (result == DataCenterStorage.Result.UPDATED) network.refresh();
             else if (!physical.current()) network.revoke();
@@ -116,7 +111,6 @@ public final class DataCenterResearchAccess {
     }
 
     private void enter() {
-        world.savePending(); // Verifies the world's owner thread before observing the local reentry guard.
         if (executing) throw new IllegalStateException("Database access cannot be reentered");
         executing = true;
     }
@@ -124,11 +118,5 @@ public final class DataCenterResearchAccess {
     public enum Status {COMPLETED, PERMISSION_DENIED, NO_ACTIVE_DATA_CENTER, SAVE_PENDING, STALE_CONTEXT}
 
     public record Result(Status status, @Nullable DataCenterStorage.Result storageResult) {
-        public Result {
-            Objects.requireNonNull(status);
-            if ((status == Status.COMPLETED) == (storageResult == null)) {
-                throw new IllegalArgumentException("Completed database operations require their storage result");
-            }
-        }
     }
 }

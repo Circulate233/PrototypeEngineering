@@ -35,7 +35,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -110,7 +109,7 @@ public final class MachineAssembly {
     }
 
     private static <C> void restoreBinding(MachineInstance machine, Binding<C> binding, NBTTagCompound tag) {
-        var component = Objects.requireNonNull(machine.components().get(binding.type()));
+        var component = machine.components().get(binding.type());
         var restored = binding.restore(machine, component, tag);
         if (restored != component) {
             machine.components().replaceValue(binding.type(), restored);
@@ -207,26 +206,28 @@ public final class MachineAssembly {
         return machine;
     }
 
+    @SuppressWarnings("DataFlowIssue")
     public NBTTagCompound encode(MachineInstance machine) {
-        var lifecycle = Objects.requireNonNull(machine.lifecycle(), "Machine has no attached lifecycle");
+        var lifecycle = machine.lifecycle();
         return lifecycle.withPersistence(() -> encodeState(machine));
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private NBTTagCompound encodeState(MachineInstance machine) {
         requireOwner(machine);
-        var graph = Graph.capture(machine);
+        var bindings = machine.components().assemblyBindings();
+        var pendingDependencies = machine.components().snapshotPendingDependencies();
         var local = machine.attributes().localSnapshot();
-        validate(machine);
+        validate(machine, bindings, pendingDependencies);
         var tag = new NBTTagCompound();
         tag.setInteger("Version", 2);
         tag.setString("Type", type.id().toString());
         tag.setString("Revision", revision);
-        tag.setLong("FormationGeneration", Objects.requireNonNull(machine.lifecycle()).formationGeneration());
+        tag.setLong("FormationGeneration", machine.lifecycle().formationGeneration());
         tag.setTag("Attributes", attributes.encode(local));
         var components = new NBTTagList();
-        var elements9 = graph.components();
-        for (int index9 = 0; index9 < elements9.size(); index9++) {
-            var saved = elements9.get(index9);
+        for (int index9 = 0; index9 < bindings.size(); index9++) {
+            var saved = bindings.get(index9);
             if (isStructureDerived(saved.type())) {
                 continue;
             }
@@ -239,7 +240,7 @@ public final class MachineAssembly {
         }
         tag.setTag("Components", components);
         var pending = new NBTTagList();
-        graph.pending().forEach((dependent, dependencies) -> {
+        pendingDependencies.forEach((dependent, dependencies) -> {
             require(dependent);
             var entry = new NBTTagCompound();
             entry.setString("Type", dependent.id().toString());
@@ -251,6 +252,7 @@ public final class MachineAssembly {
         return tag;
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void restoreState(MachineInstance machine, NBTTagCompound tag) {
         requireOwner(machine);
         if (tag.getInteger("Version") != 2 || !new ResourceLocation(tag.getString("Type")).equals(type.id())
@@ -261,7 +263,7 @@ public final class MachineAssembly {
         if (generation < 0) {
             throw new IllegalArgumentException("Formation generation must be nonnegative");
         }
-        Objects.requireNonNull(machine.lifecycle()).restoreFormationGeneration(generation);
+        machine.lifecycle().restoreFormationGeneration(generation);
         var entries = readComponents(tag.getTagList("Components", Constants.NBT.TAG_COMPOUND));
         var pending = readPending(tag.getTagList("PendingDependencies", Constants.NBT.TAG_COMPOUND), entries);
         var dependencies = new Object2ObjectLinkedOpenHashMap<ComponentType<MachineInstance, ?>, Set<ComponentType<MachineInstance, ?>>>();
@@ -319,29 +321,26 @@ public final class MachineAssembly {
     }
 
     private void validate(MachineInstance machine) {
+        validate(machine, machine.components().assemblyBindings(), machine.components().snapshotPendingDependencies());
+    }
+
+    private void validate(MachineInstance machine, List<ComponentMap.SavedBinding<MachineInstance, ?>> bindings,
+                          Map<ComponentType<MachineInstance, ?>, Set<ComponentType<MachineInstance, ?>>> pendingDependencies) {
         requireOwner(machine);
-        var graph = Graph.capture(machine);
-        var elements7 = graph.components();
-        for (int index7 = 0; index7 < elements7.size(); index7++) {
-            var saved = elements7.get(index7);
+        for (int index7 = 0; index7 < bindings.size(); index7++) {
+            var saved = bindings.get(index7);
+            for (var dependency : saved.dependencies()) requireReference(dependency);
             if (isStructureDerived(saved.type())) {
                 continue;
             }
             require(saved.type()).validate(machine, saved);
         }
-        graph.pending().forEach((dependent, dependencies) -> {
+        pendingDependencies.forEach((dependent, dependencies) -> {
             require(dependent);
             for (var dependency : dependencies) {
                 requireReference(dependency);
             }
         });
-        var elements5 = graph.components();
-        for (int index5 = 0; index5 < elements5.size(); index5++) {
-            var saved = elements5.get(index5);
-            for (var dependency : saved.dependencies()) {
-                requireReference(dependency);
-            }
-        }
         for (int index1 = 0; index1 < validators.size(); index1++) {
             var validator = validators.get(index1);
             validator.accept(machine);
@@ -422,14 +421,6 @@ public final class MachineAssembly {
         }
     }
 
-    private record Graph(List<ComponentMap.SavedBinding<MachineInstance, ?>> components,
-                         Map<ComponentType<MachineInstance, ?>, Set<ComponentType<MachineInstance, ?>>> pending) {
-        private static Graph capture(MachineInstance machine) {
-            return new Graph(machine.components().assemblyBindings(), machine.components().snapshotPendingDependencies());
-        }
-
-    }
-
     private record SavedComponent(Binding<?> binding, Set<ComponentType<MachineInstance, ?>> dependencies,
                                   NBTTagCompound data) {
     }
@@ -441,14 +432,14 @@ public final class MachineAssembly {
         }
 
         private NBTTagCompound encode(MachineInstance owner, ComponentMap.SavedBinding<MachineInstance, ?> saved) {
-            return codec == null ? new NBTTagCompound() : Objects.requireNonNull(codec.encode(owner, component(saved)), "Machine component save");
+            return codec == null ? new NBTTagCompound() : codec.encode(owner, component(saved));
         }
 
         private C restore(MachineInstance owner, C component, NBTTagCompound saved) {
             if (codec == null) {
                 return component;
             }
-            return Objects.requireNonNull(codec.restore(owner, component, saved), "Restored machine component");
+            return codec.restore(owner, component, saved);
         }
 
         private void validate(MachineInstance owner, ComponentMap.SavedBinding<MachineInstance, ?> saved) {
@@ -471,15 +462,14 @@ public final class MachineAssembly {
         private List<ComputerRecipe> computerRecipes = List.of();
 
         private Builder(MachineType type, String revision) {
-            this.type = Objects.requireNonNull(type);
-            this.revision = Objects.requireNonNull(revision);
+            this.type = type;
+            this.revision = revision;
             if (revision.isBlank()) {
                 throw new IllegalArgumentException("Machine declaration revision must not be blank");
             }
         }
 
         private static void requireExternal(ComponentType<MachineInstance, ?> descriptor) {
-            Objects.requireNonNull(descriptor);
             if (isStructureDerived(descriptor) || descriptor.id().equals(MachineScheduling.TYPE.id())) {
                 throw new IllegalArgumentException("Reserved machine component persistence binding: " + descriptor.id());
             }
@@ -487,7 +477,7 @@ public final class MachineAssembly {
 
         public <C> Builder component(ComponentType<MachineInstance, C> descriptor, MachineComponentCodec<C> codec) {
             requireExternal(descriptor);
-            add(bindings, new Binding<>(descriptor, Objects.requireNonNull(codec)));
+            add(bindings, new Binding<>(descriptor, codec));
             return this;
         }
 
@@ -511,7 +501,7 @@ public final class MachineAssembly {
          * Creates the same custom runtime subclass for fresh assembly and restoration, before host attachment.
          */
         public Builder instanceFactory(Function<MachineType, ? extends MachineInstance> factory) {
-            instanceFactory = Objects.requireNonNull(factory);
+            instanceFactory = factory;
             return this;
         }
 
@@ -525,12 +515,11 @@ public final class MachineAssembly {
         }
 
         public Builder attributes(AttributeModifierNbt codec) {
-            attributes = Objects.requireNonNull(codec);
+            attributes = codec;
             return this;
         }
 
         public Builder workSlots(MachineWorkSlotsNbt codec) {
-            Objects.requireNonNull(codec);
             return component(MachineWorkSlots.TYPE, new MachineComponentCodec<>() {
                 @Override
                 public void validate(MachineInstance owner, MachineWorkSlots component) {
@@ -564,7 +553,7 @@ public final class MachineAssembly {
         }
 
         public Builder validator(Consumer<MachineInstance> validator) {
-            validators.add(Objects.requireNonNull(validator));
+            validators.add(validator);
             return this;
         }
 

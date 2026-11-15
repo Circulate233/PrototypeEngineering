@@ -13,6 +13,7 @@ import java.util.function.ObjIntConsumer;
 
 /**
  * Controller-owned item slots. Use only after the machine's workers have joined.
+ * Slot arguments must be between zero and CAPACITY - 1.
  * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public final class ControllerInventory extends BaseInternalInventory {
@@ -23,7 +24,7 @@ public final class ControllerInventory extends BaseInternalInventory {
     private int availableSlots;
 
     public ControllerInventory(Runnable changed) {
-        this.changed = Objects.requireNonNull(changed);
+        this.changed = changed;
     }
 
     public static int requireSlotCount(int count) {
@@ -57,7 +58,6 @@ public final class ControllerInventory extends BaseInternalInventory {
      */
     @Override
     public @NotNull ItemStack getStackInSlot(int slot) {
-        Objects.checkIndex(slot, CAPACITY);
         var stack = stacks == null ? null : stacks[slot];
         return stack == null ? ItemStack.EMPTY : stack;
     }
@@ -67,8 +67,6 @@ public final class ControllerInventory extends BaseInternalInventory {
      */
     @Override
     public void setItemDirect(int slot, @NotNull ItemStack stack) {
-        Objects.checkIndex(slot, CAPACITY);
-        Objects.requireNonNull(stack);
         if (stack.isEmpty() && stacks == null) return;
         if (stacks == null) stacks = new ItemStack[CAPACITY];
         stacks[slot] = stack.isEmpty() ? null : stack;
@@ -78,7 +76,6 @@ public final class ControllerInventory extends BaseInternalInventory {
     @Override
     @SuppressWarnings("UnstableApiUsage") // AE native slots notify their backing inventory through this hook.
     public void sendChangeNotification(int slot) {
-        Objects.checkIndex(slot, CAPACITY);
         changed.run();
     }
 
@@ -89,13 +86,11 @@ public final class ControllerInventory extends BaseInternalInventory {
 
     @Override
     public @NotNull ItemStack insertItem(int slot, @NotNull ItemStack stack, boolean simulate) {
-        Objects.checkIndex(slot, CAPACITY);
         return isAvailable(slot) ? super.insertItem(slot, stack, simulate) : stack;
     }
 
     @Override
     public @NotNull ItemStack extractItem(int slot, int amount, boolean simulate) {
-        Objects.checkIndex(slot, CAPACITY);
         return isAvailable(slot) ? super.extractItem(slot, amount, simulate) : ItemStack.EMPTY;
     }
 
@@ -103,7 +98,6 @@ public final class ControllerInventory extends BaseInternalInventory {
      * Visits every open slot in index order, including empty slots, without building a collection.
      */
     public void forEachAvailable(ObjIntConsumer<? super ItemStack> visitor) {
-        Objects.requireNonNull(visitor);
         int count = availableSlots;
         for (int slot = 0; slot < count; slot++) visitor.accept(getStackInSlot(slot), slot);
     }
@@ -112,7 +106,6 @@ public final class ControllerInventory extends BaseInternalInventory {
      * Visits occupied physical slots, including items retained while a slot is closed.
      */
     public void forEachStored(ObjIntConsumer<? super ItemStack> visitor) {
-        Objects.requireNonNull(visitor);
         if (stacks == null) return;
         for (int slot = 0; slot < CAPACITY; slot++) {
             var stack = stacks[slot];
@@ -158,7 +151,6 @@ public final class ControllerInventory extends BaseInternalInventory {
     }
 
     public void addDrops(List<ItemStack> drops) {
-        Objects.requireNonNull(drops);
         forEachStored((stack, _) -> drops.add(stack.copy()));
     }
 

@@ -17,7 +17,6 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Native TE channel only. Watch replay revalidates the original chunk, tile and player connection.
@@ -32,6 +31,7 @@ public final class ControllerRenderSync {
         return tag(tile, part, false, null);
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private static NBTTagCompound tag(MachineControllerBlockEntity tile, ControllerRenderChunks.Part part, boolean ordinary,
                                       @Nullable ControllerDisplayData dataDisplay) {
         var position = tile.getPos();
@@ -39,7 +39,7 @@ public final class ControllerRenderSync {
         tag.setInteger("x", position.getX());
         tag.setInteger("y", position.getY());
         tag.setInteger("z", position.getZ());
-        var display = ordinary ? Objects.requireNonNull(dataDisplay) : part.display();
+        var display = ordinary ? dataDisplay : part.display();
         tag.setTag("Display", display.encode());
         tag.setTag(ordinary ? "Data" : "Render", ordinary ? dataTag(part, display) : part.encode());
         if (ordinary) tag.setBoolean("DataOnly", true);
@@ -99,7 +99,7 @@ public final class ControllerRenderSync {
         var tiles = new ObjectArrayList<MachineControllerBlockEntity>();
         for (var tile : chunk.getTileEntityMap().values())
             if (tile instanceof MachineControllerBlockEntity controller) tiles.add(controller);
-        var server = Objects.requireNonNull(world.getMinecraftServer());
+        var server = world.getMinecraftServer();
         ServerTaskSchedulers.forServer(server).runAtBoundary(() -> {
             if (!loaded(world, chunk)) return;
             for (int index1 = 0; index1 < tiles.size(); index1++) {
@@ -129,7 +129,7 @@ public final class ControllerRenderSync {
 
     private static boolean currentWatcher(WorldServer world, MachineControllerBlockEntity tile,
                                           EntityPlayerMP player, NetHandlerPlayServer connection) {
-        var server = Objects.requireNonNull(world.getMinecraftServer());
+        var server = player.server;
         var position = tile.getPos();
         return attached(world, tile) && player.getEntityWorld() == world && player.connection == connection &&
             connection.netManager.isChannelOpen() && server.getPlayerList().getPlayerByUUID(player.getUniqueID()) == player &&
@@ -142,15 +142,16 @@ public final class ControllerRenderSync {
 
     private static boolean attached(WorldServer world, MachineControllerBlockEntity tile) {
         var pos = tile.getPos();
-        return tile.getWorld() == world && !tile.isInvalid() && world.isBlockLoaded(pos, false) && world.getTileEntity(pos) == tile;
+        return tile.getWorld() == world && !tile.isInvalid() && world.isBlockLoaded(pos, false);
     }
 
     private static boolean loaded(WorldServer world, Chunk chunk) {
         return world.getChunkProvider().getLoadedChunk(chunk.x, chunk.z) == chunk;
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private static void requireOwner(WorldServer world) {
-        if (!Objects.requireNonNull(world.getMinecraftServer()).isCallingFromMinecraftThread())
+        if (!world.getMinecraftServer().isCallingFromMinecraftThread())
             throw new IllegalStateException("Native controller render sync requires its server owner");
     }
 }

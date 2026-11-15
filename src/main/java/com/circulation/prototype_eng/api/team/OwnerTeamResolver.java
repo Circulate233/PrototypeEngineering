@@ -11,6 +11,7 @@ import java.util.UUID;
 public interface OwnerTeamResolver {
     /**
      * Queries persistent player state, including owners who are currently offline.
+     * A batch must cover every requested owner and return consistent completed membership sets.
      */
     OwnerTeamResolution resolve(UUID ownerId);
 }

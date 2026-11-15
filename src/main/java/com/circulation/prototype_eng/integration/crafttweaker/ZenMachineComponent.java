@@ -8,7 +8,6 @@ import com.circulation.prototype_eng.api.machine.persistence.MachineComponentCod
 import crafttweaker.annotations.ZenRegister;
 import stanhebben.zenscript.annotations.ZenClass;
 
-import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -22,12 +21,11 @@ public final class ZenMachineComponent {
     private final Consumer<MachineAssembly.Builder> binding;
 
     private ZenMachineComponent(ComponentType<MachineInstance, ?> type, Consumer<MachineAssembly.Builder> binding) {
-        this.type = Objects.requireNonNull(type);
+        this.type = type;
         this.binding = binding;
     }
 
     public static <C> ZenMachineComponent persistent(ComponentType<MachineInstance, C> type, MachineComponentCodec<C> codec) {
-        Objects.requireNonNull(codec);
         return new ZenMachineComponent(type, assembly -> assembly.component(type, codec));
     }
 

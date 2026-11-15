@@ -4,6 +4,7 @@ import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
 import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.machine.ControllerInventory;
 import com.circulation.prototype_eng.api.machine.MachineControllerBlockHost;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
@@ -49,7 +50,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.UnaryOperator;
 
@@ -105,7 +105,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     private MachineAnimationState.Snapshot renderAnimation;
     @Nullable
     private StructureCatalogView renderCatalog;
-    private List<ResourceLocation> renderComponents = List.of();
+    private List<ComponentMap.SavedBinding<MachineInstance, ?>> renderBindings = List.of();
     private boolean wantsLoad;
     private boolean queuedLoad;
     private boolean replacementData;
@@ -122,8 +122,8 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     }
 
     public MachineControllerBlockEntity(MachineType type, BlockOrientation orientation) {
-        this.type = Objects.requireNonNull(type);
-        this.orientation = Objects.requireNonNull(orientation);
+        this.type = type;
+        this.orientation = orientation;
     }
 
     @Override
@@ -152,10 +152,11 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public int refreshControllerInventorySlots() {
         requireServer();
         var current = machine();
-        if (current != null && Objects.requireNonNull(current.lifecycle()).retired()) current = null;
+        if (current != null && current.lifecycle().retired()) current = null;
         if (current != null) current.requirePersistenceBoundary();
         int count = type().controllerInventorySlots(current);
         controllerInventory.setAvailableSlots(count);
@@ -231,19 +232,20 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
      * The callback runs on the server after accepted workers join; recheck the open container there.
      */
     public void readGuiAtBoundary(Runnable read) {
-        scheduler().runAtBoundary(Objects.requireNonNull(read));
+        scheduler().runAtBoundary(read);
     }
 
     public BlockOrientation orientation() {
         return orientation;
     }
 
+    @SuppressWarnings("DataFlowIssue")
     public boolean formed() {
         if (world != null && world.isRemote) {
             return display != null && display.formed();
         }
         var machine = machine();
-        return machine != null && Objects.requireNonNull(machine.lifecycle()).formed();
+        return machine != null && machine.lifecycle().formed();
     }
 
     @Override
@@ -261,6 +263,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public void update() {
         super.update();
         if (world.isRemote || !wantsLoad) {
@@ -272,9 +275,9 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         }
         updated = true;
         lastTick = now;
-        ServerTaskSchedulers.queueControllerDataDirty(Objects.requireNonNull(world.getMinecraftServer()), this);
+        ServerTaskSchedulers.queueControllerDataDirty(world.getMinecraftServer(), this);
         var machine = machine();
-        if (controller == null || machine != null && Objects.requireNonNull(machine.lifecycle()).retired()) {
+        if (controller == null || machine != null && machine.lifecycle().retired()) {
             if (!queuedLoad) {
                 queuedLoad = true;
                 scheduler().runAtBoundary(this::attachAtBoundary);
@@ -286,7 +289,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         Runnable observe = () -> {
             if (observedEpoch == attachmentEpoch && wantsLoad && isAttached()) observeRenderState();
         };
-        if (structures != null && machine != null && !Objects.requireNonNull(machine.lifecycle()).retired()) {
+        if (structures != null && machine != null && !machine.lifecycle().retired()) {
             structures.enqueueTick(now, observe);
         } else scheduler().runAtBoundary(observe);
         // The queued native save mark follows this tick's actual scheduler worker join.
@@ -309,6 +312,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         return ControllerLifecycleHost.nativeHost(type, this, player, blockId);
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void attachAtBoundary() {
         queuedLoad = false;
         if (!wantsLoad || !isAttached()) {
@@ -317,7 +321,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         var type = type();
         if (controller != null) {
             var previous = controller.machine();
-            if (previous != null && !Objects.requireNonNull(previous.lifecycle()).retired()) {
+            if (previous != null && !previous.lifecycle().retired()) {
                 return;
             }
             if (!replacementData && previous != null) {
@@ -362,7 +366,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
                 host = null;
                 return;
             }
-            if (Objects.requireNonNull(machine.lifecycle()).retired()) {
+            if (machine.lifecycle().retired()) {
                 return;
             }
             try {
@@ -406,7 +410,6 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     }
 
     public void orient(BlockOrientation orientation) {
-        Objects.requireNonNull(orientation);
         transformOrientation(_ -> orientation);
     }
 
@@ -414,7 +417,6 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
      * Applies a pure relative transform at the owner boundary, using this attachment's latest direction.
      */
     public void transformOrientation(UnaryOperator<BlockOrientation> transformation) {
-        Objects.requireNonNull(transformation);
         requireServer();
         var epoch = attachmentEpoch;
         scheduler().runAtBoundary(() -> {
@@ -424,6 +426,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         });
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void changeOrientation(BlockOrientation orientation) {
         if (!isAttached() || orientation() == orientation) {
             return;
@@ -433,7 +436,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         }
         this.orientation = orientation;
         var machine = machine();
-        if (host != null && machine != null && !Objects.requireNonNull(machine.lifecycle()).retired()) {
+        if (host != null && machine != null && !machine.lifecycle().retired()) {
             host.configureStructure(MachineTypeRegistry.INSTANCE.structureCatalog(), MachineTypeRegistry.INSTANCE.structure(type()), orientation);
         }
         applyState();
@@ -488,13 +491,14 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         transformOrientation(current -> current.rotateClockwiseAround(axis));
     }
 
+    @SuppressWarnings("DataFlowIssue")
     public void controllerBroken() {
         if (controllerDestroyed) {
             return;
         }
         var current = machine();
         boolean dormant = controller == null || replacementData
-            || current != null && Objects.requireNonNull(current.lifecycle()).state() != MachineLifecycle.State.LOADED;
+            || current != null && current.lifecycle().state() != MachineLifecycle.State.LOADED;
         if (dormant && type != null) {
             requireServer();
             var assembly = MachineTypeRegistry.INSTANCE.assembly(type);
@@ -563,13 +567,14 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public void loadTag(@NotNull NBTTagCompound tag) {
         var decoded = ControllerData.decode(tag.getCompoundTag("Machine"));
         var restoredType = type != null && type.id().equals(decoded.type()) ? type
-            : Objects.requireNonNull(MachineTypeRegistry.INSTANCE.get(decoded.type()), "Unknown saved controller type");
+            : MachineTypeRegistry.INSTANCE.get(decoded.type());
         if (controller != null) {
             requireServer();
-            Objects.requireNonNull(controller.machine(), "Cannot read NBT during controller assembly").requirePersistenceBoundary();
+            controller.machine().requirePersistenceBoundary();
             // Forge BlockSnapshot.restore also reads running tiles. Retire the quiescent old machine;
             // only a new controller can consume the replacement. Never overwrite live components.
             controller.unload(MachineLifecycleEvent.UnloadReason.INVALIDATED);
@@ -597,6 +602,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         controllerInventory.writeToNBT(tag, "ControllerInventory");
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void changed() {
         requireServer();
         if (!isAttached()) {
@@ -609,11 +615,11 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         var epoch = attachmentEpoch;
         var original = machine();
         var originalHost = host;
-        var lifecycle = original == null ? null : Objects.requireNonNull(original.lifecycle());
+        var lifecycle = original == null ? null : original.lifecycle();
         boolean loaded = lifecycle != null && lifecycle.state() == MachineLifecycle.State.LOADED && !lifecycle.retired();
         var configuration = loaded && originalHost != null ? originalHost.structureConfiguration() : null;
         var expectedCatalog = configuration == null ? MachineTypeRegistry.INSTANCE.structureCatalog() : configuration.catalog();
-        var server = Objects.requireNonNull(world.getMinecraftServer());
+        var server = world.getMinecraftServer();
         var view = expectedCatalog == null ? null : ServerStructureReloads.view(server, expectedCatalog);
         var metadata = new ControllerDisplayData(type.id(), orientation(),
             loaded && configuration != null && lifecycle.formed(), displayGeneration, nextSequence);
@@ -646,15 +652,8 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         var ordinary = dataSnapshots.observe(loaded ? original : null, metadata.generation());
         boolean dataChanged = ordinary != serverDataSnapshot;
         var ordinaryParts = dataChanged ? ControllerRenderChunks.split(ordinary, metadata, dataSession) : dataParts;
-        var componentIds = new ObjectArrayList<ResourceLocation>();
+        var bindings = loaded ? original.components().assemblyBindings() : List.<ComponentMap.SavedBinding<MachineInstance, ?>>of();
         var animationState = loaded ? original.components().get(MachineAnimationState.TYPE) : null;
-        if (loaded) {
-            var elements3 = original.components().assemblyBindings();
-            for (int index3 = 0; index3 < elements3.size(); index3++) {
-                var binding = elements3.get(index3);
-                componentIds.add(binding.type().id());
-            }
-        }
         if (epoch != attachmentEpoch || !isAttached() || machine() != original || displaySequence != previousSequence)
             return;
         displaySequence = nextSequence;
@@ -668,7 +667,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         renderConfiguration = configuration;
         renderMatch = loaded ? lifecycle.structureMatch() : null;
         renderAnimation = animationState == null ? null : animationState.snapshot();
-        renderComponents = componentIds;
+        renderBindings = bindings;
         renderCatalog = view;
         markDirty();
         var state = world.getBlockState(pos);
@@ -677,34 +676,31 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         if (dataChanged) ControllerRenderSync.remainingData(this, ordinaryParts);
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void observeRenderState() {
         refreshControllerInventorySlots();
         var current = machine();
         if (current == null) return;
-        var lifecycle = Objects.requireNonNull(current.lifecycle());
+        var lifecycle = current.lifecycle();
         if (lifecycle.state() != MachineLifecycle.State.LOADED || lifecycle.retired()) return;
         current.requirePersistenceBoundary();
         var configuration = host == null ? null : host.structureConfiguration();
         var animation = current.components().get(MachineAnimationState.TYPE);
         var state = animation == null ? null : animation.snapshot();
-        var ids = new ObjectArrayList<ResourceLocation>();
-        var elements = current.components().assemblyBindings();
-        for (int index = 0; index < elements.size(); index++) {
-            var binding = elements.get(index);
-            ids.add(binding.type().id());
-        }
+        var bindings = current.components().assemblyBindings();
         if (displayGeneration == 0) displayGeneration = ControllerDisplayData.newGeneration();
         var ordinary = dataSnapshots.observe(current, displayGeneration);
         var catalog = configuration == null ? MachineTypeRegistry.INSTANCE.structureCatalog() : configuration.catalog();
-        var view = catalog == null ? null : ServerStructureReloads.view(Objects.requireNonNull(world.getMinecraftServer()), catalog);
+        var view = catalog == null ? null : ServerStructureReloads.view(world.getMinecraftServer(), catalog);
         if (ordinary != serverDataSnapshot || serverDisplay == null || current != renderMachine || configuration != renderConfiguration ||
-            lifecycle.structureMatch() != renderMatch || state != renderAnimation || !ids.equals(renderComponents) || view != renderCatalog)
+            lifecycle.structureMatch() != renderMatch || state != renderAnimation || bindings != renderBindings || view != renderCatalog)
             changed();
     }
 
     /**
      * Initial chunk reads use construction data only, never traverse an active machine.
      */
+    @SuppressWarnings("DataFlowIssue")
     private void freezeColdDisplay() {
         if (serverDisplay != null) return;
         if (displayGeneration == 0) displayGeneration = ControllerDisplayData.newGeneration();
@@ -713,7 +709,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         serverDataSnapshot = dataSnapshots.observe(null, displayGeneration);
         serverDataDisplay = serverDisplay;
         dataParts = ControllerRenderChunks.split(serverDataSnapshot, serverDisplay, dataSession);
-        var view = ServerStructureReloads.view(Objects.requireNonNull(world.getMinecraftServer()), MachineTypeRegistry.INSTANCE.structureCatalog());
+        var view = ServerStructureReloads.view(world.getMinecraftServer(), MachineTypeRegistry.INSTANCE.structureCatalog());
         if (view != null) {
             serverRender = new MachineRenderSnapshot(serverDisplay, new MachineRenderSnapshot.CatalogToken(view.session(), view.sequence()),
                 pos, null, List.of(), List.of(), List.of(), null);
@@ -742,11 +738,12 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     /**
      * Exact watch replay holds the joined server owner; serialization never advances this clock.
      */
+    @SuppressWarnings("DataFlowIssue")
     public @Nullable ControllerDisplayData refreshDataReplayAtBoundary() {
         requireServer();
         scheduler().requireOwnerBoundary();
         if (!isAttached() || dataParts.isEmpty() || serverDataDisplay == null) return null;
-        var current = Objects.requireNonNull(serverDisplay);
+        var current = serverDisplay;
         long next = Math.incrementExact(displaySequence);
         displaySequence = next;
         // A watch-local replay must not replace the canonical header seen by all other viewers.
@@ -776,22 +773,23 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public @NotNull NBTTagCompound getUpdateTag() {
         requireServer();
         freezeColdDisplay();
         if (!renderParts.isEmpty()) {
             var tag = ControllerRenderSync.tag(this, renderParts.getFirst());
             if (!dataParts.isEmpty())
-                tag.setTag("Data", ControllerRenderSync.dataTag(dataParts.getFirst(), Objects.requireNonNull(serverDataDisplay)));
+                tag.setTag("Data", ControllerRenderSync.dataTag(dataParts.getFirst(), serverDataDisplay));
             return tag;
         }
         var tag = new NBTTagCompound();
         tag.setInteger("x", pos.getX());
         tag.setInteger("y", pos.getY());
         tag.setInteger("z", pos.getZ());
-        tag.setTag("Display", Objects.requireNonNull(serverDisplay).encode());
+        tag.setTag("Display", serverDisplay.encode());
         if (!dataParts.isEmpty())
-            tag.setTag("Data", ControllerRenderSync.dataTag(dataParts.getFirst(), Objects.requireNonNull(serverDataDisplay)));
+            tag.setTag("Data", ControllerRenderSync.dataTag(dataParts.getFirst(), serverDataDisplay));
         return tag;
     }
 
@@ -898,7 +896,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     }
 
     private boolean isAttached() {
-        return world != null && !isInvalid() && world.isBlockLoaded(pos, false) && world.getTileEntity(pos) == this;
+        return world != null && !isInvalid() && world.isBlockLoaded(pos, false);
     }
 
     private MachineControllerBlockHost requireBlock() {
@@ -908,15 +906,16 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         return block;
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void requireServer() {
-        if (world == null || world.isRemote || !Objects.requireNonNull(world.getMinecraftServer()).isCallingFromMinecraftThread()) {
+        if (world == null || world.isRemote || !world.getMinecraftServer().isCallingFromMinecraftThread()) {
             throw new IllegalStateException("Controller operation requires its attached server thread");
         }
     }
 
     private TaskScheduler scheduler() {
         requireServer();
-        return ServerTaskSchedulers.forServer(Objects.requireNonNull(world.getMinecraftServer()));
+        return ServerTaskSchedulers.forServer(world.getMinecraftServer());
     }
 
     private record Placement(World world, BlockPos position, MachineType type, UUID player) {

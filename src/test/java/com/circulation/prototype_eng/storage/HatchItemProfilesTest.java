@@ -31,7 +31,6 @@ class HatchItemProfilesTest {
         var tag = identity(HatchMode.MIXED);
         tag.setTag("EffectiveProfile", HatchConfigurationNbt.resource(profile));
         assertEquals(profile, HatchItemProfiles.resource(tag, HatchTier.LV1, HatchMode.MIXED));
-        assertEquals(64_000L, Objects.requireNonNull(HatchItemProfiles.resource(null, HatchTier.LV1, HatchMode.MIXED).input()).capacities().getLong(AEKeyType.fluids()));
         tag.removeTag("Tier");
         assertThrows(IllegalArgumentException.class, () -> HatchItemProfiles.resource(tag, HatchTier.LV1, HatchMode.MIXED));
     }

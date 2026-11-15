@@ -156,7 +156,7 @@ final class ConstructionPayment {
             try {
                 var current = edit.inventory.getStackInSlot(edit.slot);
                 if (ItemStack.areItemStacksEqual(current, edit.after))
-                    edit.inventory.setStackInSlot(edit.slot, edit.before.copy());
+                    edit.inventory.setStackInSlot(edit.slot, edit.before);
                 restored = ItemStack.areItemStacksEqual(edit.inventory.getStackInSlot(edit.slot), edit.before);
             } catch (RuntimeException failure) {
                 PrototypeEngineering.LOGGER.error("Failed to restore construction fluid container", failure);

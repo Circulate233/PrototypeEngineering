@@ -58,6 +58,7 @@ public final class NetworkResourceModifier {
      * Apply (base + flat) * (1 + ppm / 1_000_000), preserving fractional quantities.
      */
     public Reference2DoubleMap<NetworkResourceType> apply(Reference2DoubleMap<NetworkResourceType> base) {
+        if (flat.isEmpty() && multiplierPpm.isEmpty()) return base;
         var result = new Reference2DoubleOpenHashMap<>(base);
         for (var type : flat.keySet()) result.putIfAbsent(type, 0);
         for (var type : multiplierPpm.keySet()) result.putIfAbsent(type, 0);

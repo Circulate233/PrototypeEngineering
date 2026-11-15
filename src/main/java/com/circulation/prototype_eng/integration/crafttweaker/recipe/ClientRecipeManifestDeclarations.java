@@ -7,7 +7,6 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Common startup data only; a dedicated server never links a client event or display provider.
@@ -24,7 +23,7 @@ final class ClientRecipeManifestDeclarations {
      */
     static synchronized void add(RecipeDeclarationKey key, List<RecipeRegistry.Definition> definitions, List<RecipeProcessNbt> codecs) {
         if (frozen != null) throw new IllegalStateException("Client recipe declaration registration has closed");
-        var declaration = new Declaration(Objects.requireNonNull(key), definitions, codecs);
+        var declaration = new Declaration(key, definitions, codecs);
         var previous = PENDING.putIfAbsent(key, declaration);
         if (previous != null && !previous.equals(declaration))
             throw new IllegalArgumentException("Client declaration key already describes other concrete definitions: " + key);

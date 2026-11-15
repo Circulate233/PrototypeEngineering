@@ -20,6 +20,12 @@ public final class MachineDataSnapshots {
     private final Reference2LongOpenHashMap<MachineWorkSlots> hosts = new Reference2LongOpenHashMap<>();
     private final Reference2LongOpenHashMap<RecipeProcess> processes = new Reference2LongOpenHashMap<>();
     private final Reference2ObjectOpenHashMap<ComponentData, ComponentData.Snapshot> dataFacts = new Reference2ObjectOpenHashMap<>();
+    private final Reference2ObjectOpenHashMap<RecipeProcess, ComponentData> processData = new Reference2ObjectOpenHashMap<>();
+    private final ReferenceOpenHashSet<MachineWorkSlots> liveHosts = new ReferenceOpenHashSet<>();
+    private final ReferenceOpenHashSet<RecipeProcess> liveProcesses = new ReferenceOpenHashSet<>();
+    private final ReferenceOpenHashSet<ComponentData> liveData = new ReferenceOpenHashSet<>();
+    private ComponentData machineData;
+    private long rosterRevision;
     private long nextIdentity;
     private long revision;
     @Nullable
@@ -29,21 +35,35 @@ public final class MachineDataSnapshots {
 
     public MachineDataSnapshot observe(@Nullable MachineInstance machine, long generation) {
         if (machine != null) machine.requirePersistenceBoundary();
+        var component = machine == null ? null : machine.components().get(DataComponents.MACHINE);
+        long roster = machine == null ? 0 : machine.recipeRosterRevision();
+        if (machine == owner && previous != null && previous.generation() == generation && rosterRevision == roster
+            && component == machineData && unchanged(component)) {
+            boolean current = true;
+            for (var process : processes.keySet()) {
+                var data = process.components().get(DataComponents.PROCESS);
+                if (data != processData.get(process) || !unchanged(data)) {
+                    current = false;
+                    break;
+                }
+            }
+            if (current) return previous;
+        }
         if (machine != owner) {
             owner = machine;
             hosts.clear();
             processes.clear();
             dataFacts.clear();
+            processData.clear();
         }
-        var liveHosts = new ReferenceOpenHashSet<MachineWorkSlots>();
-        var liveProcesses = new ReferenceOpenHashSet<RecipeProcess>();
-        var liveData = new ReferenceOpenHashSet<ComponentData>();
+        liveHosts.clear();
+        liveProcesses.clear();
+        liveData.clear();
         var captured = new ObjectArrayList<MachineDataSnapshot.Host>();
         if (machine != null) {
             var elements1 = machine.recipeHosts();
             for (int index1 = 0; index1 < elements1.size(); index1++) {
                 var host = elements1.get(index1);
-                if (host.owner() != machine) throw new IllegalStateException("Foreign machine data host");
                 liveHosts.add(host);
                 long hostId = hosts.getLong(host);
                 if (hostId == 0) {
@@ -58,14 +78,14 @@ public final class MachineDataSnapshots {
                     var process = slot.process();
                     MachineDataSnapshot.Process fact = null;
                     if (process != null) {
-                        if (process.owner() != machine || process.host() != host || !liveProcesses.add(process))
-                            throw new IllegalStateException("Machine data process lost exact slot ownership");
+                        liveProcesses.add(process);
                         long processId = processes.getLong(process);
                         if (processId == 0) {
                             processId = nextIdentity = Math.incrementExact(nextIdentity);
                             processes.put(process, processId);
                         }
                         var data = process.components().get(DataComponents.PROCESS);
+                        processData.put(process, data);
                         fact = new MachineDataSnapshot.Process(processId, process.recipe().id(), observeData(data, liveData));
                     }
                     slots.add(new MachineDataSnapshot.Slot(slot.name(), fact));
@@ -76,14 +96,22 @@ public final class MachineDataSnapshots {
         }
         hosts.keySet().retainAll(liveHosts);
         processes.keySet().retainAll(liveProcesses);
-        var component = machine == null ? null : machine.components().get(DataComponents.MACHINE);
+        processData.keySet().retainAll(liveProcesses);
         var data = observeData(component, liveData);
         dataFacts.keySet().retainAll(liveData);
+        machineData = component;
+        rosterRevision = roster;
         if (previous != null && previous.generation() == generation && Objects.equals(previous.machine(), data) && previous.hosts().equals(captured))
             return previous;
         revision = Math.incrementExact(revision);
         previous = new MachineDataSnapshot(generation, revision, data, captured);
         return previous;
+    }
+
+    private boolean unchanged(@Nullable ComponentData data) {
+        if (data == null) return true;
+        var fact = dataFacts.get(data);
+        return fact != null && fact.revision() == data.revision();
     }
 
     /**
@@ -103,6 +131,11 @@ public final class MachineDataSnapshots {
         hosts.clear();
         processes.clear();
         dataFacts.clear();
+        processData.clear();
+        liveHosts.clear();
+        liveProcesses.clear();
+        liveData.clear();
+        machineData = null;
         owner = null;
         previous = null;
     }

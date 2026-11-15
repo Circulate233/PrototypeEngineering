@@ -7,20 +7,15 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 // ZenScript discovers these entry points through annotations rather than Java call sites.
 @SuppressWarnings("unused")
 @ZenRegister
 @ZenClass("mods.prototype_eng.recipe.Matcher")
 public record ZenMatcher(NamedResourceMatcher value) {
-    public ZenMatcher {
-        Objects.requireNonNull(value);
-    }
 
     @ZenMethod
     public static ZenMatcher create(String id, ZenResourceMatcher matcher) {
-        Objects.requireNonNull(matcher);
         return new ZenMatcher(new NamedResourceMatcher(ZenRecipeSupport.id(id),
             (candidate, pattern) -> matcher.matches(new ZenResource(candidate, 1), new ZenResource(pattern, 1))));
     }

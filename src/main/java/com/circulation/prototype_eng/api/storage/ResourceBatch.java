@@ -13,7 +13,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
@@ -74,8 +73,8 @@ public final class ResourceBatch {
 
     public static @Nullable ResourceBatch tryAcquire(List<? extends ResourceReservation> reservations,
                                                      Runnable commit, Runnable complete, Runnable rollback) {
-        return tryAcquire(reservations, List.of(new CallbackTransaction(Objects.requireNonNull(commit),
-            Objects.requireNonNull(complete), Objects.requireNonNull(rollback))));
+        return tryAcquire(reservations, List.of(new CallbackTransaction(commit,
+            complete, rollback)));
     }
 
     @SuppressWarnings("StatementWithEmptyBody") // The original cursor performs every synchronous drain step.
@@ -149,7 +148,7 @@ public final class ResourceBatch {
      */
     public boolean ownsContext(StorageContext context) {
         requireOwnerBoundary();
-        return contexts.contains(Objects.requireNonNull(context));
+        return contexts.contains(context);
     }
 
     public Decision decision() {
@@ -182,7 +181,6 @@ public final class ResourceBatch {
      */
     public void access(Runnable action) {
         requireOwnerBoundary();
-        Objects.requireNonNull(action);
         synchronized (lock) {
             requireIdleOwner();
             if (stage != null) {
@@ -204,7 +202,6 @@ public final class ResourceBatch {
      */
     public boolean accessWithinBudget(Runnable action) {
         requireOwnerBoundary();
-        Objects.requireNonNull(action);
         workYielded = false;
         synchronized (lock) {
             requireIdleOwner();
@@ -226,7 +223,6 @@ public final class ResourceBatch {
 
     public void acquireNext(Runnable acquisition) {
         requireOwnerBoundary();
-        Objects.requireNonNull(acquisition);
         synchronized (lock) {
             requireAppendBoundary();
             if (nextAcquired) {
@@ -249,7 +245,6 @@ public final class ResourceBatch {
      */
     public boolean acquireNextWithinBudget(Runnable acquisition) {
         requireOwnerBoundary();
-        Objects.requireNonNull(acquisition);
         workYielded = false;
         synchronized (lock) {
             requireAppendBoundary();
@@ -289,7 +284,6 @@ public final class ResourceBatch {
                                       List<? extends ReversibleTransaction> transactions,
                                       boolean rollbackOnly, RecipeWorkBudget budget) {
         requireOwnerBoundary();
-        Objects.requireNonNull(budget);
         workYielded = false;
         synchronized (lock) {
             if (append == null) {
@@ -344,7 +338,6 @@ public final class ResourceBatch {
                                              List<? extends ReversibleTransaction> transactions,
                                              RecipeWorkBudget budget) {
         requireOwnerBoundary();
-        Objects.requireNonNull(budget);
         workYielded = false;
         synchronized (lock) {
             if (rejected == null) {
@@ -406,7 +399,6 @@ public final class ResourceBatch {
      */
     public boolean finishRejectedWithinBudget(RecipeWorkBudget budget) {
         requireOwnerBoundary();
-        Objects.requireNonNull(budget);
         workYielded = false;
         synchronized (lock) {
             if (rejected == null || !rejected.adopted || decision != Decision.OPEN || rewind != rejected.mark
@@ -570,7 +562,6 @@ public final class ResourceBatch {
     }
 
     private void requireSavepoint(Savepoint mark) {
-        Objects.requireNonNull(mark);
         if (mark.batch != this || !mark.active || mark.generation != savepointGeneration || mark.index >= savepoints.size()
             || savepoints.get(mark.index) != mark) {
             throw new IllegalStateException("Savepoint is foreign, consumed or stale");
@@ -601,8 +592,6 @@ public final class ResourceBatch {
 
     private boolean commitBusiness(BooleanSupplier authorization, boolean staging, RecipeWorkBudget budget, boolean legacy) {
         requireOwnerBoundary();
-        Objects.requireNonNull(authorization);
-        Objects.requireNonNull(budget);
         workYielded = false;
         synchronized (lock) {
             requireIdleOwner();
@@ -619,7 +608,7 @@ public final class ResourceBatch {
         }
         boolean[] done = {false};
         try {
-            var activeStage = Objects.requireNonNull(stage);
+            var activeStage = stage;
             if (legacy) {
                 fence.access(() -> done[0] = activeStage.advance(authorization, budget));
             } else if (!fence.tryAccessWithinBudget(() -> done[0] = activeStage.advance(authorization, budget))) {
@@ -741,7 +730,7 @@ public final class ResourceBatch {
             if (participant.uncertain) {
                 boolean queryAfterFailure = participant.failureQuery;
                 try {
-                    var resolution = legacy && !participant.budgetWork ? Objects.requireNonNull(participant.transaction.resolution())
+                    var resolution = legacy && !participant.budgetWork ? participant.transaction.resolution()
                         : participant.transaction.resolutionWithinBudget(budget);
                     if (resolution == null) {
                         workYielded = true;
@@ -926,9 +915,9 @@ public final class ResourceBatch {
             StorageFence.requireOutsideSourceWork();
             StorageContext.requireNoLocks();
             batch = new ResourceBatch(sequential);
-            this.declared = Objects.requireNonNull(declared).iterator();
-            this.reservations = Objects.requireNonNull(reservations).iterator();
-            this.transactions = Objects.requireNonNull(transactions).iterator();
+            this.declared = declared.iterator();
+            this.reservations = reservations.iterator();
+            this.transactions = transactions.iterator();
         }
 
         /**
@@ -936,7 +925,6 @@ public final class ResourceBatch {
          */
         public boolean advance(RecipeWorkBudget budget) {
             batch.requireOwnerBoundary();
-            Objects.requireNonNull(budget);
             if (done) {
                 return true;
             }
@@ -952,7 +940,7 @@ public final class ResourceBatch {
                 if (!budget.take()) {
                     return false;
                 }
-                batch.addContext(Objects.requireNonNull(declared.next()));
+                batch.addContext(declared.next());
             }
             while (phase == 1) {
                 if (participantTokens != null) {
@@ -969,7 +957,7 @@ public final class ResourceBatch {
                 if (!budget.take()) {
                     return false;
                 }
-                var transaction = Objects.requireNonNull(transactions.next());
+                var transaction = transactions.next();
                 if (!batch.businessIdentities.add(transaction)) {
                     throw new IllegalArgumentException("Repeated business transaction");
                 }
@@ -1094,8 +1082,8 @@ public final class ResourceBatch {
         private @Nullable Iterator<? extends ResourceReservation> participantTokens;
 
         private Append(List<? extends ResourceReservation> tokens, List<? extends ReversibleTransaction> business, boolean rollbackOnly) {
-            inputTokens = Objects.requireNonNull(tokens);
-            inputBusiness = Objects.requireNonNull(business);
+            inputTokens = tokens;
+            inputBusiness = business;
             this.rollbackOnly = rollbackOnly;
         }
 
@@ -1120,7 +1108,7 @@ public final class ResourceBatch {
                 if (phase == 0) {
                     captureToken(inputTokens.get(index));
                 } else if (phase == 1) {
-                    var transaction = Objects.requireNonNull(inputBusiness.get(index));
+                    var transaction = inputBusiness.get(index);
                     if (businessIdentities.contains(transaction) || !businessSet.add(transaction)) {
                         throw new IllegalArgumentException("Repeated business transaction");
                     }
@@ -1249,6 +1237,7 @@ public final class ResourceBatch {
             this.legacy = legacy;
         }
 
+        @SuppressWarnings("DataFlowIssue")
         private boolean advance(BooleanSupplier authorization, RecipeWorkBudget budget) {
             while (phase < 8) {
                 if (phase == 0 || phase == 5) {
@@ -1305,7 +1294,7 @@ public final class ResourceBatch {
                             decide(Decision.ROLLBACK);
                             return true;
                         }
-                        var participant = Objects.requireNonNull(pending);
+                        var participant = pending;
                         Boolean accepted;
                         if (legacy) {
                             accepted = phase == 2 ? participant.transaction.prepareCommit() : phase == 4 ? participant.transaction.validateCommit() : Boolean.TRUE;
@@ -1443,7 +1432,6 @@ public final class ResourceBatch {
             StorageFence.requireOutsideAccess();
             StorageFence.requireOutsideSourceWork();
             StorageContext.requireNoLocks();
-            Objects.requireNonNull(budget);
             workYielded = false;
             synchronized (lock) {
                 if (closed || ownerAction || append != null || rejected != null || captureMark != null || trim != null || stage != null || release != null || state != SourceState.RESERVED) {
@@ -1473,7 +1461,7 @@ public final class ResourceBatch {
                         }
                         checking = tokens.get(checkedTokens);
                     }
-                    var checked = Objects.requireNonNull(checking);
+                    var checked = checking;
                     Boolean accepted;
                     if (legacy) {
                         accepted = fence.sourceAccess(context, checked.token::canApply);
@@ -1514,7 +1502,7 @@ public final class ResourceBatch {
                         }
                         applying = tokens.get(appliedTokens);
                     }
-                    var applied = Objects.requireNonNull(applying);
+                    var applied = applying;
                     if (legacy) {
                         if (pendingExpose) {
                             fence.access(context, applied.token::exposeApplied);
@@ -1576,7 +1564,6 @@ public final class ResourceBatch {
             StorageFence.requireOutsideAccess();
             StorageFence.requireOutsideSourceWork();
             StorageContext.requireNoLocks();
-            Objects.requireNonNull(budget);
             workYielded = false;
             Decision settling;
             int first;

@@ -16,6 +16,7 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
@@ -103,7 +104,8 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
     }
 
     /**
-     * Versioned external backends can provide their own exact content/configuration proof.
+     * The source must retain the identity and content/configuration version of every backend it reads
+     * in its current supplier. Changes to unrelated components do not invalidate that supplier.
      */
     @SuppressWarnings("unused") // Public default-server entry for data-center and custom versioned hosts.
     public static ComponentType<MachineInstance, MachineNetworkDevice> capturedComponent(ResourceLocation id,
@@ -115,7 +117,7 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
                                                                                          ComponentType<MachineInstance, MachineOwnership> ownership,
                                                                                          BiFunction<MachineInstance, MachineIdentityRegistry.Registration, NetworkRuntime.Capture> source,
                                                                                          Function<MachineLifecycleHost, NetworkRuntime> runtime) {
-        return new ComponentType<>(id, (owner, type) -> new MachineNetworkDevice(owner, type, ownership, source, runtime), List.of(), List.of(ownership));
+        return new ComponentType<>(id, (owner, type) -> new MachineNetworkDevice(owner, type, ownership, source, runtime), List.of(), Set.of(ownership));
     }
 
     public boolean allowsNetworkWork() {

@@ -8,8 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SchedulerMetricsTest {
-    private static SchedulerMetrics.Sample sample(long total, long tasks) {
-        return new SchedulerMetrics.Sample(total, total / 2, total / 3, total / 4,
+    private static void record(SchedulerMetrics metrics, long total, long tasks) {
+        metrics.record(total, total / 2, total / 3, total / 4,
             total / 5, total / 6, total / 7, tasks, tasks, tasks, tasks, tasks);
     }
 
@@ -17,19 +17,18 @@ class SchedulerMetricsTest {
     void partialAndWrappedWindowUsesLatestSamplesAndPreservesCompletedTickIdentity() {
         var metrics = new SchedulerMetrics(3);
         assertEquals(0, metrics.snapshotReport("JAVA").sampleCount());
-        metrics.record(sample(10, 1));
-        metrics.record(sample(30, 3));
+        record(metrics, 10, 1);
+        record(metrics, 30, 3);
         var partial = metrics.snapshotReport("JAVA");
         assertEquals(new SchedulerReport.Stat(20, 30, 30), partial.totalWallNanos());
         assertEquals(2, partial.sampleCount());
-        metrics.record(sample(50, 5));
-        metrics.record(sample(90, 9));
+        record(metrics, 50, 5);
+        record(metrics, 90, 9);
         var wrapped = metrics.snapshotReport("JAVA");
         assertEquals(new SchedulerReport.Stat(56, 90, 90), wrapped.totalWallNanos());
         assertEquals(new SchedulerReport.Stat(5, 9, 9), wrapped.mainTasks());
         assertEquals(4, wrapped.completedTicks());
         assertEquals(3, wrapped.sampleCount());
-        // Later writes cannot mutate the earlier immutable report.
         assertEquals(new SchedulerReport.Stat(20, 30, 30), partial.totalWallNanos());
     }
 
@@ -40,8 +39,8 @@ class SchedulerMetricsTest {
         metrics.beginTick("JAVA");
         metrics.maybeLog(2, true, logs::add);
         assertTrue(logs.isEmpty());
-        metrics.record(sample(10, 1));
-        metrics.record(sample(20, 2));
+        record(metrics, 10, 1);
+        record(metrics, 20, 2);
         metrics.maybeLog(2, false, logs::add);
         assertTrue(logs.isEmpty());
         assertEquals(2, metrics.snapshotReport("JAVA").sampleCount());
@@ -53,10 +52,10 @@ class SchedulerMetricsTest {
         assertEquals(2, metrics.snapshotReport("JAVA").completedTicks());
         metrics.maybeLog(2, true, logs::add);
         assertEquals(1, logs.size());
-        metrics.record(sample(30, 3));
+        record(metrics, 30, 3);
         metrics.maybeLog(2, true, logs::add);
         assertEquals(1, logs.size());
-        metrics.record(sample(40, 4));
+        record(metrics, 40, 4);
         metrics.maybeLog(2, true, logs::add);
         assertEquals(2, logs.size());
         assertEquals(4, logs.getLast().completedTicks());

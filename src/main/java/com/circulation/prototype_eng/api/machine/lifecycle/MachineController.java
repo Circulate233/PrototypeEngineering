@@ -8,7 +8,6 @@ import com.circulation.prototype_eng.scheduler.TaskScheduler;
 import net.minecraft.nbt.NBTTagCompound;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -39,10 +38,10 @@ public final class MachineController implements PlannedMachineTask {
     }
 
     public MachineController(MachineAssembly assembly, MachineLifecycleHost host, TaskScheduler scheduler, MachineLifecycleRegistry listeners) {
-        this.assembly = Objects.requireNonNull(assembly);
-        this.host = Objects.requireNonNull(host);
-        this.scheduler = Objects.requireNonNull(scheduler);
-        this.listeners = Objects.requireNonNull(listeners);
+        this.assembly = assembly;
+        this.host = host;
+        this.scheduler = scheduler;
+        this.listeners = listeners;
         host.requireServerThread();
     }
 
@@ -104,7 +103,6 @@ public final class MachineController implements PlannedMachineTask {
     }
 
     public void unload(MachineLifecycleEvent.UnloadReason reason) {
-        Objects.requireNonNull(reason);
         if (reason == MachineLifecycleEvent.UnloadReason.LOAD_FAILED) {
             throw new IllegalArgumentException("LOAD_FAILED is owned by lifecycle load cleanup");
         }
@@ -115,6 +113,7 @@ public final class MachineController implements PlannedMachineTask {
         requestStop(Stop.BROKEN);
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void requestStop(Stop reason) {
         if (phase == Phase.STOPPED && reason == Stop.BROKEN && machine == null && pendingSave != null && !unassembledDestructionPublished) {
             scheduler.runAtBoundary(this::publishUnassembledDestruction);
@@ -132,7 +131,7 @@ public final class MachineController implements PlannedMachineTask {
             requestedStop = stronger(requestedStop, reason);
             var current = machine;
             if (current != null) {
-                Objects.requireNonNull(current.lifecycle()).retire();
+                current.lifecycle().retire();
             }
         }
     }
@@ -149,6 +148,7 @@ public final class MachineController implements PlannedMachineTask {
         }
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void loadAtBoundary(@Nullable NBTTagCompound saved) {
         host.requireServerThread();
         Stop stop;
@@ -172,7 +172,7 @@ public final class MachineController implements PlannedMachineTask {
             var created = saved == null ? assembly.create(host, listeners) : assembly.restore(host, saved, listeners);
             machine = created;
             if (requestedStop != null) {
-                Objects.requireNonNull(created.lifecycle()).retire();
+                created.lifecycle().retire();
                 phase = Phase.LOADED;
                 return;
             }
@@ -182,7 +182,7 @@ public final class MachineController implements PlannedMachineTask {
         } catch (RuntimeException | Error failure) {
             var current = machine;
             if (current != null) {
-                var lifecycle = Objects.requireNonNull(current.lifecycle());
+                var lifecycle = current.lifecycle();
                 lifecycle.retire();
                 try {
                     lifecycle.unload(MachineLifecycleEvent.UnloadReason.INVALIDATED);
@@ -204,6 +204,7 @@ public final class MachineController implements PlannedMachineTask {
         }
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void stopAtBoundary(Stop reason) {
         host.requireServerThread();
         Stop stop;
@@ -219,7 +220,7 @@ public final class MachineController implements PlannedMachineTask {
         try {
             var current = machine;
             if (current != null) {
-                var lifecycle = Objects.requireNonNull(current.lifecycle());
+                var lifecycle = current.lifecycle();
                 lifecycle.retire();
                 if (stop == Stop.BROKEN && lifecycle.state() == MachineLifecycle.State.LOADED) {
                     lifecycle.controllerBroken();
@@ -260,13 +261,15 @@ public final class MachineController implements PlannedMachineTask {
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public ExecutionMode executionMode() {
-        return Objects.requireNonNull(machine, "Controller has no loaded machine").executionMode();
+        return machine.executionMode();
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public Set<?> affinityKeys() {
-        return Objects.requireNonNull(machine, "Controller has no loaded machine").affinityKeys();
+        return machine.affinityKeys();
     }
 
     @Override

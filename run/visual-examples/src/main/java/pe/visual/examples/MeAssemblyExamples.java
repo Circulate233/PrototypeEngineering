@@ -55,7 +55,6 @@ import net.minecraftforge.items.CapabilityItemHandler;
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -159,7 +158,7 @@ public final class MEAssemblyExamples {
             var recipe = Objects.requireNonNull(BoundaryExamples.findRecipe(id(name).toString()), "24 ME recipe script has not loaded");
             var inputs = new ObjectArrayList<GenericStack>();
             var outputs = new ObjectArrayList<GenericStack>();
-            var redstone = Objects.requireNonNull(AEItemKey.of(Items.REDSTONE));
+            var redstone = AEItemKey.of(Items.REDSTONE);
             for (var requirement : recipe.orderedRequirements()) {
                 if (!(requirement.payload() instanceof ResourceRequirement resource))
                     throw new IllegalStateException("Unexpected ME example requirement");
@@ -216,10 +215,10 @@ public final class MEAssemblyExamples {
     }
 
     private static AEKey key(String name) throws CommandException {
-        if (name.equals("water")) return Objects.requireNonNull(AEFluidKey.of(FluidRegistry.WATER));
+        if (name.equals("water")) return AEFluidKey.of(FluidRegistry.WATER);
         var item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(name));
         if (item == null || item == Items.AIR) throw new CommandException("Unknown item %s", name);
-        return Objects.requireNonNull(AEItemKey.of(item));
+        return AEItemKey.of(item);
     }
 
     public static final class Command extends CommandBase {

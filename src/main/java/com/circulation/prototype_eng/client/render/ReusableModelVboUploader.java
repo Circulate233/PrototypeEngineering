@@ -17,8 +17,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 
 /**
  * Native upload, client-array fallback and two-slot mapped writes; every native operation stays on client owner.
@@ -26,7 +24,7 @@ import java.util.Objects;
 public class ReusableModelVboUploader implements AutoCloseable {
     public static final int STRIDE = 28;
     private final ModelClientThread client;
-    private final Map<Key, Entry> mapped = new Object2ObjectOpenHashMap<>();
+    private final Object2ObjectOpenHashMap<Key, Entry> mapped = new Object2ObjectOpenHashMap<>();
     private final ObjectArrayFIFOQueue<Upload> freeUploads = new ObjectArrayFIFOQueue<>();
     private long freeUploadBytes;
     private @Nullable ByteBuffer mergeScratch;
@@ -159,34 +157,40 @@ public class ReusableModelVboUploader implements AutoCloseable {
     public void retire(GeckoRenderRequest.Owner owner) {
         client.requireOwner();
         Throwable failure = null;
-        for (var item : Map.copyOf(mapped).entrySet())
+        for (var entries = mapped.object2ObjectEntrySet().fastIterator(); entries.hasNext(); ) {
+            var item = entries.next();
             if (item.getKey().base.owner() == owner) {
-                mapped.remove(item.getKey(), item.getValue());
-                item.getValue().retired = true;
-                for (var slot : item.getValue().slots)
+                var target = item.getValue();
+                entries.remove();
+                target.retired = true;
+                for (var slot : target.slots)
                     if (slot != null) try {
                         deleteIfUnused(slot);
                     } catch (RuntimeException | Error exception) {
                         failure = BuiltModelBuffers.append(failure, exception);
                     }
             }
+        }
         BuiltModelBuffers.rethrow(failure);
     }
 
     public void retire(GeckoRenderRequest.BaseKey base) {
         client.requireOwner();
         Throwable failure = null;
-        for (var item : Map.copyOf(mapped).entrySet())
+        for (var entries = mapped.object2ObjectEntrySet().fastIterator(); entries.hasNext(); ) {
+            var item = entries.next();
             if (item.getKey().base.equals(base)) {
-                mapped.remove(item.getKey(), item.getValue());
-                item.getValue().retired = true;
-                for (var slot : item.getValue().slots)
+                var target = item.getValue();
+                entries.remove();
+                target.retired = true;
+                for (var slot : target.slots)
                     if (slot != null) try {
                         deleteIfUnused(slot);
                     } catch (RuntimeException | Error exception) {
                         failure = BuiltModelBuffers.append(failure, exception);
                     }
             }
+        }
         BuiltModelBuffers.rethrow(failure);
     }
 
@@ -281,7 +285,7 @@ public class ReusableModelVboUploader implements AutoCloseable {
             var value = lease.buffers();
             var resident = value.gpu().get(pass);
             if (resident != null) {
-                if (mergeScratch.position() > 0) flushMerged();
+                if (mergeScratch.position() > 0) flushMerged(mergeScratch);
                 resident.draw();
                 continue;
             }
@@ -299,14 +303,13 @@ public class ReusableModelVboUploader implements AutoCloseable {
                 piece.limit(piece.position() + amount);
                 mergeScratch.put(piece);
                 source.position(source.position() + amount);
-                if (!mergeScratch.hasRemaining()) flushMerged();
+                if (!mergeScratch.hasRemaining()) flushMerged(mergeScratch);
             }
         }
-        if (mergeScratch.position() > 0) flushMerged();
+        if (mergeScratch.position() > 0) flushMerged(mergeScratch);
     }
 
-    private void flushMerged() {
-        var bytes = Objects.requireNonNull(mergeScratch);
+    private void flushMerged(ByteBuffer bytes) {
         bytes.flip();
         int vertices = bytes.remaining() / STRIDE;
         if (!useVbo()) drawClient(bytes.duplicate(), vertices);
@@ -351,9 +354,9 @@ public class ReusableModelVboUploader implements AutoCloseable {
         closed = true;
         mergeScratch = null;
         Throwable failure = null;
-        var entries = Map.copyOf(mapped);
-        mapped.clear();
-        for (var entry : entries.values()) {
+        for (var entries = mapped.object2ObjectEntrySet().fastIterator(); entries.hasNext(); ) {
+            var entry = entries.next().getValue();
+            entries.remove();
             entry.retired = true;
             for (var slot : entry.slots)
                 if (slot != null) try {

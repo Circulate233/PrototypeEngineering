@@ -13,7 +13,6 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.registry.GameRegistry;
 
 import java.util.List;
-import java.util.Objects;
 
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class MEAssemblyBlocks {
@@ -46,11 +45,12 @@ public final class MEAssemblyBlocks {
     }
 
     @SubscribeEvent
+    @SuppressWarnings("DataFlowIssue")
     public static void registerItems(RegistryEvent.Register<Item> event) {
         for (int index2 = 0; index2 < RESOURCES.size(); index2++) {
             var block = RESOURCES.get(index2);
-            event.getRegistry().register(block.createItem().setRegistryName(Objects.requireNonNull(block.getRegistryName())));
+            event.getRegistry().register(block.createItem().setRegistryName(block.getRegistryName()));
         }
-        event.getRegistry().register(PATTERN.createItem().setRegistryName(Objects.requireNonNull(PATTERN.getRegistryName())));
+        event.getRegistry().register(PATTERN.createItem().setRegistryName(PATTERN.getRegistryName()));
     }
 }

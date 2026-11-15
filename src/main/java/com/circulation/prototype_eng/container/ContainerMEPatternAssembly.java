@@ -58,7 +58,7 @@ public final class ContainerMEPatternAssembly extends AEBaseContainer {
 
     public ContainerMEPatternAssembly(InventoryPlayer player, MEPatternAssemblyBlockEntity tile) {
         super(player, tile);
-        this.tile = Objects.requireNonNull(tile);
+        this.tile = tile;
         PatternContainerGuiReturnContext.initializeContainer(this);
         if (isServerSide()) capture();
         var patterns = new PatternPageInventory();
@@ -203,7 +203,6 @@ public final class ContainerMEPatternAssembly extends AEBaseContainer {
     }
 
     public void setColor(AEColor next) {
-        Objects.requireNonNull(next, "next");
         if (presentedRevision == snapshot.revision())
             sendClientAction(COLOR, new long[]{snapshot.patternRevision(), next.ordinal()});
     }
@@ -424,11 +423,12 @@ public final class ContainerMEPatternAssembly extends AEBaseContainer {
     }
 
     @Override
+    @SuppressWarnings("UnstableApiUsage")
     public void onSlotChange(Slot slot) {
         if (nativePatternAction && isPatternSlot(slot.slotNumber)) {
             var inventory = tile.patterns();
             int logical = page * 36 + slot.slotNumber;
-            inventory.setItemDirect(logical, inventory.getStackInSlot(logical).copy());
+            inventory.sendChangeNotification(logical);
         }
         super.onSlotChange(slot);
     }

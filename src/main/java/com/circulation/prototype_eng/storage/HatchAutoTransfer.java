@@ -170,10 +170,7 @@ public final class HatchAutoTransfer {
         for (int index3 = 0; index3 < peer.size(); index3++) {
             var context = peer.get(index3);
             if (local.contains(context)) return false;
-        }
-        for (int index = 0; index < peer.size(); index++) {
-            var context = peer.get(index);
-            addContext(local, context);
+            local.add(context);
         }
         local.sort(Comparator.comparingLong(StorageContext::order));
         return true;

@@ -7,7 +7,6 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -17,9 +16,6 @@ import java.util.concurrent.CompletableFuture;
 @ZenRegister
 @ZenClass("mods.prototype_eng.recipe.UpdateTask")
 public record ZenRecipeUpdateTask(CompletableFuture<RecipeDefinitionUpdates.Result> future) {
-    public ZenRecipeUpdateTask {
-        Objects.requireNonNull(future);
-    }
 
     @ZenGetter("done")
     public boolean done() {
@@ -39,7 +35,6 @@ public record ZenRecipeUpdateTask(CompletableFuture<RecipeDefinitionUpdates.Resu
 
     @ZenMethod
     public ZenRecipeUpdateTask onComplete(ZenRecipeUpdateCallback callback) {
-        Objects.requireNonNull(callback);
         return new ZenRecipeUpdateTask(future.thenApply(result -> {
             callback.completed(new ZenRecipeUpdateResult(result));
             return result;

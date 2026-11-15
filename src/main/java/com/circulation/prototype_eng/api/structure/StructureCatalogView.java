@@ -13,12 +13,12 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
  * Complete server-authoritative presentation graph, never a client matching or execution registry.
  * Collections and their contents are borrowed read-only and must remain unchanged for the view's lifetime.
+ * Producers must provide an acyclic graph and entries referring to their matching node IDs.
  * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 @SuppressWarnings("ClassCanBeRecord") // This object is the authoritative completed-generation identity.
@@ -30,19 +30,10 @@ public final class StructureCatalogView {
     private final Map<ResourceLocation, Entry> entries;
 
     public StructureCatalogView(UUID session, long sequence, List<Node> nodes, Map<ResourceLocation, Entry> entries) {
-        this.session = Objects.requireNonNull(session);
-        if (sequence < 0 || nodes.size() > MAX_NODES || entries.size() > MAX_NODES)
-            throw new IllegalArgumentException("Invalid catalog view bounds");
+        this.session = session;
         this.sequence = sequence;
         this.nodes = nodes;
-        entries.forEach((id, entry) -> {
-            Objects.requireNonNull(id);
-            Objects.requireNonNull(entry);
-            if (entry.node < 0 || entry.node >= nodes.size() || !id.equals(nodes.get(entry.node).id))
-                throw new IllegalArgumentException("Catalog view entry has no matching node: " + id);
-        });
         this.entries = entries;
-        validateGraph();
     }
 
     public static StructureCatalogView capture(StructureCatalog catalog, UUID session, long sequence) {
@@ -57,7 +48,7 @@ public final class StructureCatalogView {
         var nodes = new ObjectArrayList<Node>(shapes.size());
         for (int cursor = 0; cursor < shapes.size(); cursor++) {
             var shape = shapes.get(cursor);
-            var geometry = shape instanceof StructurePreviewProvider provider ? Objects.requireNonNull(provider.previewGeometry())
+            var geometry = shape instanceof StructurePreviewProvider provider ? provider.previewGeometry()
                 : new StructurePreviewProvider.Geometry(StructurePreviewProvider.Kind.OPAQUE, BlockPos.ORIGIN, 0, 0, BlockPos.ORIGIN, List.of(), List.of());
             var children = new IntArrayList(geometry.children().size());
             var elements = geometry.children();
@@ -72,7 +63,6 @@ public final class StructureCatalogView {
     }
 
     private static int index(MachineStructure shape, Reference2IntOpenHashMap<MachineStructure> indexes, ObjectArrayList<MachineStructure> shapes) {
-        Objects.requireNonNull(shape);
         int previous = indexes.getInt(shape);
         if (previous >= 0) return previous;
         if (shapes.size() == MAX_NODES) throw new IllegalArgumentException("Too many preview shape nodes");
@@ -80,34 +70,6 @@ public final class StructureCatalogView {
         indexes.put(shape, next);
         shapes.add(shape);
         return next;
-    }
-
-    private void validateGraph() {
-        var colors = new byte[nodes.size()];
-        var stack = new int[nodes.size()];
-        var next = new int[nodes.size()];
-        for (int root = 0; root < nodes.size(); root++) {
-            if (colors[root] != 0) continue;
-            int depth = 0;
-            stack[0] = root;
-            colors[root] = 1;
-            while (depth >= 0) {
-                int node = stack[depth];
-                if (next[node] == nodes.get(node).children.size()) {
-                    colors[node] = 2;
-                    depth--;
-                    continue;
-                }
-                int child = nodes.get(node).children.getInt(next[node]++);
-                if (child < 0 || child >= nodes.size())
-                    throw new IllegalArgumentException("Unknown preview child node");
-                if (colors[child] == 1) throw new IllegalArgumentException("Cyclic preview graph");
-                if (colors[child] == 0) {
-                    colors[child] = 1;
-                    stack[++depth] = child;
-                }
-            }
-        }
     }
 
     public UUID session() {
@@ -140,11 +102,8 @@ public final class StructureCatalogView {
         }
 
         public Node {
-            Objects.requireNonNull(id);
-            Objects.requireNonNull(orientation);
-            Objects.requireNonNull(kind);
-            offset = Objects.requireNonNull(offset).toImmutable();
-            sliceOffset = Objects.requireNonNull(sliceOffset).toImmutable();
+            offset = offset.toImmutable();
+            sliceOffset = sliceOffset.toImmutable();
             if (minCount < 0 || maxCount < minCount) throw new IllegalArgumentException("Invalid preview count domain");
         }
     }

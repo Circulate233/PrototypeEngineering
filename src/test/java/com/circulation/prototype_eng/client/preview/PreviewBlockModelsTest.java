@@ -16,9 +16,12 @@ import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import net.minecraft.client.renderer.BufferBuilder;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;
+import org.lwjgl.opengl.GL11;
 
 import java.nio.ByteOrder;
 import java.util.Arrays;
@@ -41,6 +44,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SuppressWarnings("resource") // Baker ownership transfers to the cache; each test asserts its exact single close.
 class PreviewBlockModelsTest {
     private static final ResourceLocation ID = new ResourceLocation("block_models_test", "root");
+
+    private static int[] sampleQuad(int value) {
+        var data = new int[28];
+        data[0] = value;
+        return data;
+    }
 
     private static StructurePreviewModel model(BlockPos... positions) {
         var node = new StructureCatalogView.Node(ID, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE, BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.of(positions), IntList.of());
@@ -272,12 +281,30 @@ class PreviewBlockModelsTest {
                 source[vertex * 7 + 5] = 0x3EABCDEF;
                 source[vertex * 7 + 6] = 0x00040020;
             }
-            var prepared = PreviewBlockVertices.prepare(source, 0x804020, order);
+            var buffer = new BufferBuilder(128);
+            buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
+            buffer.getByteBuffer().order(order);
+            PreviewBlockVertices.append(buffer, source, 0, 0x804020, order, BlockPos.ORIGIN);
+            PreviewBlockVertices.append(buffer, source, 0, 0x804020, order, new BlockPos(3, 4, 5));
+            var cached = new IntArrayList();
+            PreviewBlockVertices.append(cached, source, 0, 0x804020, order, BlockPos.ORIGIN);
+            PreviewBlockVertices.append(cached, source, 0, -1, order, null);
+            PreviewBlockVertices.append(buffer, cached.elements(), 28, 28);
+            buffer.finishDrawing();
+            var prepared = buffer.getByteBuffer().asIntBuffer();
+            assertEquals(12, buffer.getVertexCount());
+            for (int index = 0; index < 28; index++) {
+                assertEquals(prepared.get(index), cached.getInt(index));
+                assertEquals(source[index], prepared.get(56 + index));
+            }
             for (int vertex = 0; vertex < 4; vertex++) {
-                assertEquals(order == ByteOrder.LITTLE_ENDIAN ? 0x53191919 : 0x19191953, prepared[vertex * 7 + 3]);
-                assertEquals(0x00F000F0, prepared[vertex * 7 + 6]);
+                assertEquals(order == ByteOrder.LITTLE_ENDIAN ? 0x53191919 : 0x19191953, prepared.get(vertex * 7 + 3));
+                assertEquals(0x00F000F0, prepared.get(vertex * 7 + 6));
                 for (int offset : new int[]{0, 1, 2, 4, 5})
-                    assertEquals(source[vertex * 7 + offset], prepared[vertex * 7 + offset]);
+                    assertEquals(source[vertex * 7 + offset], prepared.get(vertex * 7 + offset));
+                assertEquals(vertex + 3.25f, Float.intBitsToFloat(prepared.get(28 + vertex * 7)));
+                assertEquals(4.5f, Float.intBitsToFloat(prepared.get(28 + vertex * 7 + 1)));
+                assertEquals(6f, Float.intBitsToFloat(prepared.get(28 + vertex * 7 + 2)));
                 assertEquals(0x00040020, source[vertex * 7 + 6]);
             }
         }
@@ -310,21 +337,21 @@ class PreviewBlockModelsTest {
         var sample = new StructureProjectionState.Sample(input.cells().getFirst(), BlockPos.ORIGIN, StructureProjectionState.Status.UNKNOWN);
         var prepared = new int[1];
         var cpu = new PreviewSampleBlockModels((_, _) -> sink -> {
-            sink.accept(new int[]{++prepared[0]});
+            sink.put(0, sampleQuad(++prepared[0]), 0, -1, null);
             return prepared[0] == 3;
         });
         var emitted = new IntArrayList();
-        assertEquals(List.of(sample), cpu.present(input, List.of(sample), 1, () -> true, data -> emitted.add(data[0])));
+        assertEquals(List.of(sample), cpu.present(input, List.of(sample), 1, () -> true, (data, offset, _) -> emitted.add(data[offset])));
         assertEquals(0, prepared[0]); // only admission was permitted
-        assertEquals(List.of(sample), cpu.present(input, List.of(sample), 2, () -> true, data -> emitted.add(data[0])));
+        assertEquals(List.of(sample), cpu.present(input, List.of(sample), 2, () -> true, (data, offset, _) -> emitted.add(data[offset])));
         assertEquals(2, prepared[0]);
         assertTrue(emitted.isEmpty());
-        assertTrue(cpu.present(input, List.of(sample), 2, () -> true, data -> emitted.add(data[0])).isEmpty());
+        assertTrue(cpu.present(input, List.of(sample), 2, () -> true, (data, offset, _) -> emitted.add(data[offset])).isEmpty());
         assertEquals(List.of(1), emitted);
-        cpu.present(input, List.of(sample), 1, () -> true, data -> emitted.add(data[0]));
-        cpu.present(input, List.of(), 100, () -> true, data -> emitted.add(data[0])); // C has hidden it this frame
+        cpu.present(input, List.of(sample), 1, () -> true, (data, offset, _) -> emitted.add(data[offset]));
+        cpu.present(input, List.of(), 100, () -> true, (data, offset, _) -> emitted.add(data[offset])); // C has hidden it this frame
         assertEquals(List.of(1, 2), emitted);
-        cpu.present(input, List.of(sample), 1, () -> true, data -> emitted.add(data[0]));
+        cpu.present(input, List.of(sample), 1, () -> true, (data, offset, _) -> emitted.add(data[offset]));
         assertEquals(List.of(1, 2, 3), emitted);
         assertEquals(3, prepared[0]);
     }
@@ -336,11 +363,11 @@ class PreviewBlockModelsTest {
         var reference = new PreviewSampleBlockModels[1];
         reference[0] = new PreviewSampleBlockModels((_, _) -> sink -> {
             reference[0].invalidate();
-            sink.accept(new int[]{1});
+            sink.put(0, sampleQuad(1), 0, -1, null);
             return true;
         });
         var emitted = new ObjectArrayList<int[]>();
-        assertTrue(reference[0].present(input, List.of(sample), 100, () -> true, emitted::add).isEmpty());
+        assertTrue(reference[0].present(input, List.of(sample), 100, () -> true, (data, _, _) -> emitted.add(data)).isEmpty());
         assertTrue(emitted.isEmpty());
     }
 
@@ -354,20 +381,20 @@ class PreviewBlockModelsTest {
             admitted[0]++;
             var step = new int[1];
             return sink -> {
-                sink.accept(new int[]{cell.position().getX() * 10 + ++step[0]});
+                sink.put(0, sampleQuad(cell.position().getX() * 10 + ++step[0]), 0, -1, null);
                 return step[0] == 2;
             };
         });
         var emitted = new IntArrayList();
         for (int round = 0; round < 3; round++) {
-            cpu.present(input, List.of(first), 1, () -> true, data -> emitted.add(data[0]));
-            cpu.present(input, List.of(second), 1, () -> true, data -> emitted.add(data[0]));
-            cpu.present(input, List.of(), 1, () -> true, data -> emitted.add(data[0]));
+            cpu.present(input, List.of(first), 1, () -> true, (data, offset, _) -> emitted.add(data[offset]));
+            cpu.present(input, List.of(second), 1, () -> true, (data, offset, _) -> emitted.add(data[offset]));
+            cpu.present(input, List.of(), 1, () -> true, (data, offset, _) -> emitted.add(data[offset]));
         }
         assertTrue(emitted.isEmpty());
         assertEquals(2, admitted[0]);
-        cpu.present(input, List.of(first), 1, () -> true, data -> emitted.add(data[0]));
-        cpu.present(input, List.of(second), 1, () -> true, data -> emitted.add(data[0]));
+        cpu.present(input, List.of(first), 1, () -> true, (data, offset, _) -> emitted.add(data[offset]));
+        cpu.present(input, List.of(second), 1, () -> true, (data, offset, _) -> emitted.add(data[offset]));
         assertEquals(List.of(1, 161), emitted);
         assertEquals(2, admitted[0]);
     }
@@ -378,12 +405,12 @@ class PreviewBlockModelsTest {
         var first = new StructureProjectionState.Sample(input.cells().getFirst(), BlockPos.ORIGIN, StructureProjectionState.Status.UNKNOWN);
         var second = new StructureProjectionState.Sample(input.cells().getLast(), new BlockPos(16, 0, 0), StructureProjectionState.Status.UNKNOWN);
         var cpu = new PreviewSampleBlockModels((_, cell) -> sink -> {
-            sink.accept(new int[]{cell.position().getX()});
+            sink.put(0, sampleQuad(cell.position().getX()), 0, -1, null);
             return true;
         });
         var emitted = new IntArrayList();
         for (int frame = 0; frame < 8; frame++)
-            cpu.present(input, List.of(second, first), 1, () -> true, data -> emitted.add(data[0]));
+            cpu.present(input, List.of(second, first), 1, () -> true, (data, offset, _) -> emitted.add(data[offset]));
         assertTrue(emitted.contains(0));
         assertTrue(emitted.contains(16));
     }
@@ -394,14 +421,14 @@ class PreviewBlockModelsTest {
         var first = new StructureProjectionState.Sample(input.cells().getFirst(), BlockPos.ORIGIN, StructureProjectionState.Status.UNKNOWN);
         var second = new StructureProjectionState.Sample(input.cells().getLast(), new BlockPos(16, 0, 0), StructureProjectionState.Status.UNKNOWN);
         var cpu = new PreviewSampleBlockModels((_, cell) -> sink -> {
-            sink.accept(new int[]{cell.position().getX()});
+            sink.put(0, sampleQuad(cell.position().getX()), 0, -1, null);
             return true;
         });
         var emitted = new IntArrayList();
         for (int frame = 0; frame < 6; frame++)
-            cpu.present(input, List.of(second, first), 1, () -> true, _ -> {
+            cpu.present(input, List.of(second, first), 1, () -> true, (_, _, _) -> {
             });
-        cpu.present(input, List.of(second, first), 2, () -> true, data -> emitted.add(data[0]));
+        cpu.present(input, List.of(second, first), 2, () -> true, (data, offset, _) -> emitted.add(data[offset]));
         assertEquals(List.of(16, 0), emitted);
     }
 

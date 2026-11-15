@@ -13,7 +13,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
 
@@ -38,9 +37,9 @@ public final class GroupedResourceLookup implements RecipeCandidateIndex.Cursor 
 
     public GroupedResourceLookup(MachineInstance machine, ToIntFunction<MachineRecipe> priority,
                                  Function<ResourceInputGroups.Group, RecipeCandidateIndex.Cursor> factory) {
-        this.machine = Objects.requireNonNull(machine);
-        this.priority = Objects.requireNonNull(priority);
-        this.factory = Objects.requireNonNull(factory);
+        this.machine = machine;
+        this.priority = priority;
+        this.factory = factory;
     }
 
     @Override
@@ -53,7 +52,7 @@ public final class GroupedResourceLookup implements RecipeCandidateIndex.Cursor 
         while (active != null || groupIndex < capture.groups().size()) {
             if (active == null) {
                 if (groupIndex > 0 && !budget.take()) return false;
-                active = Objects.requireNonNull(factory.apply(capture.groups().get(groupIndex++)));
+                active = factory.apply(capture.groups().get(groupIndex++));
                 observed.add(active);
             }
             if (pending == null) {

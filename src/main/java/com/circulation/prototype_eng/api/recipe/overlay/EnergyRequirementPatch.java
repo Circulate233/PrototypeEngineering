@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.recipe.overlay;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Immutable tick-rate overrides; null inherits the base, and zero explicitly disables that rate.
@@ -20,7 +19,6 @@ public record EnergyRequirementPatch(@Nullable Long inputsPerTick, @Nullable Lon
      * START input and END output retain their original values.
      */
     public EnergyRequirement apply(EnergyRequirement base) {
-        Objects.requireNonNull(base, "base");
         if (inputsPerTick == null && outputsPerTick == null && voidExcessOutputs == null) {
             return base;
         }

@@ -12,16 +12,13 @@ import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.client.render.StructureRenderAnchors;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
-import it.unimi.dsi.fastutil.ints.IntLists;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Bounded declaration-only preview selection; occurrence origins already carry the C root rotation.
@@ -45,12 +42,12 @@ public final class PreviewMachineAnchors {
     private List<StructureRenderAnchors.Anchor> completed;
 
     public PreviewMachineAnchors(StructurePreviewModel model, MachineType machine, MachineRenderBindings.View bindings) {
-        this.model = Objects.requireNonNull(model);
-        this.machine = Objects.requireNonNull(machine);
-        this.bindings = Objects.requireNonNull(bindings);
+        this.model = model;
+        this.machine = machine;
+        this.bindings = bindings;
         if (!machine.structureId().equals(model.structureId()))
             throw new IllegalArgumentException("Preview machine does not reference this model");
-        var entry = Objects.requireNonNull(model.generation().entries().get(model.structureId()));
+        var entry = model.generation().entries().get(model.structureId());
         var root = model.generation().nodes().get(entry.node());
         rotation = StructureTransform.between(root.orientation(), model.settings().orientation());
     }
@@ -73,6 +70,7 @@ public final class PreviewMachineAnchors {
     /**
      * Each declaration, path edge and emitted slice spends one visit, including absent/zero-slice bindings.
      */
+    @SuppressWarnings("DataFlowIssue") // An active occurrence retains the path cursor initialized with that occurrence.
     public int advance(int visits) {
         if (visits < 0) throw new IllegalArgumentException("Negative model anchor visits");
         int spent = 0;
@@ -87,7 +85,7 @@ public final class PreviewMachineAnchors {
             }
             if (occurrence == null) {
                 if (cursor == model.occurrences().size()) {
-                    completed = ObjectLists.unmodifiable(anchors);
+                    completed = anchors;
                     break;
                 }
                 var next = model.occurrences().get(cursor++);
@@ -112,10 +110,10 @@ public final class PreviewMachineAnchors {
             }
             if (pathCursor.depth() != 0) {
                 pathParts[pathCursor.depth() - 1] = pathCursor.childIndex();
-                pathCursor = Objects.requireNonNull(pathCursor.parent());
+                pathCursor = pathCursor.parent();
                 continue;
             }
-            if (occurrencePath == null) occurrencePath = IntLists.unmodifiable(IntArrayList.wrap(pathParts));
+            if (occurrencePath == null) occurrencePath = IntArrayList.wrap(pathParts);
             var node = model.generation().nodes().get(occurrence.node());
             var origin = perSlice ? sliceOrigin(occurrence.origin(), sliceStep, slice) : occurrence.origin();
             add(new StructureRenderAnchors.Part(StructureRenderAnchors.Kind.STRUCTURE, node.id(), occurrencePath, perSlice ? slice : -1), origin, structureBinding.model());

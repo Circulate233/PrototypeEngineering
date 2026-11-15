@@ -5,7 +5,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.random.RandomGenerator;
 
 /**
@@ -21,8 +20,6 @@ public final class WeightedSampling {
      * sum fit a long; an integer lottery avoids the precision loss of PM's double*total conversion.
      */
     public static <T> List<T> sampleWithoutReplacement(RandomGenerator random, List<Weighted<T>> candidates, int count) {
-        Objects.requireNonNull(random, "random");
-        Objects.requireNonNull(candidates, "candidates");
         if (count <= 0) {
             return ObjectLists.emptyList();
         }
@@ -30,7 +27,6 @@ public final class WeightedSampling {
         long total = 0;
         for (int index = 0; index < candidates.size(); index++) {
             var candidate = candidates.get(index);
-            Objects.requireNonNull(candidate, "candidate");
             if (candidate.weight() > 0) {
                 pool.add(candidate);
                 total += candidate.weight();
@@ -41,11 +37,12 @@ public final class WeightedSampling {
         for (int draw = 0; draw < draws; draw++) {
             long ticket = random.nextLong(total);
             int selected = 0;
-            while (ticket >= pool.get(selected).weight()) {
-                ticket -= pool.get(selected).weight();
+            while (pool.get(selected) == null || ticket >= pool.get(selected).weight()) {
+                var candidate = pool.get(selected);
+                if (candidate != null) ticket -= candidate.weight();
                 selected++;
             }
-            var candidate = pool.remove(selected);
+            var candidate = pool.set(selected, null);
             results.add(candidate.value());
             total -= candidate.weight();
         }
@@ -70,8 +67,8 @@ public final class WeightedSampling {
         private boolean complete;
 
         public Cursor(RandomGenerator random, List<Weighted<T>> candidates, int count) {
-            this.random = Objects.requireNonNull(random);
-            this.candidates = Objects.requireNonNull(candidates);
+            this.random = random;
+            this.candidates = candidates;
             this.count = Math.max(0, count);
         }
 
@@ -87,7 +84,7 @@ public final class WeightedSampling {
                 if (!budget.take()) {
                     return false;
                 }
-                var candidate = Objects.requireNonNull(candidates.get(captured++));
+                var candidate = candidates.get(captured++);
                 if (candidate.weight() > 0) {
                     pool.add(candidate);
                     total += candidate.weight();
@@ -131,7 +128,7 @@ public final class WeightedSampling {
             if (!complete) {
                 throw new IllegalStateException("Weighted draw is incomplete");
             }
-            return ObjectLists.unmodifiable(results);
+            return results;
         }
     }
 
@@ -139,8 +136,5 @@ public final class WeightedSampling {
      * Nonpositive weights are retained as data but ignored by sampling.
      */
     public record Weighted<T>(T value, int weight) {
-        public Weighted {
-            Objects.requireNonNull(value, "value");
-        }
     }
 }

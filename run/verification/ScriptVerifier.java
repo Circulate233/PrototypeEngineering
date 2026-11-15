@@ -39,12 +39,10 @@ import stanhebben.zenscript.*;
 import stanhebben.zenscript.compiler.IEnvironmentGlobal;
 import stanhebben.zenscript.expression.ExpressionCallStatic;
 import stanhebben.zenscript.expression.ExpressionString;
-import stanhebben.zenscript.expression.partial.IPartialExpression;
 import stanhebben.zenscript.impl.*;
 import stanhebben.zenscript.parser.Token;
 import stanhebben.zenscript.symbols.IZenSymbol;
 import stanhebben.zenscript.symbols.SymbolType;
-import stanhebben.zenscript.type.ZenTypeNative;
 import stanhebben.zenscript.type.natives.JavaMethod;
 import stanhebben.zenscript.util.ZenPosition;
 
@@ -72,8 +70,7 @@ public final class ScriptVerifier {
         registry.registerNativeClass(IData.class);
         for (var expansion : List.of(ExpandAnyDict.class, ExpandDataStringDict.class, ExpandInt.class, ExpandBool.class, ExpandString.class))
             registry.registerExpansion(expansion);
-        // A standalone JVM has no Mixin transformer. This is the same production member helper.
-        var dataType = new WritableDataType();
+        var dataType = new ZenComponentDataType();
         registry.getTypes().getTypeMap().put(ZenComponentData.class, dataType);
         dataType.complete(registry.getTypes());
         registry.getRoot().put(dataType.getName(), new SymbolType(dataType), registry.getErrorLogger());
@@ -115,7 +112,7 @@ public final class ScriptVerifier {
         var fileReports = new ObjectArrayList<Map<String, Object>>();
         report.put("scope", "all real run scripts compiled; core files executed; World-dependent files pending native run");
         report.put("sdk", "CraftTweaker 4.1.20.718 actual Parser/Compiler and five SDK expansions");
-        report.put("dataMemberFixture", "production ZenComponentDataMembers helper; actual Mixin injection remains unverified");
+        report.put("dataMemberFixture", "production ZenComponentDataType registered through the public type map and namespace");
         report.put("brackets", "typed SDK symbols defer real Forge lookup; no fake item/fluid is returned; bracket targets not resolved headlessly");
         report.put("bootstrapStarted", false);
         report.put("files", fileReports);
@@ -252,18 +249,6 @@ public final class ScriptVerifier {
     private static Script require(List<Script> scripts, String name) {
         return scripts.stream().filter(script -> script.path().getFileName().toString().equals(name)).findFirst()
                       .orElseThrow(() -> new IllegalArgumentException("Missing actual script: " + name));
-    }
-
-    private static final class WritableDataType extends ZenTypeNative {
-        private WritableDataType() {
-            super(ZenComponentData.class);
-        }
-
-        @Override
-        public IPartialExpression getMember(ZenPosition position, IEnvironmentGlobal environment, IPartialExpression value, String name) {
-            var member = ZenComponentDataMembers.member(this, position, environment, value, name);
-            return member == null ? super.getMember(position, environment, value, name) : member;
-        }
     }
 
     @BracketHandler(priority = 10)

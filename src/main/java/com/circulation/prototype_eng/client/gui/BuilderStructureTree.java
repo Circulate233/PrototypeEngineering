@@ -18,6 +18,7 @@ import com.circulation.prototype_eng.structure.StructurePickWorld;
 import com.circulation.prototype_eng.structure.tool.BuilderState;
 import com.circulation.prototype_eng.structure.tool.StructureBuildPlan;
 import com.circulation.prototype_eng.structure.tool.StructureToolExport;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2BooleanOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
@@ -54,6 +55,8 @@ final class BuilderStructureTree {
     private final Consumer<Set<BlockPos>> highlight;
     private final Object2BooleanOpenHashMap<String> expanded = new Object2BooleanOpenHashMap<>();
     private final List<Hit> hits = new ObjectArrayList<>();
+    private final ObjectArrayList<Row> drawRows = new ObjectArrayList<>();
+    private final IntArrayList drawDepths = new IntArrayList();
     private final GuiClip clip = new GuiClip();
     private final Map<ItemChoice, ItemStack> itemChoices = new Object2ObjectLinkedOpenHashMap<>();
     private Consumer<StructureDisplay> materialReplacement = _ -> {
@@ -108,19 +111,19 @@ final class BuilderStructureTree {
     }
 
     void onMaterialReplacement(Consumer<StructureDisplay> listener) {
-        materialReplacement = Objects.requireNonNull(listener);
+        materialReplacement = listener;
     }
 
     void selections(Supplier<StructurePreviewSettings> current) {
-        selections = Objects.requireNonNull(current);
+        selections = current;
     }
 
     void onSliceChanged(ObjectIntBiConsumer<String> listener) {
-        sliceChanged = Objects.requireNonNull(listener);
+        sliceChanged = listener;
     }
 
     void machineTitle(Supplier<LocalizationEnum> title) {
-        machineTitle = Objects.requireNonNull(title);
+        machineTitle = title;
     }
 
     void openMaterials() {
@@ -323,41 +326,41 @@ final class BuilderStructureTree {
             try {
                 GlStateManager.translate(panX, panY, 0);
                 GlStateManager.scale(scale, scale, 1);
-                var pending = new ObjectArrayList<Visit>();
-                pending.add(new Visit(root, 0));
+                drawRows.clear();
+                drawDepths.clear();
+                drawRows.add(root);
+                drawDepths.add(0);
                 int y = 19;
-                while (!pending.isEmpty()) {
-                    var visit = pending.removeLast();
-                    var row = visit.row();
-                    int x = visit.depth() * 12;
+                while (!drawRows.isEmpty()) {
+                    var row = drawRows.removeLast();
+                    int depth = drawDepths.popInt();
+                    int x = depth * 12;
                     drawRow(row, x, y);
                     if (x > 0) {
                         Gui.drawRect(x - 1, y + 6, x, y + 8, 0xfff2f2f2);
                         Gui.drawRect(x - 1, y + 8, x, y + 9, 0xff696d88);
                     }
                     y += 16;
-                    if (open(row)) for (int i = row.children.size() - 1; i >= 0; i--)
-                        pending.add(new Visit(row.children.get(i), visit.depth() + 1));
+                    if (open(row)) for (int i = row.children.size() - 1; i >= 0; i--) {
+                        drawRows.add(row.children.get(i));
+                        drawDepths.add(depth + 1);
+                    }
                 }
-                // Draw continuous parent rails with the same two-pixel bright line and one-pixel shadow.
                 for (int index7 = 0; index7 < hits.size(); index7++) {
                     var hit = hits.get(index7);
                     if (open(hit.row()) && !hit.row().children.isEmpty()) {
                         int last = hit.y() + 14;
-                        for (int index6 = 0; index6 < hits.size(); index6++) {
-                            var child = hits.get(index6);
-                            if (hit.row().children.contains(child.row())) {
-                                last = child.y() + 7;
-                                Gui.drawRect(hit.x() + 5, last - 1, child.x() - 1, last + 1, 0xfff2f2f2);
-                                Gui.drawRect(hit.x() + 5, last + 1, child.x() - 1, last + 2, 0xff696d88);
-                            }
+                        for (int index6 = 0; index6 < hit.row().children.size(); index6++) {
+                            var child = hit.row().children.get(index6).hit;
+                            last = child.y() + 7;
+                            Gui.drawRect(hit.x() + 5, last - 1, child.x() - 1, last + 1, 0xfff2f2f2);
+                            Gui.drawRect(hit.x() + 5, last + 1, child.x() - 1, last + 2, 0xff696d88);
                         }
                         Gui.drawRect(hit.x() + 5, hit.y() + 14, hit.x() + 7, last, 0xfff2f2f2);
                         Gui.drawRect(hit.x() + 7, hit.y() + 14, hit.x() + 8, last, 0xff696d88);
-                        for (int index2 = 0; index2 < hits.size(); index2++) {
-                            var child = hits.get(index2);
-                            if (hit.row().children.contains(child.row()))
-                                Gui.drawRect(hit.x() + 5, child.y() + 6, hit.x() + 8, child.y() + 8, 0xfff2f2f2);
+                        for (int index2 = 0; index2 < hit.row().children.size(); index2++) {
+                            var child = hit.row().children.get(index2).hit;
+                            Gui.drawRect(hit.x() + 5, child.y() + 6, hit.x() + 8, child.y() + 8, 0xfff2f2f2);
                         }
                     }
                 }
@@ -373,7 +376,10 @@ final class BuilderStructureTree {
         var mc = Minecraft.getMinecraft();
         boolean toggle = !row.children.isEmpty();
         int width = Math.max(31, 14 + (row.display == null ? 0 : 14) + mc.fontRenderer.getStringWidth(row.label) + 20 + (toggle ? 17 : 0) + (row.kind == 3 ? 72 : 0));
-        var hit = new Hit(row, x, y, width);
+        var hit = row.hit;
+        hit.x = x;
+        hit.y = y;
+        hit.width = width;
         hits.add(hit);
         if (row.id.equals(selected)) border(x, y, width, 0xff2e6bff);
         if (row.kind == 0)
@@ -527,6 +533,7 @@ final class BuilderStructureTree {
         final String path;
         final int min, max, value;
         final List<Row> children = new ObjectArrayList<>();
+        final Hit hit = new Hit(this);
         StructureDisplay.BlockOption option;
 
         Row(String id, String label, int kind, StructureDisplay display, String path, int min, int max, int value) {
@@ -541,7 +548,30 @@ final class BuilderStructureTree {
         }
     }
 
-    private record Hit(Row row, int x, int y, int width) {
+    private static final class Hit {
+        private final Row row;
+        private int x, y, width;
+
+        private Hit(Row row) {
+            this.row = row;
+        }
+
+        Row row() {
+            return row;
+        }
+
+        int x() {
+            return x;
+        }
+
+        int y() {
+            return y;
+        }
+
+        int width() {
+            return width;
+        }
+
         boolean contains(float px, float py) {
             return px >= x && py >= y && px <= x + width && py <= y + 14;
         }
@@ -550,9 +580,6 @@ final class BuilderStructureTree {
             return !row.children.isEmpty() && px >= x + width - 15 && px <= x + width - 4 && py >= y + 1 && py <= y + 13;
         }
 
-    }
-
-    private record Visit(Row row, int depth) {
     }
 
 }

@@ -13,7 +13,6 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Predicate;
 
 /**
@@ -65,8 +64,6 @@ public final class DataComponents {
      */
     public static RecipeProcessFactory withProcessData(RecipeProcessFactory delegate,
                                                        Predicate<MachineRecipe> supported) {
-        Objects.requireNonNull(delegate);
-        Objects.requireNonNull(supported);
         return new RecipeProcessFactory() {
             @Override
             public RecipeProcess create(MachineInstance machine, MachineRecipe recipe, long seed, ProbabilityTuning tuning) {
@@ -100,7 +97,6 @@ public final class DataComponents {
     }
 
     private static RecipeProcess attach(RecipeProcess process) {
-        Objects.requireNonNull(process);
         if (process.components().get(PROCESS) == null) process.components().put(PROCESS, PROCESS.create(process));
         return process;
     }

@@ -10,7 +10,6 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Java library entry for read-only previews and native world projections; client-thread owned.
@@ -30,7 +29,7 @@ public final class StructurePreviews implements AutoCloseable {
      * Logical model service. ClientProxy separately registers the native world event adapter.
      */
     public StructurePreviews(ClientStructureCatalog catalog) {
-        this.catalog = Objects.requireNonNull(catalog);
+        this.catalog = catalog;
         requests = new StructurePreviewCache<>(catalog, 32);
         subscription = catalog.onInvalidated(() -> {
             if (catalog.view() == null) clearProjection();
@@ -158,7 +157,7 @@ public final class StructurePreviews implements AutoCloseable {
      */
     public AutoCloseable onClosed(Runnable callback) {
         requireOpen();
-        var listener = new CloseListener(Objects.requireNonNull(callback));
+        var listener = new CloseListener(callback);
         closeListeners.add(listener);
         return () -> {
             catalog.view();
@@ -212,10 +211,7 @@ public final class StructurePreviews implements AutoCloseable {
     public record Projection(ResourceLocation id, StructurePreviewSettings settings, BlockPos anchor,
                              StructureProjectionOptions options) {
         public Projection {
-            Objects.requireNonNull(id);
-            Objects.requireNonNull(settings);
-            Objects.requireNonNull(options);
-            anchor = Objects.requireNonNull(anchor).toImmutable();
+            anchor = anchor.toImmutable();
         }
     }
 
@@ -245,12 +241,13 @@ public final class StructurePreviews implements AutoCloseable {
         /**
          * Visits at most maxSteps expansion/assembly entries; no partial model is published.
          */
+        @SuppressWarnings("DataFlowIssue") // BUILDING retains its expansion until completion or failure.
         public int advance(int maxSteps) {
             owner.requireOpen();
             if (maxSteps < 0) throw new IllegalArgumentException("Negative preview work budget");
             if (state() != State.BUILDING) return 0;
             try {
-                var building = Objects.requireNonNull(expansion);
+                var building = expansion;
                 int used = building.advance(maxSteps);
                 completed = building.model();
                 if (completed != null) expansion = null;

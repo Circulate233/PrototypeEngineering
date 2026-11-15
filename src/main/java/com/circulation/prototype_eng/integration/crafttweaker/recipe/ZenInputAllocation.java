@@ -7,7 +7,6 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 /**
  * Immutable strategy handle. Its callback and captured state must remain immutable for its lifetime.
@@ -16,15 +15,11 @@ import java.util.Objects;
 @ZenRegister
 @ZenClass("mods.prototype_eng.recipe.InputAllocation")
 public record ZenInputAllocation(InputAllocation value) {
-    public ZenInputAllocation {
-        Objects.requireNonNull(value);
-    }
 
     @ZenMethod
     public static ZenInputAllocation create(String id, ZenAllocationCallback callback) {
-        Objects.requireNonNull(callback);
         return new ZenInputAllocation(InputAllocation.custom(ZenRecipeSupport.id(id), context -> {
-            var proposed = Objects.requireNonNull(callback.allocate(new ZenAllocationContext(context)), "Allocation returned null");
+            var proposed = callback.allocate(new ZenAllocationContext(context));
             var portions = new ObjectArrayList<InputAllocation.Portion>(proposed.length);
             for (var portion : proposed) portions.add(portion.value());
             return portions;

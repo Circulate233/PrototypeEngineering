@@ -5,7 +5,6 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.BiFunction;
 
 /**
@@ -25,7 +24,7 @@ public final class StructurePreviewCache<T> implements AutoCloseable {
     }
 
     public StructurePreviewCache(ClientStructureCatalog catalog, int maxEntries) {
-        this.catalog = Objects.requireNonNull(catalog);
+        this.catalog = catalog;
         if (maxEntries <= 0) throw new IllegalArgumentException("Nonpositive preview cache capacity");
         this.maxEntries = maxEntries;
         subscription = catalog.onInvalidated(this::clear);
@@ -39,10 +38,10 @@ public final class StructurePreviewCache<T> implements AutoCloseable {
             generation = view;
         }
         if (view == null || !view.entries().containsKey(id)) return null;
-        var key = new Key(Objects.requireNonNull(id), Objects.requireNonNull(settings));
+        var key = new Key(id, settings);
         var existing = values.getAndMoveToLast(key);
         if (existing != null) return existing;
-        var result = Objects.requireNonNull(build.apply(view, view.entries().get(id)));
+        var result = build.apply(view, view.entries().get(id));
         if (!catalog.current(view))
             throw new IllegalStateException("Structure catalog changed while building a preview");
         values.putAndMoveToLast(key, result);

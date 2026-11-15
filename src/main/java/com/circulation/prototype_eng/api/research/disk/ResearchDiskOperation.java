@@ -4,7 +4,6 @@ import com.circulation.prototype_eng.api.persistence.PlayerInventoryNbt;
 import com.circulation.prototype_eng.api.research.ResearchDataCenters;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadMaterial;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -13,12 +12,7 @@ import java.util.UUID;
 public record ResearchDiskOperation(Intent intent, ResearchDataCenters.Target target, ResearchDiskCommit commit,
                                     ResearchDownloadMaterial material, long createdAt, Status status,
                                     boolean databaseArmed) {
-    public ResearchDiskOperation {
-        Objects.requireNonNull(intent);
-        Objects.requireNonNull(target);
-        Objects.requireNonNull(commit);
-        Objects.requireNonNull(material);
-        Objects.requireNonNull(status);
+    public void validateSaved() {
         if (createdAt < 0 || !intent.playerId().equals(commit.actor()) || !intent.teamId().equals(commit.teamId())
             || !intent.databaseId().equals(commit.before().dataCenterId()) || !intent.databaseId().equals(target.dataCenterId())
             || !commit.operationId().equals(material.operationId()) || !intent.playerId().equals(material.playerId())
@@ -58,10 +52,7 @@ public record ResearchDiskOperation(Intent intent, ResearchDataCenters.Target ta
 
     public record Intent(UUID playerId, UUID nonce, UUID databaseId, String teamId, int slot) {
         public Intent {
-            Objects.requireNonNull(playerId);
-            Objects.requireNonNull(nonce);
-            Objects.requireNonNull(databaseId);
-            if (Objects.requireNonNull(teamId).isBlank() || !teamId.equals(teamId.trim())) {
+            if (teamId.isBlank() || !teamId.equals(teamId.trim())) {
                 throw new IllegalArgumentException("Research disk request requires a canonical team");
             }
             PlayerInventoryNbt.encodedSlot(slot);

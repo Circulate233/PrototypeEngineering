@@ -13,7 +13,6 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.ParametersAreNonnullByDefault;
-import java.util.Objects;
 
 /**
  * Native wrapper extension; immutable source data is shared by default and independent custom pages.
@@ -38,11 +37,11 @@ public class RecipePoolJeiRecipe implements IRecipeWrapper {
      */
     public RecipePoolJeiRecipe(RecipePoolJeiPage page, RecipePool pool, MachineRecipe recipe,
                                JeiRecipeDisplay display, JeiRecipeIngredients ingredients) {
-        this.page = Objects.requireNonNull(page);
-        this.pool = Objects.requireNonNull(pool);
-        this.recipe = Objects.requireNonNull(recipe);
-        this.display = Objects.requireNonNull(display);
-        this.ingredients = Objects.requireNonNull(ingredients);
+        this.page = page;
+        this.pool = pool;
+        this.recipe = recipe;
+        this.display = display;
+        this.ingredients = ingredients;
     }
 
     public RecipePoolJeiPage page() {
@@ -63,7 +62,7 @@ public class RecipePoolJeiRecipe implements IRecipeWrapper {
 
     public final void bindDisplayToken(DisplayToken token) {
         if (this.token != null) throw new IllegalStateException("JEI wrapper already belongs to a generation");
-        this.token = Objects.requireNonNull(token);
+        this.token = token;
     }
 
     public JeiRecipeDisplay display() {

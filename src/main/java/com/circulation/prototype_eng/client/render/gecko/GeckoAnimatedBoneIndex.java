@@ -5,10 +5,8 @@ import com.google.gson.JsonParser;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 
 import java.io.Reader;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -22,10 +20,10 @@ public final class GeckoAnimatedBoneIndex {
     private final List<String> fallbackNames;
 
     private GeckoAnimatedBoneIndex(Map<String, Set<String>> bones) {
-        this.bones = Collections.unmodifiableMap(bones);
+        this.bones = bones;
         var union = new ObjectLinkedOpenHashSet<String>();
         bones.values().forEach(union::addAll);
-        all = Collections.unmodifiableSet(union);
+        all = union;
         String first = null;
         for (var name : bones.keySet()) if (first == null || name.compareTo(first) < 0) first = name;
         fallbackNames = first == null ? List.of() : List.of(first);
@@ -43,7 +41,7 @@ public final class GeckoAnimatedBoneIndex {
             var values = animation.getValue().getAsJsonObject().getAsJsonObject("bones");
             if (values != null) for (var bone : values.entrySet()) names.add(bone.getKey());
             // Retain an empty animation for the same deterministic name fallback as the actual loader.
-            out.put(animation.getKey(), Collections.unmodifiableSet(names));
+            out.put(animation.getKey(), names);
         }
         return new GeckoAnimatedBoneIndex(out);
     }
@@ -53,22 +51,30 @@ public final class GeckoAnimatedBoneIndex {
     }
 
     public List<String> pickAnimationNames(List<String> preferred) {
-        var selected = new ObjectArrayList<String>();
+        ObjectArrayList<String> selected = null;
         for (int index2 = 0; index2 < preferred.size(); index2++) {
             var value = preferred.get(index2);
             var name = value.trim();
-            if (bones.containsKey(name)) selected.add(name);
+            boolean accepted = bones.containsKey(name);
+            if (selected == null && (!accepted || !name.equals(value))) {
+                selected = new ObjectArrayList<>(preferred.size());
+                for (int index = 0; index < index2; index++) selected.add(preferred.get(index));
+            }
+            if (selected != null && accepted) selected.add(name);
         }
-        return selected.isEmpty() ? fallbackNames : ObjectLists.unmodifiable(selected);
+        if (selected == null) return preferred.isEmpty() ? fallbackNames : preferred;
+        return selected.isEmpty() ? fallbackNames : selected;
     }
 
     public Set<String> animatedBonesFor(List<String> preferred) {
-        var out = new ObjectLinkedOpenHashSet<String>();
         var elements = pickAnimationNames(preferred);
+        if (elements.isEmpty()) return Set.of();
+        if (elements.size() == 1) return bones.get(elements.getFirst());
+        var out = new ObjectLinkedOpenHashSet<String>();
         for (int index1 = 0; index1 < elements.size(); index1++) {
             var name = elements.get(index1);
             out.addAll(bones.get(name));
         }
-        return Collections.unmodifiableSet(out);
+        return out;
     }
 }

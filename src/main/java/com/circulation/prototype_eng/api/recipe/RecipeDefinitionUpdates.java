@@ -10,7 +10,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
@@ -32,11 +31,10 @@ public final class RecipeDefinitionUpdates implements AutoCloseable {
      */
     public RecipeDefinitionUpdates(RecipeRegistry registry, NetworkRecipeExtensions extensions, TaskScheduler scheduler,
                                    UUID sessionId, Consumer<Published> observer) {
-        this.registry = Objects.requireNonNull(registry);
-        this.extensions = Objects.requireNonNull(extensions);
-        this.scheduler = Objects.requireNonNull(scheduler);
-        Objects.requireNonNull(sessionId);
-        this.observer = Objects.requireNonNull(observer);
+        this.registry = registry;
+        this.extensions = extensions;
+        this.scheduler = scheduler;
+        this.observer = observer;
         synchronized (this.registry) {
             synchronized (this.extensions) {
                 if (!registry.canBindPublication(scheduler) || !extensions.canBindPublication()) {
@@ -77,11 +75,11 @@ public final class RecipeDefinitionUpdates implements AutoCloseable {
 
     /**
      * Pool and PN callbacks run once on the owner, after earlier accepted workers have really exited.
+     * The supplied collections and entries must stay unchanged until the returned future completes.
      */
     public CompletableFuture<Result> replace(UUID expectedSession, RecipeRegistry.Snapshot expected,
                                              Collection<RecipeRegistry.Definition> definitions, Collection<RecipeProcessNbt> codecs) {
-        var request = new Request(Objects.requireNonNull(expected), null,
-            List.copyOf(definitions), List.copyOf(codecs));
+        var request = new Request(expected, null, definitions, codecs);
         return enqueue(expectedSession, request);
     }
 
@@ -89,12 +87,10 @@ public final class RecipeDefinitionUpdates implements AutoCloseable {
      * Submit an already prepared directory from this same live Publication without rebuilding its pools.
      */
     public CompletableFuture<Result> submit(UUID expectedSession, RecipeRegistry.Prepared prepared) {
-        Objects.requireNonNull(prepared);
         return enqueue(expectedSession, new Request(prepared.expected(), prepared, List.of(), List.of()));
     }
 
     private CompletableFuture<Result> enqueue(UUID expectedSession, Request request) {
-        Objects.requireNonNull(expectedSession);
         var result = new CompletableFuture<Result>();
         if (!accepting() || !sessionId().equals(expectedSession)) {
             result.complete(new Result(Status.REJECTED_SESSION, sessionId(), null, null));
@@ -210,6 +206,6 @@ public final class RecipeDefinitionUpdates implements AutoCloseable {
     }
 
     private record Request(RecipeRegistry.Snapshot expected, @Nullable RecipeRegistry.Prepared prepared,
-                           List<RecipeRegistry.Definition> definitions, List<RecipeProcessNbt> codecs) {
+                           Collection<RecipeRegistry.Definition> definitions, Collection<RecipeProcessNbt> codecs) {
     }
 }

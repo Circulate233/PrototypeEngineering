@@ -7,20 +7,15 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 // ZenScript discovers these entry points through annotations rather than Java call sites.
 @SuppressWarnings("unused")
 @ZenRegister
 @ZenClass("mods.prototype_eng.recipe.SelectiveModifier")
 public record ZenSelectiveModifier(SelectiveModifierDescriptor value) {
-    public ZenSelectiveModifier {
-        Objects.requireNonNull(value);
-    }
 
     @ZenMethod
     public static ZenSelectiveModifier create(String id, ZenSelectiveCallback callback) {
-        Objects.requireNonNull(callback);
         return new ZenSelectiveModifier(new SelectiveModifierDescriptor(ZenRecipeSupport.id(id),
             context -> callback.apply(new ZenSelectiveContext(context))));
     }

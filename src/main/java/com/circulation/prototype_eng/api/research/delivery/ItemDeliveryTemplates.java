@@ -4,7 +4,6 @@ import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -17,7 +16,7 @@ public final class ItemDeliveryTemplates {
     }
 
     public static NBTTagCompound copy(NBTTagCompound template) {
-        var result = Objects.requireNonNull(template).copy();
+        var result = template.copy();
         if (result.getByte("Count") < 1)
             throw new IllegalArgumentException("Empty item delivery template");
         if (result.hasKey("tag") && result.getCompoundTag("tag").hasKey(DELIVERY_TAG)) {

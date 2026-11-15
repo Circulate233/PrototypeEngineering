@@ -59,7 +59,6 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -149,11 +148,11 @@ public final class VisualExamples {
     }
 
     static GenericStack item(ItemStack stack, long amount) {
-        return new GenericStack(Objects.requireNonNull(AEItemKey.of(stack)), amount);
+        return new GenericStack(AEItemKey.of(stack), amount);
     }
 
     static GenericStack fluid(boolean lava, long amount) {
-        return new GenericStack(Objects.requireNonNull(AEFluidKey.of(lava ? FluidRegistry.LAVA : FluidRegistry.WATER)), amount);
+        return new GenericStack(AEFluidKey.of(lava ? FluidRegistry.LAVA : FluidRegistry.WATER), amount);
     }
 
     private static MachineRecipe recipe(String name, int ticks, List<GenericStack> in, List<GenericStack> out, long energy) {

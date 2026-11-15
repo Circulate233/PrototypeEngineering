@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.api.research;
 
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -12,7 +11,6 @@ public record ResearchPermissionContext(UUID actorId, @Nullable String actorTeam
                                         @Nullable UUID targetPlayerId, @Nullable String targetTeamId,
                                         boolean teamLeader, boolean teamModerator, boolean serverOperator) {
     public ResearchPermissionContext {
-        Objects.requireNonNull(actorId);
         requireTeamId(actorTeamId);
         requireTeamId(targetTeamId);
     }

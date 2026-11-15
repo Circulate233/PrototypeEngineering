@@ -32,7 +32,6 @@ import org.lwjgl.input.Mouse;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Original PM builder panel: preview at (4,2), clipped tree and task controls.
@@ -117,6 +116,8 @@ public final class GuiBuilderInstrument extends AEBaseGui<ContainerStructureTool
         renderToolTip(stack, x, y);
     }
 
+    @SuppressWarnings("DataFlowIssue")
+    // Cell alternative callbacks are invoked only for cells with display alternatives.
     private void refresh() {
         var tag = container.snapshot();
         String name = tag.getString("BoundStructureId");
@@ -156,7 +157,7 @@ public final class GuiBuilderInstrument extends AEBaseGui<ContainerStructureTool
         selectionsPending = false;
         preview.onAlternativeSelected((display, option) -> container.action("material", display.key(), BuilderState.optionKey(display.options().get(option))));
         preview.onCellAlternativeSelected((cell, option) -> container.action("cell_material", BuilderState.cellKey(cell.position()),
-            BuilderState.cellValue(Objects.requireNonNull(cell.display()), option, view.settings().orientation())));
+            BuilderState.cellValue(cell.display(), option, view.settings().orientation())));
     }
 
     private void applySelections() {

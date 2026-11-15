@@ -6,7 +6,6 @@ import crafttweaker.annotations.ZenRegister;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 @ZenRegister
 @ZenClass("mods.prototype_eng.network.NetworkRecipes")
@@ -22,7 +21,6 @@ public final class ZenNetworkRecipes {
     }
 
     public static NetworkRecipeExtension extension(ZenNetworkRecipeCallback callback) {
-        Objects.requireNonNull(callback);
         return (recipe, requirements) -> callback.extend(new ZenNetworkRecipeContext(recipe), new ZenNetworkRequirements(requirements));
     }
 }

@@ -8,12 +8,13 @@ import java.util.Objects;
 
 /**
  * Ordinary machine/process data, independent of script types. Each operation is atomic; live state
- * owns its mutable NBT while captured snapshots are read-only. Revisions let independent persistence
+ * owns its top-level NBT while child tags and captured snapshots are borrowed read-only. Revisions let independent persistence
  * and full-sync consumers observe changes without clearing one another's dirty state.
  */
 public final class ComponentData {
     private NBTTagCompound storage = new NBTTagCompound();
     private long revision;
+    private Snapshot captured;
 
     public synchronized long revision() {
         return revision;
@@ -24,7 +25,7 @@ public final class ComponentData {
     }
 
     public synchronized boolean has(String key) {
-        return storage.hasKey(Objects.requireNonNull(key));
+        return storage.hasKey(key);
     }
 
     /**
@@ -38,15 +39,15 @@ public final class ComponentData {
     }
 
     /**
-     * Null removes a value; unchanged contents do not advance the revision.
+     * Null removes a value; unchanged contents do not advance the revision. Supplied tags must not be mutated after this call.
      */
     public synchronized void set(String key, @Nullable NBTBase value) {
-        Objects.requireNonNull(key);
         if (Objects.equals(storage.getTag(key), value)) return;
         long next = Math.incrementExact(revision);
         if (value == null) storage.removeTag(key);
-        else storage.setTag(key, value.copy());
+        else storage.setTag(key, value);
         revision = next;
+        captured = null;
     }
 
     public void remove(String key) {
@@ -58,10 +59,11 @@ public final class ComponentData {
         long next = Math.incrementExact(revision);
         storage = new NBTTagCompound();
         revision = next;
+        captured = null;
     }
 
     /**
-     * Replaces top-level keys, matching the original ordinary ZSData merge behavior.
+     * Replaces top-level keys. Supplied child tags are borrowed and must not be mutated after this call.
      */
     public synchronized void merge(NBTTagCompound values) {
         NBTTagCompound replacement = null;
@@ -70,29 +72,37 @@ public final class ComponentData {
             if (Objects.equals(storage.getTag(key), value)) continue;
             if (replacement == null) {
                 replacement = new NBTTagCompound();
-                // Existing child tags stay privately owned and are never mutated in place.
                 for (var current : storage.getKeySet()) replacement.setTag(current, storage.getTag(current));
             }
-            replacement.setTag(key, value.copy());
+            replacement.setTag(key, value);
         }
         if (replacement == null) return;
         long next = Math.incrementExact(revision);
         storage = replacement;
         revision = next;
+        captured = null;
     }
 
     /**
-     * Full replacement for explicit codecs and received full-component synchronization.
+     * Replaces the top-level index for codecs and synchronization; supplied child tags remain read-only.
      */
     public synchronized void replace(NBTTagCompound values) {
         if (storage.equals(values)) return;
         long next = Math.incrementExact(revision);
-        storage = values.copy();
+        storage = copyRoot(values);
         revision = next;
+        captured = null;
     }
 
     public synchronized Snapshot snapshot() {
-        return new Snapshot(revision, storage.copy());
+        if (captured == null) captured = new Snapshot(revision, copyRoot(storage));
+        return captured;
+    }
+
+    private static NBTTagCompound copyRoot(NBTTagCompound source) {
+        var result = new NBTTagCompound();
+        for (var key : source.getKeySet()) result.setTag(key, source.getTag(key));
+        return result;
     }
 
     /**

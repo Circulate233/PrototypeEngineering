@@ -7,7 +7,6 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.Locale;
-import java.util.Objects;
 
 /**
  * Declaration only; the existing server session captures the same configured Java policy.
@@ -21,7 +20,6 @@ public final class ZenResearchServer {
 
     @ZenMethod
     public static void permissions(ZenResearchPermissionCallback callback) {
-        Objects.requireNonNull(callback);
         DefinitionRegistrations.researchServer(event -> event.configuration().permissions((action, context) ->
             ResearchPermissionPolicy.Decision.valueOf(callback.can(action.name(), new ZenResearchPermissionContext(context)).toUpperCase(Locale.ROOT))));
     }

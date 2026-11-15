@@ -34,9 +34,9 @@ import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.function.BiFunction;
 
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -106,7 +106,10 @@ class MachineRecipeRequirementsTest {
         var leaf = observer("leaf", (current, phase) -> {
             assertFalse(current.probing());
             var path = current.requirementPath();
-            assertNotNull(Objects.requireNonNull(path.parent()).parent());
+            assertNotNull(path);
+            var parent = path.parent();
+            assertNotNull(parent);
+            assertNotNull(parent.parent());
             return new RequirementTransaction() {
                 @Override
                 public ProcessResult result() {
@@ -312,6 +315,6 @@ class MachineRecipeRequirementsTest {
         captured.rollback();
         assertTrue(process.quiescent());
         assertFalse(process.probing());
-        assertThrows(NullPointerException.class, process::tickContext);
+        assertNull(process.tickContext());
     }
 }

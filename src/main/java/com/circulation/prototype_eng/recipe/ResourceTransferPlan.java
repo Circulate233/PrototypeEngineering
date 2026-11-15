@@ -3,11 +3,9 @@ package com.circulation.prototype_eng.recipe;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Internal receipt/transfer prototype retained for conservation regression checks. This is not a
@@ -16,7 +14,6 @@ import java.util.Objects;
 public record ResourceTransferPlan(ResourceLocation id, List<GenericStack> inputs, List<GenericStack> outputs,
                                    int durationTicks, long energyPerTick) {
     public ResourceTransferPlan {
-        Objects.requireNonNull(id, "id");
         if (durationTicks < 1 || energyPerTick < 0) {
             throw new IllegalArgumentException("Recipe duration must be positive and FE/t must not be negative");
         }
@@ -28,8 +25,6 @@ public record ResourceTransferPlan(ResourceLocation id, List<GenericStack> input
         var amounts = new AEKeyLinkedOpenHashMap(stacks.size());
         for (int index = 0; index < stacks.size(); index++) {
             GenericStack stack = stacks.get(index);
-            Objects.requireNonNull(stack, "resource stack");
-            Objects.requireNonNull(stack.what(), "resource key");
             if (stack.amount() <= 0) {
                 throw new IllegalArgumentException("Recipe amounts must be positive");
             }
@@ -42,6 +37,6 @@ public record ResourceTransferPlan(ResourceLocation id, List<GenericStack> input
         for (var entry : amounts.object2LongEntrySet()) {
             result.add(new GenericStack(entry.getKey(), entry.getLongValue()));
         }
-        return ObjectLists.unmodifiable(result);
+        return result;
     }
 }

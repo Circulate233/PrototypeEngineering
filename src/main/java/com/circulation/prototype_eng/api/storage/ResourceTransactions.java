@@ -5,7 +5,6 @@ import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -65,22 +64,16 @@ public final class ResourceTransactions {
     private static boolean settle(List<? extends ResourceReservation> reservations, boolean commit,
                                   BooleanSupplier prepareCommit, BooleanSupplier validateCommit,
                                   Runnable apply, Runnable complete, Runnable rollback) {
-        Objects.requireNonNull(prepareCommit);
-        Objects.requireNonNull(validateCommit);
-        Objects.requireNonNull(apply);
-        Objects.requireNonNull(complete);
-        Objects.requireNonNull(rollback);
         // External participants may call back into the owner of the supplied list.
         var participants = new ObjectArrayList<ResourceReservation>(reservations);
         var tokens = new ReferenceOpenHashSet<ResourceReservation>(participants.size());
         var domains = new ReferenceOpenHashSet<StorageContext>(participants.size());
         for (int index3 = 0; index3 < participants.size(); index3++) {
             var reservation = participants.get(index3);
-            Objects.requireNonNull(reservation);
             if (!tokens.add(reservation)) {
                 throw new IllegalArgumentException("Repeated reservation token");
             }
-            domains.add(Objects.requireNonNull(reservation.context()));
+            domains.add(reservation.context());
         }
         var ordered = new ObjectArrayList<>(domains);
         ordered.sort(Comparator.comparingLong(StorageContext::order));

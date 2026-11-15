@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.api.recipe.probability;
 
-import java.util.Objects;
 import java.util.random.RandomGenerator;
 
 /**
@@ -21,8 +20,6 @@ public final class ChanceMath {
      */
     public static long sampleTimes(RandomGenerator random, int parallels, double chancePercent,
                                    ProbabilityTuning tuning) {
-        Objects.requireNonNull(random, "random");
-        Objects.requireNonNull(tuning, "tuning");
         requireFinite(chancePercent);
         if (parallels <= 0 || chancePercent <= 0) {
             return 0;

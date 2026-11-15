@@ -5,7 +5,6 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Complete ordinary data fact. Identities are attachment-local observations, never execution rights.
@@ -28,15 +27,11 @@ public record MachineDataSnapshot(long generation, long revision, @Nullable Comp
     }
 
     public record Slot(String name, @Nullable Process process) {
-        public Slot {
-            Objects.requireNonNull(name);
-        }
     }
 
     public record Process(long identity, ResourceLocation recipe, @Nullable ComponentData.Snapshot data) {
         public Process {
             if (identity <= 0) throw new IllegalArgumentException("Invalid data process identity");
-            Objects.requireNonNull(recipe);
         }
     }
 }

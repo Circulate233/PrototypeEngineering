@@ -16,11 +16,6 @@ public record ManualResearchMaterialReceipt(UUID sessionId, String teamId, TeamR
                                             byte @Nullable [] inventoryAfter, Status status,
                                             long preparedAt, long committedAt, long confirmedAt) {
     public ManualResearchMaterialReceipt {
-        Objects.requireNonNull(sessionId);
-        Objects.requireNonNull(teamId);
-        Objects.requireNonNull(queueKey);
-        Objects.requireNonNull(intent);
-        Objects.requireNonNull(status);
         if (teamId.isBlank() || !teamId.equals(teamId.trim()) || preparedAt < 0) {
             throw new IllegalArgumentException("Invalid material receipt team identity or preparation time");
         }

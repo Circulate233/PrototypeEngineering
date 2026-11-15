@@ -46,7 +46,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -199,7 +198,7 @@ public final class StructureBuildTasks {
                 blocked++;
                 continue;
             }
-            var resource = StructureMaterials.resource(player.world, target.position(), Objects.requireNonNull(target.state()), player, target.tileNbt());
+            var resource = StructureMaterials.resource(player.world, target.position(), target.state(), player, target.tileNbt());
             if (resource == null) {
                 player.sendMessage(StructureToolText.BuildInstrumentReqUnknown.text());
                 return null;

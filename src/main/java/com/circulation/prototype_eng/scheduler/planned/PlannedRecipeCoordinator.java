@@ -14,12 +14,12 @@ import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.AbstractList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
@@ -113,11 +113,11 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     PlannedRecipeCoordinator(PlannedTaskExecutor tasks, List<MachineWorkSlots> hosts,
                              PlannedDeadline forwardDeadline, PlannedCancellationToken cancellation,
                              BooleanSupplier authorization, LongSupplier nanoTime) {
-        this.tasks = Objects.requireNonNull(tasks);
-        this.forwardDeadline = Objects.requireNonNull(forwardDeadline);
-        this.cancellation = Objects.requireNonNull(cancellation);
-        this.authorization = Objects.requireNonNull(authorization);
-        this.nanoTime = Objects.requireNonNull(nanoTime);
+        this.tasks = tasks;
+        this.forwardDeadline = forwardDeadline;
+        this.cancellation = cancellation;
+        this.authorization = authorization;
+        this.nanoTime = nanoTime;
         group = MachineWorkSlots.prepareTickGroup(hosts);
         process = null;
         participants = null;
@@ -125,13 +125,13 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
 
     private PlannedRecipeCoordinator(PlannedTaskExecutor tasks, RecipeProcess process,
                                      PlannedDeadline forwardDeadline, PlannedCancellationToken cancellation, BooleanSupplier authorization,
-                                     Function<RecipeProcess.Stage, List<? extends ReversibleTransaction>> participants) {
-        this.tasks = Objects.requireNonNull(tasks);
-        this.process = Objects.requireNonNull(process);
-        this.forwardDeadline = Objects.requireNonNull(forwardDeadline);
-        this.cancellation = Objects.requireNonNull(cancellation);
-        this.authorization = Objects.requireNonNull(authorization);
-        this.participants = Objects.requireNonNull(participants);
+                                     @NotNull Function<RecipeProcess.Stage, List<? extends ReversibleTransaction>> participants) {
+        this.tasks = tasks;
+        this.process = process;
+        this.forwardDeadline = forwardDeadline;
+        this.cancellation = cancellation;
+        this.authorization = authorization;
+        this.participants = participants;
         nanoTime = System::nanoTime;
         group = null;
         if (!process.isMaterialCycle() || process.host() != null) {
@@ -198,7 +198,6 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     @Override
     public boolean advance(PlannedDeadline cleanupDeadline) {
         requireOwner();
-        Objects.requireNonNull(cleanupDeadline);
         activeCleanupDeadline = cleanupDeadline;
         if (finished()) {
             return true;
@@ -386,11 +385,12 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         return workYielded && stopReason == null && failure == null && !finished();
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void beginProcesses() {
         if (group != null) {
             group.begin();
         } else {
-            processSession = Objects.requireNonNull(process).beginTick();
+            processSession = process.beginTick();
         }
     }
 
@@ -412,8 +412,9 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         return stage == null ? List.of() : List.of(stage);
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private boolean captureRound() {
-        var captured = Objects.requireNonNull(roundCapture);
+        var captured = roundCapture;
         while (roundCaptureCursor < captured.size()) {
             if (!takeOwnerWork()) return false;
             round.add(new Entry(captured.get(roundCaptureCursor++)));
@@ -424,6 +425,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         return true;
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private @Nullable Boolean captureParticipants(Entry entry) {
         if (entry.participantUnknown) return null;
         if (entry.participantAccepted != null) return entry.participantAccepted;
@@ -431,7 +433,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
             if (!takeOwnerWork()) return null;
             entry.participantStarted = true;
             try {
-                var captured = Objects.requireNonNull(participants).apply(entry.stage);
+                var captured = participants.apply(entry.stage);
                 if (captured == null) {
                     entry.participantAccepted = false;
                     return false;
@@ -442,9 +444,9 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                 throw failure;
             }
         }
-        while (Objects.requireNonNull(entry.participantInput).hasNext()) {
+        while (entry.participantInput.hasNext()) {
             if (!takeOwnerWork()) return null;
-            var transaction = Objects.requireNonNull(entry.participantInput.next(), "Additional business acquisition");
+            var transaction = entry.participantInput.next();
             if (!entry.participantIdentities.add(transaction))
                 throw new IllegalArgumentException("Repeated additional business acquisition");
             entry.participants.add(transaction);
@@ -465,7 +467,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     @Override
     public void cancel(Reason reason) {
         requireOwner();
-        cancellation.cancel(Objects.requireNonNull(reason));
+        cancellation.cancel(reason);
     }
 
     @Nullable
@@ -572,7 +574,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
             }
             while (active.entry < active.entries.size()) {
                 var entry = active.entries.get(active.entry);
-                if (active.rollback && !drivePreparedCleanup(entry.stage, true, Objects.requireNonNull(activeCleanupDeadline)))
+                if (active.rollback && !drivePreparedCleanup(entry.stage, true, activeCleanupDeadline))
                     return false;
                 if (!active.selected) {
                     if (!takeOwnerWork()) return false;
@@ -613,13 +615,14 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         }
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private boolean cleanParticipants(Entry entry) {
         if (entry.participants.isEmpty()) return true;
         if (entry.participantCleanup == null) {
             if (entry.participantCleanupCapture == null)
                 entry.participantCleanupCapture = ResourceBatch.beginAcquire(List.of(), entry.participants);
             if (!entry.participantCleanupCapture.advance(work)) return false;
-            entry.participantCleanup = Objects.requireNonNull(entry.participantCleanupCapture.result());
+            entry.participantCleanup = entry.participantCleanupCapture.result();
             entry.participantCleanupCapture = null;
         }
         var cleanup = entry.participantCleanup;
@@ -696,8 +699,9 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         if (preparing == null) resetPrepareCapture();
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private boolean settleActive(PlannedDeadline cleanupDeadline) {
-        var active = Objects.requireNonNull(settlement);
+        var active = settlement;
         var resources = active.resources;
         if (resources.finished()) {
             return finishSettlement(active);
@@ -708,7 +712,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                 active.barrier.awaitQuiescence();
             }
             if (!active.afterSources) {
-                var results = Objects.requireNonNull(active.barrier).results();
+                var results = active.barrier.results();
                 while (active.receipt < results.size()) {
                     int index = active.receipt++;
                     if (!active.receipts.get(index).take())
@@ -979,6 +983,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     /**
      * Original prepared acquisition cleanup, using the same source lanes and physical receipts.
      */
+    @SuppressWarnings("DataFlowIssue")
     private boolean drivePreparedCleanup(RecipeProcess.Stage stage, boolean cancel, PlannedDeadline deadline) {
         var active = preparedCleanup;
         if (active != null && active.stage != stage) return false;
@@ -1108,7 +1113,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                     prepareOwnerSelected = true;
                 }
                 var stage = prepareInput.get(prepareCapture);
-                if (stage.preparedCleanupPending() && !drivePreparedCleanup(stage, false, Objects.requireNonNull(activeCleanupDeadline)))
+                if (stage.preparedCleanupPending() && !drivePreparedCleanup(stage, false, activeCleanupDeadline))
                     return false;
                 var computation = stage.computation();
                 if (computation == null && stage.preparationPending()) {
@@ -1198,6 +1203,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         prepareCompleted = true;
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private boolean finishPrepare() {
         var barrier = preparing;
         if (barrier == null) return stopReason == null;
@@ -1244,6 +1250,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         return completed || stopReason != null;
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private boolean rewindAlternative(Settlement active, PlannedDeadline deadline) {
         if (deadline.expired(nanoTime.getAsLong())) {
             return false;
@@ -1259,7 +1266,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                 }
             }
         }
-        var stage = Objects.requireNonNull(active.rewinding, "No rejected candidate");
+        var stage = active.rewinding;
         try {
             if (!resources.rewinding()) {
                 if (!resources.rollbackToWithinBudget(stage.rejectedSavepoint(), work)) {
@@ -1398,6 +1405,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         return true;
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void finishGroup() {
         if (group != null) {
             try {
@@ -1420,7 +1428,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         } catch (RuntimeException | Error post) {
             record(post);
         } finally {
-            processFinished = Objects.requireNonNull(process).quiescent();
+            processFinished = process.quiescent();
         }
     }
 
@@ -1433,6 +1441,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         }
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void record(Throwable observed) {
         if (failure == null) {
             failure = observed;
@@ -1447,7 +1456,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         stop(Reason.WORKER_FAILURE);
         if (group != null && !group.finished()) {
             group.recordFailure(observed);
-        } else if (processSession != null && Objects.requireNonNull(process).pendingTick() == processSession) {
+        } else if (processSession != null && process.pendingTick() == processSession) {
             processSession.recordFailure(observed);
         }
         if (observed instanceof VirtualMachineError fatal) throw fatal;

@@ -22,7 +22,6 @@ import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 
 import java.io.IOException;
-import java.util.Objects;
 
 /**
  * Original PM universal-ME artwork with native generic-key slots and AE's long amount editor.
@@ -164,8 +163,9 @@ public final class GuiMEResourceHatch extends AEBaseGui<ContainerMEResourceHatch
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue") // The container constructor sets its AE title before this GUI opens.
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        GuiLabel.drawCentered(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 30, 9, 136, 9, 0x404040, false);
+        GuiLabel.drawCentered(fontRenderer, container.getGuiTitle().getFormattedText(), 30, 9, 136, 9, 0x404040, false);
     }
 
     @Override
@@ -256,7 +256,7 @@ public final class GuiMEResourceHatch extends AEBaseGui<ContainerMEResourceHatch
         if (mark == null || logical < 0) return;
         long revision = container.snapshot.markRevision();
         switchToScreen(new GuiSetProcessingPatternAmount(this, mark, next ->
-            container.setTarget(revision, logical, next == null ? 0 : next.amount()), Objects.requireNonNull(container.getGuiTitle())));
+            container.setTarget(revision, logical, next == null ? 0 : next.amount()), container.getGuiTitle()));
     }
 
     private void adjustAmount(int index, boolean increase) {

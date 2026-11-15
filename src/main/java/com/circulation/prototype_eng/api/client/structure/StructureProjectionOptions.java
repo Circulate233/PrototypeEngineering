@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.api.client.structure;
 
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Native outline/ghost presentation tuning. Display observations do not prove structure matching.
@@ -14,7 +13,6 @@ public record StructureProjectionOptions(Style style, boolean hideDisplayedMatch
                                          int blockModelBuildVisitsPerFrame, int blockModelChunkVisitsPerFrame,
                                          int blockModelRenderAllChunksIfUnder) {
     public StructureProjectionOptions {
-        Objects.requireNonNull(style);
         if (expansionStepsPerTick <= 0 || scanChecksPerTick < 0 || renderVisitsPerFrame <= 0
             || !Double.isFinite(maxDistance) || maxDistance <= 0 || blockModelBuildVisitsPerFrame <= 0
             || blockModelChunkVisitsPerFrame <= 0 || blockModelRenderAllChunksIfUnder < 0)

@@ -4,9 +4,9 @@ import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
 import com.circulation.prototype_eng.api.research.DataCenterStorage;
 import com.circulation.prototype_eng.api.research.TeamResearchView;
 import com.circulation.prototype_eng.research.ResearchDataCenter;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -24,18 +24,15 @@ public final class ResearchDiskImport {
     }
 
     private static Candidate evaluate(ResearchDiskData data, DataCenterResearchSnapshot target, TeamResearchView cloud) {
-        Objects.requireNonNull(data, "Research disk data");
-        Objects.requireNonNull(target, "Target database snapshot");
-        data.requireRegistry(Objects.requireNonNull(cloud, "Research cloud").registry());
+        data.requireRegistry(cloud.registry());
         if (data.tier() > target.level()) {
             return new Candidate(new Result(Status.DISK_TIER_TOO_HIGH, null), target);
         }
-        // Reuse the actual backend's whole-batch capacity and mutex rules without publishing to it.
-        var candidate = ResearchDataCenter.restore(target, cloud.registry(), () -> {
-        }, () -> {
-        });
-        var result = candidate.storeFromDisk(data.entries(), cloud);
-        return new Candidate(new Result(result.accepted() ? Status.ACCEPTED : Status.DATA_CENTER_REJECTED, result), candidate.snapshot());
+        var replacement = new Object2IntOpenHashMap<>(target.storedResearch());
+        var result = ResearchDataCenter.storeFromDisk(data.entries(), target, cloud, replacement);
+        var after = result == DataCenterStorage.Result.UPDATED
+            ? new DataCenterResearchSnapshot(target.dataCenterId(), target.level(), target.capacity(), 0, replacement) : target;
+        return new Candidate(new Result(result.accepted() ? Status.ACCEPTED : Status.DATA_CENTER_REJECTED, result), after);
     }
 
     /**
@@ -46,7 +43,7 @@ public final class ResearchDiskImport {
         var candidate = evaluate(data, target, cloud);
         var result = candidate.result();
         if (!result.accepted()) return new Preparation(result, null);
-        if (!Objects.requireNonNull(teamId).equals(cloud.teamId()))
+        if (!teamId.equals(cloud.teamId()))
             throw new IllegalArgumentException("Disk import belongs to another team");
         return new Preparation(result, new ResearchDiskCommit(operationId, actor, teamId, data.tier(), data.entries(),
             savedContents(target), savedContents(candidate.contents())));
@@ -63,25 +60,12 @@ public final class ResearchDiskImport {
     }
 
     public record Preparation(Result result, @Nullable ResearchDiskCommit commit) {
-        public Preparation {
-            Objects.requireNonNull(result);
-            if (result.accepted() == (commit == null))
-                throw new IllegalArgumentException("Disk import preparation differs from its result");
-        }
     }
 
     /**
      * Backend details are absent only when disk tier alone prevents the database precheck.
      */
     public record Result(Status status, @Nullable DataCenterStorage.Result storageResult) {
-        public Result {
-            Objects.requireNonNull(status);
-            if (status == Status.DISK_TIER_TOO_HIGH ? storageResult != null
-                : storageResult == null || (status == Status.ACCEPTED) != storageResult.accepted()) {
-                throw new IllegalArgumentException("Disk precheck status differs from its database result");
-            }
-        }
-
         public boolean accepted() {
             return status == Status.ACCEPTED;
         }

@@ -5,7 +5,6 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * The tile's transient save envelope; reading it never creates a machine or touches a world.
@@ -13,10 +12,6 @@ import java.util.Objects;
  * value is in use. Components capture live mutable data before creating this envelope.
  */
 public record ControllerData(ResourceLocation type, BlockOrientation orientation, @Nullable NBTTagCompound runtime) {
-    public ControllerData {
-        Objects.requireNonNull(type);
-        Objects.requireNonNull(orientation);
-    }
 
     public static ControllerData decode(NBTTagCompound saved) {
         if (saved.getInteger("Version") != 1) {

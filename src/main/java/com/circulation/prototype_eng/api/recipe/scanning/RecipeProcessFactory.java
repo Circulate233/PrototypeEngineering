@@ -6,7 +6,6 @@ import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 
-import java.util.Objects;
 
 /**
  * Fresh unpublished candidates only. Respect identity, seed and tuning, and publish no world effects.
@@ -39,7 +38,7 @@ public interface RecipeProcessFactory {
             public boolean advance(RecipeWorkBudget budget) {
                 if (process != null) return true;
                 if (!budget.take()) return false;
-                process = Objects.requireNonNull(create(machine, recipe, seed, tuning));
+                process = create(machine, recipe, seed, tuning);
                 return true;
             }
 

@@ -4,7 +4,6 @@ import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistr
 import net.minecraft.server.MinecraftServer;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Identity registrations belong to one actual server session, never to a saved UUID.
@@ -17,7 +16,7 @@ public final class ServerMachineIdentities {
     }
 
     public static synchronized void start(MinecraftServer server) {
-        requireThread(Objects.requireNonNull(server));
+        requireThread(server);
         if (session != null) {
             throw new IllegalStateException("A machine identity session is already running");
         }

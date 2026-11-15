@@ -19,7 +19,6 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
@@ -63,6 +62,10 @@ public final class MachineLifecycle {
     private volatile StructureMatch structureMatch;
     @Nullable
     private Captured lastCaptured;
+    private List<ComponentMap.SavedBinding<MachineInstance, ?>> capturedBindings;
+    private List<MachineLifecycleListener> capturedGlobals;
+    private Captured participantCapture;
+    private MachineLifecycleContext lifecycleContext;
     @Nullable
     private ScheduledExecution scheduledExecution;
     private boolean assemblyStarted;
@@ -73,11 +76,11 @@ public final class MachineLifecycle {
     }
 
     public MachineLifecycle(MachineInstance machine, MachineLifecycleHost host, MachineLifecycleRegistry registry) {
-        this.machine = Objects.requireNonNull(machine);
-        this.host = Objects.requireNonNull(host);
-        this.registry = Objects.requireNonNull(registry);
+        this.machine = machine;
+        this.host = host;
+        this.registry = registry;
         host.requireServerThread();
-        identity = Objects.requireNonNull(host.identity());
+        identity = host.identity();
         var type = machine.type();
         if (type != null && !type.id().equals(identity.machineType())) {
             throw new IllegalArgumentException("Machine declaration does not match its attached host identity");
@@ -225,7 +228,6 @@ public final class MachineLifecycle {
      * Failure retires the unpublished instance without sending cleanup to never-loaded listeners.
      */
     public void assemble(Runnable assembly) {
-        Objects.requireNonNull(assembly);
         host.requireServerThread();
         enter(ASSEMBLING);
         try {
@@ -253,7 +255,6 @@ public final class MachineLifecycle {
      * The caller must have joined all workers; this gate rejects overlap rather than joining them.
      */
     public <T> T withPersistence(Supplier<T> save) {
-        Objects.requireNonNull(save);
         host.requireServerThread();
         enter(PERSISTING);
         try {
@@ -274,7 +275,6 @@ public final class MachineLifecycle {
     }
 
     public void load(MachineLifecycleEvent.LoadBoundary boundary) {
-        Objects.requireNonNull(boundary);
         enterTransition();
         try {
             requireHealthy();
@@ -301,7 +301,7 @@ public final class MachineLifecycle {
      * Replace discovered public hatch bindings before notifying an actual formed transition.
      */
     public void form(MachineHatches hatches) {
-        changeStructure(Objects.requireNonNull(hatches));
+        changeStructure(hatches);
     }
 
     /**
@@ -342,8 +342,6 @@ public final class MachineLifecycle {
      * All preparation is budgeted before the indivisible accepted-state and notification tail.
      */
     public boolean refreshStructure(BooleanSupplier applicable, Supplier<StructureAssembly> prepare, RecipeWorkBudget work) {
-        Objects.requireNonNull(applicable);
-        Objects.requireNonNull(prepare);
         enterTransition();
         try {
             if (state != State.LOADED || broken || retired) {
@@ -455,7 +453,6 @@ public final class MachineLifecycle {
      * structure before recipes resume. Cleanup remains available after a callback/execution fault.
      */
     public boolean unload(MachineLifecycleEvent.UnloadReason reason) {
-        Objects.requireNonNull(reason);
         if (reason == MachineLifecycleEvent.UnloadReason.LOAD_FAILED) {
             throw new IllegalArgumentException("LOAD_FAILED is emitted only by failed load cleanup");
         }
@@ -516,7 +513,6 @@ public final class MachineLifecycle {
      * MachineInstance dispatch boundary; worker ownership must come from the real scheduler.
      */
     public void runScheduled(Runnable execution) {
-        Objects.requireNonNull(execution);
         enter(RUNNING);
         try {
             requireHealthy();
@@ -570,7 +566,7 @@ public final class MachineLifecycle {
      */
     public boolean deferRecipeWork(MachineWorkSlots slots) {
         var execution = scheduledExecution;
-        return execution != null && execution.defer(Objects.requireNonNull(slots));
+        return execution != null && execution.defer(slots);
     }
 
     /**
@@ -578,7 +574,7 @@ public final class MachineLifecycle {
      */
     public boolean deferRecipeScan(RecipeScanner scanner, ScanLimits limits) {
         var execution = scheduledExecution;
-        return execution != null && execution.deferScan(Objects.requireNonNull(scanner), Objects.requireNonNull(limits));
+        return execution != null && execution.deferScan(scanner, limits);
     }
 
     /**
@@ -623,51 +619,49 @@ public final class MachineLifecycle {
     }
 
     private MachineLifecycleContext context() {
-        return new MachineLifecycleContext(machine, identity, host, formed);
+        if (lifecycleContext == null || lifecycleContext.formed() != formed)
+            lifecycleContext = new MachineLifecycleContext(machine, identity, host, formed);
+        return lifecycleContext;
     }
 
     private Captured capture() {
-        return Objects.requireNonNull(capture(new RecipeWorkBudget(Long.MAX_VALUE)));
+        if (capturedBindings == machine.components().orderedBindings() && capturedGlobals == registry.snapshot())
+            return participantCapture;
+        return capture(new RecipeWorkBudget(Long.MAX_VALUE));
     }
 
     @Nullable
+    @SuppressWarnings("DataFlowIssue")
     private Captured capture(RecipeWorkBudget work) {
-        var listeners = new ObjectArrayList<MachineLifecycleListener>();
-        var workSlots = new ObjectArrayList<MachineWorkSlots>();
-        var seenSlots = new ReferenceOpenHashSet<MachineWorkSlots>();
         var ordered = machine.components().orderedBindings(work);
         if (ordered == null) return null;
-        for (int index14 = 0; index14 < ordered.size(); index14++) {
-            var binding = ordered.get(index14);
-            if (!work.take()) return null;
-            if (binding.component() instanceof MachineLifecycleListener listener) {
-                listeners.add(listener);
-            }
-            if (binding.component() instanceof MachineWorkSlots slots && seenSlots.add(slots)) {
-                if (slots.owner() != machine) {
-                    throw new IllegalStateException("Foreign work slots installed on machine");
+        var globals = registry.snapshot();
+        if (ordered == capturedBindings && globals == capturedGlobals) return participantCapture;
+        if (ordered != capturedBindings) {
+            var listeners = new ObjectArrayList<MachineLifecycleListener>();
+            var workSlots = new ObjectArrayList<MachineWorkSlots>();
+            var seenSlots = new ReferenceOpenHashSet<MachineWorkSlots>();
+            for (int index = 0; index < ordered.size(); index++) {
+                var binding = ordered.get(index);
+                if (!work.take()) return null;
+                if (binding.component() instanceof MachineLifecycleListener listener) listeners.add(listener);
+                if (binding.component() instanceof MachineWorkSlots slots && seenSlots.add(slots)) {
+                    workSlots.add(slots);
                 }
-                workSlots.add(slots);
             }
+            lastCaptured = new Captured(listeners, workSlots);
         }
-        // Retain only owned components for corrupt-graph cleanup. Global subscriptions can be
-        // cancelled independently and must not be kept alive or resurrected by this machine.
-        var ownedListeners = new ObjectArrayList<MachineLifecycleListener>();
-        for (int index2 = 0; index2 < listeners.size(); index2++) {
-            var listener = listeners.get(index2);
-            if (!work.take()) return null;
-            ownedListeners.add(listener);
+        Captured complete = lastCaptured;
+        if (!globals.isEmpty()) {
+            if (!work.take((long) lastCaptured.listeners().size() + globals.size())) return null;
+            var listeners = new ObjectArrayList<>(lastCaptured.listeners());
+            listeners.addAll(globals);
+            complete = new Captured(listeners, lastCaptured.workSlots());
         }
-
-        var elements = registry.snapshot();
-        for (int index3 = 0; index3 < elements.size(); index3++) {
-            var listener = elements.get(index3);
-            if (!work.take()) return null;
-            listeners.add(listener);
-        }
-
-        lastCaptured = new Captured(ownedListeners, workSlots);
-        return new Captured(listeners, workSlots);
+        capturedBindings = ordered;
+        capturedGlobals = globals;
+        participantCapture = complete;
+        return complete;
     }
 
     private CleanupCapture captureForCleanup() {
@@ -784,7 +778,6 @@ public final class MachineLifecycle {
          * Returns false without calling the body once retirement or a fault revokes forward work.
          */
         public boolean run(Runnable execution) {
-            Objects.requireNonNull(execution);
             requireOwner();
             if (!lifecycle.schedulingAllowed()) {
                 return false;
@@ -797,7 +790,6 @@ public final class MachineLifecycle {
          * Runs one consumed normal callback with the precise work-slot deferral hook enabled.
          */
         public boolean runComponent(Runnable execution) {
-            Objects.requireNonNull(execution);
             requireOwner();
             if (deferred != null || deferredScan != null) {
                 throw new IllegalStateException("Previous component work is still deferred");
@@ -821,13 +813,13 @@ public final class MachineLifecycle {
         public WorkerAction delegateWorker(Runnable execution) {
             requireOwner();
             if (workerAction != null) throw new IllegalStateException("A machine callback is already delegated");
-            workerAction = new WorkerAction(Objects.requireNonNull(execution));
+            workerAction = new WorkerAction(execution);
             return workerAction;
         }
 
         public void finishWorker(WorkerAction expected) {
             requireOwner(true);
-            if (workerAction != Objects.requireNonNull(expected))
+            if (workerAction != expected)
                 throw new IllegalArgumentException("Different worker claim");
             expected.reclaim();
             workerAction = null;
@@ -876,7 +868,7 @@ public final class MachineLifecycle {
 
         public void finishDeferredRecipeScan(DeferredScan expected) {
             requireOwner();
-            if (deferredScan != Objects.requireNonNull(expected))
+            if (deferredScan != expected)
                 throw new IllegalArgumentException("Different deferred scanner");
             if (expected.scanner().pendingScan() != null)
                 throw new IllegalStateException("Scanner still owns its attempt");
@@ -894,7 +886,7 @@ public final class MachineLifecycle {
          */
         public void finishDeferredRecipeWork(MachineWorkSlots slots) {
             requireOwner();
-            if (deferred != Objects.requireNonNull(slots)) {
+            if (deferred != slots) {
                 throw new IllegalArgumentException("Different deferred work-slot host");
             }
             slots.requireQuiescent();
@@ -906,7 +898,6 @@ public final class MachineLifecycle {
          * Mandatory confirmation/compensation remains callable after retirement or a runtime fault.
          */
         public void cleanup(Runnable cleanup) {
-            Objects.requireNonNull(cleanup);
             requireOwner();
             invoke(cleanup);
         }
@@ -928,7 +919,7 @@ public final class MachineLifecycle {
          */
         public void recordFailure(Throwable observed) {
             requireOwner();
-            record(Objects.requireNonNull(observed));
+            record(observed);
         }
 
         private void record(Throwable observed) {

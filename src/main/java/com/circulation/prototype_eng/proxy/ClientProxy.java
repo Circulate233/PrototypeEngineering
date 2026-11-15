@@ -33,6 +33,7 @@ import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
 import com.circulation.prototype_eng.client.render.BasicMachineControllerRenderer;
 import com.circulation.prototype_eng.client.render.ClientMachineRenderSnapshots;
 import com.circulation.prototype_eng.client.render.DirectVertexBufferPool;
+import com.circulation.prototype_eng.client.render.HatchBloomMetadata;
 import com.circulation.prototype_eng.client.render.MachineControllerRenderer;
 import com.circulation.prototype_eng.client.render.MachineModelBloom;
 import com.circulation.prototype_eng.client.render.MachineModelRenderState;
@@ -86,7 +87,6 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.Consumer;
 
 @SuppressWarnings("resource") // Proxy retains the client manager; connection/world hooks retire its attachment leases.
@@ -193,7 +193,7 @@ public class ClientProxy extends CommonProxy {
     public void modelRenderOptions(MachineRenderOptions options) {
         structures();
         if (modelRenderOptions.equals(options)) return;
-        modelRenderOptions = Objects.requireNonNull(options);
+        modelRenderOptions = options;
         retireModelBuilds();
     }
 
@@ -227,7 +227,7 @@ public class ClientProxy extends CommonProxy {
 
     @SubscribeEvent
     public void flushMachineModels(RenderWorldLastEvent event) {
-        modelCleanup(this::flushMachineModels, MachineModelBloom::clear);
+        MachineModelBloom.clear();
     }
 
     @SubscribeEvent
@@ -265,9 +265,10 @@ public class ClientProxy extends CommonProxy {
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue") // The preceding owner-thread connection check requires a live handler.
     public @Nullable Object controllerDataConnection(MachineControllerBlockEntity tile, @Nullable NetworkManager manager) {
         if (!controllerDisplayConnectionCurrent(tile, manager)) return null;
-        return Objects.requireNonNull(Minecraft.getMinecraft().getConnection()).getNetworkManager();
+        return Minecraft.getMinecraft().getConnection().getNetworkManager();
     }
 
     @Override
@@ -286,11 +287,12 @@ public class ClientProxy extends CommonProxy {
             renderSnapshots().withdraw(attachRenderOwner(tile, display.type(), installed), display);
     }
 
+    @SuppressWarnings("DataFlowIssue") // Both callers first accept the same live owner-thread connection.
     private ClientMachineRenderSnapshots.Owner attachRenderOwner(MachineControllerBlockEntity tile,
                                                                  ResourceLocation type,
                                                                  Consumer<MachineRenderSnapshot> installed) {
         var minecraft = Minecraft.getMinecraft();
-        var connection = Objects.requireNonNull(minecraft.getConnection()).getNetworkManager();
+        var connection = minecraft.getConnection().getNetworkManager();
         var world = tile.getWorld();
         var position = tile.getPos().toImmutable();
         return renderSnapshots().attach(world, tile, connection, position, type,
@@ -445,6 +447,7 @@ public class ClientProxy extends CommonProxy {
     @Override
     public void preInit(FMLPreInitializationEvent event) {
         super.preInit(event);
+        if (Loader.isModLoaded("ctm")) HatchBloomMetadata.register();
         RenderingRegistry.registerEntityRenderingHandler(RewardItemEntity.class,
             manager -> new RenderEntityItem(manager, Minecraft.getMinecraft().getRenderItem()));
         if (Loader.isModLoaded("jei")) PrototypeJeiPlugin.configureDefinitions(() -> {
@@ -471,13 +474,14 @@ public class ClientProxy extends CommonProxy {
     }
 
     @SubscribeEvent
+    @SuppressWarnings("DataFlowIssue") // ModelRegistryEvent runs after every listed hatch is registered.
     public void registerModels(ModelRegistryEvent event) {
         var BLOCKS = HatchBlocks.all();
         var size = BLOCKS.size();
         for (var i = 0; i < size; i++) {
             var block = BLOCKS.get(i);
             ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(block), 0,
-                new ModelResourceLocation(Objects.requireNonNull(block.getRegistryName()), "inventory"));
+                new ModelResourceLocation(block.getRegistryName(), "inventory"));
         }
         MachineControllerModels.registerModels();
         OrientationToolModels.registerModels();

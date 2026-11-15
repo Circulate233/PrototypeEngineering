@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.api.research;
 
-import java.util.Objects;
 
 /**
  * Startup configuration for the existing authoritative research owner, shared by Java and scripts.
@@ -14,7 +13,7 @@ public final class ResearchServerConfiguration {
     public synchronized void permissions(ResearchPermissionPolicy policy) {
         if (frozen) throw new IllegalStateException("Research server configuration has ended");
         if (configured) throw new IllegalArgumentException("Research server permissions are already configured");
-        permissions = Objects.requireNonNull(policy);
+        permissions = policy;
         configured = true;
     }
 

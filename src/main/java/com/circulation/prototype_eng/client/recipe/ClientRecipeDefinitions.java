@@ -9,7 +9,6 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -39,8 +38,8 @@ public final class ClientRecipeDefinitions {
     private String reason = "Disconnected";
 
     public ClientRecipeDefinitions(ClientRecipeDeclarations declarations, Renderer renderer) {
-        this.declarations = Objects.requireNonNull(declarations);
-        this.renderer = Objects.requireNonNull(renderer);
+        this.declarations = declarations;
+        this.renderer = renderer;
         declarations.onRegistered(() -> {
             readinessEpoch = Math.addExact(readinessEpoch, 1);
             retry();
@@ -49,7 +48,6 @@ public final class ClientRecipeDefinitions {
 
     public void connected(Object connection) {
         requireOwner();
-        Objects.requireNonNull(connection);
         if (this.connection == connection) return;
         this.connection = connection;
         clear();
@@ -243,7 +241,7 @@ public final class ClientRecipeDefinitions {
                 localStaticVisible = false;
                 ApplyResult result;
                 try {
-                    result = Objects.requireNonNull(renderer.showLocalStatic());
+                    result = renderer.showLocalStatic();
                 } catch (RuntimeException | Error failure) {
                     try {
                         withdraw("Local static display application failed: " + failure.getMessage());
@@ -280,7 +278,7 @@ public final class ClientRecipeDefinitions {
         long capturedReadiness = readinessEpoch;
         ApplyResult result;
         try {
-            result = Objects.requireNonNull(renderer.apply(local));
+            result = renderer.apply(local);
         } catch (RuntimeException | Error failure) {
             try {
                 withdraw("Recipe display application failed: " + failure.getMessage());
@@ -322,7 +320,7 @@ public final class ClientRecipeDefinitions {
     private void withdraw(String reason) {
         applied = null;
         localStaticVisible = false;
-        this.reason = Objects.requireNonNull(reason);
+        this.reason = reason;
         renderer.withdraw(reason);
     }
 
@@ -342,9 +340,6 @@ public final class ClientRecipeDefinitions {
     }
 
     public record ApplyResult(boolean ready, String reason) {
-        public ApplyResult {
-            Objects.requireNonNull(reason);
-        }
     }
 
     private static final class Pending {

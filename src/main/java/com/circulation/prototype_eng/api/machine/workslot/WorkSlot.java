@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -20,7 +19,7 @@ public final class WorkSlot {
     private ProcessResult lastResult = ProcessResult.SUCCESS;
 
     public WorkSlot(WorkSlotDefinition definition) {
-        this.definition = Objects.requireNonNull(definition, "definition");
+        this.definition = definition;
     }
 
     public WorkSlotDefinition definition() {
@@ -67,7 +66,6 @@ public final class WorkSlot {
     }
 
     void setState(@Nullable RecipeProcess process, ProcessResult lastResult) {
-        Objects.requireNonNull(lastResult, "lastResult");
         this.process = process;
         this.lastResult = lastResult;
     }

@@ -9,7 +9,6 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Saves only ordered local attributes; callers restore the decoded map after complete validation.
@@ -19,16 +18,15 @@ public final class MachineAttributesNbt implements NbtCodec<Map<ResourceLocation
     private final AttributeModifierNbt modifiers;
 
     public MachineAttributesNbt(AttributeModifierNbt modifiers) {
-        this.modifiers = Objects.requireNonNull(modifiers, "modifiers");
+        this.modifiers = modifiers;
     }
 
     @Override
     public NBTTagCompound encode(Map<ResourceLocation, MachineAttributes.LocalAttribute> value) {
-        Objects.requireNonNull(value, "value");
         var entries = new NBTTagList();
         for (var entry : value.entrySet()) {
             var id = entry.getKey();
-            var state = Objects.requireNonNull(entry.getValue(), "local attribute");
+            var state = entry.getValue();
             var tag = new NBTTagCompound();
             tag.setString("Id", id.toString());
             tag.setBoolean("InheritModifiers", state.inheritModifiers());

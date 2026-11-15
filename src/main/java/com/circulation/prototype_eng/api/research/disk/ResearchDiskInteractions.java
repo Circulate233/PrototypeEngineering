@@ -11,7 +11,6 @@ import net.minecraft.util.EnumHand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 
-import java.util.Objects;
 
 /**
  * Common pre-block interaction for consumer-registered disk items and external controller hosts.
@@ -25,11 +24,6 @@ public final class ResearchDiskInteractions {
      * for carrier items; custom interaction dispatchers can use the same authoritative request.
      */
     public static EnumActionResult use(EntityPlayer player, World world, BlockPos pos, EnumHand hand, EnumFacing facing) {
-        Objects.requireNonNull(player);
-        Objects.requireNonNull(world);
-        Objects.requireNonNull(pos);
-        Objects.requireNonNull(hand);
-        Objects.requireNonNull(facing);
         var stack = player.getHeldItem(hand);
         if (!(stack.getItem() instanceof ResearchDiskCarrier carrier) || !carrier.hasResearchDiskData(stack)
             || !(world.getTileEntity(pos) instanceof MachineControllerHost)) return EnumActionResult.PASS;

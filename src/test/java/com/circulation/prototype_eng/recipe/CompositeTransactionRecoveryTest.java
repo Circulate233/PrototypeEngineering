@@ -99,7 +99,7 @@ class CompositeTransactionRecoveryTest {
         }
         process.requireQuiescent();
         batch.finish();
-        assertThrows(NullPointerException.class, process::tickContext);
+        assertNull(process.tickContext());
     }
 
     @Test
@@ -322,7 +322,7 @@ class CompositeTransactionRecoveryTest {
         private void scope() {
             assertEquals(path, process.requirementPath());
             if (tick == null) {
-                assertThrows(NullPointerException.class, process::tickContext);
+                assertNull(process.tickContext());
             } else {
                 assertEquals(tick, process.tickContext());
             }

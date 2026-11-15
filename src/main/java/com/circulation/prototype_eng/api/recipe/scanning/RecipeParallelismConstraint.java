@@ -11,7 +11,6 @@ import com.circulation.prototype_eng.localization.RecipeText;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -48,7 +47,7 @@ public interface RecipeParallelismConstraint {
                     return true;
                 }
                 if (!budget.take()) return false;
-                result = Objects.requireNonNull(test(process));
+                result = test(process);
                 finished = true;
                 return true;
             }

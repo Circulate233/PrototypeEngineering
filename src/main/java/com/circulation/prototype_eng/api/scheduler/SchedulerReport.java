@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.api.scheduler;
 
-import java.util.Locale;
-import java.util.Objects;
 
 /**
  * Immutable on-demand owner report. Wall-time windows can overlap; none is worker CPU time.
@@ -11,24 +9,6 @@ public record SchedulerReport(String policyLabel, long completedTicks, int windo
                               Stat joinWallNanos, Stat plannedWallNanos, Stat cleanupWallNanos,
                               Stat structureWorkerWallNanos, Stat mainTasks, Stat concurrentTasks,
                               Stat customMainTasks, Stat customConcurrentTasks, Stat affinityGroups) {
-    public SchedulerReport {
-        Objects.requireNonNull(policyLabel);
-        if (completedTicks < 0 || windowTicks <= 0 || sampleCount < 0 || sampleCount > windowTicks)
-            throw new IllegalArgumentException("Invalid scheduler report window");
-        Objects.requireNonNull(totalWallNanos);
-        Objects.requireNonNull(mainWallNanos);
-        Objects.requireNonNull(concurrentStageWallNanos);
-        Objects.requireNonNull(joinWallNanos);
-        Objects.requireNonNull(plannedWallNanos);
-        Objects.requireNonNull(cleanupWallNanos);
-        Objects.requireNonNull(structureWorkerWallNanos);
-        Objects.requireNonNull(mainTasks);
-        Objects.requireNonNull(concurrentTasks);
-        Objects.requireNonNull(customMainTasks);
-        Objects.requireNonNull(customConcurrentTasks);
-        Objects.requireNonNull(affinityGroups);
-    }
-
     /**
      * PM's actual periodic report, with explicit wall scope and no dispatch/CPU equivalence.
      */
@@ -46,13 +26,9 @@ public record SchedulerReport(String policyLabel, long completedTicks, int windo
      * Nonnegative samples summarized with PM's sorted-index p95 selection.
      */
     public record Stat(long avg, long p95, long max) {
-        public Stat {
-            if (avg < 0 || p95 < 0 || max < avg || max < p95)
-                throw new IllegalArgumentException("Invalid scheduler statistics");
-        }
-
         private static String micros(long nanos) {
-            return nanos / 1000 + "." + String.format(Locale.ROOT, "%03d", nanos % 1000);
+            long fraction = nanos % 1000;
+            return nanos / 1000 + "." + (fraction < 10 ? "00" : fraction < 100 ? "0" : "") + fraction;
         }
 
         public String wallMicros() {

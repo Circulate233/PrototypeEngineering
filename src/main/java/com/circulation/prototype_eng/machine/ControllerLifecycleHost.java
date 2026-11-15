@@ -24,7 +24,6 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -50,7 +49,7 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
 
     public ControllerLifecycleHost(ResourceLocation machineType, TileEntity controller, @Nullable UUID placementPlayer) {
         this(machineType, controller, placementPlayer,
-            Objects.requireNonNull(controller.getWorld(), "Machine controller has no world").getBlockState(controller.getPos()).getBlock().getRegistryName());
+            controller.getWorld().getBlockState(controller.getPos()).getBlock().getRegistryName());
     }
 
     /**
@@ -63,9 +62,9 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
 
     private ControllerLifecycleHost(ResourceLocation machineType, TileEntity controller, @Nullable UUID placementPlayer,
                                     @Nullable ResourceLocation controllerBlockId, boolean nativeWorkerBlocks) {
-        this.controller = Objects.requireNonNull(controller);
+        this.controller = controller;
         this.placementPlayer = placementPlayer;
-        world = Objects.requireNonNull(controller.getWorld(), "Machine controller has no world");
+        world = controller.getWorld();
         identity = new MachineIdentity(machineType, world.provider.getDimension(), controller.getPos());
         this.controllerBlockId = controllerBlockId;
         structureSource = new WorldStructureSource(this);
@@ -174,10 +173,7 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
     @Nullable
     public StructureConfiguration structureConfiguration() {
         requireServerThread();
-        BlockPos position = identity.controllerPos();
-        if (configuration == null || controller.getWorld() != world || controller.isInvalid()
-            || !position.equals(controller.getPos()) || world.provider.getDimension() != identity.dimension()
-            || !world.isAreaLoaded(position, position, false) || world.getTileEntity(position) != controller) {
+        if (configuration == null || controller.isInvalid() || !world.isBlockLoaded(controller.getPos(), false)) {
             return null;
         }
         return configuration;
@@ -197,7 +193,7 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
     @Override
     public StructureHatchBinding hatchesAt(BlockPos position) {
         requireServerThread();
-        BlockPos immutablePosition = Objects.requireNonNull(position).toImmutable();
+        BlockPos immutablePosition = position.toImmutable();
         if (!world.isAreaLoaded(immutablePosition, immutablePosition, false)) {
             throw new IllegalStateException("Cannot discover hatches at an unloaded position: " + immutablePosition);
         }
@@ -210,7 +206,7 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
     @Nullable
     public StructureComponentProvider structureComponentsAt(BlockPos position) {
         requireServerThread();
-        BlockPos immutablePosition = Objects.requireNonNull(position).toImmutable();
+        BlockPos immutablePosition = position.toImmutable();
         if (!world.isAreaLoaded(immutablePosition, immutablePosition, false)) {
             throw new IllegalStateException("Cannot discover structure ports at an unloaded position: " + immutablePosition);
         }

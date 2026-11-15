@@ -8,7 +8,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * ID-addressed root or overlay attributes. A layer may be mutated only by its machine/process
@@ -43,17 +42,15 @@ public final class MachineAttributes {
      * Process overlays normally use defaultBase=1 when no parent attribute exists.
      */
     public MachineAttributes(MachineAttributes parent, double defaultBase) {
-        this.parent = Objects.requireNonNull(parent, "parent");
+        this.parent = parent;
         this.defaultBase = finite(defaultBase, "default base");
         epoch = parent.epoch;
     }
 
     private static void validateModifier(AttributeModifier modifier) {
-        Objects.requireNonNull(modifier, "modifier");
-        if (Objects.requireNonNull(modifier.id(), "modifier ID").isBlank()) {
+        if (modifier.id().isBlank()) {
             throw new IllegalArgumentException("Modifier ID must be nonblank");
         }
-        Objects.requireNonNull(modifier.operation(), "modifier operation");
     }
 
     private static double finite(double value, String name) {
@@ -71,7 +68,6 @@ public final class MachineAttributes {
      * Fallback applies only when neither this layer nor any parent defines the attribute.
      */
     public double value(ResourceLocation id, double fallback) {
-        Objects.requireNonNull(id, "id");
         finite(fallback, "fallback");
         if (!contains(id)) {
             return fallback;
@@ -101,7 +97,7 @@ public final class MachineAttributes {
      */
     @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
     public ValueCapture beginValueCapture(ResourceLocation id, double fallback) {
-        return new ValueCapture(Objects.requireNonNull(id), finite(fallback, "fallback"));
+        return new ValueCapture(id, finite(fallback, "fallback"));
     }
 
     private void changed() {
@@ -117,7 +113,6 @@ public final class MachineAttributes {
     }
 
     public void setBase(ResourceLocation id, double base) {
-        Objects.requireNonNull(id, "id");
         finite(base, "base");
         var state = local.computeIfAbsent(id, _ -> new LocalState());
         state.baseOverride = base;
@@ -131,7 +126,6 @@ public final class MachineAttributes {
      * include this layer's local modifiers, whose arbitrary functions cannot be inverted.
      */
     public void setResolvedBase(ResourceLocation id, double base) {
-        Objects.requireNonNull(id, "id");
         finite(base, "resolved base");
         var state = local.computeIfAbsent(id, _ -> new LocalState());
         state.baseOverride = base;
@@ -140,7 +134,6 @@ public final class MachineAttributes {
     }
 
     public boolean clearBase(ResourceLocation id) {
-        Objects.requireNonNull(id, "id");
         var state = local.get(id);
         if (state == null || state.baseOverride == null) {
             return false;
@@ -156,7 +149,6 @@ public final class MachineAttributes {
      * Refuses a duplicate in this layer; a matching parent ID may be shadowed.
      */
     public boolean addModifier(ResourceLocation id, AttributeModifier modifier) {
-        Objects.requireNonNull(id, "id");
         validateModifier(modifier);
         var state = local.computeIfAbsent(id, _ -> new LocalState());
         boolean added = state.modifiers.putIfAbsent(modifier.id(), modifier) == null;
@@ -168,8 +160,6 @@ public final class MachineAttributes {
      * Removes only a local modifier, revealing any inherited modifier with the same ID.
      */
     public boolean removeModifier(ResourceLocation id, String modifierId) {
-        Objects.requireNonNull(id, "id");
-        Objects.requireNonNull(modifierId, "modifierId");
         var state = local.get(id);
         if (state == null || state.modifiers.remove(modifierId) == null) {
             return false;
@@ -184,8 +174,6 @@ public final class MachineAttributes {
      */
     @Nullable
     public AttributeModifier localModifier(ResourceLocation id, String modifierId) {
-        Objects.requireNonNull(id, "id");
-        Objects.requireNonNull(modifierId, "modifierId");
         var state = local.get(id);
         return state == null ? null : state.modifiers.get(modifierId);
     }
@@ -206,11 +194,10 @@ public final class MachineAttributes {
      * Validates and copies the entire snapshot before replacement; rejection leaves this layer intact.
      */
     public void restoreLocal(Map<ResourceLocation, LocalAttribute> snapshot) {
-        Objects.requireNonNull(snapshot, "snapshot");
         var replacement = new Object2ObjectLinkedOpenHashMap<ResourceLocation, LocalState>(snapshot.size());
         for (var entry : snapshot.entrySet()) {
-            var id = Objects.requireNonNull(entry.getKey(), "attribute ID");
-            var saved = Objects.requireNonNull(entry.getValue(), "local attribute");
+            var id = entry.getKey();
+            var saved = entry.getValue();
             var state = new LocalState();
             state.baseOverride = saved.baseOverride();
             state.inheritModifiers = saved.inheritModifiers();
@@ -287,26 +274,6 @@ public final class MachineAttributes {
      */
     public record LocalAttribute(@Nullable Double baseOverride, Map<String, AttributeModifier> modifiers,
                                  boolean inheritModifiers) {
-        public LocalAttribute {
-            if (baseOverride != null) {
-                finite(baseOverride, "base override");
-            }
-            if (!inheritModifiers && baseOverride == null) {
-                throw new IllegalArgumentException("Blocking inherited modifiers requires a resolved base");
-            }
-            Objects.requireNonNull(modifiers, "modifiers");
-            for (var entry : modifiers.entrySet()) {
-                var modifier = entry.getValue();
-                validateModifier(modifier);
-                if (!modifier.id().equals(entry.getKey())) {
-                    throw new IllegalArgumentException("Modifier map key must match its ID");
-                }
-            }
-            if (baseOverride == null && modifiers.isEmpty()) {
-                throw new IllegalArgumentException("Empty local attributes must be absent");
-            }
-        }
-
         public LocalAttribute(@Nullable Double baseOverride, Map<String, AttributeModifier> modifiers) {
             this(baseOverride, modifiers, true);
         }
@@ -343,7 +310,6 @@ public final class MachineAttributes {
         }
 
         public boolean advance(RecipeWorkBudget budget) {
-            Objects.requireNonNull(budget);
             if (!current()) return false;
             if (phase == 4) return true;
             while (phase == 0 && next != null) {

@@ -8,7 +8,6 @@ import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Internal fixed-resource migration prototype; not the extensible recipe processor. Actual receipts
@@ -24,8 +23,8 @@ public final class ResourceTransferRun {
     private long energyCredit;
 
     public ResourceTransferRun(ResourceTransferPlan recipe, Runnable onChanged) {
-        this.recipe = Objects.requireNonNull(recipe);
-        this.onChanged = Objects.requireNonNull(onChanged);
+        this.recipe = recipe;
+        this.onChanged = onChanged;
         acquired = new long[recipe.inputs().size()];
         remainingOutputs = new long[recipe.outputs().size()];
         for (int i = 0; i < remainingOutputs.length; i++) {
@@ -35,7 +34,7 @@ public final class ResourceTransferRun {
 
     public ResourceTransferRun(Snapshot saved, Runnable onChanged) {
         recipe = saved.recipe();
-        this.onChanged = Objects.requireNonNull(onChanged);
+        this.onChanged = onChanged;
         acquired = saved.acquired();
         remainingOutputs = saved.remainingOutputs();
         progress = saved.progress();
@@ -63,7 +62,7 @@ public final class ResourceTransferRun {
                         continue;
                     }
                     var inventory = hatch.input();
-                    if (inventory == null || !visited.add(Objects.requireNonNull(hatch.inputStorageIdentity()))) {
+                    if (inventory == null || !visited.add(hatch.inputStorageIdentity())) {
                         continue;
                     }
                     missing -= checked(inventory.extract(required.what(), missing, Actionable.SIMULATE), missing);
@@ -107,7 +106,7 @@ public final class ResourceTransferRun {
                     continue;
                 }
                 var inventory = hatch.input();
-                if (inventory == null || !visited.add(Objects.requireNonNull(hatch.inputStorageIdentity()))) {
+                if (inventory == null || !visited.add(hatch.inputStorageIdentity())) {
                     continue;
                 }
                 long received = checked(inventory.extract(required.what(), missing, Actionable.MODULATE), missing);
@@ -129,7 +128,7 @@ public final class ResourceTransferRun {
                 if (missing == 0) {
                     break;
                 }
-                if (!input.isValid() || !visited.add(Objects.requireNonNull(input.storageIdentity()))) {
+                if (!input.isValid() || !visited.add(input.storageIdentity())) {
                     continue;
                 }
                 long received = checked(input.extractEnergy(missing, Actionable.MODULATE), missing);
@@ -160,7 +159,7 @@ public final class ResourceTransferRun {
                     continue;
                 }
                 var inventory = hatch.output();
-                if (inventory == null || !visited.add(Objects.requireNonNull(hatch.outputStorageIdentity()))) {
+                if (inventory == null || !visited.add(hatch.outputStorageIdentity())) {
                     continue;
                 }
                 long delivered = checked(inventory.insert(product.what(), remainingOutputs[i], Actionable.MODULATE), remainingOutputs[i]);

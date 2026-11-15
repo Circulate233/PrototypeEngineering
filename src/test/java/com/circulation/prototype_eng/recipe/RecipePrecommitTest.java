@@ -86,7 +86,7 @@ class RecipePrecommitTest {
         assertEquals(path, process.requirementPath());
         assertNotNull(Objects.requireNonNull(path.parent()).parent());
         if (tick == null) {
-            assertThrows(NullPointerException.class, process::tickContext);
+            assertNull(process.tickContext());
         } else {
             assertEquals(new RecipeProcess.Tick(0, 0, 0, 0), tick);
             assertSame(tick, process.tickContext());

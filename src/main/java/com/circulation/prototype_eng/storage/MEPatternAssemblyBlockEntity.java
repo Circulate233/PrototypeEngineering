@@ -153,7 +153,6 @@ public final class MEPatternAssemblyBlockEntity extends AEBaseTile implements II
 
     public boolean setInputColor(AEColor next) {
         requireOwner();
-        Objects.requireNonNull(next, "next");
         if (color == next) return true;
         if (!storage().idle()) return false;
         color = next;
@@ -565,10 +564,11 @@ public final class MEPatternAssemblyBlockEntity extends AEBaseTile implements II
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public void addAdditionalDrops(List<ItemStack> drops) {
         super.addAdditionalDrops(drops);
         if (world == null || world.isRemote) return;
-        for (var stack : patterns) drops.add(stack.copy());
+        for (var stack : patterns) drops.add(stack);
         batchingPatterns = true;
         try {
             patterns.clear();
@@ -577,7 +577,7 @@ public final class MEPatternAssemblyBlockEntity extends AEBaseTile implements II
         }
         var removalWorld = world;
         var removalPosition = pos.toImmutable();
-        var server = Objects.requireNonNull(world.getMinecraftServer());
+        var server = world.getMinecraftServer();
         var destination = BuilderDropRecovery.destination(removalWorld, removalPosition);
         var contents = storage().removeForDrops(deferred -> {
             Runnable deliver = () -> {

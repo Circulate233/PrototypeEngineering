@@ -8,7 +8,6 @@ import net.minecraft.nbt.NBTTagList;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 
-import java.util.Objects;
 
 /**
  * Disk namespace codec for research IDs and levels. Item integrations must
@@ -27,7 +26,6 @@ public final class ResearchDiskNbtCodec {
      * Fresh namespace payload. It does not contain or replace the item's other tags.
      */
     public static NBTTagCompound encode(ResearchDiskData data) {
-        Objects.requireNonNull(data, "Research disk data");
         var result = new NBTTagCompound();
         result.setInteger("version", VERSION);
         result.setInteger("tier", data.tier());

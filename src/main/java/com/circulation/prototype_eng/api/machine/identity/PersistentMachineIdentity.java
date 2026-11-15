@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.api.machine.identity;
 
 import net.minecraft.nbt.NBTTagCompound;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -11,10 +10,6 @@ import java.util.UUID;
 public record PersistentMachineIdentity(UUID machineId, UUID ownerId) {
     private static final int SCHEMA_VERSION = 1;
 
-    public PersistentMachineIdentity {
-        Objects.requireNonNull(machineId, "machineId");
-        Objects.requireNonNull(ownerId, "ownerId");
-    }
 
     /**
      * Validates the entire borrowed compound before returning a new identity, without mutating the input.

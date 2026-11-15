@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.research;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import net.minecraft.util.ResourceLocation;
 
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -62,9 +61,5 @@ public interface DataCenterStorage {
     }
 
     record Capture(DataCenterResearchSnapshot snapshot, BooleanSupplier current) {
-        public Capture {
-            Objects.requireNonNull(snapshot);
-            Objects.requireNonNull(current);
-        }
     }
 }

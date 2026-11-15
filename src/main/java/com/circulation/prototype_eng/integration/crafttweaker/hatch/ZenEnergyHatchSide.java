@@ -5,15 +5,11 @@ import crafttweaker.annotations.ZenRegister;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 @ZenRegister
 @ZenClass("mods.prototype_eng.hatch.EnergySide")
 @SuppressWarnings("unused") // ZenScript resolves the registered public factories.
 public record ZenEnergyHatchSide(EnergyHatchConfiguration.Side value) {
-    public ZenEnergyHatchSide {
-        Objects.requireNonNull(value);
-    }
 
     @ZenMethod
     public static ZenEnergyHatchSide create(long capacity, long transfer) {

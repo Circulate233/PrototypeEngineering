@@ -105,16 +105,14 @@ public final class PreviewScreenTransitions {
 
         private void restoreSlots() {
             for (int index = 0; index < originalSlots.size(); index++) {
-                var saved = originalSlots.get(index);
-                if (container.inventorySlots.contains(saved.slot)) saved.restore();
+                originalSlots.get(index).restore();
             }
         }
 
         public void suspendNativeSlots(GuiStructurePreview<?> screen) {
             if (screen.getContainer() != container || !viewerCurrent(screen)) return;
             for (int index2 = 0; index2 < originalSlots.size(); index2++) {
-                var saved = originalSlots.get(index2);
-                if (container.inventorySlots.contains(saved.slot)) saved.suspend();
+                originalSlots.get(index2).suspend();
             }
         }
 

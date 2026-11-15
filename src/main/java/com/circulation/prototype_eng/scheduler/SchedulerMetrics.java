@@ -5,7 +5,6 @@ import mcp.MethodsReturnNonnullByDefault;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.Arrays;
-import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -18,6 +17,7 @@ final class SchedulerMetrics {
     private static final int FIELD_COUNT = 12;
     private int windowTicks;
     private long[][] fields;
+    private long[] sorted;
     private int cursor;
     private int sampleCount;
     private long completedTicks;
@@ -28,33 +28,36 @@ final class SchedulerMetrics {
         if (windowTicks <= 0) throw new IllegalArgumentException("Non-positive scheduler metrics window");
         this.windowTicks = windowTicks;
         fields = new long[FIELD_COUNT][windowTicks];
+        sorted = new long[windowTicks];
     }
 
     /**
      * Mirrors PM's actual tick metadata hook; it does not reset the window or cadence.
      */
     void beginTick(String policyLabel) {
-        this.policyLabel = Objects.requireNonNull(policyLabel);
+        this.policyLabel = policyLabel;
     }
 
     /**
      * One sample for each entered actual tick, including the tick that reports a failure.
      */
-    void record(Sample sample) {
-        Objects.requireNonNull(sample);
+    void record(long totalWallNanos, long mainWallNanos, long concurrentStageWallNanos,
+                long joinWallNanos, long plannedWallNanos, long cleanupWallNanos,
+                long structureWorkerWallNanos, long mainTasks, long concurrentTasks,
+                long customMainTasks, long customConcurrentTasks, long affinityGroups) {
         long nextTick = Math.addExact(completedTicks, 1);
-        fields[0][cursor] = sample.totalWallNanos;
-        fields[1][cursor] = sample.mainWallNanos;
-        fields[2][cursor] = sample.concurrentStageWallNanos;
-        fields[3][cursor] = sample.joinWallNanos;
-        fields[4][cursor] = sample.plannedWallNanos;
-        fields[5][cursor] = sample.cleanupWallNanos;
-        fields[6][cursor] = sample.structureWorkerWallNanos;
-        fields[7][cursor] = sample.mainTasks;
-        fields[8][cursor] = sample.concurrentTasks;
-        fields[9][cursor] = sample.customMainTasks;
-        fields[10][cursor] = sample.customConcurrentTasks;
-        fields[11][cursor] = sample.affinityGroups;
+        fields[0][cursor] = totalWallNanos;
+        fields[1][cursor] = mainWallNanos;
+        fields[2][cursor] = concurrentStageWallNanos;
+        fields[3][cursor] = joinWallNanos;
+        fields[4][cursor] = plannedWallNanos;
+        fields[5][cursor] = cleanupWallNanos;
+        fields[6][cursor] = structureWorkerWallNanos;
+        fields[7][cursor] = mainTasks;
+        fields[8][cursor] = concurrentTasks;
+        fields[9][cursor] = customMainTasks;
+        fields[10][cursor] = customConcurrentTasks;
+        fields[11][cursor] = affinityGroups;
         cursor++;
         if (cursor == windowTicks) cursor = 0;
         if (sampleCount < windowTicks) sampleCount++;
@@ -68,6 +71,7 @@ final class SchedulerMetrics {
         if (newWindowTicks <= 0) throw new IllegalArgumentException("Non-positive scheduler metrics window");
         if (newWindowTicks == windowTicks) return;
         fields = new long[FIELD_COUNT][newWindowTicks];
+        sorted = new long[newWindowTicks];
         windowTicks = newWindowTicks;
         cursor = 0;
         sampleCount = 0;
@@ -92,28 +96,17 @@ final class SchedulerMetrics {
 
     private SchedulerReport.Stat stats(int field) {
         if (sampleCount == 0) return EMPTY;
-        var sorted = Arrays.copyOf(fields[field], sampleCount);
-        Arrays.sort(sorted);
+        System.arraycopy(fields[field], 0, sorted, 0, sampleCount);
+        Arrays.sort(sorted, 0, sampleCount);
         long quotient = 0, remainder = 0;
-        for (long value : sorted) {
+        for (int index = 0; index < sampleCount; index++) {
+            long value = sorted[index];
             quotient += value / sampleCount;
             remainder += value % sampleCount;
         }
-        // Both sums are bounded: quotients <= Long.MAX_VALUE; remainders < int-sized n*n.
         long avg = quotient + remainder / sampleCount;
         int p95 = (int) ((long) sampleCount * 95 / 100);
         return new SchedulerReport.Stat(avg, sorted[p95], sorted[sampleCount - 1]);
     }
 
-    record Sample(long totalWallNanos, long mainWallNanos, long concurrentStageWallNanos,
-                  long joinWallNanos, long plannedWallNanos, long cleanupWallNanos,
-                  long structureWorkerWallNanos, long mainTasks, long concurrentTasks,
-                  long customMainTasks, long customConcurrentTasks, long affinityGroups) {
-        Sample {
-            if (totalWallNanos < 0 || mainWallNanos < 0 || concurrentStageWallNanos < 0 || joinWallNanos < 0
-                || plannedWallNanos < 0 || cleanupWallNanos < 0 || structureWorkerWallNanos < 0
-                || mainTasks < 0 || concurrentTasks < 0 || customMainTasks < 0 || customConcurrentTasks < 0 || affinityGroups < 0)
-                throw new IllegalArgumentException("Negative scheduler metric sample");
-        }
-    }
 }

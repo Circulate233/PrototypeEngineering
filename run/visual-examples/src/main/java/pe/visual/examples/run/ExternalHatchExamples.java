@@ -36,7 +36,6 @@ import com.circulation.prototype_eng.api.structure.StructurePattern;
 import com.circulation.prototype_eng.api.structure.StructurePredicates;
 import com.circulation.prototype_eng.api.structure.StructurePredicate;
 import com.circulation.prototype_eng.structure.TemplateStructure;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import net.minecraft.block.Block;
 import net.minecraft.block.SoundType;
 import net.minecraft.block.material.Material;
@@ -66,7 +65,6 @@ import java.util.Locale;
 
 import com.circulation.prototype_eng.api.structure.StructureDefinition;
 
-import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -148,11 +146,11 @@ public final class ExternalHatchExamples {
     }
 
     private static GenericStack item(Item item, long amount) {
-        return new GenericStack(Objects.requireNonNull(AEItemKey.of(new ItemStack(item))), amount);
+        return new GenericStack(AEItemKey.of(new ItemStack(item)), amount);
     }
 
     private static GenericStack water(long amount) {
-        return new GenericStack(Objects.requireNonNull(AEFluidKey.of(FluidRegistry.WATER)), amount);
+        return new GenericStack(AEFluidKey.of(FluidRegistry.WATER), amount);
     }
 
     private static final class FilteredBlock extends AEBaseTileBlock<ExternalFilteredHatch> {

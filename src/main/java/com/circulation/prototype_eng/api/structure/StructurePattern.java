@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Immutable sparse PM pattern. Loaded-area checks include gaps between its min/max positions.
@@ -25,7 +24,7 @@ public final class StructurePattern {
             var entry = entries.next();
             long pos = entry.getLongKey();
             int x = BlockPos2ObjectMap.unpackX(pos), y = BlockPos2ObjectMap.unpackY(pos), z = BlockPos2ObjectMap.unpackZ(pos);
-            var predicate = Objects.requireNonNull(entry.getValue());
+            var predicate = entry.getValue();
             reusable = reusable && predicate.planReusable();
             minX = Math.min(minX, x);
             minY = Math.min(minY, y);
@@ -96,12 +95,11 @@ public final class StructurePattern {
     }
 
     public StructurePattern transform(StructureTransform rotation) {
-        return Objects.requireNonNull(beginTransform(rotation).run());
+        return beginTransform(rotation).run();
     }
 
     @SuppressWarnings("ReturnOfInnerClass") // The cursor retains only its immutable pattern definition.
     public StructureOperation<StructurePattern> beginTransform(StructureTransform rotation) {
-        Objects.requireNonNull(rotation);
         var iterator = blocks.fastIterator();
         return new StructureOperation<>() {
             private final BlockPos2ObjectMap<StructurePredicate> transformed = new BlockPos2ObjectMap<>(blocks.size());
@@ -114,8 +112,9 @@ public final class StructurePattern {
             private boolean reusable = planReusable;
 
             @Override
+            @SuppressWarnings("DataFlowIssue")
+            // The pending predicate is created together with its transformed position.
             public boolean advance(RecipeWorkBudget work) {
-                Objects.requireNonNull(work);
                 if (complete()) return true;
                 while (predicate != null || iterator.hasNext()) {
                     if (predicate == null) {
@@ -125,10 +124,10 @@ public final class StructurePattern {
                         predicate = entry.getValue().beginTransform(rotation);
                     }
                     if (!predicate.advance(work)) return false;
-                    var actual = Objects.requireNonNull(position);
-                    if (transformed.putIfAbsent(actual, Objects.requireNonNull(predicate.result())) != null)
+                    var actual = position;
+                    if (transformed.putIfAbsent(actual, predicate.result()) != null)
                         throw new IllegalArgumentException("Duplicate transformed structure position: " + actual);
-                    reusable = reusable && Objects.requireNonNull(predicate.result()).planReusable();
+                    reusable = reusable && predicate.result().planReusable();
                     minX = Math.min(minX, actual.getX());
                     minY = Math.min(minY, actual.getY());
                     minZ = Math.min(minZ, actual.getZ());
@@ -151,19 +150,15 @@ public final class StructurePattern {
     }
 
     @SuppressWarnings("ReturnOfInnerClass") // The cursor retains only its immutable pattern definition.
-    public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos origin, BlockPos controller) {
-        Objects.requireNonNull(plan);
-        Objects.requireNonNull(origin);
-        Objects.requireNonNull(controller);
+    public StructureOperation<@Nullable Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos origin, BlockPos controller) {
         var iterator = blocks.fastIterator();
         return new StructureOperation<>() {
             private boolean area;
             @Nullable
-            private StructureOperation<Void> predicate;
+            private StructureOperation<@Nullable Void> predicate;
 
             @Override
             public boolean advance(RecipeWorkBudget work) {
-                Objects.requireNonNull(work);
                 if (complete()) return true;
                 if (!area) {
                     if (!work.take()) return false;
@@ -193,9 +188,6 @@ public final class StructurePattern {
 
     @SuppressWarnings("ReturnOfInnerClass") // The cursor retains only its immutable pattern definition.
     public StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos origin, BlockPos controller) {
-        Objects.requireNonNull(snapshot);
-        Objects.requireNonNull(origin);
-        Objects.requireNonNull(controller);
         var iterator = blocks.fastIterator();
         return new StructureOperation<>() {
             private boolean area;
@@ -204,7 +196,6 @@ public final class StructurePattern {
 
             @Override
             public boolean advance(RecipeWorkBudget work) {
-                Objects.requireNonNull(work);
                 if (complete()) return true;
                 if (!area) {
                     if (!work.take()) return false;
@@ -223,7 +214,7 @@ public final class StructurePattern {
                         predicate = entry.getValue().beginMatch(snapshot, position, controller);
                     }
                     if (!predicate.advance(work)) return false;
-                    var outcome = Objects.requireNonNull(predicate.result());
+                    var outcome = predicate.result();
                     if (outcome != StructurePredicateResult.MATCHED) {
                         finish(outcome);
                         return true;

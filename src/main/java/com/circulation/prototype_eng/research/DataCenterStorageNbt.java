@@ -24,11 +24,14 @@ public final class DataCenterStorageNbt {
     }
 
     public static NBTTagCompound encode(DataCenterResearchSnapshot snapshot) {
-        return encodeState(new ResearchDataCenter.State(snapshot, Map.of()));
+        return encode(snapshot, Map.of());
     }
 
     public static NBTTagCompound encodeState(ResearchDataCenter.State state) {
-        var snapshot = state.contents();
+        return encode(state.contents(), state.receipts());
+    }
+
+    private static NBTTagCompound encode(DataCenterResearchSnapshot snapshot, Map<UUID, ResearchDiskCommit> diskReceipts) {
         var tag = new NBTTagCompound();
         tag.setInteger("Schema", 2);
         tag.setLong("IdMost", snapshot.dataCenterId().getMostSignificantBits());
@@ -47,11 +50,11 @@ public final class DataCenterStorageNbt {
         }
         tag.setTag("Research", list);
         var receipts = new NBTTagList();
-        var operations = new ObjectArrayList<>(state.receipts().keySet());
+        var operations = new ObjectArrayList<>(diskReceipts.keySet());
         operations.sort(Comparator.naturalOrder());
         for (int index1 = 0; index1 < operations.size(); index1++) {
             var operation = operations.get(index1);
-            receipts.appendTag(ResearchDiskCommitNbt.encode(state.receipts().get(operation)));
+            receipts.appendTag(ResearchDiskCommitNbt.encode(diskReceipts.get(operation)));
         }
         tag.setTag("DiskReceipts", receipts);
         return tag;
@@ -87,8 +90,7 @@ public final class DataCenterStorageNbt {
                 throw new IllegalArgumentException("Duplicate saved database import receipt");
         }
         var state = new ResearchDataCenter.State(snapshot, receipts);
-        return ResearchDataCenter.restore(state, registry, () -> {
-        }, () -> {
-        }).persistentState();
+        ResearchDataCenter.validateSaved(state, registry);
+        return state;
     }
 }

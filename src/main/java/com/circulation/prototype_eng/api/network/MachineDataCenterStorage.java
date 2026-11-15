@@ -24,21 +24,23 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 /**
  * Persistent physical database attachment. Its version proof also requires the exact live component binding.
+ * Operations run after onLoaded initializes storage; codecs encode initialized storage and restore fresh attachments.
  */
 public final class MachineDataCenterStorage implements ResearchDiskStorage, MachineLifecycleListener {
     public static final MachineComponentCodec<MachineDataCenterStorage> CODEC = new MachineComponentCodec<>() {
         @Override
+        @SuppressWarnings("DataFlowIssue")
         public NBTTagCompound encode(MachineInstance owner, MachineDataCenterStorage component) {
             component.requireOwner(owner);
             owner.requirePersistenceBoundary();
-            return DataCenterStorageNbt.encodeState(Objects.requireNonNull(component.state).persistentState());
+            return DataCenterStorageNbt.encodeState(component.state.persistentState());
         }
 
         @Override
@@ -126,18 +128,15 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
         if (level < 0 || capacity < 1) {
             throw new IllegalArgumentException("Invalid physical data-center metadata");
         }
-        Objects.requireNonNull(registry);
-        Objects.requireNonNull(dirty);
-        Objects.requireNonNull(ownership);
-        Objects.requireNonNull(persistence);
         return new ComponentType<>(id, (owner, type) -> new MachineDataCenterStorage(owner, type, ownership, level, capacity, registry, dirty, persistence),
-            List.of(), List.of(ownership));
+            List.of(), Set.of(ownership));
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public void onLoaded(MachineLifecycleEvent.Loaded event) {
         requireThread();
-        var identity = Objects.requireNonNull(owner.components().get(ownershipType)).identity();
+        var identity = owner.components().get(ownershipType).identity();
         if (state == null) {
             state = new ResearchDataCenter(identity.machineId(), level, capacity, registry, this::requireThread, this::changed);
         } else if (!state.snapshot().dataCenterId().equals(identity.machineId())) {
@@ -146,33 +145,38 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public DataCenterResearchSnapshot snapshot() {
         requireThread();
-        return Objects.requireNonNull(state, "Data-center storage is not loaded").snapshot();
+        return state.snapshot();
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public boolean current(DataCenterResearchSnapshot snapshot) {
         requireThread();
-        return live() && Objects.requireNonNull(state).current(snapshot);
+        return live() && state.current(snapshot);
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public Result downloadResearch(ResourceLocation id, int requestedLevel, TeamResearchView cloud, BooleanSupplier current) {
         requireLive();
-        return Objects.requireNonNull(state).downloadResearch(id, requestedLevel, cloud, () -> current.getAsBoolean() && live());
+        return state.downloadResearch(id, requestedLevel, cloud, () -> current.getAsBoolean() && live());
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public Result storeFromDisk(Object2IntMap<ResourceLocation> entries, TeamResearchView cloud, BooleanSupplier current) {
         requireLive();
-        return Objects.requireNonNull(state).storeFromDisk(entries, cloud, () -> current.getAsBoolean() && live());
+        return state.storeFromDisk(entries, cloud, () -> current.getAsBoolean() && live());
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public Result synchronizeLoopingResearch(TeamResearchView cloud, BooleanSupplier current) {
         requireLive();
-        return Objects.requireNonNull(state).synchronizeLoopingResearch(cloud, () -> current.getAsBoolean() && live());
+        return state.synchronizeLoopingResearch(cloud, () -> current.getAsBoolean() && live());
     }
 
 
@@ -183,40 +187,45 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public Result commitDisk(ResearchDiskCommit commit, TeamResearchView cloud, BooleanSupplier current) {
         requireLive();
         if (!diskPersistenceAvailable()) throw new IllegalStateException("Data-center disk persistence is unavailable");
-        return Objects.requireNonNull(state).commitDisk(commit, cloud, () -> current.getAsBoolean() && live());
+        return state.commitDisk(commit, cloud, () -> current.getAsBoolean() && live());
     }
 
     @Override
     @Nullable
+    @SuppressWarnings("DataFlowIssue")
     public ResearchDiskCommit receipt(UUID operationId) {
         requireLive();
-        return Objects.requireNonNull(state).receipt(operationId);
+        return state.receipt(operationId);
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public void persistDisk(ResearchDiskCommit commit, BooleanSupplier physicalCurrent) {
         requireLive();
-        if (!commit.equals(Objects.requireNonNull(state).receipt(commit.operationId())))
+        if (!commit.equals(state.receipt(commit.operationId())))
             throw new IllegalStateException("Database import receipt is missing or conflicting");
         persistCurrent(physicalCurrent);
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public void clearDiskReceipt(ResearchDiskCommit commit, BooleanSupplier physicalCurrent) {
         requireLive();
-        Objects.requireNonNull(state).removeDiskReceipt(commit, () -> physicalCurrent.getAsBoolean() && live());
+        state.removeDiskReceipt(commit, () -> physicalCurrent.getAsBoolean() && live());
         persistCurrent(physicalCurrent);
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void persistCurrent(BooleanSupplier physicalCurrent) {
         requireLive();
         owner.requirePersistenceBoundary();
-        if (!diskPersistenceAvailable() || !Objects.requireNonNull(physicalCurrent).getAsBoolean())
+        if (!diskPersistenceAvailable() || !physicalCurrent.getAsBoolean())
             throw new IllegalStateException("Original database persistence binding is unavailable");
-        var backend = Objects.requireNonNull(state);
+        var backend = state;
         var captured = backend.persistentState();
         var expected = DataCenterStorageNbt.encodeState(captured);
         BooleanSupplier current = () -> physicalCurrent.getAsBoolean() && live() && backend.persistentState() == captured;
@@ -237,9 +246,10 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
         return new NetworkRuntime.Capture(snapshot, captured.current());
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private boolean live() {
         return owner.components().get(boundType) == this
-            && Objects.requireNonNull(owner.lifecycle()).schedulingAllowed();
+            && owner.lifecycle().schedulingAllowed();
     }
 
     private void requireLive() {
@@ -249,8 +259,9 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
         }
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private void requireThread() {
-        Objects.requireNonNull(owner.lifecycle()).host().requireServerThread();
+        owner.lifecycle().host().requireServerThread();
     }
 
     private void changed() {

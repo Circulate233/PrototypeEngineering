@@ -42,7 +42,6 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.List;
-import java.util.Objects;
 
 public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatchGrouping, ResourceHatchGuiHost, FluidHatchSettings, ResourceHatchSettings, ReconfigurableHatch {
     private static final VarHandle STORAGE_DIRTY;
@@ -117,7 +116,6 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
 
     @Override
     public void setResourceColor(AEColor color) {
-        Objects.requireNonNull(color, "color");
         if (world instanceof WorldServer serverWorld && !serverWorld.isCallingFromMinecraftThread())
             throw new IllegalStateException("Resource group changes require the server owner");
         resourceColor = color;
@@ -177,10 +175,11 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         return tier;
     }
 
-    @SuppressWarnings("unused") // Public downstream layout query; the default GUI reads each side's actual size.
+    @SuppressWarnings({"unused", "DataFlowIssue"})
+    // Public downstream layout query; the default GUI reads each side's actual size.
     public int slotsPerSide() {
         if (effective == null) return HatchConfig.slotsPerSide(tier, mode);
-        return Objects.requireNonNull(effective.input() == null ? effective.output() : effective.input()).slots();
+        return (effective.input() == null ? effective.output() : effective.input()).slots();
     }
 
     @Override
@@ -231,8 +230,9 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         });
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private HatchReplacement applyConfiguration() {
-        var target = (ResourceHatchConfiguration) Objects.requireNonNull(configurationRequest.target());
+        var target = (ResourceHatchConfiguration) configurationRequest.target();
         var old = storage();
         return old.replace(target, this::requestStorageSave,
             () -> hatch == old && configurationRequest.target() == target && !isInvalid(), candidate -> {
@@ -384,12 +384,13 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public void addAdditionalDrops(List<ItemStack> drops) {
         super.addAdditionalDrops(drops);
         if (world == null || world.isRemote) return;
         var removalWorld = world;
         var removalPosition = pos.toImmutable();
-        var server = Objects.requireNonNull(removalWorld.getMinecraftServer());
+        var server = removalWorld.getMinecraftServer();
         var destination = BuilderDropRecovery.destination(removalWorld, removalPosition);
         var contents = storage().removeForDrops(deferred -> {
             Runnable deliver = () -> {

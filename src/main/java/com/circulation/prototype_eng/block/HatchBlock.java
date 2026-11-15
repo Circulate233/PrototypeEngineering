@@ -26,7 +26,6 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Physical shell shared by tiered resource and energy hatches. Storage belongs to the tile.
@@ -37,8 +36,8 @@ public abstract class HatchBlock<T extends AEBaseTile> extends AEBaseTileBlock<T
      */
     protected HatchBlock(ResourceLocation id, Class<T> tileClass, float hardness) {
         super(Material.IRON);
-        setTileEntity(Objects.requireNonNull(tileClass));
-        setRegistryName(Objects.requireNonNull(id));
+        setTileEntity(tileClass);
+        setRegistryName(id);
         setTranslationKey(id.getNamespace() + "." + id.getPath());
         setCreativeTab(PrototypeCreativeTab.INSTANCE);
         setHardness(hardness);
@@ -70,7 +69,7 @@ public abstract class HatchBlock<T extends AEBaseTile> extends AEBaseTileBlock<T
 
     @Override
     public T createTileEntity(@NotNull World world, @NotNull IBlockState state) {
-        return Objects.requireNonNull(createHatch(world, state), "Hatch creation returned null");
+        return createHatch(world, state);
     }
 
     /**

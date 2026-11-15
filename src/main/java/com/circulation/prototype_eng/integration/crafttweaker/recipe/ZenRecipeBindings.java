@@ -8,13 +8,11 @@ import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
 import crafttweaker.annotations.ZenRegister;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.util.ResourceLocation;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * An author's declaration table. Same-name definitions affect subsequent lookups only; consumers
@@ -132,7 +130,7 @@ public final class ZenRecipeBindings {
         var history = new ObjectArrayList<ZenRecipe>(historical.length);
         var codecs = new ObjectArrayList<RecipeProcessNbt>();
         for (var pool : pools) {
-            declarations.add(Objects.requireNonNull(pool));
+            declarations.add(pool);
             current.addAll(pool.recipes());
         }
         for (int index2 = 0; index2 < current.size(); index2++) {
@@ -140,7 +138,7 @@ public final class ZenRecipeBindings {
             codecs.add(recipe.codec());
         }
         for (var recipe : historical) {
-            history.add(Objects.requireNonNull(recipe));
+            history.add(recipe);
             codecs.add(recipe.codec());
         }
         // Validate all version/identity conflicts before registering a callback or mutating names.
@@ -149,21 +147,18 @@ public final class ZenRecipeBindings {
             var pool = declarations.get(index);
             pool.declareClient();
         }
-        var frozenPools = ObjectLists.unmodifiable(declarations);
-        var frozenCurrent = ObjectLists.unmodifiable(current);
-        var frozenHistory = ObjectLists.unmodifiable(history);
         resolver.install(prepared);
         DefinitionRegistrations.recipes(event -> {
-            for (int index3 = 0; index3 < frozenPools.size(); index3++) {
-                var pool = frozenPools.get(index3);
+            for (int index3 = 0; index3 < declarations.size(); index3++) {
+                var pool = declarations.get(index3);
                 event.registry().register(pool.value());
             }
-            for (int index4 = 0; index4 < frozenCurrent.size(); index4++) {
-                var recipe = frozenCurrent.get(index4);
+            for (int index4 = 0; index4 < current.size(); index4++) {
+                var recipe = current.get(index4);
                 event.registry().declareRevision(recipe.recipe(), recipe.revision());
             }
-            for (int index5 = 0; index5 < frozenHistory.size(); index5++) {
-                var recipe = frozenHistory.get(index5);
+            for (int index5 = 0; index5 < history.size(); index5++) {
+                var recipe = history.get(index5);
                 event.registry().declareHistoricalRevision(recipe.recipe(), recipe.revision());
             }
             event.registry().bindProcessCodecs(resolver);

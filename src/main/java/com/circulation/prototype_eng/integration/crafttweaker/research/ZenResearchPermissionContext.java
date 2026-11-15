@@ -8,7 +8,6 @@ import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.Locale;
-import java.util.Objects;
 
 /**
  * Real server-captured actors and role flags, never client-supplied permissions.
@@ -17,9 +16,6 @@ import java.util.Objects;
 @ZenClass("mods.prototype_eng.research.ResearchPermissionContext")
 @SuppressWarnings("unused") // Public adapters are discovered by ZenScript.
 public record ZenResearchPermissionContext(ResearchPermissionContext value) {
-    public ZenResearchPermissionContext {
-        Objects.requireNonNull(value);
-    }
 
     @ZenGetter("actorId")
     public String actorId() {

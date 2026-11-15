@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.structure;
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.util.ExternalEnumValues;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.util.ResourceLocation;
@@ -11,7 +10,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Immutable complete candidate generation, including shapes not directly referenced by machines.
@@ -24,18 +22,17 @@ public final class StructureCatalog {
     public StructureCatalog(Collection<StructureDefinition> definitions) {
         var copy = new Object2ObjectLinkedOpenHashMap<ResourceLocation, StructureDefinition>(definitions.size());
         for (var definition : definitions) {
-            Objects.requireNonNull(definition);
-            var id = Objects.requireNonNull(definition.id());
+            var id = definition.id();
             if (copy.putIfAbsent(id, definition) != null)
                 throw new IllegalArgumentException("Duplicate structure ID: " + id);
         }
-        this.definitions = Object2ObjectMaps.unmodifiable(copy);
+        this.definitions = copy;
     }
 
     public static StructureCatalog fromShapes(Map<ResourceLocation, ? extends MachineStructure> shapes) {
         var definitions = new ObjectArrayList<StructureDefinition>();
         shapes.forEach((id, shape) -> {
-            if (!Objects.requireNonNull(id).equals(Objects.requireNonNull(shape).id()))
+            if (!id.equals(shape.id()))
                 throw new IllegalArgumentException("Structure key does not match its ID: " + id);
             definitions.add(new StructureDefinition(shape));
         });
@@ -44,7 +41,7 @@ public final class StructureCatalog {
 
     @Nullable
     public StructureDefinition get(ResourceLocation id) {
-        return definitions.get(Objects.requireNonNull(id));
+        return definitions.get(id);
     }
 
     public Map<ResourceLocation, StructureDefinition> definitions() {

@@ -2,41 +2,32 @@ package com.circulation.prototype_eng.api.recipe.requirement;
 
 import com.circulation.prototype_eng.api.recipe.process.RequirementPath;
 import com.circulation.prototype_eng.api.recipe.selective.SelectiveModifierDescriptor;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Ordered optional alternatives. The first successful START is retained for this process's lifetime.
+ * Supplied lists and entries must remain unchanged for the definition's lifetime.
  */
 public record SelectiveRequirement(List<RecipeRequirement<?>> candidates, List<SelectiveModifierDescriptor> modifiers) {
     public SelectiveRequirement {
-        var candidateCopy = new ObjectArrayList<RecipeRequirement<?>>(candidates.size());
         var candidateIds = new ObjectOpenHashSet<RequirementPath>(candidates.size());
         for (int index2 = 0; index2 < candidates.size(); index2++) {
             var candidate = candidates.get(index2);
-            Objects.requireNonNull(candidate);
             if (!candidateIds.add(candidate.path(null))) {
                 throw new IllegalArgumentException("Duplicate selective candidate identity");
             }
-            candidateCopy.add(candidate);
         }
-        var modifierCopy = new ObjectArrayList<SelectiveModifierDescriptor>(modifiers.size());
         var modifierIds = new ObjectOpenHashSet<ResourceLocation>(modifiers.size());
         for (int index = 0; index < modifiers.size(); index++) {
             var modifier = modifiers.get(index);
-            Objects.requireNonNull(modifier);
             if (!modifierIds.add(modifier.id())) {
                 throw new IllegalArgumentException("Duplicate selective modifier id: " + modifier.id());
             }
-            modifierCopy.add(modifier);
         }
-        candidates = ObjectLists.unmodifiable(candidateCopy);
-        modifiers = ObjectLists.unmodifiable(modifierCopy);
     }
 
     public SelectiveRequirement(List<RecipeRequirement<?>> candidates) {

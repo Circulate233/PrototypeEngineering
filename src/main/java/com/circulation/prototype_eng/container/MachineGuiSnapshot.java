@@ -16,7 +16,6 @@ import net.minecraft.network.PacketBuffer;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Immutable, bounded display data. Capture only after scheduler join; never retain runtime objects.
@@ -31,12 +30,9 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
     private static final int MAX_ARGUMENTS = 16;
 
     public MachineGuiSnapshot {
-        Objects.requireNonNull(overallStatus);
-        Objects.requireNonNull(details);
         if (offset < 0 || offset > totalSlots || entries.size() > MAX_ROWS || entries.size() > totalSlots - offset) {
             throw new IllegalArgumentException("Invalid machine GUI page");
         }
-        entries.forEach(Objects::requireNonNull);
     }
 
     public MachineGuiSnapshot(boolean formed, boolean active, int totalSlots, int offset, List<Entry> entries) {
@@ -132,10 +128,11 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
             }
         }
         var lifecycle = machine.lifecycle();
+        var type = machine.type();
         return new MachineGuiSnapshot(lifecycle == null || lifecycle.formed(), machine.active(), total, start, result, overall,
             new Details(crossRecipe, lifecycle == null ? machine.active() : lifecycle.processingAllowed(), running, crossRecipe ? 0 : threads,
                 usedParallelism, Math.max(0L, (long) Math.floor(machine.attributes().value(StandardMachineAttributes.PROCESS_PARALLELISM, 1))),
-                machine.executionMode(), machine.type() == null ? "" : Objects.requireNonNull(machine.type()).structureId().toString(), machine.executionPolicy()));
+                machine.executionMode(), type == null ? "" : type.structureId().toString(), machine.executionPolicy()));
     }
 
     private static WorkSlotStatus combine(WorkSlotStatus first, WorkSlotStatus second) {
@@ -230,8 +227,7 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
         public Details {
             if (running < 0 || threadLimit < 0 || usedParallelism < 0 || parallelismLimit < 0)
                 throw new IllegalArgumentException("Negative machine GUI count");
-            Objects.requireNonNull(mode);
-            structure = bounded(Objects.requireNonNull(structure));
+            structure = bounded(structure);
         }
     }
 
@@ -245,7 +241,6 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
             name = bounded(name);
             recipe = bounded(recipe);
             reason = bounded(reason);
-            Objects.requireNonNull(status);
             if (percent < 0 || percent > 100 || parallelism < 0) {
                 throw new IllegalArgumentException("Invalid recipe progress");
             }

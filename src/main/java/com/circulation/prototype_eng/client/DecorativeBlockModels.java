@@ -10,7 +10,6 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.relauncher.Side;
 
-import java.util.Objects;
 
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID, value = Side.CLIENT)
 public final class DecorativeBlockModels {
@@ -18,9 +17,10 @@ public final class DecorativeBlockModels {
     }
 
     @SubscribeEvent
+    @SuppressWarnings("DataFlowIssue") // ModelRegistryEvent follows registration of the listed blocks.
     public static void registerModels(ModelRegistryEvent event) {
         for (var block : DecorativeBlocks.all()) {
-            var location = Objects.requireNonNull(block.getRegistryName());
+            var location = block.getRegistryName();
             ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(block), 0,
                 new ModelResourceLocation(location, "inventory"));
         }

@@ -44,6 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -478,21 +479,12 @@ class SelectiveRequirementTest {
     }
 
     @Test
-    void copiedDefinitionsRejectAmbiguousCandidateAndModifierIdentities() {
+    void rejectsAmbiguousCandidateAndModifierIdentities() {
         var env = new Environment();
         var candidate = env.candidate("candidate", 2, 0, 0).requirement();
         var modifier = boost("modifier", 2);
         assertThrows(IllegalArgumentException.class, () -> new SelectiveRequirement(List.of(candidate, candidate)));
         assertThrows(IllegalArgumentException.class, () -> new SelectiveRequirement(List.of(candidate), List.of(modifier, modifier)));
-        var candidates = new ObjectArrayList<RecipeRequirement<?>>(List.of(candidate));
-        var modifiers = new ObjectArrayList<>(List.of(modifier));
-        var payload = new SelectiveRequirement(candidates, modifiers);
-        candidates.clear();
-        modifiers.clear();
-        var process = process(2, RecipeRequirements.SELECTIVE.requirement(id("copied"), payload));
-        assertSame(ProcessResult.SUCCESS, process.tick());
-        assertEquals(18, env.input.availableAmount(MATERIAL));
-        assertEquals(3, process.attributes().value(SCORE));
     }
 
     private record SimpleTransaction(ProcessResult result, Runnable onCommit,
@@ -554,12 +546,16 @@ class SelectiveRequirementTest {
         private RequirementTransaction acquire(RecipeProcess process, RecipeStage stage) {
             env.events.add(name + ":acquire:" + stage);
             var path = process.requirementPath();
+            assertNotNull(path);
             paths.add(path);
             var tick = stage == RecipeStage.TICK ? process.tickContext() : null;
             if (stage == RecipeStage.START) {
                 startAcquisitions++;
             } else {
-                var decision = Objects.requireNonNull(state(process).selection(Objects.requireNonNull(path.parent())));
+                var parent = path.parent();
+                assertNotNull(parent);
+                var decision = state(process).selection(parent);
+                assertNotNull(decision);
                 committedAtAcquisition.add(decision.committed());
             }
             long amount = switch (stage) {

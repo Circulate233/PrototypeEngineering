@@ -6,9 +6,7 @@ import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
-import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Frozen preview choices; limits concern presentation memory/work, never gameplay quantities.
@@ -20,14 +18,7 @@ public record StructurePreviewSettings(BlockOrientation orientation, Object2IntM
                                        Object2IntMap<StructureDisplay> displayOptions,
                                        BlockPos2ObjectMap<CellChoice> cellOptions) {
     public StructurePreviewSettings {
-        Objects.requireNonNull(orientation);
         if (maxOccurrences <= 0 || maxCellVisits <= 0) throw new IllegalArgumentException("Nonpositive preview limits");
-        for (var entry : displayOptions.object2IntEntrySet()) {
-            var display = Objects.requireNonNull(entry.getKey());
-            int selected = entry.getIntValue();
-            if (selected < 0 || selected >= display.options().size())
-                throw new IllegalArgumentException("Invalid representative choice");
-        }
     }
 
     public StructurePreviewSettings(BlockOrientation orientation, Object2IntMap<StructurePreviewPath> sliceCounts,
@@ -58,24 +49,23 @@ public record StructurePreviewSettings(BlockOrientation orientation, Object2IntM
         return new StructurePreviewSettings(next, sliceCounts, maxOccurrences, maxCellVisits, displayOptions, cells);
     }
 
-    public @Nullable Integer explicitOption(StructurePreviewModel.Cell cell) {
+    /**
+     * Returns -1 when the cell has no explicit representative choice.
+     */
+    public int explicitOption(StructurePreviewModel.Cell cell) {
         var display = cell.display();
-        if (display == null) return null;
+        if (display == null) return -1;
         var local = cellOptions.get(cell.position());
         if (local != null && display.equals(local.display())) return local.option();
-        return displayOptions.containsKey(display) ? displayOptions.getInt(display) : null;
+        return displayOptions.containsKey(display) ? displayOptions.getInt(display) : -1;
     }
 
     public int option(StructurePreviewModel.Cell cell) {
         var explicit = explicitOption(cell);
-        return explicit == null ? 0 : explicit;
+        return Math.max(explicit, 0);
     }
 
     public record CellChoice(StructureDisplay display, int option) {
-        public CellChoice {
-            Objects.requireNonNull(display);
-            Objects.checkIndex(option, display.options().size());
-        }
     }
 
 }

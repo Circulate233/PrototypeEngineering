@@ -6,7 +6,6 @@ import ae2.client.gui.Tooltip;
 import com.circulation.prototype_eng.localization.GuiText;
 
 import java.awt.Rectangle;
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -22,10 +21,10 @@ final class HatchToggleButton implements ICompositeWidget {
 
     HatchToggleButton(boolean input, BooleanSupplier selected, boolean enabled, Runnable toggle, Point position) {
         this.input = input;
-        this.selected = Objects.requireNonNull(selected);
+        this.selected = selected;
         this.enabled = enabled;
-        this.toggle = Objects.requireNonNull(toggle);
-        this.position = Objects.requireNonNull(position);
+        this.toggle = toggle;
+        this.position = position;
     }
 
     @Override

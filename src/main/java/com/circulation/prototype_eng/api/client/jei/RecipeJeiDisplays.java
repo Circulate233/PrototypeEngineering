@@ -4,7 +4,6 @@ import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
 import com.circulation.prototype_eng.integration.jei.DefaultRecipeDisplays;
-import it.unimi.dsi.fastutil.objects.Reference2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
@@ -12,7 +11,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Display-only extension for custom requirement types. Register before the JEI binding event closes.
@@ -48,7 +46,7 @@ public class RecipeJeiDisplays {
         if (frozen) {
             throw new IllegalStateException("JEI display registration has ended");
         }
-        if (providers.putIfAbsent(Objects.requireNonNull(type), Objects.requireNonNull(provider)) != null) {
+        if (providers.putIfAbsent(type, provider) != null) {
             throw new IllegalArgumentException("Duplicate JEI requirement display: " + type.id());
         }
     }
@@ -86,7 +84,6 @@ public class RecipeJeiDisplays {
      * Exact local provider identities; behavior/revision promises remain the declaration author's contract.
      */
     public boolean sameProviders(RecipeJeiDisplays other) {
-        Objects.requireNonNull(other);
         if (!frozen || !other.frozen)
             throw new IllegalStateException("JEI provider comparison requires frozen declarations");
         if (providers.size() != other.providers.size()) return false;
@@ -121,7 +118,7 @@ public class RecipeJeiDisplays {
         if (!frozen) throw new IllegalStateException("JEI displays are not ready");
         var prepared = new Reference2ObjectOpenHashMap<MachineRecipe, JeiRecipeDisplay>();
         for (var recipe : recipes) prepared.put(recipe, describe(recipe));
-        return new Snapshot(Reference2ObjectMaps.unmodifiable(prepared));
+        return new Snapshot(prepared);
     }
 
     /**
@@ -150,7 +147,7 @@ public class RecipeJeiDisplays {
         }
 
         public JeiRecipeDisplay describe(MachineRecipe recipe) {
-            return Objects.requireNonNull(descriptions.get(recipe), "Recipe is outside the prepared JEI generation");
+            return descriptions.get(recipe);
         }
 
         public boolean sameDescriptions(Collection<MachineRecipe> recipes, Snapshot measured) {

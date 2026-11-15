@@ -8,7 +8,6 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.Function;
 
 /**
@@ -30,7 +29,7 @@ public final class StructureConstructionRegistry {
                                       Function<IBlockState, BlockOrientation> orientation) {
         if (frozen) throw new IllegalStateException("Construction registrations are frozen");
         var entry = new Entry(structure, name, orientation);
-        if (entries.putIfAbsent(Objects.requireNonNull(anchor), entry) != null)
+        if (entries.putIfAbsent(anchor, entry) != null)
             throw new IllegalArgumentException("Duplicate construction anchor: " + anchor);
     }
 
@@ -51,10 +50,5 @@ public final class StructureConstructionRegistry {
 
     public record Entry(ResourceLocation structure, LocalizationEnum name,
                         Function<IBlockState, BlockOrientation> orientation) {
-        public Entry {
-            Objects.requireNonNull(structure);
-            Objects.requireNonNull(name);
-            Objects.requireNonNull(orientation);
-        }
     }
 }

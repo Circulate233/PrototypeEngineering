@@ -10,7 +10,6 @@ import net.minecraft.util.ResourceLocation;
 
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -31,29 +30,28 @@ final class RecipeInventoryLookup implements RecipeCandidateIndex.Cursor {
     private boolean complete;
 
     RecipeInventoryLookup(RecipePool pool, AEKey2LongMap inventory, int parallelism, Set<ResourceLocation> groups) {
-        this.pool = Objects.requireNonNull(pool);
-        this.inventory = Objects.requireNonNull(inventory);
+        this.pool = pool;
+        this.inventory = inventory;
         if (parallelism < 1) throw new IllegalArgumentException("Nonpositive matching parallelism");
         this.parallelism = parallelism;
-        inputGroups = Objects.requireNonNull(groups).iterator();
+        inputGroups = groups.iterator();
     }
 
     @Override
     public boolean advance(RecipeWorkBudget budget) {
-        Objects.requireNonNull(budget);
         if (complete) return true;
         while (inputGroups.hasNext()) {
             if (!budget.take()) return false;
-            groups.add(Objects.requireNonNull(inputGroups.next()));
+            groups.add(inputGroups.next());
         }
         if (matches == null) {
             if (!budget.take()) return false;
-            matches = Objects.requireNonNull(pool.match(inventory, parallelism)).iterator();
+            matches = pool.match(inventory, parallelism).iterator();
         }
         while (pending != null || matches.hasNext()) {
             if (pending == null) {
                 if (!budget.take()) return false;
-                pending = Objects.requireNonNull(matches.next());
+                pending = matches.next();
                 if (pending.maximumParallelism() > parallelism)
                     throw new IllegalArgumentException("Inventory ceiling exceeds requested parallelism");
                 pendingGroups = pending.recipe().recipeGroups().iterator();

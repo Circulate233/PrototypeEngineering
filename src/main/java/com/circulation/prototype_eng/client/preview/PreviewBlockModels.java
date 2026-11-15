@@ -13,6 +13,7 @@ import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.client.renderer.vertex.VertexBuffer;
 import net.minecraft.util.math.BlockPos;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
@@ -43,12 +44,11 @@ public final class PreviewBlockModels implements AutoCloseable {
     private boolean closed;
 
     public PreviewBlockModels(StructurePreviews previews) {
-        this.previews = Objects.requireNonNull(previews);
-        cache = new PreviewBlockModelCache(this::current, () -> new Baker(Objects.requireNonNull(bakingModel)), 8);
+        this.previews = previews;
+        cache = new PreviewBlockModelCache(this::current, () -> new Baker(bakingModel), 8);
         sampleModels = new PreviewSampleBlockModels((model, cell) -> {
             var token = cache.epochToken();
-            var cursor = new PreviewBlockQuadCursor(model, cell, () -> cache.currentEpoch(token) && current(model), sceneAccess);
-            return sink -> cursor.step((_, data) -> sink.accept(data));
+            return new PreviewBlockQuadCursor(model, cell, () -> cache.currentEpoch(token) && current(model), sceneAccess);
         });
     }
 
@@ -319,7 +319,8 @@ public final class PreviewBlockModels implements AutoCloseable {
             buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
             building = true;
             // C selected/paid cell visits already. Preparation and emission pay a separate, bounded quad work budget.
-            pending = sampleModels.present(model, visible, intent.options().blockModelBuildVisitsPerFrame(), valid, buffer::addVertexData);
+            pending = sampleModels.present(model, visible, intent.options().blockModelBuildVisitsPerFrame(), valid,
+                (data, offset, length) -> PreviewBlockVertices.append(buffer, data, offset, length));
             buffer.finishDrawing();
             building = false;
             if (valid.getAsBoolean()) {
@@ -384,7 +385,7 @@ public final class PreviewBlockModels implements AutoCloseable {
 
         @Override
         public void draw() {
-            var owned = Objects.requireNonNull(buffer);
+            var owned = buffer;
             owned.bindBuffer();
             try {
                 GL11.glVertexPointer(3, GL11.GL_FLOAT, PreviewBlockVertices.STRIDE, 0L);
@@ -482,7 +483,7 @@ public final class PreviewBlockModels implements AutoCloseable {
             try {
                 OpenGlHelper.glBindBuffer(OpenGlHelper.GL_ARRAY_BUFFER, 0);
                 buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
-                buffer.addVertexData(Objects.requireNonNull(vertices));
+                buffer.addVertexData(vertices);
                 buffer.finishDrawing();
                 uploader.draw(buffer);
             } finally {
@@ -500,6 +501,7 @@ public final class PreviewBlockModels implements AutoCloseable {
         private final StructurePreviewModel model;
         private final Object token;
         private final BufferBuilder[] layerBuffers = new BufferBuilder[4];
+        private final PreviewBlockQuadCursor.QuadSink sink = this::append;
         private boolean released;
         private StructurePreviewModel.Cell activeCell;
         private PreviewBlockQuadCursor cursor;
@@ -521,21 +523,23 @@ public final class PreviewBlockModels implements AutoCloseable {
                 activeCell = cell;
                 cursor = new PreviewBlockQuadCursor(model, cell, this::valid, sceneAccess);
             }
-            boolean done = cursor.step((layer, data) -> {
-                if (!valid()) return;
-                var buffer = layerBuffers[layer];
-                if (buffer == null) {
-                    buffer = buffers.borrow();
-                    layerBuffers[layer] = buffer;
-                    buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
-                }
-                buffer.addVertexData(data);
-            });
+            boolean done = cursor.step(sink);
             if (done) {
                 activeCell = null;
                 cursor = null;
             }
             return done;
+        }
+
+        private void append(int layer, int[] data, int offset, int tint, @Nullable BlockPos translation) {
+            if (!valid()) return;
+            var buffer = layerBuffers[layer];
+            if (buffer == null) {
+                buffer = buffers.borrow();
+                layerBuffers[layer] = buffer;
+                buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
+            }
+            PreviewBlockVertices.append(buffer, data, offset, tint, ByteOrder.nativeOrder(), translation);
         }
 
         @Override

@@ -120,8 +120,6 @@ public record RewardClaim(Key key, Status status, long eligibleAtWorldTime,
 
     public record Key(UUID playerUuid, ResourceLocation researchId, int level) {
         public Key {
-            Objects.requireNonNull(playerUuid, "playerUuid");
-            Objects.requireNonNull(researchId, "researchId");
             if (level < 1) throw new IllegalArgumentException("Reward level must be positive");
         }
     }
@@ -131,22 +129,6 @@ public record RewardClaim(Key key, Status status, long eligibleAtWorldTime,
      */
     public record Child(RewardEventKey key, Kind kind, ChildStatus status,
                         Object2ObjectMap<UUID, ItemDeliveryFragment> fragments) {
-        public Child {
-            Objects.requireNonNull(key, "key");
-            Objects.requireNonNull(kind, "kind");
-            Objects.requireNonNull(status, "status");
-            for (var entry : Objects.requireNonNull(fragments, "fragments").object2ObjectEntrySet()) {
-                var fragment = Objects.requireNonNull(entry.getValue(), "fragment");
-                if (!fragment.id().equals(entry.getKey()) || !fragment.parent().equals(key)
-                    || (status == ChildStatus.COMPLETED && fragment.status() != ItemDeliveryFragment.Status.CONFIRMED)) {
-                    throw new IllegalArgumentException("Invalid reward child fragment");
-                }
-            }
-            if ((kind == Kind.EVENT && !fragments.isEmpty()) || (kind == Kind.ITEM && fragments.isEmpty())) {
-                throw new IllegalArgumentException("Fragment plan does not match child kind");
-            }
-        }
-
         public Child replaceFragment(ItemDeliveryFragment fragment) {
             if (!fragments.containsKey(fragment.id())) throw new IllegalArgumentException("Unknown reward fragment");
             var updated = new Object2ObjectLinkedOpenHashMap<>(fragments);

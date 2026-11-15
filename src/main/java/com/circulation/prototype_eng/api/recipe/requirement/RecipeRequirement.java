@@ -7,7 +7,6 @@ import com.circulation.prototype_eng.recipe.PreparedRequirement;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
@@ -21,9 +20,9 @@ public final class RecipeRequirement<C> {
     private final RecipeRequirement<C> definition;
 
     RecipeRequirement(ResourceLocation id, RecipeRequirementType<C> type, C payload) {
-        this.id = Objects.requireNonNull(id);
-        this.type = Objects.requireNonNull(type);
-        this.payload = Objects.requireNonNull(payload);
+        this.id = id;
+        this.type = type;
+        this.payload = payload;
         rootPath = new RequirementPath(null, type.id(), id);
         definition = this;
     }
@@ -33,7 +32,7 @@ public final class RecipeRequirement<C> {
         id = definition.id;
         type = definition.type;
         rootPath = definition.rootPath;
-        this.payload = Objects.requireNonNull(payload);
+        this.payload = payload;
     }
 
     private static RequirementPreparation ownerFacts(RecipeProcess process, RecipeStage stage, RequirementPreparation prepared) {

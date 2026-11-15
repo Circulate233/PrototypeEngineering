@@ -15,7 +15,6 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -73,8 +72,6 @@ class MachineRuntimeRegistryTest {
         assertThrows(IllegalArgumentException.class, () -> registry.resolveRuntime(structures, List.of(firstAssembly, assembly(type("second", "second_shape")))));
         assertUnpublished(registry, first, second);
         assertThrows(IllegalArgumentException.class, () -> registry.resolveRuntime(structures, List.of(firstAssembly, secondAssembly, assembly(type("unknown", "first_shape")))));
-        assertUnpublished(registry, first, second);
-        assertThrows(NullPointerException.class, () -> registry.resolveRuntime(structures, Arrays.asList(firstAssembly, null, secondAssembly)));
         assertUnpublished(registry, first, second);
 
         registry.resolveRuntime(structures, List.of(secondAssembly, firstAssembly));

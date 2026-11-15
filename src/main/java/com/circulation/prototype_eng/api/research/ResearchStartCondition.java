@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.api.research;
 
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 
@@ -13,16 +12,11 @@ public interface ResearchStartCondition {
     ResearchStartCondition ALWAYS_ALLOWED = _ -> true;
 
     static ResearchStartCondition fromContext(Predicate<ResearchStartContext> predicate) {
-        Objects.requireNonNull(predicate);
-        return context -> predicate.test(Objects.requireNonNull(context));
+        return predicate::test;
     }
 
     static ResearchStartCondition fromBooleanSupplier(BooleanSupplier supplier) {
-        Objects.requireNonNull(supplier);
-        return context -> {
-            Objects.requireNonNull(context);
-            return supplier.getAsBoolean();
-        };
+        return _ -> supplier.getAsBoolean();
     }
 
     boolean canStart(ResearchStartContext context);

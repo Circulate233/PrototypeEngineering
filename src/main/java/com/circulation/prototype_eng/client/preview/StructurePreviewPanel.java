@@ -17,7 +17,6 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectIntBiConsumer;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.audio.PositionedSoundRecord;
 import net.minecraft.client.gui.Gui;
@@ -94,7 +93,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
     private Rect currentClip;
 
     public StructurePreviewPanel(StructurePreviewView view) {
-        this.view = Objects.requireNonNull(view);
+        this.view = view;
         var mc = Minecraft.getMinecraft();
         player = mc.player;
         world = mc.world;
@@ -132,16 +131,16 @@ public final class StructurePreviewPanel implements AutoCloseable {
 
     public void construction(ItemStack tool, Supplier<NBTTagCompound> binding) {
         construction();
-        builderTool = Objects.requireNonNull(tool);
-        builderBinding = Objects.requireNonNull(binding);
+        builderTool = tool;
+        builderBinding = binding;
     }
 
     public void onMaterialsRequested(Runnable listener) {
-        materialsRequested = Objects.requireNonNull(listener);
+        materialsRequested = listener;
     }
 
     public void onCellAlternativeSelected(ObjectIntBiConsumer<StructurePreviewModel.Cell> listener) {
-        cellAlternativeSelected = Objects.requireNonNull(listener);
+        cellAlternativeSelected = listener;
     }
 
     /**
@@ -157,15 +156,15 @@ public final class StructurePreviewPanel implements AutoCloseable {
     }
 
     public void onAlternativeSelected(ObjectIntBiConsumer<StructureDisplay> listener) {
-        alternativeSelected = Objects.requireNonNull(listener);
+        alternativeSelected = listener;
     }
 
     /**
      * Embedded hosts publish the visible cells as their own native ingredient slots.
      */
     public void ingredientSlots(SlotRenderer renderer, Runnable clear) {
-        ingredientSlots = Objects.requireNonNull(renderer);
-        clearIngredients = Objects.requireNonNull(clear);
+        ingredientSlots = renderer;
+        clearIngredients = clear;
     }
 
     public StructurePreviewView view() {
@@ -442,8 +441,9 @@ public final class StructurePreviewPanel implements AutoCloseable {
         materialGrid(rows, display, cell);
     }
 
+    @SuppressWarnings("DataFlowIssue") // Material rendering enters only while the current model is available.
     private List<ConstructionMaterial> completeMaterials() {
-        var model = Objects.requireNonNull(view.model());
+        var model = view.model();
         if (constructionMaterialsToken != view.token()) {
             constructionMaterialsToken = view.token();
             var counts = new Object2LongLinkedOpenHashMap<ConstructionChoice>();
@@ -471,7 +471,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
                 if (entry.getLongValue() > 0)
                     materials.add(new ConstructionMaterial(entry.getKey().display, entry.getKey().option, entry.getLongValue()));
             materials.sort(Comparator.comparingLong(ConstructionMaterial::amount).reversed());
-            constructionMaterials = ObjectLists.unmodifiable(materials);
+            constructionMaterials = materials;
         }
         return constructionMaterials;
     }

@@ -154,6 +154,7 @@ public final class RunNetworkRender {
 
     /**
      * Exact concrete future definitions are shared by the script client declaration and actual server request.
+     * The shared array remains read-only for the declaration lifetime.
      */
     @ZenMethod
     public static synchronized ZenRecipe[] clientV2Recipes() {
@@ -168,7 +169,7 @@ public final class RunNetworkRender {
                 ZenRecipe.create("pe_run_tests:client_migration", "v2", 40,
                     new ZenRequirement[]{ZenRequirement.resources("pe_run_tests:client_migration_io", new ZenResource[]{quartz}, new ZenResource[]{output})})};
         }
-        return clientV2.clone();
+        return clientV2;
     }
 
     /**
@@ -562,7 +563,7 @@ public final class RunNetworkRender {
                 NativeChecks.check("research_encoding_blank_operator", sender.canUseCommand(2, "pe_run_tests"));
                 var stack = player.inventory.getStackInSlot(slot);
                 NativeChecks.check("research_actual_blank_disk", stack.getItem() == diskItem && !((ResearchDiskCarrier) stack.getItem()).hasResearchDiskData(stack));
-                var tag = stack.getTagCompound() == null ? new NBTTagCompound() : stack.getTagCompound().copy();
+                var tag = stack.getTagCompound() == null ? new NBTTagCompound() : stack.getTagCompound();
                 if (tier == 2) tag.setInteger("pe_run_tests_physical_tier", tier);
                 else tag.removeTag("pe_run_tests_physical_tier");
                 stack.setTagCompound(tag.isEmpty() ? null : tag);
@@ -633,8 +634,13 @@ public final class RunNetworkRender {
                 int count = CommandBase.parseInt(args[2], 0);
                 ServerTaskSchedulers.forServer(server).submit(() -> {
                     var world = ServerResearch.forServer(server);
-                    int actual = kind.equals("disk") ? world.pendingDiskImports(player.getUniqueID()).stream().filter(op -> !op.terminal()).toList().size()
-                        : world.pendingDownloadOperations(player.getUniqueID()).size();
+                    int actual;
+                    if (kind.equals("disk")) {
+                        actual = 0;
+                        var operations = world.pendingDiskImports(player.getUniqueID());
+                        for (int index = 0; index < operations.size(); index++)
+                            if (!operations.get(index).terminal()) actual++;
+                    } else actual = world.pendingDownloadOperations(player.getUniqueID()).size();
                     NativeChecks.check("research_pending_recovery", actual == count);
                     pass(player, "research_pending_recovery", kind + " count=" + actual + " receipts=" + world.downloadReceipts(player.getUniqueID()));
                 }, ExecutionMode.MAIN_THREAD);
@@ -796,15 +802,15 @@ public final class RunNetworkRender {
                 if (hatch.input() != null) inputs.add(hatch.input());
                 if (hatch.output() != null) outputs.add(hatch.output());
             }
-            var quartz = Objects.requireNonNull(AEItemKey.of(new ItemStack(Items.QUARTZ)));
-            var redstone = Objects.requireNonNull(AEItemKey.of(new ItemStack(Items.REDSTONE)));
+            var quartz = AEItemKey.of(new ItemStack(Items.QUARTZ));
+            var redstone = AEItemKey.of(new ItemStack(Items.REDSTONE));
             for (var input : inputs) {
                 amounts.addTo(quartz, input.amount(quartz));
                 amounts.addTo(redstone, input.amount(redstone));
             }
             NativeChecks.check("client_old_duration_tick_material_payment", amounts.getLong(quartz) == 0 && amounts.getLong(redstone) == 0);
-            var emerald = Objects.requireNonNull(AEItemKey.of(new ItemStack(Items.EMERALD)));
-            var diamond = Objects.requireNonNull(AEItemKey.of(new ItemStack(Items.DIAMOND)));
+            var emerald = AEItemKey.of(new ItemStack(Items.EMERALD));
+            var diamond = AEItemKey.of(new ItemStack(Items.DIAMOND));
             for (var output : outputs) {
                 amounts.addTo(emerald, output.amount(emerald));
                 amounts.addTo(diamond, output.amount(diamond));
@@ -825,7 +831,7 @@ public final class RunNetworkRender {
             saved.setTag("migration_machine", Objects.requireNonNull(host.savedIdentity()).encode());
             saved.setLong("migration_seed", active.seed());
             saved.setString("migration_nonce", nonce);
-            saved.setTag("migration_graph", Objects.requireNonNull(tag.getTag("Graph")).copy());
+            saved.setTag("migration_graph", tag.getTag("Graph"));
             persistEvidence(player);
             pass(player, "client_captured_actual_v1_process", "recipe=" + active.recipe().id() + " revision=v1 duration=2400 seed=" + active.seed() + " nonce=" + nonce);
             return;
@@ -852,7 +858,7 @@ public final class RunNetworkRender {
         saved.setInteger("encoding_tier", tier);
         saved.setInteger("encoding_slot", slot);
         saved.setTag("encoding_material", material.serializeNBT());
-        saved.setLong("encoding_blank_total", inventoryAmount(player, Objects.requireNonNull(AEItemKey.of(material))));
+        saved.setLong("encoding_blank_total", inventoryAmount(player, AEItemKey.of(material)));
         saved.setLong("encoding_output_before", encodedAmount(player, material.getItem(), research, level, tier));
         saved.setInteger("encoding_source_before", sourceLevel(player, research));
         persistEvidence(player);
@@ -920,7 +926,7 @@ public final class RunNetworkRender {
         var amounts = new AEKey2LongMap.OpenHashMap();
         for (int slot = 0; slot < player.inventory.getSizeInventory(); slot++) {
             var stack = player.inventory.getStackInSlot(slot);
-            if (!stack.isEmpty()) amounts.addTo(Objects.requireNonNull(AEItemKey.of(stack)), stack.getCount());
+            if (!stack.isEmpty()) amounts.addTo(AEItemKey.of(stack), stack.getCount());
         }
         return amounts.getLong(key);
     }

@@ -25,7 +25,6 @@ import org.lwjgl.input.Mouse;
 import java.awt.Rectangle;
 import java.io.IOException;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Default controller status and process roster in the original PM panel geometry.
@@ -86,8 +85,9 @@ public final class GuiMachine extends AEBaseGui<ContainerMachine> {
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue") // The container constructor sets its AE title before this GUI opens.
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        GuiLabel.draw(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 144, 13, 228, 10, 0xffffff, true);
+        GuiLabel.draw(fontRenderer, container.getGuiTitle().getFormattedText(), 144, 13, 228, 10, 0xffffff, true);
         var snapshot = container.snapshot;
         var details = snapshot.details();
         GuiLabel.draw(fontRenderer, MachineGuiText.Structure.getLocal((snapshot.formed() ? MachineGuiText.Formed : MachineGuiText.NotFormed).getLocal()),
@@ -131,7 +131,7 @@ public final class GuiMachine extends AEBaseGui<ContainerMachine> {
         GlStateManager.enableLighting();
         if (maxScroll() > 0) {
             int handleY = handleY();
-            boolean hover = new Rectangle(SCROLL_X, handleY, SCROLL_WIDTH, 15).contains(mouseX - guiLeft, mouseY - guiTop);
+            boolean hover = isPointInRegion(SCROLL_X, handleY, SCROLL_WIDTH, 15, mouseX, mouseY);
             mc.getTextureManager().bindTexture(GuiAtlas.STATES);
             GlStateManager.color(1, 1, 1, 1);
             Gui.drawScaledCustomSizeModalRect(SCROLL_X, handleY, dragging ? 172 : hover ? 159 : 146, 1,

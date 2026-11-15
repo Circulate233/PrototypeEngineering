@@ -36,7 +36,6 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * ME-only physical host. Recipe resources use the independent transactional storage contract.
@@ -69,7 +68,7 @@ public class MEResourceHatchBlockEntity extends AEBaseTile implements IInWorldGr
     }
 
     public MEResourceHatchBlockEntity(HatchMode mode, int inputSlots) {
-        this.mode = Objects.requireNonNull(mode);
+        this.mode = mode;
         if (inputSlots <= 0) throw new IllegalArgumentException("ME input slot count must be positive");
         this.inputSlots = inputSlots;
     }
@@ -96,7 +95,6 @@ public class MEResourceHatchBlockEntity extends AEBaseTile implements IInWorldGr
     @Override
     public void setResourceColor(AEColor color) {
         requireOwner();
-        Objects.requireNonNull(color, "color");
         if (resourceColor != color) {
             resourceColor = color;
             markDirty();
@@ -266,12 +264,13 @@ public class MEResourceHatchBlockEntity extends AEBaseTile implements IInWorldGr
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue")
     public void addAdditionalDrops(List<ItemStack> drops) {
         super.addAdditionalDrops(drops);
         if (world == null || world.isRemote) return;
         var removalWorld = world;
         var removalPosition = pos.toImmutable();
-        var server = Objects.requireNonNull(world.getMinecraftServer());
+        var server = world.getMinecraftServer();
         var destination = BuilderDropRecovery.destination(removalWorld, removalPosition);
         var contents = storage().removeForDrops(deferred -> {
             Runnable deliver = () -> {

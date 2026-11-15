@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy.Decis
 import com.circulation.prototype_eng.api.research.TeamResearchView;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 
 /**
  * Detached owner-side database view; an action must capture its own current authority.
@@ -14,9 +13,6 @@ public record DataCenterPlayerView(String teamId, Decision viewPermission, Decis
                                    boolean savePending, @Nullable DataCenterResearchSnapshot dataCenter,
                                    @Nullable TeamResearchView cloud) {
     public DataCenterPlayerView {
-        Objects.requireNonNull(teamId);
-        Objects.requireNonNull(viewPermission);
-        Objects.requireNonNull(downloadPermission);
         if (viewPermission != Decision.ALLOWED && (dataCenter != null || cloud != null)) {
             throw new IllegalArgumentException("Denied database views cannot expose research");
         }

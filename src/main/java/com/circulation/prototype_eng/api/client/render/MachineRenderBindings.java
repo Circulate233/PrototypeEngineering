@@ -1,12 +1,10 @@
 package com.circulation.prototype_eng.api.client.render;
 
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Client-owner exact registrations. Closing a replaced handle cannot remove its successor.
@@ -24,7 +22,7 @@ public final class MachineRenderBindings {
     private static <K, V> Map<K, V> values(Map<K, Entry<V>> entries) {
         var result = new Object2ObjectLinkedOpenHashMap<K, V>();
         entries.forEach((key, value) -> result.put(key, value.value));
-        return Object2ObjectMaps.unmodifiable(result);
+        return result;
     }
 
     public Registration bindMachine(ResourceLocation id, GeckoModelBinding binding) {
@@ -44,8 +42,6 @@ public final class MachineRenderBindings {
 
     private <K, V> Registration bind(Map<K, Entry<V>> table, K key, V value) {
         requireOwner();
-        Objects.requireNonNull(key);
-        Objects.requireNonNull(value);
         long next = Math.incrementExact(revision);
         var entry = new Entry<>(value);
         var registration = new Registration(() -> {
@@ -70,9 +66,12 @@ public final class MachineRenderBindings {
         return captured != null && view == captured;
     }
 
+    /**
+     * Callbacks must not add or remove subscriptions while invalidation is being delivered.
+     */
     public Registration onInvalidated(Runnable callback) {
         requireOwner();
-        var entry = new Listener(Objects.requireNonNull(callback));
+        var entry = new Listener(callback);
         listeners.add(entry);
         return new Registration(() -> {
             requireOwner();
@@ -95,9 +94,8 @@ public final class MachineRenderBindings {
         view = new View(revision, values(machines), values(components), values(structures));
         Throwable failure = null;
 
-        var elements = new ObjectArrayList<>(listeners);
-        for (int index = 0; index < elements.size(); index++) {
-            var entry = elements.get(index);
+        for (int index = 0; index < listeners.size(); index++) {
+            var entry = listeners.get(index);
             try {
                 entry.callback.run();
             } catch (RuntimeException | Error caught) {
@@ -116,10 +114,6 @@ public final class MachineRenderBindings {
     }
 
     public record StructureKey(ResourceLocation machine, ResourceLocation structure) {
-        public StructureKey {
-            Objects.requireNonNull(machine);
-            Objects.requireNonNull(structure);
-        }
     }
 
     /**

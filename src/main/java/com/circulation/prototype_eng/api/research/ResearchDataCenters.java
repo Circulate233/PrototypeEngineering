@@ -10,7 +10,6 @@ import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.NetworkWorkState;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -21,8 +20,8 @@ public final class ResearchDataCenters {
     private final Runnable ownerCheck;
 
     public ResearchDataCenters(MachineIdentityRegistry identities, Runnable ownerCheck) {
-        this.identities = Objects.requireNonNull(identities);
-        this.ownerCheck = Objects.requireNonNull(ownerCheck);
+        this.identities = identities;
+        this.ownerCheck = ownerCheck;
     }
 
     @Nullable
@@ -48,7 +47,7 @@ public final class ResearchDataCenters {
             }
         }
         return role == null || storage == null ? null
-            : new Bindings(Objects.requireNonNull(roleType), role, Objects.requireNonNull(storageType), storage);
+            : new Bindings(roleType, role, storageType, storage);
     }
 
     @Nullable
@@ -72,10 +71,9 @@ public final class ResearchDataCenters {
     @Nullable
     public Capture capture(String teamId, UUID expectedDataCenterId) {
         ownerCheck.run();
-        if (Objects.requireNonNull(teamId).isBlank() || !teamId.equals(teamId.trim())) {
+        if (teamId.isBlank() || !teamId.equals(teamId.trim())) {
             throw new IllegalArgumentException("Data-center capture requires a canonical team ID");
         }
-        Objects.requireNonNull(expectedDataCenterId);
         long revision = identities.revision();
 
         var elements2 = identities.uniqueRegistrations();
@@ -87,7 +85,7 @@ public final class ResearchDataCenters {
             if (bindings == null || bindings.role().state() != NetworkWorkState.ACTIVE_DATA_CENTER) return null;
             var permit = bindings.role().workPermit();
             if (permit == null || !permit.current() || !permit.teamId().equals(teamId)) return null;
-            var backend = Objects.requireNonNull(bindings.storage().capture(), "Data-center storage capture");
+            var backend = bindings.storage().capture();
             if (!backend.snapshot().equals(permit.dataCenterResearch())) return null;
             var result = new Capture(this, revision, identity, machine, bindings, permit, backend);
             return result.current() ? result : null;
@@ -103,7 +101,6 @@ public final class ResearchDataCenters {
     @Nullable
     public PhysicalCapture captureOriginal(Target target) {
         ownerCheck.run();
-        Objects.requireNonNull(target);
         long revision = identities.revision();
 
         var elements = identities.uniqueRegistrations();
@@ -125,11 +122,6 @@ public final class ResearchDataCenters {
      * Saved physical target. It identifies a recovery obligation and never grants team permission.
      */
     public record Target(UUID dataCenterId, UUID ownerId, MachineIdentity location) {
-        public Target {
-            Objects.requireNonNull(dataCenterId);
-            Objects.requireNonNull(ownerId);
-            Objects.requireNonNull(location);
-        }
     }
 
     private record StorageBinding(ComponentType<MachineInstance, ?> type, DataCenterStorage storage) {
@@ -240,11 +232,12 @@ public final class ResearchDataCenters {
 
         private boolean contentsCurrent() {
             return backend.current().getAsBoolean()
-                && physical.storage().current(Objects.requireNonNull(permit.dataCenterResearch()));
+                && physical.storage().current(permit.dataCenterResearch());
         }
 
+        @SuppressWarnings("DataFlowIssue")
         private boolean physicallyCurrent() {
-            return physical.currentBinding() && Objects.requireNonNull(physical.machine.lifecycle()).formed() && permit.current()
+            return physical.currentBinding() && physical.machine.lifecycle().formed() && permit.current()
                 && physical.machine.components().get(roleType) == role && role.state() == NetworkWorkState.ACTIVE_DATA_CENTER;
         }
     }

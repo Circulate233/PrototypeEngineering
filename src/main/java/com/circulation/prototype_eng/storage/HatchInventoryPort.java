@@ -26,7 +26,6 @@ public final class HatchInventoryPort implements GenericInternalInventory {
     private final ThreadLocal<Boolean> batching = new ThreadLocal<>();
 
     public HatchInventoryPort(SlottedResourceHatch hatch, boolean includeInput, boolean includeOutput) {
-        Objects.requireNonNull(hatch);
         input = includeInput ? hatch.input() : null;
         output = includeOutput ? hatch.output() : null;
         shared = input != null && input == output;
@@ -51,7 +50,7 @@ public final class HatchInventoryPort implements GenericInternalInventory {
 
     private SlottedResourceStorage inventory(int slot) {
         Objects.checkIndex(slot, size());
-        return Objects.requireNonNull(slot < inputSize() ? input : output, "Missing hatch storage side");
+        return (slot < inputSize() ? input : output);
     }
 
     private int localSlot(int slot) {

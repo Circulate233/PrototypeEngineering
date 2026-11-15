@@ -13,7 +13,6 @@ import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
@@ -33,12 +32,10 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
     private boolean closed;
     @Nullable
     private List<Owner> capturedOwners;
-    @Nullable
-    private List<Listener> capturedListeners;
 
     public ClientMachineRenderSnapshots(ClientStructureCatalog catalog, MachineRenderBindings bindings) {
-        this.catalog = Objects.requireNonNull(catalog);
-        this.bindings = Objects.requireNonNull(bindings);
+        this.catalog = catalog;
+        this.bindings = bindings;
         catalogListener = catalog.onInvalidated(this::catalogChanged);
         bindingListener = bindings.onInvalidated(this::bindingsChanged);
     }
@@ -47,12 +44,6 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
     public Owner attach(Object world, Object tile, Object connection, BlockPos position, ResourceLocation type,
                         BooleanSupplier attached, Consumer<MachineRenderSnapshot> install) {
         requireOwner();
-        Objects.requireNonNull(world);
-        Objects.requireNonNull(tile);
-        Objects.requireNonNull(connection);
-        Objects.requireNonNull(type);
-        Objects.requireNonNull(attached);
-        Objects.requireNonNull(install);
         if (closed || !catalog.connectedTo(connection) || !attached.getAsBoolean())
             throw new IllegalStateException("Cannot attach a foreign or absent client render owner");
         var old = owners.get(position);
@@ -129,15 +120,16 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
             catalog.current(captured.catalog) && bindings.current(captured.bindings) && resourceEpoch == captured.resourceEpoch;
     }
 
+    /**
+     * Callbacks must not add or remove subscriptions while invalidation is being delivered.
+     */
     public AutoCloseable onInvalidated(Runnable callback) {
         requireOwner();
-        var entry = new Listener(Objects.requireNonNull(callback));
+        var entry = new Listener(callback);
         listeners.add(entry);
-        capturedListeners = null;
         return () -> {
             requireOwner();
             listeners.remove(entry);
-            capturedListeners = null;
         };
     }
 
@@ -255,16 +247,10 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
         return capturedOwners;
     }
 
-    private List<Listener> listenerSnapshot() {
-        if (capturedListeners == null) capturedListeners = new ObjectArrayList<>(listeners);
-        return capturedListeners;
-    }
-
     private void invalidate() {
         Throwable failure = null;
-        var elements3 = listenerSnapshot();
-        for (int index3 = 0; index3 < elements3.size(); index3++) {
-            var entry = elements3.get(index3);
+        for (int index3 = 0; index3 < listeners.size(); index3++) {
+            var entry = listeners.get(index3);
             try {
                 entry.callback.run();
             } catch (RuntimeException | Error caught) {

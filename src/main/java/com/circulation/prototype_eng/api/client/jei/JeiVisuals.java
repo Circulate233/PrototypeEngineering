@@ -15,7 +15,6 @@ import org.lwjgl.opengl.GL11;
 import javax.annotation.ParametersAreNonnullByDefault;
 
 import java.util.Locale;
-import java.util.Objects;
 
 /**
  * Native Minecraft drawing compositions. Resource slots share AEKey rendering and generic skins.
@@ -136,7 +135,6 @@ public final class JeiVisuals {
 
     public record Texture(ResourceLocation resource, int width, int height) implements IDrawable {
         public Texture {
-            Objects.requireNonNull(resource);
             if (width <= 0 || height <= 0) throw new IllegalArgumentException("Invalid texture dimensions");
         }
 
@@ -167,7 +165,6 @@ public final class JeiVisuals {
     public record NineSlice(Texture source, int width, int height, int border, boolean fillCenter,
                             int centerColor) implements IDrawable {
         public NineSlice {
-            Objects.requireNonNull(source);
             if (width <= 0 || height <= 0 || border < 0 || border * 2L > Math.min(source.width, source.height)) {
                 throw new IllegalArgumentException("Invalid nine-slice bounds");
             }
@@ -215,14 +212,12 @@ public final class JeiVisuals {
                            long cycleTicks, boolean smooth, int emptyColor,
                            int fullColor) implements JeiRecipeDecorator {
         public Progress {
-            Objects.requireNonNull(shape);
-            Objects.requireNonNull(direction);
             if (width <= 0 || height <= 0 || cycleTicks < 0)
                 throw new IllegalArgumentException("Invalid progress configuration");
         }
 
         public static Progress module(Module module, Direction direction) {
-            return new Progress(Objects.requireNonNull(module), Shape.ARROW, direction, 18, 18, 0, true, 0xffffffff, 0xffffffff);
+            return new Progress(module, Shape.ARROW, direction, 18, 18, 0, true, 0xffffffff, 0xffffffff);
         }
 
         @Override
@@ -311,7 +306,6 @@ public final class JeiVisuals {
     public record Duration(@Nullable String template, int width, int height, Alignment alignment,
                            float scale, int color, boolean shadow) implements JeiRecipeDecorator {
         public Duration {
-            Objects.requireNonNull(alignment);
             if (width <= 0 || height <= 0 || !Float.isFinite(scale) || scale <= 0)
                 throw new IllegalArgumentException("Invalid duration bounds");
         }
@@ -337,9 +331,6 @@ public final class JeiVisuals {
     }
 
     public record ItemSkin(Plaid plaid) implements JeiSlot.Skin {
-        public ItemSkin {
-            Objects.requireNonNull(plaid);
-        }
 
         @Override
         public void background(Minecraft minecraft, JeiSlot slot, JeiRecipeDisplay.Resource resource) {

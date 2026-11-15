@@ -8,7 +8,6 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
-import java.util.Objects;
 
 /**
  * One choice; all children execute in their declared order without a second selection.
@@ -19,12 +18,11 @@ import java.util.Objects;
 public record RewardGroup(ResourceLocation id, @Nullable LocalizationEnum title,
                           @Nullable LocalizationEnum description, ObjectList<RewardChild> children) {
     public RewardGroup {
-        Objects.requireNonNull(id, "id");
         if (children.isEmpty()) throw new IllegalArgumentException("Reward group must have children");
         var ids = new ObjectOpenHashSet<ResourceLocation>(children.size());
         for (int index = 0; index < children.size(); index++) {
             var child = children.get(index);
-            if (!ids.add(Objects.requireNonNull(child, "child").id())) {
+            if (!ids.add(child.id())) {
                 throw new IllegalArgumentException("Duplicate reward child: " + child.id());
             }
         }

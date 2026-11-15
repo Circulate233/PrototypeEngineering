@@ -40,7 +40,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ParametersAreNonnullByDefault
@@ -212,9 +211,6 @@ class StaticJeiFallbackTest {
         var replaced = renderer.baseline.displays().snapshot(replacedRecipes, renderer.previousProviders, renderer.measured);
         assertNotSame(renderer.measured.describe(renderer.customRecipe), replaced.describe(replacementRecipe));
         assertNull(PrototypeJeiPlugin.prepareStaticPages(renderer.pages.pages(), replacement, replaced, renderer.measured, true));
-        var defaultPage = renderer.pages.pages().getFirst();
-        var foreign = displays(PROVIDER).snapshot(List.of(renderer.defaultRecipe)).describe(renderer.defaultRecipe);
-        assertThrows(NullPointerException.class, () -> defaultPage.createRecipe(renderer.defaultRecipe, foreign, StaticJeiTestViews.ingredients(foreign)));
     }
 
     /**

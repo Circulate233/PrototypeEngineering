@@ -8,7 +8,6 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
@@ -51,7 +50,7 @@ public final class StorageFence {
         requireOutsideAccess();
         requireOutsideSourceWork();
         StorageContext.requireNoLocks();
-        return new Acquire(Objects.requireNonNull(contexts).iterator());
+        return new Acquire(contexts.iterator());
     }
 
     /**
@@ -131,7 +130,6 @@ public final class StorageFence {
      * Legacy owner scope automatically holds every member physical base lock.
      */
     public void access(Runnable action) {
-        Objects.requireNonNull(action);
         access(() -> {
             action.run();
             return null;
@@ -140,15 +138,14 @@ public final class StorageFence {
 
     public <T> T access(Supplier<T> action) {
         requireOwner();
-        return runAccess(new Access(this, null, false), Objects.requireNonNull(action), false).value;
+        return runAccess(new Access(this, null, false), action, false).value;
     }
 
     /**
      * A source always holds its single physical base lock; distinct sources may run concurrently.
      */
     public void access(StorageContext context, Runnable action) {
-        Objects.requireNonNull(action);
-        if (!membership.contains(Objects.requireNonNull(context))) {
+        if (!membership.contains(context)) {
             throw new IllegalArgumentException("Source context does not belong to this fence");
         }
         runAccess(new Access(this, context, false), () -> {
@@ -158,10 +155,10 @@ public final class StorageFence {
     }
 
     <T> T sourceAccess(StorageContext context, Supplier<T> action) {
-        if (!membership.contains(Objects.requireNonNull(context))) {
+        if (!membership.contains(context)) {
             throw new IllegalArgumentException("Source context does not belong to this fence");
         }
-        return runAccess(new Access(this, context, false), Objects.requireNonNull(action), false).value;
+        return runAccess(new Access(this, context, false), action, false).value;
     }
 
     /**
@@ -172,7 +169,6 @@ public final class StorageFence {
      */
     public boolean tryAccessWithinBudget(Runnable action) {
         requireOwner();
-        Objects.requireNonNull(action);
         return runAccess(new Access(this, null, true), () -> {
             action.run();
             return null;
@@ -446,7 +442,6 @@ public final class StorageFence {
          */
         public boolean advance(BooleanSupplier takeBudget) {
             fence.requireOwnerBoundary();
-            Objects.requireNonNull(takeBudget);
             if (done) {
                 return true;
             }
@@ -465,7 +460,7 @@ public final class StorageFence {
                 if (!takeBudget.getAsBoolean()) {
                     return false;
                 }
-                var context = Objects.requireNonNull(input.next());
+                var context = input.next();
                 if (fence.membership.add(context)) {
                     fence.contexts.add(context);
                 }
@@ -581,7 +576,6 @@ public final class StorageFence {
 
         public boolean advance(BooleanSupplier takeBudget) {
             requireOwnerBoundary();
-            Objects.requireNonNull(takeBudget);
             if (done) {
                 return true;
             }

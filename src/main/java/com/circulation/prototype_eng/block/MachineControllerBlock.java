@@ -33,7 +33,6 @@ import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Objects;
 
 /**
  * One physical controller per downstream declaration; no built-in gameplay machine is registered.
@@ -49,9 +48,9 @@ public abstract class MachineControllerBlock<T extends AEBaseTile & MachineContr
      */
     protected MachineControllerBlock(MachineType type, ResourceLocation id, Class<T> tileClass) {
         super(Material.IRON);
-        this.type = Objects.requireNonNull(type);
-        setTileEntity(Objects.requireNonNull(tileClass));
-        setRegistryName(Objects.requireNonNull(id));
+        this.type = type;
+        setTileEntity(tileClass);
+        setRegistryName(id);
         setCreativeTab(PrototypeCreativeTab.INSTANCE);
         setHardness(10.0F);
         setResistance(20.0F);
@@ -119,7 +118,7 @@ public abstract class MachineControllerBlock<T extends AEBaseTile & MachineContr
 
     @Override
     public T createTileEntity(@NotNull World world, @NotNull IBlockState state) {
-        T tile = Objects.requireNonNull(createController(world, state), "Controller creation returned null");
+        T tile = createController(world, state);
         if (tile.blockEntity() != tile) {
             throw new IllegalArgumentException("Controller must return its own block entity");
         }

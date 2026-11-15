@@ -16,22 +16,21 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
- * Pure capture at the joined server boundary, followed by revalidation of the exact owner.
+ * Captures the installed structure at the joined server boundary. Preview callbacks must not mutate the machine or host.
  */
 public final class ControllerRenderSnapshots {
     private ControllerRenderSnapshots() {
     }
 
+    @SuppressWarnings("DataFlowIssue")
     public static @Nullable MachineRenderSnapshot capture(MachineInstance machine, StructureConfiguration configuration,
                                                           StructureCatalogView view, ControllerDisplayData display,
                                                           BlockPos controller, BooleanSupplier current) {
-        Objects.requireNonNull(machine);
-        var type = Objects.requireNonNull(machine.type(), "Render snapshot requires a declared machine type");
-        var lifecycle = Objects.requireNonNull(machine.lifecycle());
+        var type = machine.type();
+        var lifecycle = machine.lifecycle();
         lifecycle.host().requireServerThread();
         machine.requirePersistenceBoundary();
         if (!(lifecycle.host() instanceof ReloadableStructureHost host) || !current.getAsBoolean() ||
@@ -51,7 +50,7 @@ public final class ControllerRenderSnapshots {
                 var frame = stack.removeLast();
                 var accepted = frame.match();
                 var shape = accepted.structure();
-                var geometry = shape instanceof StructurePreviewProvider provider ? Objects.requireNonNull(provider.previewGeometry()) : null;
+                var geometry = shape instanceof StructurePreviewProvider provider ? provider.previewGeometry() : null;
                 if (occurrences.size() == MachineRenderSnapshot.MAX_OCCURRENCES ||
                     (memberships += accepted.blocks().size()) > MachineRenderSnapshot.MAX_POSITIONS)
                     throw new IllegalArgumentException("Accepted machine exceeds render occurrence/position scale");
@@ -71,19 +70,8 @@ public final class ControllerRenderSnapshots {
             ids.add(binding.type().id());
         }
         var animation = machine.components().get(MachineAnimationState.TYPE);
-        var result = new MachineRenderSnapshot(display, new MachineRenderSnapshot.CatalogToken(view.session(), view.sequence()), controller,
+        return new MachineRenderSnapshot(display, new MachineRenderSnapshot.CatalogToken(view.session(), view.sequence()), controller,
             configuration.definition().id(), occurrences, new ObjectArrayList<>(positions), ids, animation == null ? null : animation.snapshot());
-        // previewGeometry is an external callback. It can revoke the original configuration/owner.
-        if (!current.getAsBoolean() || !host.structureLifecycleCurrent(lifecycle) || host.structureConfiguration() != configuration ||
-            lifecycle.structureMatch() != match || lifecycle.formed() != display.formed() || lifecycle.retired())
-            return null;
-        var now = machine.components().assemblyBindings();
-        if (now.size() != bindings.size()) return null;
-        for (int i = 0; i < now.size(); i++)
-            if (now.get(i).type() != bindings.get(i).type() || now.get(i).component() != bindings.get(i).component())
-                return null;
-        if (animation != null && animation.snapshot() != result.animation()) return null;
-        return result;
     }
 
     private record Frame(StructureMatch match, int parent, int edge) {

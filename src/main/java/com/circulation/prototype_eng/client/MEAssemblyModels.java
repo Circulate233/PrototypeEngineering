@@ -10,7 +10,6 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.relauncher.Side;
 
-import java.util.Objects;
 
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID, value = Side.CLIENT)
 public final class MEAssemblyModels {
@@ -18,17 +17,18 @@ public final class MEAssemblyModels {
     }
 
     @SubscribeEvent
+    @SuppressWarnings("DataFlowIssue") // ModelRegistryEvent follows registration of the listed blocks.
     public static void registerModels(ModelRegistryEvent event) {
 
         var elements = MEAssemblyBlocks.resources();
         for (int index = 0; index < elements.size(); index++) {
             var block = elements.get(index);
             ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(block), 0,
-                new ModelResourceLocation(Objects.requireNonNull(block.getRegistryName()), "inventory"));
+                new ModelResourceLocation(block.getRegistryName(), "inventory"));
         }
 
         var pattern = MEAssemblyBlocks.pattern();
         ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(pattern), 0,
-            new ModelResourceLocation(Objects.requireNonNull(pattern.getRegistryName()), "inventory"));
+            new ModelResourceLocation(pattern.getRegistryName(), "inventory"));
     }
 }

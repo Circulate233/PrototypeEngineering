@@ -17,7 +17,7 @@ public interface StructureReadSource {
     /**
      * Called only after the position's own area-loaded check succeeded.
      */
-    @Nullable <T> T read(StructureQuery<T> query, BlockPos position);
+    <T> T read(StructureQuery<T> query, BlockPos position);
 
     /**
      * Unknown area overrides keep their actual whole-area cooperative call.

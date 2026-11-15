@@ -17,7 +17,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
@@ -42,7 +41,6 @@ public final class RecipeScanProbes {
     public static ProcessResult check(RecipeProcess process, List<RecipeScanPreparation> preparations,
                                       Function<RecipeProcess, ProcessResult> check) {
         requireBoundary(process);
-        Objects.requireNonNull(check, "check");
         var transactions = new ObjectArrayList<RequirementTransaction>(preparations.size());
         var reservations = new ObjectArrayList<ResourceReservation>(6);
         ProcessResult result = ProcessResult.SUCCESS;
@@ -53,14 +51,13 @@ public final class RecipeScanProbes {
                     result = RecipeText.Cancelled.blocked();
                     break;
                 }
-                var transaction = Objects.requireNonNull(Objects.requireNonNull(preparation, "preparation").prepare(process),
-                    "preparation transaction");
+                var transaction = preparation.prepare(process);
                 transactions.add(transaction);
-                reservations.addAll(Objects.requireNonNull(transaction.reservations(), "preparation reservations"));
+                reservations.addAll(transaction.reservations());
                 if (!reservations.isEmpty()) {
                     throw new IllegalArgumentException("Scan preparation must reserve no resources or energy");
                 }
-                result = Objects.requireNonNull(transaction.result(), "preparation result");
+                result = transaction.result();
                 if (result != ProcessResult.SUCCESS) {
                     break;
                 }
@@ -69,7 +66,7 @@ public final class RecipeScanProbes {
                 result = RecipeText.Cancelled.blocked();
             }
             if (result == ProcessResult.SUCCESS) {
-                result = Objects.requireNonNull(check.apply(process), "candidate check result");
+                result = check.apply(process);
             }
         } catch (RuntimeException | Error failure) {
             process.invalidatePersistenceBoundary();
@@ -92,7 +89,7 @@ public final class RecipeScanProbes {
     }
 
     private static void requireBoundary(RecipeProcess process) {
-        Objects.requireNonNull(process).requirePersistenceBoundary();
+        process.requirePersistenceBoundary();
         if (process.host() != null || process.state().lifecycle() != RecipeProcess.Lifecycle.NEW) {
             throw new IllegalArgumentException("Scan preparation requires an unattached NEW process");
         }
@@ -177,8 +174,8 @@ public final class RecipeScanProbes {
                         List<RecipeParallelismConstraint> constraints) {
             requireBoundary(process);
             this.process = process;
-            this.preparations = Objects.requireNonNull(preparations);
-            this.constraints = Objects.requireNonNull(constraints);
+            this.preparations = preparations;
+            this.constraints = constraints;
         }
 
         public RecipeProcess process() {
@@ -187,8 +184,6 @@ public final class RecipeScanProbes {
 
         public boolean advance(RecipeWorkBudget budget, BooleanSupplier forwardAllowed) {
             requireOwner();
-            Objects.requireNonNull(budget);
-            Objects.requireNonNull(forwardAllowed);
             if (finished) return true;
             executing = true;
             try {
@@ -202,10 +197,10 @@ public final class RecipeScanProbes {
                             break;
                         }
                         if (!budget.take()) return false;
-                        listing = new Projection(Objects.requireNonNull(preparations.get(preparationCursor++).prepare(process)));
+                        listing = new Projection(preparations.get(preparationCursor++).prepare(process));
                         projections.add(listing);
                         try {
-                            listedReservations = Objects.requireNonNull(listing.transaction.reservations()).iterator();
+                            listedReservations = listing.transaction.reservations().iterator();
                         } catch (RuntimeException | Error observed) {
                             inventoryUnknown = true;
                             throw observed;
@@ -223,7 +218,7 @@ public final class RecipeScanProbes {
                         }
                         if (constraint == null) {
                             if (!budget.take()) return false;
-                            constraint = Objects.requireNonNull(constraints.get(constraintCursor).beginCheck(process));
+                            constraint = constraints.get(constraintCursor).beginCheck(process);
                         }
                         if (!constraint.advance(budget, forwardAllowed)) return false;
                         result = constraint.result();
@@ -258,11 +253,12 @@ public final class RecipeScanProbes {
             }
         }
 
+        @SuppressWarnings("DataFlowIssue")
         private boolean finishListing(RecipeWorkBudget budget) {
             try {
-                while (Objects.requireNonNull(listedReservations).hasNext()) {
+                while (listedReservations.hasNext()) {
                     if (!budget.take()) return false;
-                    illegalReservations.add(Objects.requireNonNull(listedReservations.next()));
+                    illegalReservations.add(listedReservations.next());
                 }
             } catch (RuntimeException | Error observed) {
                 inventoryUnknown = true;
@@ -274,11 +270,11 @@ public final class RecipeScanProbes {
                 cancelling = true;
                 throw new IllegalArgumentException("Scan preparation must reserve no resources or energy");
             }
-            var transaction = Objects.requireNonNull(listing).transaction;
+            var transaction = listing.transaction;
             listing = null;
             listedReservations = null;
             if (cancelling) return true;
-            result = Objects.requireNonNull(transaction.result());
+            result = transaction.result();
             if (result != ProcessResult.SUCCESS) cancelling = true;
             return true;
         }
@@ -428,7 +424,7 @@ public final class RecipeScanProbes {
             private boolean rollback() {
                 if (terminal) return true;
                 if (uncertain) {
-                    var resolution = Objects.requireNonNull(transaction.resolution());
+                    var resolution = transaction.resolution();
                     if (resolution == ReversibleTransaction.Resolution.UNKNOWN) return false;
                     if (resolution == ReversibleTransaction.Resolution.ROLLED_BACK) return terminal = true;
                     if (resolution != ReversibleTransaction.Resolution.REVERSIBLE)

@@ -8,7 +8,6 @@ import net.minecraftforge.common.util.Constants;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Built-in patch data only; overlay type registration remains the host's responsibility.
@@ -18,7 +17,6 @@ public final class BuiltinOverlayCodecs {
     public static final NbtCodec<EnergyRequirementPatch> ENERGY_RATES = new NbtCodec<>() {
         @Override
         public NBTTagCompound encode(EnergyRequirementPatch value) {
-            Objects.requireNonNull(value, "value");
             var tag = new NBTTagCompound();
             if (value.inputsPerTick() != null) {
                 tag.setLong("InputsPerTick", value.inputsPerTick());
@@ -44,11 +42,9 @@ public final class BuiltinOverlayCodecs {
     }
 
     public static NbtCodec<ResourceRequirementPatch> resourceIo(ResourceKeyNbt resources) {
-        Objects.requireNonNull(resources, "resources");
         return new NbtCodec<>() {
             @Override
             public NBTTagCompound encode(ResourceRequirementPatch value) {
-                Objects.requireNonNull(value, "value");
                 var tag = new NBTTagCompound();
                 write(tag, "Inputs", value.inputs());
                 write(tag, "InputsPerTick", value.inputsPerTick());

@@ -230,9 +230,18 @@ public final class StructurePreviewCamera {
         }
 
         public int[] scissor(int scale, int displayHeight) {
+            var result = new int[4];
+            scissor(scale, displayHeight, result);
+            return result;
+        }
+
+        public void scissor(int scale, int displayHeight, int[] result) {
             int left = (int) Math.floor(x * scale), right = (int) Math.ceil((x + width) * scale);
             int top = (int) Math.floor(y * scale), bottom = (int) Math.ceil((y + height) * scale);
-            return new int[]{left, displayHeight - bottom, right - left, bottom - top};
+            result[0] = left;
+            result[1] = displayHeight - bottom;
+            result[2] = right - left;
+            result[3] = bottom - top;
         }
     }
 

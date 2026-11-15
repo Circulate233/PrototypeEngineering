@@ -4,7 +4,6 @@ import ae2.api.stacks.AEKey;
 import net.minecraft.nbt.NBTTagCompound;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -16,11 +15,6 @@ public record ItemDeliveryFragment(UUID id, ItemDeliveryKey parent, AEKey resour
                                    NBTTagCompound taggedStackNbt, Target target, @Nullable UUID entityUuid,
                                    Status status) {
     public ItemDeliveryFragment {
-        Objects.requireNonNull(id, "id");
-        Objects.requireNonNull(parent, "parent");
-        Objects.requireNonNull(resource, "resource");
-        Objects.requireNonNull(target, "target");
-        Objects.requireNonNull(status, "status");
         if (count < 1 || taggedStackNbt.isEmpty())
             throw new IllegalArgumentException("Invalid item delivery fragment payload");
         if ((target instanceof Inventory || status == Status.PLANNED || status == Status.RETRY_PLANNED) && (entityUuid != null)) {
@@ -36,7 +30,6 @@ public record ItemDeliveryFragment(UUID id, ItemDeliveryKey parent, AEKey resour
      * Business checkpoints may advance status, but cannot change a frozen plan or terminal result.
      */
     public void requireTransitionTo(ItemDeliveryFragment next) {
-        Objects.requireNonNull(next);
         if (!id.equals(next.id) || !parent.equals(next.parent) || !resource.equals(next.resource)
             || count != next.count || !taggedStackNbt.equals(next.taggedStackNbt) || !target.equals(next.target)
             || (entityUuid != null) && !entityUuid.equals(next.entityUuid)

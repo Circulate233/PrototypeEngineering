@@ -5,7 +5,6 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -51,7 +50,7 @@ public final class StorageContext {
     private volatile StorageFence fence;
 
     public StorageContext(Runnable onChanged) {
-        this.onChanged = Objects.requireNonNull(onChanged);
+        this.onChanged = onChanged;
         if (order < 0) {
             throw new IllegalStateException("Storage lock order exhausted");
         }
@@ -68,7 +67,7 @@ public final class StorageContext {
         long previous = -1;
         for (int index2 = 0; index2 < contexts.size(); index2++) {
             var context = contexts.get(index2);
-            if (Objects.requireNonNull(context).order <= previous) {
+            if (context.order <= previous) {
                 throw new IllegalArgumentException("Storage contexts must be distinct and ordered");
             }
             previous = context.order;
@@ -268,7 +267,7 @@ public final class StorageContext {
      * Release one exact exposure only after its reservation has reached a confirmed terminal state.
      */
     public void releaseSequentialReservation(StorageFence expected) {
-        if (requireFenceAccess() != Objects.requireNonNull(expected)) {
+        if (requireFenceAccess() != expected) {
             throw new IllegalStateException("Sequential reservation belongs to another fence");
         }
         expected.releaseSequentialReservation();

@@ -188,7 +188,6 @@ class ResearchEligibilityTest {
         amount.put(ComputingResourceFixtures.COMPUTE, 1);
         assertFalse(eligibility.canStart(view, target.id(), 1, member.playerUuid(), amount, 2));
         assertThrows(IllegalArgumentException.class, () -> eligibility.canStart(view, target.id(), 1, UUID.randomUUID(), amount, 2));
-        assertThrows(NullPointerException.class, () -> eligibility.canStart(view, target.id(), 1, null, amount, 2));
     }
 
     @Test
@@ -219,29 +218,6 @@ class ResearchEligibilityTest {
         assertSame(failure, assertThrows(IllegalStateException.class, () -> eligibility.calculate("team", members, players,
             levels(), 0, Set.of(), resources())));
         assertEquals(3, calls.get());
-    }
-
-    @Test
-    void sourcePolicySpecialOnlyUnknownAndExcessiveLevelsAreRejectedBeforeProjection() {
-        var personal = definition("source_personal", 2, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage(1, 2).build()).build();
-        var owned = definition("source_owned", 2, ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(stage(1, 2).build()).build();
-        var special = definition("disk_only", 2, ResearchDownloadDeliveryPolicy.ITEM_ONLY).specialOnly().stage(stage(1, 2).build()).build();
-        var eligibility = new ResearchEligibility(registry(personal, owned, special));
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculate("team", List.of(), Map.of(), levels(personal.id(), 1), 0, Set.of(), resources()));
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculate("team", List.of(), Map.of(), levels(special.id(), 1), 0, Set.of(), resources()));
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculate("team", List.of(), Map.of(), levels(owned.id(), 3), 0, Set.of(), resources()));
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculate("team", List.of(), Map.of(), levels(id("unknown"), 1), 0, Set.of(), resources()));
-        for (var illegalId : List.of(owned.id(), special.id(), id("unknown"))) {
-            var member = player(illegalId, 1);
-            assertThrows(IllegalArgumentException.class, () -> eligibility.calculate("team", List.of(member.playerUuid()),
-                Map.of(member.playerUuid(), member), levels(), 0, Set.of(), resources()));
-        }
-        var excessive = player(personal.id(), 3);
-        assertThrows(IllegalArgumentException.class, () -> eligibility.calculate("team", List.of(excessive.playerUuid()),
-            Map.of(excessive.playerUuid(), excessive), levels(), 0, Set.of(), resources()));
-        var clean = eligibility.calculate("team", List.of(), Map.of(), levels(), 0, Set.of(), resources());
-        assertFalse(clean.isStartable(special.id()));
-        assertTrue(clean.isStartable(personal.id()));
     }
 
 }

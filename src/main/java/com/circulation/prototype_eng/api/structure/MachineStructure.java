@@ -55,7 +55,7 @@ public interface MachineStructure {
         return StructureOperation.call(() -> transform(rotation));
     }
 
-    default StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) {
+    default StructureOperation<@Nullable Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) {
         return StructureOperation.call(() -> {
             collectReads(plan, anchor, controller);
             return null;

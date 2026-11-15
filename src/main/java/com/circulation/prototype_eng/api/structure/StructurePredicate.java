@@ -28,7 +28,7 @@ public interface StructurePredicate {
     /**
      * Legacy budget hooks remain authoritative unless a predicate explicitly opts into context.
      */
-    default StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+    default StructureOperation<@Nullable Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
         return beginCollectReads(plan, position);
     }
 
@@ -62,7 +62,7 @@ public interface StructurePredicate {
         return StructureOperation.call(() -> transform(rotation));
     }
 
-    default StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position) {
+    default StructureOperation<@Nullable Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position) {
         return StructureOperation.call(() -> {
             collectReads(plan, position);
             return null;
@@ -104,7 +104,7 @@ public interface StructurePredicate {
         }
 
         @Override
-        default StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position) {
+        default StructureOperation<@Nullable Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position) {
             return beginCollectReads(plan, position, position);
         }
 
@@ -114,7 +114,7 @@ public interface StructurePredicate {
         }
 
         @Override
-        default StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+        default StructureOperation<@Nullable Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
             return StructureOperation.call(() -> {
                 collectReads(plan, position, controller);
                 return null;

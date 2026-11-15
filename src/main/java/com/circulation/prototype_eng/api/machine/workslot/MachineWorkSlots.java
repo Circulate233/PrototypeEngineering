@@ -31,7 +31,6 @@ import org.jetbrains.annotations.Nullable;
 import java.time.Duration;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -82,9 +81,8 @@ public final class MachineWorkSlots {
 
     private MachineWorkSlots(MachineInstance owner, List<WorkSlotDefinition> definitions, Set<ResourceLocation> defaultGroups,
                              RecipeExecutor executor, boolean dynamicRoster) {
-        this.owner = Objects.requireNonNull(owner);
-        this.executor = Objects.requireNonNull(executor);
-        Objects.requireNonNull(defaultGroups);
+        this.owner = owner;
+        this.executor = executor;
         this.dynamicRoster = dynamicRoster;
         dynamicGroups = defaultGroups;
         var declared = !dynamicRoster && definitions.isEmpty() ? List.of(new WorkSlotDefinition("main", defaultGroups)) : definitions;
@@ -92,7 +90,7 @@ public final class MachineWorkSlots {
         var workSlots = new ObjectArrayList<WorkSlot>(declared.size());
         for (int index25 = 0; index25 < declared.size(); index25++) {
             var definition = declared.get(index25);
-            var slot = new WorkSlot(Objects.requireNonNull(definition));
+            var slot = new WorkSlot(definition);
             if (dynamicRoster && slot.name().startsWith("pe_cross/"))
                 throw new IllegalArgumentException("Declared slot uses the runtime slot namespace");
             if (byName.putIfAbsent(slot.name(), slot) != null) {
@@ -126,7 +124,6 @@ public final class MachineWorkSlots {
         var batches = new ObjectArrayList<TickBatch>(hosts.size());
         for (int index21 = 0; index21 < hosts.size(); index21++) {
             var host = hosts.get(index21);
-            Objects.requireNonNull(host);
             if (!unique.add(host)) {
                 throw new IllegalArgumentException("Duplicate work-slot host in tick group");
             }
@@ -164,8 +161,7 @@ public final class MachineWorkSlots {
     public WorkSlot dynamicScanSlot(MachineRecipe recipe) {
         requireBoundary();
         if (!dynamicRoster) return null;
-        var rule = new WorkSlotDefinition("runtime", dynamicGroups, false, WorkSlotRestartPolicy.LOCKED_RETRY);
-        if (!rule.accepts(recipe)) return null;
+        if (!WorkSlotDefinition.accepts(dynamicGroups, recipe)) return null;
         for (int index1 = 0; index1 < slots.size(); index1++) {
             var slot = slots.get(index1);
             if (slot.process() == null && slot.definition().accepts(recipe)) return slot;
@@ -179,7 +175,7 @@ public final class MachineWorkSlots {
     @Nullable
     public WorkSlot appendRuntimeSlot(MachineRecipe recipe) {
         requireBoundary();
-        if (!dynamicRoster || !new WorkSlotDefinition("runtime", dynamicGroups, false, WorkSlotRestartPolicy.LOCKED_RETRY).accepts(recipe))
+        if (!dynamicRoster || !WorkSlotDefinition.accepts(dynamicGroups, recipe))
             return null;
         String name = "pe_cross/" + nextRuntimeSlot;
         long next = Math.incrementExact(nextRuntimeSlot);
@@ -225,7 +221,7 @@ public final class MachineWorkSlots {
      * No execution permission is granted; a later admission always rechecks the actual machine.
      */
     public SharedUsage sharedUsage(MachineRecipe recipe) {
-        return Objects.requireNonNull(beginSharedUsage(recipe, null).run());
+        return beginSharedUsage(recipe, null).run();
     }
 
     public UsageCapture beginSharedUsage(MachineRecipe recipe) {
@@ -233,7 +229,6 @@ public final class MachineWorkSlots {
     }
 
     private UsageCapture beginSharedUsage(MachineRecipe recipe, @Nullable Admission ignored) {
-        Objects.requireNonNull(recipe);
         var hosts = owner.recipeHosts();
         return new UsageCapture() {
             private final long rosterRevision = owner.recipeRosterRevision();
@@ -252,6 +247,7 @@ public final class MachineWorkSlots {
             private RecipeProcess counting;
 
             @Override
+            @SuppressWarnings("DataFlowIssue")
             public boolean advance(RecipeWorkBudget work) {
                 if (!current()) return false;
                 if (result != null) return true;
@@ -267,7 +263,7 @@ public final class MachineWorkSlots {
                             }
                             amount = counting.attributes().beginValueCapture(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
                         }
-                        if (!Objects.requireNonNull(amount).advance(work)) return false;
+                        if (!amount.advance(work)) return false;
                         count(counting, Math.max(1, (int) Math.floor(amount.result())));
                         counting = null;
                         amount = null;
@@ -293,7 +289,7 @@ public final class MachineWorkSlots {
             @Override
             public SharedUsage result() {
                 if (!current()) throw new IllegalStateException("Shared usage capture changed");
-                return Objects.requireNonNull(result, "Shared usage capture is incomplete");
+                return result;
             }
 
             @Override
@@ -318,7 +314,7 @@ public final class MachineWorkSlots {
     }
 
     public WorkSlot requireSlot(String name) {
-        var slot = byName.get(Objects.requireNonNull(name));
+        var slot = byName.get(name);
         if (slot == null) {
             throw new IllegalArgumentException("Unknown work slot: " + name);
         }
@@ -378,7 +374,7 @@ public final class MachineWorkSlots {
     public boolean startIn(String name, RecipeProcess process, RecipeCatalog.Selection selection) {
         requireBoundary();
         validateUnattached(process);
-        return Objects.requireNonNull(selection).accepts(owner, process.recipe()) && startIn(name, process);
+        return selection.accepts(owner, process.recipe()) && startIn(name, process);
     }
 
     public boolean startIn(String name, RecipeProcess process, RecipeCatalog.Selection selection, SharedUsage basis) {
@@ -389,14 +385,13 @@ public final class MachineWorkSlots {
 
     @SuppressWarnings("ReturnOfInnerClass") // The retained admission cursor belongs to this exact work-slot host.
     public Admission beginAdmission(String name, RecipeProcess process, RecipeCatalog.Selection selection) {
-        Objects.requireNonNull(selection);
         return createAdmission(name, process, selection);
     }
 
     @SuppressWarnings("ReturnOfInnerClass") // Carries the scanner's shared allowance into the exact host admission.
     public Admission beginAdmission(String name, RecipeProcess process, RecipeCatalog.Selection selection, SharedUsage basis) {
         var admission = beginAdmission(name, process, selection);
-        admission.basis = Objects.requireNonNull(basis);
+        admission.basis = basis;
         return admission;
     }
 
@@ -424,7 +419,6 @@ public final class MachineWorkSlots {
      */
     public boolean detach(RecipeProcess process) {
         requireBoundary();
-        Objects.requireNonNull(process);
         for (int index9 = 0; index9 < slots.size(); index9++) {
             var slot = slots.get(index9);
             if (slot.process() == process) {
@@ -447,8 +441,6 @@ public final class MachineWorkSlots {
      */
     public boolean cancel(RecipeProcess process, ProcessResult.Failure reason) {
         requireCancellationBoundary();
-        Objects.requireNonNull(process);
-        Objects.requireNonNull(reason);
         for (int index14 = 0; index14 < slots.size(); index14++) {
             var slot = slots.get(index14);
             if (slot.process() != process) {
@@ -480,7 +472,6 @@ public final class MachineWorkSlots {
      */
     public int cancelAll(ProcessResult.Failure reason) {
         requireCancellationBoundary();
-        Objects.requireNonNull(reason);
         executing = true;
         Throwable failure = null;
         int cancelled = 0;
@@ -660,7 +651,6 @@ public final class MachineWorkSlots {
      * Holds the batch callback scope across requirements, source notifications and nested cleanup.
      */
     public <T> T withProcessCallback(RecipeProcess process, Supplier<T> action) {
-        Objects.requireNonNull(action);
         requireProcessOperation(process);
         var batch = activeBatch;
         if (batch == null) {
@@ -747,26 +737,23 @@ public final class MachineWorkSlots {
      */
     public void restore(List<SlotSnapshot> snapshot) {
         requireBoundary();
-        var previous = snapshot();
-        var replacement = new ObjectArrayList<>(snapshot);
-        if (!dynamicRoster && replacement.size() != slots.size() || dynamicRoster && replacement.size() < declaredSlotCount) {
+        if (!dynamicRoster && snapshot.size() != slots.size() || dynamicRoster && snapshot.size() < declaredSlotCount) {
             throw new IllegalArgumentException("Work slot layout size changed");
         }
         var processes = new ReferenceOpenHashSet<RecipeProcess>();
         var previousProcesses = new ReferenceOpenHashSet<RecipeProcess>();
-        var names = new ObjectOpenHashSet<String>(replacement.size());
+        var names = new ObjectOpenHashSet<String>(snapshot.size());
         long restoredNext = nextRuntimeSlot;
-        for (int index5 = 0; index5 < previous.size(); index5++) {
-            var old = previous.get(index5);
+        for (int index5 = 0; index5 < slots.size(); index5++) {
+            var old = slots.get(index5);
             if (old.process() != null) {
                 previousProcesses.add(old.process());
             }
         }
-        for (int i = 0; i < replacement.size(); i++) {
-            var saved = Objects.requireNonNull(replacement.get(i));
+        for (int i = 0; i < snapshot.size(); i++) {
+            var saved = snapshot.get(i);
             if (!names.add(saved.definition().name()))
                 throw new IllegalArgumentException("Duplicate restored slot name");
-            var slot = dynamicRoster ? new WorkSlot(saved.definition()) : slots.get(i);
             if (!acceptsRestoredDefinition(i, saved.definition())) {
                 throw new IllegalArgumentException("Work slot layout changed: " + saved.definition().name());
             }
@@ -781,7 +768,7 @@ public final class MachineWorkSlots {
                 continue;
             }
             validateProcess(process);
-            if (!processes.add(process) || !accepts(slot, process) || !saved.result().equals(process.state().result())
+            if (!processes.add(process) || !saved.definition().accepts(process.recipe()) || !saved.result().equals(process.state().result())
                 || process.host() != null && (process.host() != this || !previousProcesses.contains(process))) {
                 throw new IllegalArgumentException("Duplicate, incompatible or foreign process in restored work slots");
             }
@@ -807,15 +794,15 @@ public final class MachineWorkSlots {
         if (dynamicRoster) {
             slots.clear();
             byName.clear();
-            for (int index8 = 0; index8 < replacement.size(); index8++) {
-                var saved = replacement.get(index8);
+            for (int index8 = 0; index8 < snapshot.size(); index8++) {
+                var saved = snapshot.get(index8);
                 var slot = new WorkSlot(saved.definition());
                 slots.add(slot);
                 byName.put(slot.name(), slot);
             }
         }
-        for (int i = 0; i < replacement.size(); i++) {
-            var saved = replacement.get(i);
+        for (int i = 0; i < snapshot.size(); i++) {
+            var saved = snapshot.get(i);
             if (saved.process() != null) {
                 saved.process().attachTo(this);
             }
@@ -866,7 +853,7 @@ public final class MachineWorkSlots {
     }
 
     private void validateProcess(RecipeProcess process) {
-        Objects.requireNonNull(process).requirePersistenceBoundary();
+        process.requirePersistenceBoundary();
         if (process.owner() != owner) {
             throw new IllegalArgumentException("Process belongs to a different machine");
         }
@@ -958,7 +945,7 @@ public final class MachineWorkSlots {
             if (!begun) {
                 throw new IllegalStateException("Work-slot group has not begun");
             }
-            if (!collectCurrentStages().isEmpty()) {
+            if (hasCurrentStages()) {
                 throw new IllegalStateException("Previous recipe group round is unsettled");
             }
             if (stopped) {
@@ -1010,6 +997,14 @@ public final class MachineWorkSlots {
             }
         }
 
+        private boolean hasCurrentStages() {
+            for (int index = 0; index < batches.size(); index++) {
+                var batch = batches.get(index);
+                if (!batch.finished && batch.hasCurrentStages()) return true;
+            }
+            return false;
+        }
+
         public void stop() {
             requireOwner();
             stopped = true;
@@ -1030,7 +1025,7 @@ public final class MachineWorkSlots {
 
         public void recordFailure(Throwable failure) {
             requireOwner();
-            recordFailureInternal(Objects.requireNonNull(failure));
+            recordFailureInternal(failure);
         }
 
         private void recordFailureInternal(Throwable failure) {
@@ -1059,7 +1054,7 @@ public final class MachineWorkSlots {
          */
         public boolean tryFinish() {
             requireOwner();
-            if (!collectCurrentStages().isEmpty()) {
+            if (hasCurrentStages()) {
                 return false;
             }
             stopped = true;
@@ -1210,7 +1205,7 @@ public final class MachineWorkSlots {
             if (!begun) {
                 throw new IllegalStateException("Work-slot batch has not begun");
             }
-            if (!currentStages().isEmpty()) {
+            if (group == null && hasCurrentStages()) {
                 throw new IllegalStateException("Previous recipe round is unsettled");
             }
             if (stopped) {
@@ -1262,6 +1257,15 @@ public final class MachineWorkSlots {
             return stages;
         }
 
+        private boolean hasCurrentStages() {
+            for (int index = 0; index < entries.size(); index++) {
+                var entry = entries.get(index);
+                entry.requireIdentity(host);
+                if (entry.session != null && !entry.postAttempted && entry.session.currentStage() != null) return true;
+            }
+            return false;
+        }
+
         /**
          * Normal cancellation/retirement stops later rounds; current stages still need settlement.
          */
@@ -1275,7 +1279,6 @@ public final class MachineWorkSlots {
          */
         public void recordFailure(Throwable failure) {
             requireIdentity();
-            Objects.requireNonNull(failure);
             stopped = true;
             host.faulted = true;
             var previousProcess = permitted;
@@ -1306,7 +1309,7 @@ public final class MachineWorkSlots {
          */
         public boolean tryFinish() {
             requireOwner();
-            if (!currentStages().isEmpty()) {
+            if (group == null && hasCurrentStages()) {
                 return false;
             }
             stopped = true;
@@ -1429,10 +1432,6 @@ public final class MachineWorkSlots {
 
     public record SlotSnapshot(WorkSlotDefinition definition, @Nullable RecipeProcess process,
                                ProcessResult result) {
-        public SlotSnapshot {
-            Objects.requireNonNull(definition);
-            Objects.requireNonNull(result);
-        }
     }
 
     public final class Admission {
@@ -1468,8 +1467,6 @@ public final class MachineWorkSlots {
 
         public boolean advance(RecipeWorkBudget budget, BooleanSupplier authorization) {
             requireOwner();
-            Objects.requireNonNull(budget);
-            Objects.requireNonNull(authorization);
             if (finished) return true;
             advancing = true;
             try {
@@ -1500,7 +1497,7 @@ public final class MachineWorkSlots {
                 }
                 if (!dynamicRoster && capacityValue == null)
                     capacityValue = owner.attributes().beginValueCapture(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 1);
-                if (!dynamicRoster && !Objects.requireNonNull(capacityValue).advance(budget)) {
+                if (!dynamicRoster && !capacityValue.advance(budget)) {
                     if (!capacityValue.current()) capacityValue = null;
                     return false;
                 }
@@ -1522,12 +1519,12 @@ public final class MachineWorkSlots {
                 // Owner permission is also an extension callback. The scanner's authorization must
                 // run after it so a callback cannot replace the definition after its final proof.
                 if (workPaused() || !authorization.getAsBoolean()) return finish(false);
-                if (!dynamicRoster && !Objects.requireNonNull(capacityValue).current()) {
+                if (!dynamicRoster && !capacityValue.current()) {
                     capacityValue = null;
                     return false;
                 }
                 validateUnattached(process);
-                if (!dynamicRoster && active >= Math.clamp((long) Objects.requireNonNull(capacityValue).result(), 0, slots.size())
+                if (!dynamicRoster && active >= Math.clamp((long) capacityValue.result(), 0, slots.size())
                     || slot.process() != null
                     || owner.recipeThreadCount(process.recipe().id()) >= process.recipe().maxConcurrentThreads())
                     return finish(false);

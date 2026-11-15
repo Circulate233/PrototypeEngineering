@@ -35,7 +35,6 @@ import org.lwjgl.opengl.GL11;
 import java.awt.Rectangle;
 import java.io.IOException;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
@@ -166,8 +165,9 @@ public final class GuiMEPatternAssembly extends AEBaseGui<ContainerMEPatternAsse
     }
 
     @Override
+    @SuppressWarnings("DataFlowIssue") // The container constructor sets its AE title before this GUI opens.
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        GuiLabel.drawCentered(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 30, 9, 136, 9, 0x404040, false);
+        GuiLabel.drawCentered(fontRenderer, container.getGuiTitle().getFormattedText(), 30, 9, 136, 9, 0x404040, false);
         GuiAtlas.draw(SLOTS, 192, 15, 188, 0, 68, 8, 256, 256);
         int pages = container.snapshot.pages();
         int enabledWidth = Math.min(68, 11 + Math.max(0, Math.min(20, pages) - 1) * 3);

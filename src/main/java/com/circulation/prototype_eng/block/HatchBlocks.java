@@ -16,7 +16,6 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.registry.GameRegistry;
 
 import java.util.List;
-import java.util.Objects;
 
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class HatchBlocks {
@@ -53,11 +52,12 @@ public final class HatchBlocks {
     }
 
     @SubscribeEvent
+    @SuppressWarnings("DataFlowIssue")
     public static void registerItems(RegistryEvent.Register<Item> event) {
         var size = BLOCKS.size();
         for (var i = 0; i < size; i++) {
             var block = BLOCKS.get(i);
-            event.getRegistry().register(block.createItem().setRegistryName(Objects.requireNonNull(block.getRegistryName())));
+            event.getRegistry().register(block.createItem().setRegistryName(block.getRegistryName()));
         }
     }
 }

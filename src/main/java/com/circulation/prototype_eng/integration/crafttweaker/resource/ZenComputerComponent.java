@@ -8,7 +8,6 @@ import crafttweaker.api.minecraft.CraftTweakerMC;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
-import java.util.Objects;
 
 /**
  * Fixed scripts and Java-provided dynamic suppliers share the same canonical item registry.
@@ -17,9 +16,6 @@ import java.util.Objects;
 @ZenClass("mods.prototype_eng.resource.ComputerComponent")
 @SuppressWarnings("unused") // Entry points are called by ZenScript and Java addons.
 public record ZenComputerComponent(NetworkComputerComponent value) {
-    public ZenComputerComponent {
-        Objects.requireNonNull(value);
-    }
 
     @ZenMethod
     public static ZenComputerComponent fixed(ZenComputingResources resources) {

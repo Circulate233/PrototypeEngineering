@@ -26,11 +26,12 @@ public interface DataCenter {
      * Owner-side capture of the attached database's real contents and version proof.
      */
     default NetworkRuntime.Capture networkCapture(MachineIdentityRegistry.Registration identity) {
-        var contents = dataCenterStorage().capture();
+        var storage = dataCenterStorage();
+        var contents = storage.capture();
         var snapshot = contents.snapshot();
         return new NetworkRuntime.Capture(new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.DATA_CENTER,
             snapshot.level(), ((MachineInstance) this).lifecycle().formed(), identity.loadOrder(),
             Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY, snapshot.capacity(), snapshot.storedResearch().size(), snapshot),
-            contents.current());
+            () -> dataCenterStorage() == storage && contents.current().getAsBoolean());
     }
 }

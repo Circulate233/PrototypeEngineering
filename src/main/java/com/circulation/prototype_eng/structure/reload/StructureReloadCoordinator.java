@@ -9,12 +9,10 @@ import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.machine.ControllerStructureUpdates;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -38,10 +36,10 @@ public final class StructureReloadCoordinator {
 
     public StructureReloadCoordinator(TaskScheduler scheduler, MachineTypeRegistry registry, Supplier<StructureCatalog> readCandidate,
                                       Consumer<Publication> publishClients) {
-        this.scheduler = Objects.requireNonNull(scheduler);
-        this.registry = Objects.requireNonNull(registry);
-        this.readCandidate = Objects.requireNonNull(readCandidate);
-        this.publishClients = Objects.requireNonNull(publishClients);
+        this.scheduler = scheduler;
+        this.registry = registry;
+        this.readCandidate = readCandidate;
+        this.publishClients = publishClients;
         publication = presentation(registry.structureCatalog(), UUID.randomUUID(), 0);
     }
 
@@ -83,21 +81,23 @@ public final class StructureReloadCoordinator {
         requireOwner();
         loadedHosts.remove(lifecycle);
         capturedLoaded = null;
-        var removed = new ObjectArrayList<ControllerStructureUpdates>();
-        for (var updates : registrations.keySet()) if (updates.lifecycle() == lifecycle) removed.add(updates);
-        for (int index = 0; index < removed.size(); index++) {
-            var updates = removed.get(index);
-            unregister(updates);
+        for (var entries = registrations.reference2ObjectEntrySet().fastIterator(); entries.hasNext(); ) {
+            var entry = entries.next();
+            if (entry.getKey().lifecycle() == lifecycle) {
+                entry.getValue().active = false;
+                entries.remove();
+            }
         }
     }
 
     /**
      * Actual Loaded callback records the identity only; it must not enter a still-held load gate.
      */
+    @SuppressWarnings("DataFlowIssue") // The actual machine Loaded callback runs after its lifecycle is attached.
     public void loaded(MachineInstance machine, ReloadableStructureHost host) {
         requireOwner();
         if (closed) return;
-        var lifecycle = Objects.requireNonNull(machine.lifecycle());
+        var lifecycle = machine.lifecycle();
         if (lifecycle.host() != host)
             throw new IllegalArgumentException("Loaded structure host differs from its lifecycle");
         var existing = loadedHosts.get(lifecycle);
@@ -171,7 +171,7 @@ public final class StructureReloadCoordinator {
             var captured = new ObjectArrayList<LoadedIdentity>(loadedHosts.size());
             for (var entry : loadedHosts.reference2ObjectEntrySet())
                 captured.add(new LoadedIdentity(entry.getKey(), entry.getValue()));
-            capturedLoaded = ObjectLists.unmodifiable(captured);
+            capturedLoaded = captured;
         }
         return capturedLoaded;
     }
@@ -194,7 +194,6 @@ public final class StructureReloadCoordinator {
      * Request may originate off-thread; no parsing, host access or execution occurs there.
      */
     public void reload(Consumer<Result> completed) {
-        Objects.requireNonNull(completed);
         scheduler.runAtBoundary(() -> apply(completed));
     }
 
@@ -212,7 +211,7 @@ public final class StructureReloadCoordinator {
             Publication next;
             var batch = new ObjectArrayList<Prepared>();
             try {
-                replacement = registry.prepareReplacement(Objects.requireNonNull(readCandidate.get()));
+                replacement = registry.prepareReplacement(readCandidate.get());
                 next = presentation(replacement.catalog(), publication.view().session(), Math.incrementExact(publication.view().sequence()));
 
                 var elements = new ObjectArrayList<>(registrations.values());

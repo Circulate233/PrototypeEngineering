@@ -52,7 +52,7 @@ class CompletionFailureTest {
         if (stage == RecipeStage.TICK) {
             assertEquals(new RecipeProcess.Tick(0, 0, 0, 0), process.tickContext());
         } else {
-            assertThrows(NullPointerException.class, process::tickContext);
+            assertNull(process.tickContext());
         }
     }
 
@@ -231,7 +231,7 @@ class CompletionFailureTest {
         assertEquals(25, input.insert(MATERIAL, 25, Actionable.SIMULATE));
         assertEquals(7, output.availableAmount(MATERIAL));
         assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
-        assertThrows(NullPointerException.class, process::requirementPath);
+        assertNull(process.requirementPath());
         var afterFailure = List.copyOf(events);
         var committedState = process.state();
         assertThrows(IllegalStateException.class, process::tick);
@@ -276,7 +276,7 @@ class CompletionFailureTest {
         var later = requirement(laterId, (current, stage) -> stage != RecipeStage.START ? RequirementTransaction.SUCCESS
             : transaction(List.of(), () -> {
             assertEquals(new RequirementPath(null, laterId, laterId), current.requirementPath());
-            assertThrows(NullPointerException.class, current::tickContext);
+            assertNull(current.tickContext());
             events.add("complete:later");
         }));
         var process = process(1, RecipeRequirements.CHECKPOINT.requirement(checkpointId, new CheckpointRequirement(0, child)), later);
@@ -306,8 +306,8 @@ class CompletionFailureTest {
         assertEquals(17, input.availableAmount(MATERIAL));
         assertEquals(83, input.insert(MATERIAL, 83, Actionable.SIMULATE));
         assertEquals(RecipeProcess.Lifecycle.RUNNING, process.state().lifecycle());
-        assertThrows(NullPointerException.class, process::requirementPath);
-        assertThrows(NullPointerException.class, process::tickContext);
+        assertNull(process.requirementPath());
+        assertNull(process.tickContext());
         var afterFailure = List.copyOf(events);
         var committedState = process.state();
         assertThrows(IllegalStateException.class, process::tick);
