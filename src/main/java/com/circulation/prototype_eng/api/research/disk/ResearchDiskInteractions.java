@@ -30,8 +30,10 @@ public final class ResearchDiskInteractions {
         if (!world.isBlockModifiable(player, pos) || !player.canPlayerEdit(pos, facing, stack))
             return EnumActionResult.FAIL;
         if (!world.isRemote && player instanceof EntityPlayerMP actor) {
-            ServerResearch.requestDiskImport(actor, pos, hand, facing,
-                result -> actor.sendStatusMessage(ResearchDiskText.diskImport(result.status()).text(), true));
+            ServerResearch.requestDiskImport(actor, pos, hand, facing, result -> {
+                var text = ResearchDiskText.diskImport(result.status());
+                if (text != null) actor.sendStatusMessage(text.text(), true);
+            });
         }
         return EnumActionResult.SUCCESS;
     }

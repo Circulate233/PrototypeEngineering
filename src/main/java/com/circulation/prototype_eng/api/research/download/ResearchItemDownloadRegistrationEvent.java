@@ -17,4 +17,8 @@ public final class ResearchItemDownloadRegistrationEvent extends Event {
     public ResearchItemDownloadRegistry registry() {
         return registry;
     }
+
+    public ResearchItemImportRegistry imports() {
+        return ResearchItemImportRegistry.INSTANCE;
+    }
 }

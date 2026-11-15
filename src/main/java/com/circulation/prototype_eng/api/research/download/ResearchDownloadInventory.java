@@ -7,12 +7,14 @@ import org.jetbrains.annotations.Nullable;
 import java.util.UUID;
 
 /**
- * Exact player inventory and durable receipts owned by the world's download operation.
+ * Exact material inventory and durable receipts owned by the world's download operation.
  * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 @SuppressWarnings("unused") // Public world-owned download inventory contract, also implemented by external hosts.
 public interface ResearchDownloadInventory {
     UUID playerId();
+
+    boolean machineInventory();
 
     @Nullable ResearchDownloadMaterial capture(UUID operationId, int slot);
 

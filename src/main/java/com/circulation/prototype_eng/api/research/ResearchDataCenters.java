@@ -11,6 +11,7 @@ import com.circulation.prototype_eng.api.network.NetworkWorkState;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
+import java.util.Set;
 
 /**
  * Owner-side access to the exact physical database selected by an existing network publication.
@@ -115,6 +116,26 @@ public final class ResearchDataCenters {
             return result.current() ? result : null;
         }
 
+        return null;
+    }
+
+    /**
+     * Captures an exact member-owned database even when another database currently serves the team.
+     */
+    public @Nullable PhysicalCapture captureMemberOwned(Set<UUID> members, UUID expectedDataCenterId) {
+        ownerCheck.run();
+        long revision = identities.revision();
+        var registrations = identities.uniqueRegistrations();
+        for (int index = 0; index < registrations.size(); index++) {
+            var identity = registrations.get(index);
+            if (!identity.identity().machineId().equals(expectedDataCenterId)
+                || !members.contains(identity.identity().ownerId())
+                || !(identity.runtimeIdentity() instanceof MachineInstance machine)) continue;
+            var binding = storageBinding(machine);
+            if (binding == null) return null;
+            var result = new PhysicalCapture(this, revision, identity, machine, binding);
+            return result.current() ? result : null;
+        }
         return null;
     }
 

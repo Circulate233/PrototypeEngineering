@@ -51,7 +51,7 @@ C = 实际 SDK718 编译；H = 独立 JVM 中执行真实核心 API；N = 用户
 | 普通data/末tick/保存/full-sync | native_data_fixed/cross安装MACHINE/PROCESS和codec；post消费pending nonce；checkpoint对照真实UUID/seed/recipe/计数，退出重进/卸载/失配补回；客户端准确generation同nonce。 | N/V待；不拿局部SDK对象当保存证据 |
 | 五网络角色/FTB/预算 | 真实物理计算物品供给/拒绝、同机THREAD lease1、四工位各compute6付款与补偿、队伍切换与权限；device3并行完整FE1920、四工位7680。 | C通过，N待；NETWORK-RENDER-TESTS.md |
 | 研究/手动/站点/权限/奖励 | prerequisite/mutex/去重，手动先付iron1恢复原session/entry，再补1；站60/120周期checkpoint、原site/codec、gold1/redstone120→nugget120/diamond1/FE256；非OP拒绝；奖励回执与真实物品。 | C通过，N待；NETWORK-RENDER-TESTS.md |
-| 数据库/下载/真实编码 | paper→book、源研究扣级一次、PREPARED退出恢复原nonce；ResearchDiskEncodingEvent正式注册、实际requestItemDownload、tier/容量/源等级拒绝、准确native盘NBT与产物总量。 | C通过，N待；fixture写盘不冒充正式编码 |
+| 数据库/下载/真实编码 | paper→book、源研究扣级一次、PREPARED退出恢复原nonce；按ResearchDiskCarrier自动识别空盘、实际预览与requestItemDownload、tier/容量/源等级拒绝、准确native盘NBT与产物总量。 | C通过，N待；fixture写盘不冒充正式编码 |
 | 渲染/锚点/动画 | 四pass、真实geo/texture/animation、component及whole/per-slice；准确origin/kind/slice/path；CSV/单名/typed优先、旋转offset和Gecko真实frame。 | C通过，N/V待；CPU采样不代替GPU/Bloom |
 | 私有目录/JEI/旧配方跨版本 | 完整manifest和准确page/options/native row；已有minecraft.crafting只催化剂；运行中v1=2400t跨v2=40t保留旧codec/seed/data/END emerald1；通知失败仍已published。 | C通过，N/V待；NETWORK-RENDER-TESTS.md |
 | 共享子结构/可拓展塔 | 12/23实际脚本；26材料、两份pod和marker；1–4段22/31/40/49材料、唯一cap随末段；准确World冻结断言、移除marker/cap及0/5段负例、真正配方付款。构造器重复次数保存并传到左右/投影/服务器计划。 | C通过；24专项含保存段数几何对照，N/V仍待；scripts/README-composite.md |

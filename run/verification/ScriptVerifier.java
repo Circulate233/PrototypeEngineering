@@ -97,6 +97,7 @@ public final class ScriptVerifier {
             ZenResearch.class, ZenResearchStage.class, ZenResearchFormula.class, ZenResearchReward.class,
             ZenResearchRewardCallback.class, ZenResearchRewardEvent.class, ZenResearchStartCondition.class, ZenResearchStartContext.class,
             ZenResearchDownloads.class, ZenResearchDownloadCallback.class, ZenResearchDownloadContext.class,
+            ZenResearchImports.class, ZenResearchImportCallback.class, ZenResearchImportContext.class, ZenResearchImportResult.class,
             ZenResearchServer.class, ZenResearchPermissionCallback.class, ZenResearchPermissionContext.class,
             ExampleText.class, CoreCases.class, NativeChecks.class, RunNetworkRender.class))
             registry.registerNativeClass(type);

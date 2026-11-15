@@ -39,7 +39,7 @@ Java addon 通过 Forge 事件提交定义。库在对应事件结束后检查�
 | `MachineTypeRegistrationEvent`              | 声明机器类型，库随后为这些类型创建控制器方块。     |
 | `NetworkComputerComponentRegistrationEvent` | 声明哪些物品提供计算资源。                         |
 | `ResearchRegistrationEvent`                 | 添加研究及等级要求。                               |
-| `ResearchItemDownloadRegistrationEvent`     | 设置研究下载所用材料和生成物品的函数。             |
+| `ResearchItemDownloadRegistrationEvent`     | 注册研究下载和物品导入配方，包含材料、输出、研究要求与费用。 |
 | `ResearchServerConfigurationEvent`          | 设置研究操作的权限规则。                           |
 | `RecipeRegistrationEvent`                   | 注册配方池、配方及保存版本。                       |
 | `RecipeDeclarationRegistrationEvent`        | 给整套配方目录声明身份，用于客户端校验和目录替换。 |
@@ -270,6 +270,20 @@ MachineAssembly.builder(type, "research-station-v1")
 
 `ResearchWorld` 的 writer 只保存传入的只读快照，禁止修改研究源或重入研究操作。写入失败会保留 pendingSave，后续状态修改前先重试同一快照，禁止在 writer 内修改快照或重新推进业务。
 
+研究定义不包含下载等级费用。`ResearchItemDownloadRegistrationEvent.registry()` 注册自定义下载到物品的配方，`.imports()` 注册自定义物品导入数据库的配方。两份注册表的 `recipes()` 返回只读借用的随机访问列表。JEI 从这两类自定义定义自动生成输入、输出及研究说明，不运行转换回调。实现 `ResearchDiskCarrier` 的物品直接支持默认存盘下载与导入，禁止为这两项默认操作注册配方或生成 JEI 页面；使用方自行说明存盘用法。
+
+`ResearchItemDownloadRegistry.register(id, material, researchId, researchLevel, levelCost, outputTemplate[, event])` 每次支付一件输入和配方定义的来源等级。静态重载使用 outputTemplate，event 重载通过纯 `createOutput(context)` 生成实际输出；模板仍用于 JEI。回调返回 `ItemStack.EMPTY` 表示本次没有匹配输出，不报告配方错误。默认空盘下载每次支付来源 1 级、编码所选研究 1 级，没有用户选择等级或存盘配方注册入口。
+
+`ServerResearch.requestItemDownloadPreview(...)` 接收原输入库存与交付适配，生成服务端候选；`ResearchItemDownloadPreview` 借用准确原输入、输出与来源付款计划。其 `teamLevelLoss()` 是本次付款后队伍可见等级的实际下降，0 显示“无”；不能把它当作免除配方 levelCost 的条件。`requestItemDownload(..., preview, nonce, inventory, delivery, current, result)` 重新捕获玩家权限、原数据库及输入后冻结候选，禁止再次调用事件改变已经预览的产物。
+
+`ResearchItemImportRegistry.register(id, material, researchId, levels, outputTemplate[, event])` 注册单输入、单输出导入。event 返回 `ResearchItemImportEvaluation(ResearchDiskData, output)`，其中研究等级表示本次增加量；返回 null 表示本次不匹配。默认存盘导入直接读取实际物品接口，对盘内每项研究增加 1 级并返回同一物品的空盘。研究最高等级、数据库阶级、容量及互斥检查作用于累加后的内容，不能以取最大值代替累加。模板和回调结果按只读要求借用，不在构造器或 getter 中重复复制。
+
+`ResearchDiskCarrier.writeResearchDisk(stack, data)` 与 `emptyResearchDisk(stack)` 返回独立产物，输入为只读借用。默认方法仅写入或删除研究命名空间，保留物品其他 NBT 和 ForgeCaps。自定义存盘布局必须同时覆盖读取、写入和清空方法；物理阶级由 `researchDiskTier(actualStack)` 提供。
+
+`ServerResearch.requestItemImportPreview(actor, team, databaseId, slot, inventory, delivery, current, result)` 生成材料、输出和累加后的数据库候选。`requestItemImport(..., preview, nonce, inventory, delivery, current, result)` 使用同一候选执行，不再次调用转换事件。两类预览及直接执行入口在付款前调用 `ItemDeliveryAdapter.canOutput(nativeTemplate, amount)` 检查实际完整产物；有限容量的自定义交付适配必须覆盖该方法。已付款操作按保存的交付计划恢复，不再使用初始空槽条件拒绝原义务。
+
+默认 `MachineDataCenterStorage.transfers()` 提供数据库持久输入槽 0、输出槽 1。`forPlayer(uuid)` 的适配同时提供 `ResearchDownloadInventory` 和 `ItemDeliveryAdapter`；原输入付款及输出交付使用该物理库，同一组件保存库存和回执。研究世界记录原物理目标，卸载或重选库不能把未完成操作转移给玩家背包或新数据库。`ServerResearch.requestItemImportFromDataCenter(...)` 使用此库存执行导入；云端写库方法继续保留独立调用。`DataCenterStorage.removeResearch(id, current)` 与 `requestDataCenterRemove(...)` 负责按独立权限移出同队物理库条目，释放容量且不扣队伍研究等级。
+
 完整 Java 示例见[NetworkCenterExamples.java](run/visual-examples/src/main/java/pe/visual/examples/NetworkCenterExamples.java)和[ResearchStationExamples.java](run/visual-examples/src/main/java/pe/visual/examples/ResearchStationExamples.java)。网络中心与研究站正式 GUI 均已接入。研究站队列操作和增量同步见[研究 GUI](docs/research-gui.md)。
 
 ### 资源展示包与增量同步
@@ -300,7 +314,7 @@ ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, 
 
 所有接网控制器支持 `MachineType.Builder.networkEvent(callback)`，Java全局事件用 `NetworkDeviceEvents.register(callback)`，ZS全局事件用 `Events.onDevice(callback)`。全局事件先于类型事件。事件公开同队全部已加载设备快照，允许修改本设备资源、并发、研究站速率和 FE 输入倍率；资源表通过 `get/set/add/remove` 修改，`add` 使用 `addTo`。ZS 的 `DeviceEvent` 暴露 `network/values/machineType`，`ComputerRecipeEvent` 另提供 `stage/progress/duration`；`network` 提供 `teamId/tick/devices/hasDevice(typeId)`，`values` 提供 `resources/required/researchRates/concurrency/energyMultiplier`。完整调用顺序、设备字段及禁止外部副作用的说明见[网络设备事件](docs/network-events.md)。
 
-默认数据库使用 `DataCenterController(type, storageComponent)`，`storageComponent` 是已声明的 `DataCenterStorage` 组件类型。等级、容量与内容由存储组件定义，控制器直接使用现有持久化、下载及自动升级能力，无配方工位或独立业务tick，并可继承。类型声明 `MachineOwnership.TYPE`、存储组件和 `DataCenter.DEVICE`；装配为存储配置codec，只将网络角色标为recreated。自定义控制器也可直接实现 `DataCenter`，通过 `dataCenterStorage()` 提供实际存储组件。活动数据库沿既有规则占1份优先并发，GUI继续延缓。Java/ZS完整入口见[默认数据库控制器](docs/data-centers.md#默认控制器2026-11-13)。
+默认数据库使用 `DataCenterController(type, storageComponent)`，`storageComponent` 是已声明的 `DataCenterStorage` 组件类型。等级、容量、研究和操作库存由存储组件保存，控制器组合使用持久化、下载及自动升级，无配方工位或独立业务 tick，并可继承。类型声明 `MachineOwnership.TYPE`、存储组件和 `DataCenter.DEVICE`；装配为存储配置 codec，将网络角色标为 recreated。自定义控制器也可直接实现 `DataCenter`，通过 `dataCenterStorage()` 提供实际存储组件。活动数据库占 1 份优先并发，正式 GUI 等待设计审核。Java/ZS 入口见[默认数据库控制器](docs/data-centers.md#默认控制器2026-11-13)。
 
 ### GUI、模型与 JEI
 

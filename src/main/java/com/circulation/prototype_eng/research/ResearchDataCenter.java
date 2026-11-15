@@ -79,8 +79,8 @@ public final class ResearchDataCenter implements DataCenterStorage {
                 throw new IllegalArgumentException("Database receipt identity or metadata differs");
             validateContents(receipt.before(), registry);
             validateContents(receipt.after(), registry);
-            for (var stored : receipt.after().storedResearch().object2IntEntrySet()) {
-                if (saved.contents().storedResearch().getInt(stored.getKey()) < stored.getIntValue())
+            for (var imported : receipt.entries().keySet()) {
+                if (saved.contents().storedResearch().getInt(imported) < receipt.after().storedResearch().getInt(imported))
                     throw new IllegalArgumentException("Database contents lost a committed disk import");
             }
         }
@@ -225,6 +225,37 @@ public final class ResearchDataCenter implements DataCenterStorage {
         return updated ? Result.UPDATED : Result.UNCHANGED;
     }
 
+    /**
+     * Adds item-provided levels to a detached candidate. Every entry must fit before any content is
+     * published; a full research cannot consume another input or produce its return item.
+     */
+    public static Result addFromItems(Object2IntMap<ResourceLocation> entries, DataCenterResearchSnapshot before,
+                                      TeamResearchView cloud, Object2IntOpenHashMap<ResourceLocation> replacement) {
+        for (var entry : entries.object2IntEntrySet()) {
+            var definition = cloud.registry().require(entry.getKey());
+            int previous = replacement.getInt(entry.getKey());
+            int increment = entry.getIntValue();
+            if (increment > definition.maxLevel() - previous) return Result.MAX_LEVEL_REACHED;
+            var result = validateStore(definition, previous + increment, before, replacement, cloud);
+            if (!result.accepted()) return result;
+            replacement.addTo(entry.getKey(), increment);
+        }
+        return Result.UPDATED;
+    }
+
+    @Override
+    public Result removeResearch(ResourceLocation researchId, BooleanSupplier current) {
+        ownerCheck.run();
+        var before = state.contents();
+        if (!current.getAsBoolean() || state.contents() != before) return Result.STALE_CONTEXT;
+        if (!before.storedResearch().containsKey(researchId)) return Result.UNCHANGED;
+        for (var receipt : state.receipts().values())
+            if (receipt.entries().containsKey(researchId)) return Result.BUSY;
+        var replacement = new Object2IntOpenHashMap<>(before.storedResearch());
+        replacement.removeInt(researchId);
+        return publish(before, replacement, current, true);
+    }
+
     @Override
     public Result synchronizeLoopingResearch(TeamResearchView cloud, BooleanSupplier current) {
         ownerCheck.run();
@@ -254,6 +285,17 @@ public final class ResearchDataCenter implements DataCenterStorage {
 
     private static Result store(ResearchDefinition definition, int target, DataCenterResearchSnapshot before,
                                 Object2IntOpenHashMap<ResourceLocation> replacement, TeamResearchView cloud) {
+        var result = validateStore(definition, target, before, replacement, cloud);
+        if (!result.accepted()) return result;
+        if (target > replacement.getInt(definition.id())) {
+            replacement.put(definition.id(), target);
+            return Result.UPDATED;
+        }
+        return Result.UNCHANGED;
+    }
+
+    private static Result validateStore(ResearchDefinition definition, int target, DataCenterResearchSnapshot before,
+                                        Object2IntOpenHashMap<ResourceLocation> replacement, TeamResearchView cloud) {
         if (definition.researchTierForLevel(target) > before.level()) {
             return Result.DATA_CENTER_LEVEL_TOO_LOW;
         }
@@ -263,11 +305,7 @@ public final class ResearchDataCenter implements DataCenterStorage {
         if (!replacement.containsKey(definition.id()) && replacement.size() >= before.capacity()) {
             return Result.CAPACITY_FULL;
         }
-        if (target > replacement.getInt(definition.id())) {
-            replacement.put(definition.id(), target);
-            return Result.UPDATED;
-        }
-        return Result.UNCHANGED;
+        return Result.UPDATED;
     }
 
     private static boolean mutexBlocked(ResearchDefinition candidate, int target, Object2IntMap<ResourceLocation> stored,

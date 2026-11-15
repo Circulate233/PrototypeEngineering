@@ -2,6 +2,8 @@ package com.circulation.prototype_eng.api.research.download;
 
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
+import com.circulation.prototype_eng.api.research.ResearchDataCenters;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragmentNbt;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -9,12 +11,13 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.common.util.Constants;
 
 import java.util.UUID;
 
 /**
- * Strict world-owned download envelopes. No live player, event or inventory adapter is serialized.
+ * World-owned download envelopes. No live player, event or inventory adapter is serialized.
  */
 public final class ResearchDownloadNbt {
     private final ResearchDownloadSources sources;
@@ -25,6 +28,7 @@ public final class ResearchDownloadNbt {
         fragments = new ItemDeliveryFragmentNbt(keys);
     }
 
+    @SuppressWarnings("DataFlowIssue") // A machine inventory intent always retains its original physical target.
     private static NBTTagCompound intent(ResearchDownloadOperation.Intent value) {
         var tag = new NBTTagCompound();
         tag.setString("Player", value.playerId().toString());
@@ -34,17 +38,33 @@ public final class ResearchDownloadNbt {
         tag.setString("Research", value.researchId().toString());
         tag.setInteger("Level", value.level());
         tag.setInteger("Slot", value.slot());
+        tag.setBoolean("MachineInventory", value.machineInventory());
+        if (value.machineInventory()) {
+            var target = value.target();
+            var saved = new NBTTagCompound();
+            saved.setString("Owner", target.ownerId().toString());
+            saved.setString("Type", target.location().machineType().toString());
+            saved.setInteger("Dimension", target.location().dimension());
+            saved.setLong("Position", target.location().controllerPos().toLong());
+            tag.setTag("Target", saved);
+        }
         return tag;
     }
 
     private static ResearchDownloadOperation.Intent intent(NBTTagCompound tag) {
+        var database = uuid(tag.getString("Database"));
+        boolean machine = tag.getBoolean("MachineInventory");
+        var saved = tag.getCompoundTag("Target");
+        var target = machine ? new ResearchDataCenters.Target(database, uuid(saved.getString("Owner")),
+            new MachineIdentity(new ResourceLocation(saved.getString("Type")), saved.getInteger("Dimension"),
+                BlockPos.fromLong(saved.getLong("Position")))) : null;
         return new ResearchDownloadOperation.Intent(uuid(tag.getString("Player")), uuid(tag.getString("Nonce")),
-            uuid(tag.getString("Database")), tag.getString("Team"), new ResourceLocation(tag.getString("Research")),
-            tag.getInteger("Level"), tag.getInteger("Slot"));
+            database, tag.getString("Team"), new ResourceLocation(tag.getString("Research")),
+            tag.getInteger("Level"), tag.getInteger("Slot"), machine, target);
     }
 
     private static void requireVersion(NBTTagCompound tag) {
-        if (tag.getInteger("Version") != 1)
+        if (tag.getInteger("Version") != 2)
             throw new IllegalArgumentException("Unknown download envelope version");
     }
 
@@ -86,7 +106,7 @@ public final class ResearchDownloadNbt {
 
     private NBTTagCompound common(UUID id, ResearchDownloadOperation.Intent intent, ResearchDownloadSources.Plan plan, NBTTagCompound output, long amount) {
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 1);
+        tag.setInteger("Version", 2);
         tag.setString("Id", id.toString());
         tag.setTag("Intent", intent(intent));
         tag.setTag("Sources", sources.codec().encode(plan));

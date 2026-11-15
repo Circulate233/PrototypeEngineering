@@ -29,7 +29,7 @@ public final class ResearchDiskImport {
             return new Candidate(new Result(Status.DISK_TIER_TOO_HIGH, null), target);
         }
         var replacement = new Object2IntOpenHashMap<>(target.storedResearch());
-        var result = ResearchDataCenter.storeFromDisk(data.entries(), target, cloud, replacement);
+        var result = ResearchDataCenter.addFromItems(data.entries(), target, cloud, replacement);
         var after = result == DataCenterStorage.Result.UPDATED
             ? new DataCenterResearchSnapshot(target.dataCenterId(), target.level(), target.capacity(), 0, replacement) : target;
         return new Candidate(new Result(result.accepted() ? Status.ACCEPTED : Status.DATA_CENTER_REJECTED, result), after);

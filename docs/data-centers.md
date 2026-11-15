@@ -2,7 +2,7 @@
 
 ## 默认控制器（2026-11-13）
 
-`DataCenterController` 是可继承的默认数据库控制器，直接继承 `MachineInstance`，实现 `DataCenter` 网络角色契约。它组合已有 `DataCenterStorage` 组件，等级、容量、研究内容及磁盘导入回执只保存在该组件中，不在控制器另存一份。没有普通配方工位或独立业务tick；下载和自动同步仍由共享研究服务推进，GUI继续延缓。
+`DataCenterController` 是可继承的默认数据库控制器，直接继承 `MachineInstance`，实现 `DataCenter` 网络角色接口。它组合已有 `DataCenterStorage` 组件，等级、容量、研究内容及导入回执保存在该组件中，不在控制器另存一份。没有普通配方工位或独立业务 tick；下载和自动同步由共享研究服务推进，GUI 已进入设计核对，正式界面等待审核。
 
 Java先定义存储组件，再声明机器与装配：
 
@@ -20,11 +20,11 @@ var assembly = MachineAssembly.builder(type, "data-center-v1")
 
 `DataCenter.dataCenterStorage()` 返回该加载代的实际存储组件；`DataCenter.DEVICE` 从其当前内容、等级和容量捕获网络快照，并保留存储版本证明。自定义控制器可直接实现此接口与独立存储，仍须声明所有权、存储组件、持久codec及重建的角色。写入遵守既有服务器授权和存储契约，接口访问不单独授予下载或导入权限。
 
-每队活动数据库按等级、已有研究条目数及持久机器UUID选择；多个库不合并内容。活动数据库占用1份标准并发，优先于普通设备，不能取得额度时不授予活动许可。只升级库中已有的合格多等级研究，不自动补入新研究，普通下载和磁盘导入沿下文原规则。
+每队活动数据库按等级、已有研究条目数及持久机器 UUID 选择；多个库不合并内容。活动数据库占用 1 份标准并发，优先于普通设备，不能取得额度时不授予活动许可。只升级库中已有的合格多等级研究，不自动补入新研究。云端写库保持下文规则，物品导入按最新配方与累加规则执行。
 
 ZS使用 `MachineType.dataCenter(id, translationKey, structureId, level, capacity).register(revision)`；工厂安装相同Java控制器、持久存储及网络角色，无需为专用数据库安装普通配方组件。Java示例 `DataCenterExamples` 注册一级/16条的 `java_data_center`，结构为控制器上方铁块；原ZS `net_database` 使用同样等级和容量，原结构保留，修订为 `data-center-v1`。
 
-普通数据库下载只把当前云研究等级写入活动物理数据库，不消费研究等级、玩家材料或奖励资格。普通物品化下载已接到真实注册回调、扣料/扣级、世界存档和交付恢复，详见[物品化下载](research-downloads.md)。分级盘由外部用户注册实际物品及阶级，库提供公开物品接口、编码事件及真实数据库／玩家库存共同恢复；磁盘导入消费准确槽位的一件盘，不扣研究来源等级或改变奖励资格。
+云端数据库下载只把当前云研究等级写入活动物理数据库，不消费研究等级、材料或奖励资格，继续由云端调用服务方法。自定义物品化下载与物品导入使用单输入、单输出配方，详见[下载与导入](research-downloads.md)。分级盘由使用方注册实际物品并实现 `ResearchDiskCarrier`，编码与导入不需要配方注册。默认编码支付来源 1 级并记录所选研究的 1 级；导入每份向对应已存等级累加 1，返回同一物品的空盘，不扣研究来源等级或改变奖励资格。
 
 ## 旧实现与保留行为
 
@@ -34,7 +34,7 @@ ZS使用 `MachineType.dataCenter(id, translationKey, structureId, level, capacit
 
 ## 公开职责
 
-`DataCenterStorage` 是外部存储契约，`ResearchDataCenter` 是默认规则实现，`MachineDataCenterStorage` 负责机器组件、生命周期和 NBT。带 `BooleanSupplier current` 的写入方法在实际发布前重验只读授权；早先不带证明的重载仍供已持有独占授权的直接宿主调用。
+`DataCenterStorage` 是外部存储接口，`ResearchDataCenter` 是默认规则实现，`MachineDataCenterStorage` 负责机器组件、生命周期和 NBT。带 `BooleanSupplier current` 的写入方法在实际发布前重验只读授权；不带证明的重载供已持有独占授权的直接宿主调用。
 
 `ResearchDataCenters.capture(teamId, expectedDataCenterId)` 从既有机器身份注册表中寻找准确物理目标。必须是本队当前选中的 `ACTIVE_DATA_CENTER`，并核对真实机器、登记代、世界位置、成型状态、角色和存储组件实例。存储按公开接口发现，重复绑定明确失败。不能只凭内容相等，把新存储组件接到旧发布上。成功写入会令原 capture 失效。
 
@@ -63,20 +63,24 @@ ZS使用 `MachineType.dataCenter(id, translationKey, structureId, level, capacit
 
 ## 磁盘共同持久提交
 
-`ResearchDiskImport.prepare` 复用默认数据库的完整批次规则，冻结 operation、actor、team、磁盘阶级及独立完成等级、原内容和完整 after。编码要求研究完成等级对应的门槛阶级不高于磁盘阶级，导入再要求磁盘阶级不高于数据库阶级。容量、数据库门槛和双向互斥全部通过后才能发布，没有逐条部分成功。
+`ResearchDiskImport.prepare` 冻结 operation、actor、team、输入阶级、本次增加等级、原内容和完整 after。存盘每份增加 1 级，普通物品配方按声明增加量处理。累加后的研究等级不能超过最高等级；数据库阶级、容量和双向互斥全部通过后才能发布，没有逐条部分成功。
 
-1. 唯一研究世界先保存 unarmed PREPARED 和准确原槽的完整 before／after 库存；玩家材料 PREPARED 可靠保存后，再保存 databaseArmed。没有尝试写库的操作仍可明确取消。
-2. `commitDisk` 最后重验原 before 和当前授权，用一次不可变 `ResearchDataCenter.State` 发布内容及完整 operation receipt。即使内容已经足够，也必须发布回执并使旧内容凭据失效。拒绝返回严格保证本次零效果；发布后的 dirty 异常只抛错，保留整个 after／receipt，不回填旧内容。
+1. 唯一研究世界先保存 unarmed PREPARED 和准确原槽的 before／after 库存及返回产物；原输入库存 PREPARED 可靠保存后，再保存 databaseArmed。没有尝试写库的操作仍可明确取消。
+2. `commitDisk` 最后重验原 before 和当前授权，用一次不可变 `ResearchDataCenter.State` 发布累加后的内容及完整 operation receipt。拒绝返回保证本次零效果；发布后的 dirty 异常只抛错，保留 after 和 receipt，不回填旧内容。重试读取原回执，不再次累加等级。
 3. `persistDisk` 保存此时完整 State，再回读真实数据库来源，匹配准确回执及所有当前内容后，World 才保存 DATABASE_COMMITTED。普通下载／自动升级始终保留 unresolved receipt，后续保存验证当前完整 State，不要求内容仍等于旧导入 after，也不覆盖后续写入或补回 tick 预算。
-4. DATABASE_COMMITTED 可靠保存后，原玩家材料凭据只允许准确槽消费一次。真实玩家 COMMITTED 可靠保存后，World 保存 COMPLETED；之后才可靠清理玩家和数据库回执，并保存 RELEASED nonce 终态。清理时回执已缺失仍保存、回读当前 State，后续内容升级不妨碍清理重试。
+4. DATABASE_COMMITTED 可靠保存后，原输入凭据只允许准确槽消费一次。COMMITTED 可靠保存后冻结输出计划并进入 DELIVERING；返回空盘或自定义产物得到确认后，World 保存 COMPLETED，再可靠清理输入与数据库回执并保存 RELEASED nonce 终态。物理库输入输出在该过程中持续保留原操作占用。清理时回执已缺失仍保存并回读当前 State，后续内容升级不妨碍清理重试。
 
 首次调用明确拒绝、无 receipt 且材料未扣时可以完成 ABORTING。抛错或重启后 databaseArmed 且缺失回执属于未知，不能据内容相等推定成功、再次扣盘或取消原义务。冲突回执、玩家证据损坏、原物理库不可用或保存尚未确认均保留待恢复状态。
 
-`MachineDataCenterStorage.CODEC` 以明确 Schema 2 同时保存研究内容与完整 DiskReceipts，读取也验证二者一致，不兼容旧 schema。默认 Minecraft 适配通过公开 `MachineControllerHost` 核对原机器及真实 AE 方块实体，使用原 Anvil loader 写准确已加载区块，等待文件 writer 结清且 pending 为零，然后用新的 `RegionFile` 回读实际文件。核对正确世界来源、区块坐标、唯一原 tile 坐标／native id、机器类型、owner／数据库 UUID 及唯一存储组件完整 payload；写前和回读后都重验原物理绑定。未使用全世界保存或第二份数据库存档。
+`MachineDataCenterStorage.CODEC` 的内容 Schema 2 保存研究、DiskReceipts 及附属 Transfers 操作库存，回执只限制本次实际导入涉及的研究，允许移出其他条目。Transfers 的空输入、空输出使用原生空 NBT 语义，可选材料与交付回执按是否存在解码，不添加字段白名单或额外库存版本检查。默认持久适配沿原机器区块保存并回读完整组件 payload，核对准确物理目标及原回执，不使用全世界保存或第二份数据库文件。
 
-## 界面
+## 界面与配方操作
 
-2026-11-15 数据库界面重新设计为显示已存研究、移出已存研究和研究下载（下载目标通过研究总览选择，材料槽、箭头和输出槽，附完整玩家背包），不通过界面把研究下载到数据库；移出研究的存储写入和权限尚未实现；界面要求和预览见[研究 GUI](research-gui.md#数据库界面)，正式 Java 界面尚未实现。数据库存储、下载及后台 Java 接口保留。
+数据库页使用 [最新 HTML](previews/data-center.html) 核对，正式 GUI 等待用户审核。左侧列出已存研究并支持二次确认移出；右侧通过按钮切换研究下载和物品导入，同一材料槽、箭头和输出槽供两种模式使用，底部有完整背包。下载来源和下载等级不占界面行，研究费用在本次付款不使队伍掉级时显示“无”。返回采用 AE `Icon.BACK`。完整设计见 [research-gui.md](research-gui.md#数据库界面)。
+
+默认物理数据库的操作库存与材料、交付回执保存到 `MachineDataCenterStorage` 的同一组件。输入槽 0、输出槽 1，切换模式或关闭窗口不清空。服务端生成候选输出，执行时重新捕获权限、原输入和物理目标。预览与直接执行均通过交付适配检查实际输出及数量能否容纳，检查必须早于材料扣取和研究写入。实际付款及交付继续使用唯一研究世界的恢复流程。
+
+物品导入配方由输入取得研究、增加等级并生成输出；容量按不同研究条目计数，向已存研究追加等级不额外占一格。累加后必须仍满足最高等级、数据库阶级及互斥条件，不能以取最大值代替每份累加。输出槽有物品时不允许开始下一笔。普通物品没有匹配导入或下载配方时查询结果为空，不报告无对应输出的错误。
 
 ## 验证与剩余范围
 

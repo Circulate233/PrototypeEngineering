@@ -27,4 +27,25 @@ public interface ResearchDiskCarrier {
     default @Nullable ResearchDiskData readResearchDisk(ItemStack stack, ResearchRegistry registry) {
         return hasResearchDiskData(stack) ? ResearchDiskNbtCodec.read(stack, registry) : null;
     }
+
+    /**
+     * Returns an independently owned encoded output. The input remains borrowed read-only.
+     * Custom disk layouts override this together with readResearchDisk and emptyResearchDisk.
+     */
+    default ItemStack writeResearchDisk(ItemStack stack, ResearchDiskData data) {
+        return ResearchDiskNbtCodec.writeCopy(stack, data);
+    }
+
+    /**
+     * Returns an independently owned blank output while retaining the item's other NBT and capabilities.
+     */
+    default ItemStack emptyResearchDisk(ItemStack stack) {
+        var result = stack.copy();
+        var tag = result.getTagCompound();
+        if (tag != null) {
+            tag.removeTag(ResearchDiskNbtCodec.PAYLOAD_TAG);
+            if (tag.isEmpty()) result.setTagCompound(null);
+        }
+        return result;
+    }
 }

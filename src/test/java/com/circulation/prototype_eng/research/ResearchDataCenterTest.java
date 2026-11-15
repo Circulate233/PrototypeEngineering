@@ -69,6 +69,27 @@ class ResearchDataCenterTest {
     }
 
     @Test
+    void removalReleasesCapacityWithoutChangingCloudOrUnrelatedEntries() {
+        var registry = registry(ordinary("first", 1, 1), ordinary("second", 1, 1), ordinary("third", 1, 1));
+        var player = new PlayerResearchState(new UUID(0, 1));
+        player.completeAtLeast(id("first"), 1);
+        var view = cloud(registry, player);
+        var storage = new ResearchDataCenter(new UUID(0, 2), 1, 2, registry, () -> {
+        }, () -> {
+        });
+        storage.storeFromDisk(levels("first", "second"), view);
+        var before = storage.capture();
+        assertEquals(DataCenterStorage.Result.STALE_CONTEXT, storage.removeResearch(id("first"), () -> false));
+        assertTrue(before.current().getAsBoolean());
+        assertEquals(DataCenterStorage.Result.UPDATED, storage.removeResearch(id("first"), () -> true));
+        assertFalse(before.current().getAsBoolean());
+        assertFalse(storage.snapshot().storedResearch().containsKey(id("first")));
+        assertEquals(1, storage.snapshot().storedResearch().getInt(id("second")));
+        assertEquals(1, player.completedLevel(id("first")));
+        assertEquals(DataCenterStorage.Result.UPDATED, storage.storeFromDisk(levels("third"), view));
+    }
+
+    @Test
     void losingAuthorityAtPublicationLeavesDownloadsDiskWritesAndSyncUnchanged() {
         var registry = registry(ordinary("loop", 3, 1), ordinary("other", 1, 1));
         var player = new PlayerResearchState(new UUID(0, 1));

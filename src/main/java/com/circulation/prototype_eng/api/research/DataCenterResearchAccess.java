@@ -66,6 +66,33 @@ public final class DataCenterResearchAccess {
         }
     }
 
+    public Result remove(OwnerTeamResolution membership, ResearchPermissionContext permission,
+                         UUID expectedDataCenterId, ResourceLocation researchId, BooleanSupplier current) {
+        enter();
+        try {
+            if (world.savePending()) return result(Status.SAVE_PENDING);
+            var authority = world.captureCloud(membership, permission, Action.REMOVE_DATA_CENTER_RESEARCH, current);
+            if (authority == null) return result(Status.STALE_CONTEXT);
+            if (authority.decision() != Decision.ALLOWED) return result(Status.PERMISSION_DENIED);
+            var physical = centers.captureMemberOwned(membership.members(), expectedDataCenterId);
+            if (physical == null) return result(Status.STALE_CONTEXT);
+            var storage = physical.storage();
+            var before = storage.snapshot();
+            try {
+                var result = storage.removeResearch(researchId,
+                    () -> !world.savePending() && authority.current().getAsBoolean() && physical.current() && storage.current(before));
+                if (result == DataCenterStorage.Result.UPDATED) network.refresh();
+                else if (!physical.current()) network.revoke();
+                return new Result(Status.COMPLETED, result);
+            } catch (RuntimeException | Error failure) {
+                network.revoke();
+                throw failure;
+            }
+        } finally {
+            executing = false;
+        }
+    }
+
     /**
      * Separate state and download permissions; viewing never invokes a research start condition or saves.
      */

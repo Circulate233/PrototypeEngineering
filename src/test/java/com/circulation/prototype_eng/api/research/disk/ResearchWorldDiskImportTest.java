@@ -18,6 +18,15 @@ import com.circulation.prototype_eng.api.research.ResearchWorldSnapshot;
 import com.circulation.prototype_eng.api.research.TeamResearchView;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadInventory;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadMaterial;
+import com.circulation.prototype_eng.api.research.download.ResearchItemImportEvaluation;
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryAdapter;
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKey;
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKeyNbt;
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryTemplates;
+import com.circulation.prototype_eng.testsupport.TestResources;
+import ae2.api.stacks.AEKey;
+import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import com.circulation.prototype_eng.research.DataCenterStorageNbt;
@@ -62,15 +71,17 @@ class ResearchWorldDiskImportTest {
     private static final ResourceLocation RESEARCH = new ResourceLocation("disk_world_test", "special");
     private static final ResourceLocation LOOP = new ResourceLocation("disk_world_test", "loop");
     private static final int SLOT = 5;
+    private static final TestResources.KeyType OUTPUT_TYPE = new TestResources.KeyType("disk_import_output");
+    private static final TestResources.Key EMPTY_DISK = new TestResources.Key(OUTPUT_TYPE, "empty_disk");
     @TempDir
     Path directory;
 
-    private static NBTTagCompound inventory(int count) {
+    private static NBTTagCompound inventory(int count, int slot) {
         var stack = new NBTTagCompound();
         stack.setString("id", "disk_world_test:disk");
         stack.setShort("Damage", (short) 0);
         stack.setByte("Count", (byte) count);
-        stack.setByte("Slot", (byte) PlayerInventoryNbt.encodedSlot(SLOT));
+        stack.setByte("Slot", (byte) PlayerInventoryNbt.encodedSlot(slot));
         var caps = new NBTTagCompound();
         caps.setInteger("stored", 42);
         stack.setTag("ForgeCaps", caps);
@@ -80,6 +91,73 @@ class ResearchWorldDiskImportTest {
         image.setTag("inventory", list);
         image.setInteger("selectedSlot", 0);
         return image;
+    }
+
+    private static NBTTagCompound output() {
+        var item = new NBTTagCompound();
+        item.setString("id", "disk_world_test:empty_disk");
+        item.setByte("Count", (byte) 1);
+        item.setShort("Damage", (short) 0);
+        var caps = new NBTTagCompound();
+        caps.setInteger("remaining", 7);
+        item.setTag("ForgeCaps", caps);
+        return item;
+    }
+
+    @Test
+    void additiveMachineImportReturnsOneEmptyDiskAfterNativeDeliveryReloadWithoutCurrentTeamAuthority() {
+        var fixture = new Fixture(directory, true);
+        fixture.data = new ResearchDiskData(fixture.registry, 3, Object2IntMaps.singleton(RESEARCH, 1));
+        var cloud = new TeamResearchView(fixture.registry, "team", Set.of(PLAYER), Object2IntMaps.emptyMap(), Object2IntMaps.emptyMap(), Set.of());
+        fixture.storage.storeFromDisk(Object2IntMaps.singleton(RESEARCH, 2), cloud, () -> true);
+        var world = fixture.world();
+        fixture.delivery.failAfterSave = true;
+        assertThrows(IllegalStateException.class, () -> fixture.request(world));
+        assertEquals(3, fixture.storage.snapshot().storedResearch().getInt(RESEARCH));
+        assertEquals(1, fixture.inventory.consumptions);
+        assertEquals(1, fixture.delivery.deliveries);
+        fixture.storage.reload();
+        fixture.delivery.reload();
+        fixture.delivery.maximumOutput = 0;
+        fixture.inventory.receipt = ResearchDownloadMaterial.CODEC.decode(ResearchDownloadMaterial.CODEC.encode(fixture.inventory.receipt));
+        var restored = fixture.restore(fixture.saves.durable);
+        assertTrue(restored.pendingMachineDiskImports().getFirst().intent().machineInventory());
+        assertEquals(0, restored.pendingMachineDiskImports().getFirst().material().slot());
+        assertEquals(ResearchDiskImportResult.Status.COMPLETED, fixture.recover(restored, false).status());
+        assertEquals(3, fixture.storage.snapshot().storedResearch().getInt(RESEARCH));
+        assertEquals(1, fixture.inventory.consumptions);
+        assertEquals(1, fixture.delivery.deliveries);
+        assertEquals("disk_world_test:empty_disk", fixture.delivery.item.getString("id"));
+        assertEquals(7, fixture.delivery.item.getCompoundTag("ForgeCaps").getInteger("remaining"));
+        assertEquals(ResearchDiskImportResult.Status.COMPLETED, fixture.request(restored).status());
+        assertEquals(1, fixture.delivery.deliveries);
+    }
+
+    @Test
+    void oversizedOutputAndFullResearchRejectInputBeforeDatabaseAndReturnItemEffects() {
+        var fixture = new Fixture(directory);
+        fixture.data = new ResearchDiskData(fixture.registry, 3, Object2IntMaps.singleton(RESEARCH, 1));
+        fixture.outputAmount = 2;
+        fixture.delivery.maximumOutput = 1;
+        var world = fixture.world();
+        assertEquals(ResearchDiskImportResult.Status.OUTPUT_BLOCKED, fixture.request(world).status());
+        assertEquals(0, fixture.storage.snapshot().storedResearch().getInt(RESEARCH));
+        assertEquals(0, fixture.inventory.consumptions);
+        assertEquals(0, fixture.delivery.deliveries);
+        assertEquals(0, fixture.storage.commits);
+        assertNull(fixture.inventory.receipt);
+        assertTrue(world.snapshot().diskImports().isEmpty());
+        fixture.outputAmount = 1;
+        var cloud = new TeamResearchView(fixture.registry, "team", Set.of(PLAYER), Object2IntMaps.emptyMap(), Object2IntMaps.emptyMap(), Set.of());
+        fixture.storage.storeFromDisk(Object2IntMaps.singleton(RESEARCH, 100), cloud, () -> true);
+        var result = fixture.request(world);
+        assertEquals(ResearchDiskImportResult.Status.DISK_REJECTED, result.status());
+        var precheck = result.precheck();
+        assertNotNull(precheck);
+        assertEquals(DataCenterStorage.Result.MAX_LEVEL_REACHED, precheck.storageResult());
+        assertEquals(0, fixture.inventory.consumptions);
+        assertEquals(0, fixture.delivery.deliveries);
+        assertEquals(0, fixture.storage.commits);
     }
 
     @Test
@@ -130,7 +208,7 @@ class ResearchWorldDiskImportTest {
         var foreign = new ResearchDataCenters.Target(DATABASE, new UUID(0, 9), fixture.target.location());
         assertEquals(ResearchDiskImportResult.Status.PERMISSION_DENIED,
             world.requestDiskImport(fixture.intent, fixture.membership, fixture.permission, foreign, fixture.storage, fixture.inventory,
-                _ -> fixture.data, 1, () -> true, () -> true, () -> true).status());
+                _ -> new ResearchItemImportEvaluation(fixture.data, output(), 1), null, fixture.delivery, 1, () -> true, () -> true, () -> true).status());
         assertEquals(0, fixture.storage.commits);
         assertEquals(0, fixture.inventory.consumptions);
     }
@@ -334,7 +412,7 @@ class ResearchWorldDiskImportTest {
         var operation = world.pendingDiskImports(PLAYER).getFirst();
         fixture.storage.failAfterCommit = false;
         assertEquals(ResearchDiskImportResult.Status.RECOVERY_ERROR,
-            world.recoverDiskImport(PLAYER, operation.id(), fixture.inventory,
+            world.recoverDiskImport(PLAYER, operation.id(), fixture.inventory, fixture.delivery,
                 new ResearchDiskRecovery(fixture.storage, wrong, () -> true, null, null, () -> false), 1, () -> true).status());
         assertEquals(0, fixture.inventory.consumptions);
     }
@@ -386,7 +464,7 @@ class ResearchWorldDiskImportTest {
         assertThrows(IllegalStateException.class, () -> fixture.request(world));
         assertNull(fixture.inventory.receipt);
         assertEquals(ResearchDiskOperation.Status.COMPLETED, fixture.saves.durable.diskImports().getFirst().status());
-        fixture.inventory.image = inventory(7);
+        fixture.inventory.image = inventory(7, SLOT);
         fixture.storage.failClear = false;
         assertEquals(ResearchDiskImportResult.Status.COMPLETED, fixture.recover(world, false).status());
         assertEquals(1, fixture.inventory.consumptions);
@@ -414,26 +492,35 @@ class ResearchWorldDiskImportTest {
         final ResearchRegistry registry = new ResearchRegistry();
         final ResearchWorldNbt codec;
         final Saves saves = new Saves();
-        final Inventory inventory = new Inventory(saves);
+        final Inventory inventory;
         final Storage storage;
+        final NativeDelivery delivery;
         final ResearchDataCenters.Target target = new ResearchDataCenters.Target(DATABASE, PLAYER,
             new MachineIdentity(new ResourceLocation("disk_world_test", "center"), 0, new BlockPos(1, 2, 3)));
-        final ResearchDiskOperation.Intent intent = new ResearchDiskOperation.Intent(PLAYER, NONCE, DATABASE, "team", SLOT);
+        final ResearchDiskOperation.Intent intent;
         final OwnerTeamResolution membership = OwnerTeamResolution.resolved(PLAYER, "team", OwnerTeamType.PLAYER,
             new ObjectOpenHashSet<>(ObjectList.of(PLAYER)), PLAYER);
         final ResearchPermissionContext permission = new ResearchPermissionContext(PLAYER, "team", PLAYER, "team", false, false, false);
         ResearchDiskData data;
+        int outputAmount = 1;
 
         Fixture(Path directory) {
+            this(directory, false);
+        }
+
+        Fixture(Path directory, boolean machineInventory) {
+            inventory = new Inventory(saves, machineInventory);
+            intent = new ResearchDiskOperation.Intent(PLAYER, NONCE, DATABASE, "team", machineInventory ? 0 : SLOT, machineInventory);
             registry.register(ResearchDefinition.builder(RESEARCH).maxLevel(100).specialOnly(true)
                                                 .deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                                 .stage(ResearchLevelStage.builder(1, 100).durationTicks(1).researchTier(2).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
             registry.register(ResearchDefinition.builder(LOOP).maxLevel(100).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                                 .stage(ResearchLevelStage.builder(1, 100).durationTicks(1).researchTier(2).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
             registry.freeze();
-            codec = new ResearchWorldNbt(registry, new ResourceKeyNbt(_ -> null));
+            codec = new ResearchWorldNbt(registry, new ResourceKeyNbt(id -> OUTPUT_TYPE.getId().equals(id) ? OUTPUT_TYPE : null));
             data = new ResearchDiskData(registry, 3, Object2IntMaps.singleton(RESEARCH, 90));
             storage = new Storage(registry, saves, directory);
+            delivery = new NativeDelivery(directory);
         }
 
         ResearchWorld world() {
@@ -453,12 +540,13 @@ class ResearchWorldDiskImportTest {
         }
 
         ResearchDiskImportResult request(ResearchWorld world, ResearchDiskOperation.Intent request) {
-            return world.requestDiskImport(request, membership, permission, target, storage, inventory, _ -> data, 1, () -> true, () -> true, () -> true);
+            return world.requestDiskImport(request, membership, permission, target, storage, inventory,
+                _ -> new ResearchItemImportEvaluation(data, output(), outputAmount), null, delivery, 1, () -> true, () -> true, () -> true);
         }
 
         ResearchDiskImportResult recover(ResearchWorld world, boolean allowed) {
-            var operation = world.pendingDiskImports(PLAYER).getFirst();
-            return world.recoverDiskImport(PLAYER, operation.id(), inventory,
+            var operation = inventory.machineInventory ? world.pendingMachineDiskImports().getFirst() : world.pendingDiskImports(PLAYER).getFirst();
+            return world.recoverDiskImport(PLAYER, operation.id(), inventory, delivery,
                 new ResearchDiskRecovery(storage, target, () -> true, allowed ? membership : null, allowed ? permission : null, () -> allowed),
                 1, () -> true);
         }
@@ -479,19 +567,27 @@ class ResearchWorldDiskImportTest {
 
     private static final class Inventory implements ResearchDownloadInventory {
         final Saves saves;
-        NBTTagCompound image = inventory(3);
+        final boolean machineInventory;
+        NBTTagCompound image;
         ResearchDownloadMaterial receipt;
         int consumptions;
         boolean failPrepared;
         boolean failCommitted;
 
-        Inventory(Saves saves) {
+        Inventory(Saves saves, boolean machineInventory) {
             this.saves = saves;
+            this.machineInventory = machineInventory;
+            image = inventory(3, machineInventory ? 0 : SLOT);
         }
 
         @Override
         public UUID playerId() {
             return PLAYER;
+        }
+
+        @Override
+        public boolean machineInventory() {
+            return machineInventory;
         }
 
         @Override
@@ -563,6 +659,76 @@ class ResearchWorldDiskImportTest {
         }
     }
 
+    private static final class NativeDelivery implements ItemDeliveryAdapter {
+        final Path file;
+        final ObjectOpenHashSet<UUID> observed = new ObjectOpenHashSet<>();
+        NBTTagCompound item = new NBTTagCompound();
+        int deliveries;
+        boolean failAfterSave;
+        long maximumOutput = Long.MAX_VALUE;
+
+        NativeDelivery(Path directory) {
+            file = directory.resolve("database-output.dat");
+        }
+
+        @Override
+        public boolean canOutput(NBTTagCompound template, long amount) {
+            return item.isEmpty() && amount <= maximumOutput;
+        }
+
+        @Override
+        public ObjectList<ItemDeliveryFragment> plan(ItemDeliveryKey parent, AEKey resource, long amount) {
+            return plan(parent, output(), amount);
+        }
+
+        @Override
+        public ObjectList<ItemDeliveryFragment> plan(ItemDeliveryKey parent, NBTTagCompound template, long amount) {
+            var id = ItemDeliveryKeyNbt.fragmentId(parent, 0);
+            return ObjectList.of(new ItemDeliveryFragment(id, parent, EMPTY_DISK, (int) amount,
+                ItemDeliveryTemplates.taggedLeaf(template, (int) amount, parent, id), new ItemDeliveryFragment.Inventory(1),
+                null, ItemDeliveryFragment.Status.PLANNED));
+        }
+
+        @Override
+        public Scan scan(ObjectList<ItemDeliveryFragment> delivering) {
+            return new Scan(observed, Object2ObjectMaps.emptyMap(), new ObjectOpenHashSet<>());
+        }
+
+        @Override
+        public boolean canDeliver(ItemDeliveryFragment fragment) {
+            return item.isEmpty();
+        }
+
+        @Override
+        public Delivery deliver(ItemDeliveryFragment fragment) {
+            assertTrue(observed.add(fragment.id()));
+            item = fragment.taggedStackNbt();
+            deliveries++;
+            return new Delivery(fragment.count(), null);
+        }
+
+        @Override
+        public void commit(ItemDeliveryFragment fragment, Delivery delivery) {
+            try (var stream = Files.newOutputStream(file)) {
+                CompressedStreamTools.writeCompressed(item, stream);
+            } catch (IOException failure) {
+                throw new IllegalStateException("Native return item persistence failed", failure);
+            }
+            if (failAfterSave) throw new IllegalStateException("Native return item acknowledgement lost");
+        }
+
+        void reload() {
+            try (var stream = Files.newInputStream(file)) {
+                item = CompressedStreamTools.readCompressed(stream);
+            } catch (IOException failure) {
+                throw new IllegalStateException("Native return item reload failed", failure);
+            }
+            observed.clear();
+            observed.add(ItemDeliveryKeyNbt.fragmentId(item.getCompoundTag("tag").getCompoundTag(ItemDeliveryTemplates.DELIVERY_TAG)));
+            failAfterSave = false;
+        }
+    }
+
     private static final class Storage implements ResearchDiskStorage {
         final ResearchRegistry registry;
         final Saves saves;
@@ -609,6 +775,11 @@ class ResearchWorldDiskImportTest {
         @Override
         public Result storeFromDisk(Object2IntMap<ResourceLocation> entries, TeamResearchView cloud, BooleanSupplier current) {
             return delegate.storeFromDisk(entries, cloud, current);
+        }
+
+        @Override
+        public Result removeResearch(ResourceLocation id, BooleanSupplier current) {
+            return delegate.removeResearch(id, current);
         }
 
         @Override

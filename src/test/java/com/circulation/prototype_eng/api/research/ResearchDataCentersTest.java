@@ -487,6 +487,12 @@ class ResearchDataCentersTest {
         }
 
         @Override
+        @SuppressWarnings("DataFlowIssue")
+        public Result removeResearch(ResourceLocation id, BooleanSupplier current) {
+            return state.removeResearch(id, current);
+        }
+
+        @Override
         public Result synchronizeLoopingResearch(TeamResearchView cloud, BooleanSupplier current) {
             return Objects.requireNonNull(state).synchronizeLoopingResearch(cloud, current);
         }

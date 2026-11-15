@@ -42,6 +42,12 @@ public interface DataCenterStorage {
     Result storeFromDisk(Object2IntMap<ResourceLocation> entries, TeamResearchView cloud, BooleanSupplier current);
 
     /**
+     * Removes one stored entry without changing any team or personal research level.
+     * Unresolved import receipts retain their entries until the transaction completes.
+     */
+    Result removeResearch(ResourceLocation researchId, BooleanSupplier current);
+
+    /**
      * Upgrade only already stored multi-level research within the data-center tier. Never lower
      * levels or add missing ids; reject the whole update if an upgrade conflicts with cloud or stored research.
      */
@@ -53,7 +59,7 @@ public interface DataCenterStorage {
 
     enum Result {
         UPDATED, UNCHANGED, SPECIAL_ONLY_REJECTED, ITEM_ONLY_REJECTED, MISSING_CLOUD_RESEARCH_LEVEL,
-        DATA_CENTER_LEVEL_TOO_LOW, MUTEX_BLOCKED, CAPACITY_FULL, STALE_CONTEXT;
+        DATA_CENTER_LEVEL_TOO_LOW, MUTEX_BLOCKED, CAPACITY_FULL, MAX_LEVEL_REACHED, BUSY, STALE_CONTEXT;
 
         public boolean accepted() {
             return this == UPDATED || this == UNCHANGED;

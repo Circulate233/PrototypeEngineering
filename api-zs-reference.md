@@ -260,7 +260,7 @@ ParallelController.create("example:parallel_module", "tile.example.parallel_modu
 
 first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表示研究站阶数。`prerequisite(id, minimumLevel)` 要求前置研究达到指定等级，`mutex(id, minimumLevel)` 则在对应研究达到该等级时阻止这一阶段。奖励方法的 level 是研究的实际等级，必须位于本段范围内。
 
-`Research.create(id, maxLevel, specialOnly, deliveryPolicy, itemDownloadLevelCost, stages, condition)` 组装整项研究。maxLevel 是最大等级，specialOnly 限制普通研究入口，deliveryPolicy 选择 `DATABASE_AND_ITEM` 或 `ITEM_ONLY`，itemDownloadLevelCost 是每次下载扣除的研究等级，stages 是等级段数组，condition 是入队资格函数。配置完毕调用 `register()` 提交定义。
+`Research.create(id, maxLevel, specialOnly, deliveryPolicy, stages, condition)` 组装整项研究。maxLevel 是最大等级，specialOnly 限制普通研究入口，deliveryPolicy 选择 `DATABASE_AND_ITEM` 或 `ITEM_ONLY`，stages 是等级段数组，condition 是入队资格函数。下载等级费用由下载配方定义，研究不设置该参数。配置完毕调用 `register()` 提交定义。
 
 `Research.alwaysAllowed()` 表示资格函数不增加额外条件，实际权限仍会由服务器规则检查。自定义资格函数读取 `targetLevel`、`networkCenterLevel`、`sharedLevel(researchId)` 和 `available(resource)` 等捕获事实，返回 bool；它不能修改资源或把当前数量当作后续工作已经预留的数量。`unlock(effectId, targetId, level)` 声明达到指定等级后的解锁效果，必须在研究定义被注册前完成。
 
@@ -270,7 +270,15 @@ first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表�
 
 `ResearchReward.create(groupId)` 创建可领取的奖励组，链式 `.item(childId, resource)` 添加物品奖励，`.event(childId, callback)` 添加自定义交付函数。childId 在组内必须唯一且保持稳定。事件结果为 `APPLIED`、`ALREADY_APPLIED` 或 `RETRY_LATER`，分别表示本次已交付、此前已交付和稍后重试。使用玩家、研究、等级、奖励组和 child ID 组成的事件身份去重；保存确认失败可能导致回调重试，不能再次发放已经完成的奖励。
 
-`ResearchDownloads.register(material, callback)` 将一种消耗材料与输出函数配对。输出函数只返回有效 `IItemStack`，材料、研究等级和物品交付均由研究流程处理。
+`ResearchDownloads.register(id, material, researchId, researchLevel, levelCost, outputTemplate)` 注册单输入、单输出的研究下载配方。每次消耗一件 material，产物及数量来自 outputTemplate，researchLevel 为配方要求的研究等级，levelCost 为来源付款等级，允许 0。附加 callback 的重载使用 `callback.createOutput(context)` 返回实际产物，返回 null 或空物品表示本次不匹配，不产生无对应输出的错误提示；outputTemplate 用于 JEI 静态展示。必须保证回调只构造输出，禁止扣库存、修改研究或世界。
+
+实现 Java `ResearchDiskCarrier` 接口的物品直接支持默认存盘操作，不需要在脚本注册。空盘下载每次支付来源 1 级并编码所选研究的 1 级，不接受下载等级参数。服务端费用预览依据来源付款后队伍可见等级的实际下降，下降为 0 时显示“无”。
+
+`ResearchImports.register(id, material, researchId, levels, output)` 注册物品导入数据库的配方，每次消费一件输入，把该研究的已存等级累加 levels，再生成输出。最高等级、目标数据库阶级、容量和互斥要求必须通过，不能用取最大值代替累加。导入不扣队伍来源研究等级。附加 callback 的重载接收 `ResearchImportContext`，返回 `ResearchImportResult.create(output, tier).research(researchId, levels)`；可多次添加研究，底层使用 `addTo` 累加，返回后禁止继续修改。返回 null 表示本次不匹配。
+
+已编码存盘由接口直接处理，每份向盘内研究累加 1 级并返回同一物品的空盘。盘的内容和物理阶级均由实际输入物品读取，不需要注册物品、metadata 或阶级对应的转换配方。
+
+两类自定义注册均通过同一下载注册阶段发布。JEI 自动展示自定义研究下载和导入配方的输入、输出及研究说明；默认存盘下载与导入不参加 JEI，使用方自行说明。默认数据库的输入、输出槽随机器组件保存，切换模式或关闭界面不清空；云端写库继续通过云端服务方法执行。
 
 ## 网络资源与显示
 

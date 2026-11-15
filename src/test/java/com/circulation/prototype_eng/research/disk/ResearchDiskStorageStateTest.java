@@ -122,7 +122,7 @@ class ResearchDiskStorageStateTest {
     }
 
     @Test
-    void unchangedContentsStillPublishReceiptAndRejectConflictingOperationIdentity() {
+    void additiveContentsPublishReceiptAndRejectConflictingOperationIdentity() {
         var registry = registry();
         var player = new PlayerResearchState(ACTOR);
         var storage = new ResearchDataCenter(DATABASE, 1, 3, registry, () -> {
@@ -132,6 +132,7 @@ class ResearchDiskStorageStateTest {
         var commit = prepare(storage, registry, cloud(registry, player));
         var before = storage.capture();
         assertEquals(DataCenterStorage.Result.UPDATED, storage.commitDisk(commit, cloud(registry, player), before.current()));
+        assertEquals(10, storage.snapshot().storedResearch().getInt(LOOP));
         assertFalse(before.current().getAsBoolean());
         var conflict = new ResearchDiskCommit(OPERATION, new UUID(0, 9), "team", commit.diskTier(), commit.entries(), commit.before(), commit.after());
         assertThrows(IllegalStateException.class, () -> storage.commitDisk(conflict, cloud(registry, player), () -> true));

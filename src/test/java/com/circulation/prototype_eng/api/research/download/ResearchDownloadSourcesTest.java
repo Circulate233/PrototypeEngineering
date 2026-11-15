@@ -15,6 +15,7 @@ import com.circulation.prototype_eng.api.research.reward.RewardGroup;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
+import com.circulation.prototype_eng.research.ResearchEligibility;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -50,6 +51,32 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 class ResearchDownloadSourcesTest {
+    @Test
+    void visibleLevelLossTracksTheTeamProjectionWhileDirectSourcePaymentsStillCommit() {
+        for (boolean retainedPersonalLevel : new boolean[]{false, true}) {
+            var fixture = new Fixture(2);
+            var direct = fixture.team.prepareCompletion(TEAM, 2);
+            direct.commit();
+            direct.complete();
+            if (retainedPersonalLevel) fixture.players.get(FIRST).completeAtLeast(TEAM, 2);
+            var eligibility = new ResearchEligibility(fixture.registry);
+            int before = eligibility.calculateStructural("team", membership().members(), fixture.players,
+                fixture.team.completedLevelsSnapshot(), Set.of()).completedLevel(TEAM);
+            var evaluated = fixture.sources.evaluate(fixture.registry.require(TEAM), 1, fixture.cost, membership(),
+                null, fixture.players, fixture.team);
+            var plan = evaluated.plan();
+            assertNotNull(plan);
+            var payment = ready(fixture.sources.prepare(plan, fixture.players, fixture.team));
+            payment.commit();
+            payment.complete();
+            int after = eligibility.calculateStructural("team", membership().members(), fixture.players,
+                fixture.team.completedLevelsSnapshot(), Set.of()).completedLevel(TEAM);
+            assertEquals(before - after, evaluated.teamLevelLoss());
+            assertEquals(0, fixture.team.completedLevel(TEAM));
+            assertEquals(retainedPersonalLevel ? 2 : 0, fixture.players.get(FIRST).completedLevel(TEAM));
+        }
+    }
+
     private static final UUID FIRST = new UUID(1, 1);
     private static final UUID SECOND = new UUID(1, 2);
     private static final UUID THIRD = new UUID(1, 3);
@@ -79,7 +106,7 @@ class ResearchDownloadSourcesTest {
         var firstClaims = fixture.players.get(FIRST).rewardClaimsSnapshot();
         var secondClaims = fixture.players.get(SECOND).rewardClaimsSnapshot();
         var database = fixture.database(4);
-        var evaluated = fixture.sources.evaluate(fixture.registry.require(PERSONAL), 4, membership(), database, fixture.players, fixture.team);
+        var evaluated = fixture.sources.evaluate(fixture.registry.require(PERSONAL), 4, fixture.cost, membership(), database, fixture.players, fixture.team);
         assertEquals(READY, evaluated.status());
         var plan = Objects.requireNonNull(evaluated.plan());
         assertEquals(ObjectList.of(new ResearchDownloadSources.MemberChange(FIRST, 4, 2),
@@ -127,9 +154,9 @@ class ResearchDownloadSourcesTest {
         fixture.raise(SECOND, 3);
         var definition = fixture.registry.require(PERSONAL);
         assertEquals(MISSING_DATABASE_RESEARCH_LEVEL,
-            fixture.sources.evaluate(definition, 3, membership(), null, fixture.players, fixture.team).status());
+            fixture.sources.evaluate(definition, 3, fixture.cost, membership(), null, fixture.players, fixture.team).status());
         assertEquals(MISSING_DATABASE_RESEARCH_LEVEL,
-            fixture.sources.evaluate(definition, 3, membership(), fixture.database(2), fixture.players, fixture.team).status());
+            fixture.sources.evaluate(definition, 3, fixture.cost, membership(), fixture.database(2), fixture.players, fixture.team).status());
         var foreign = fixture.players.get(SECOND).prepareSourceMutation(PERSONAL, 3, 2);
         try {
             assertEquals(SOURCE_BUSY, fixture.evaluatePersonal(3).status());
@@ -137,8 +164,7 @@ class ResearchDownloadSourcesTest {
         } finally {
             foreign.rollback();
         }
-        assertEquals(SPECIAL_ONLY_REJECTED, fixture.sources.evaluate(fixture.registry.require(SPECIAL), 1,
-            membership(), fixture.database(3), fixture.players, fixture.team).status());
+        assertEquals(SPECIAL_ONLY_REJECTED, fixture.sources.evaluate(fixture.registry.require(SPECIAL), 1, fixture.cost, membership(), fixture.database(3), fixture.players, fixture.team).status());
     }
 
     @Test
@@ -257,7 +283,7 @@ class ResearchDownloadSourcesTest {
         claim.commit();
         claim.complete();
         var personalBefore = fixture.players.get(FIRST).snapshot();
-        var evaluated = fixture.sources.evaluate(fixture.registry.require(TEAM), 2, membership(), null, fixture.players, fixture.team);
+        var evaluated = fixture.sources.evaluate(fixture.registry.require(TEAM), 2, fixture.cost, membership(), null, fixture.players, fixture.team);
         var plan = Objects.requireNonNull(evaluated.plan());
         assertEquals(2, plan.teamBeforeLevel());
         assertEquals(0, plan.teamAfterLevel());
@@ -279,7 +305,7 @@ class ResearchDownloadSourcesTest {
         assertEquals(0, restored.completedLevel(TEAM));
         assertFalse(held.owns(fixture.team));
         assertEquals(TEAM_LEVEL_INSUFFICIENT,
-            fixture.sources.evaluate(fixture.registry.require(TEAM), 1, membership(), null, fixture.players, restored).status());
+            fixture.sources.evaluate(fixture.registry.require(TEAM), 1, fixture.cost, membership(), null, fixture.players, restored).status());
     }
 
     @Test
@@ -289,11 +315,11 @@ class ResearchDownloadSourcesTest {
         initial.commit();
         initial.complete();
         var definition = fixture.registry.require(TEAM);
-        var plan = Objects.requireNonNull(fixture.sources.evaluate(definition, 3, membership(), null, fixture.players, fixture.team).plan());
+        var plan = Objects.requireNonNull(fixture.sources.evaluate(definition, 3, fixture.cost, membership(), null, fixture.players, fixture.team).plan());
         var before = fixture.team.snapshot();
         var foreign = fixture.team.prepareSourceMutation(TEAM, 3, 2);
         try {
-            assertEquals(SOURCE_BUSY, fixture.sources.evaluate(definition, 3, membership(), null, fixture.players, fixture.team).status());
+            assertEquals(SOURCE_BUSY, fixture.sources.evaluate(definition, 3, fixture.cost, membership(), null, fixture.players, fixture.team).status());
             assertEquals(SOURCE_BUSY, fixture.sources.prepare(plan, fixture.players, fixture.team).status());
             assertTrue(foreign.owns(fixture.team));
         } finally {
@@ -330,7 +356,7 @@ class ResearchDownloadSourcesTest {
         var database = fixture.database(3);
         var sufficient = new DataCenterResearchSnapshot(database.dataCenterId(), 1, database.capacity(),
             database.revision(), database.storedResearch());
-        assertEquals(READY, fixture.sources.evaluate(fixture.registry.require(PERSONAL), 3, membership(),
+        assertEquals(READY, fixture.sources.evaluate(fixture.registry.require(PERSONAL), 3, fixture.cost, membership(),
             sufficient, fixture.players, fixture.team).status());
         assertEquals(3, fixture.players.get(FIRST).completedLevel(PERSONAL));
         assertEquals(3, fixture.players.get(SECOND).completedLevel(PERSONAL));
@@ -503,7 +529,7 @@ class ResearchDownloadSourcesTest {
         var initial = fixture.team.prepareCompletion(TEAM, 3);
         initial.commit();
         initial.complete();
-        var plan = Objects.requireNonNull(fixture.sources.evaluate(fixture.registry.require(TEAM), 3, membership(), null, fixture.players, fixture.team).plan());
+        var plan = Objects.requireNonNull(fixture.sources.evaluate(fixture.registry.require(TEAM), 3, fixture.cost, membership(), null, fixture.players, fixture.team).plan());
         assertEquals(READY, fixture.sources.reserve(plan, OPERATION, fixture.players, fixture.team));
         assertFalse(fixture.team.busy());
         assertNull(fixture.team.tryPrepareCompletion(TEAM, 4));
@@ -563,6 +589,7 @@ class ResearchDownloadSourcesTest {
 
     private static final class Fixture {
         private final ResearchRegistry registry = new ResearchRegistry();
+        private final int cost;
         private final Object2ObjectOpenHashMap<UUID, PlayerResearchState> players = new Object2ObjectOpenHashMap<>();
         private final TeamOwnedResearch team;
         private final ResearchDownloadSources sources;
@@ -572,13 +599,14 @@ class ResearchDownloadSourcesTest {
         }
 
         private Fixture(int cost, int researchTier) {
+            this.cost = cost;
             var reward = new RewardGroup(new ResourceLocation("test_download_sources", "history"),
                 new ObjectArrayList<>(ObjectList.of(new RewardChild.Event(new ResourceLocation("test_download_sources", "unused_event"), (_, _) -> {
                     fail("Downloading source levels must not deliver historical rewards");
                     return RewardEventAction.Result.APPLIED;
                 }))));
             for (var id : ObjectList.of(PERSONAL, TEAM, SPECIAL, OTHER_PERSONAL, OTHER_TEAM)) {
-                registry.register(ResearchDefinition.builder(id).maxLevel(4).itemDownloadLevelCost(cost)
+                registry.register(ResearchDefinition.builder(id).maxLevel(4)
                                                     .specialOnly(id.equals(SPECIAL))
                                                     .deliveryPolicy(id.equals(TEAM) || id.equals(OTHER_TEAM) ? ResearchDownloadDeliveryPolicy.ITEM_ONLY : ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                                     .stage(ResearchLevelStage.builder(1, 4).durationTicks(1).researchTier(researchTier)
@@ -605,7 +633,7 @@ class ResearchDownloadSourcesTest {
         }
 
         private ResearchDownloadSources.Evaluation evaluatePersonal(int level) {
-            return sources.evaluate(registry.require(PERSONAL), level, membership(), database(level), players, team);
+            return sources.evaluate(registry.require(PERSONAL), level, cost, membership(), database(level), players, team);
         }
     }
 }

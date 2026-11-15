@@ -21,12 +21,13 @@ import com.circulation.prototype_eng.api.research.disk.ResearchDiskCarrier;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskData;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskNbtCodec;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskOperation;
-import com.circulation.prototype_eng.api.research.disk.ResearchDiskEncodingEvent;
-import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadReceipt;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadOperation;
+import com.circulation.prototype_eng.api.research.download.ResearchDownloadResult;
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadContext;
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistry;
+import com.circulation.prototype_eng.api.research.download.ResearchItemImportRegistry;
+import com.circulation.prototype_eng.api.research.download.ResearchItemImportContext;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.integration.crafttweaker.ZenMachineComponent;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipe;
@@ -82,6 +83,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
  * Run-only native adapters. Startup declares items; world and persistence changes require commands.
@@ -127,29 +129,6 @@ public final class RunNetworkRender {
     public static ZenMachineComponent typedAnimationComponent() {
         return ZenMachineComponent.persistent(com.circulation.prototype_eng.api.machine.render.MachineAnimationState.TYPE,
             com.circulation.prototype_eng.api.machine.render.MachineAnimationState.CODEC);
-    }
-
-    @ZenMethod
-    public static void registerDiskEncoding() {
-        DefinitionRegistrations.downloads(event -> {
-            ResearchDiskEncodingEvent.register(event.registry(), ResearchRegistry.INSTANCE, new ItemStack(Objects.requireNonNull(diskItem)), encodingTemplate(diskItem));
-            ResearchDiskEncodingEvent.register(event.registry(), ResearchRegistry.INSTANCE, new ItemStack(Objects.requireNonNull(lowDiskItem)), encodingTemplate(lowDiskItem));
-            var tierTwo = new ItemStack(diskItem);
-            var layout = new NBTTagCompound();
-            layout.setInteger("pe_run_tests_physical_tier", 2);
-            tierTwo.setTagCompound(layout);
-            var highTemplate = encodingTemplate(diskItem);
-            Objects.requireNonNull(highTemplate.getTagCompound()).setInteger("pe_run_tests_physical_tier", 2);
-            ResearchDiskEncodingEvent.register(event.registry(), ResearchRegistry.INSTANCE, tierTwo, highTemplate);
-        });
-    }
-
-    private static ItemStack encodingTemplate(Item item) {
-        var stack = new ItemStack(item);
-        var tag = new NBTTagCompound();
-        tag.setString("pe_run_tests_template", "native_encoding_preserved");
-        stack.setTagCompound(tag);
-        return stack;
     }
 
     /**
@@ -549,7 +528,7 @@ public final class RunNetworkRender {
                 ServerResearch.requestDataCenterView(player, () -> true, view -> {
                     NativeChecks.check("research_selected_database", view != null && view.dataCenter() != null);
                     if (item)
-                        ServerResearch.requestItemDownload(player, view.teamId(), view.dataCenter().dataCenterId(), research, level, slot, UUID.randomUUID(), () -> true,
+                        requestItemDownload(player, view.teamId(), view.dataCenter().dataCenterId(), research, slot, UUID.randomUUID(),
                             result -> expect(player, "research_item_download", result.status().name(), args[4]));
                     else
                         ServerResearch.requestDataCenterDownload(player, view.teamId(), view.dataCenter().dataCenterId(), research, level, () -> true,
@@ -572,15 +551,15 @@ public final class RunNetworkRender {
                 pass(player, "research_actual_blank_disk", "slot=" + slot + " physicalTier=" + tier + " no research payload; setup only");
             }
             case "research-encode" -> {
-                requireCount(args, 5);
+                requireCount(args, 4);
                 var research = location(args[1]);
-                int level = CommandBase.parseInt(args[2], 1), slot = CommandBase.parseInt(args[3], 0, 35);
+                int slot = CommandBase.parseInt(args[2], 0, 35);
                 ServerResearch.requestDataCenterView(player, () -> true, view -> {
                     NativeChecks.check("research_encoding_actual_database", view != null && view.dataCenter() != null);
                     var nonce = UUID.randomUUID();
-                    recordEncodingIntent(player, nonce, research, level, slot);
-                    ServerResearch.requestItemDownload(player, view.teamId(), view.dataCenter().dataCenterId(), research, level, slot, nonce, () -> true,
-                        result -> expect(player, "research_actual_disk_encoding", result.status().name(), args[4]));
+                    recordEncodingIntent(player, nonce, research, 1, slot);
+                    requestItemDownload(player, view.teamId(), view.dataCenter().dataCenterId(), research, slot, nonce,
+                        result -> expect(player, "research_actual_disk_encoding", result.status().name(), args[3]));
                 });
             }
             case "research-encoded", "research-encoding-rejected" -> {
@@ -615,18 +594,18 @@ public final class RunNetworkRender {
                 });
             }
             case "research-prepare-exit" -> {
-                requireCount(args, 5);
+                requireCount(args, 4);
                 boolean disk = args[1].equals("disk"), encode = args[1].equals("encode");
                 NativeChecks.check("research_prepare_kind", disk || encode || args[1].equals("item"));
                 var research = location(args[2]);
-                int level = CommandBase.parseInt(args[3], 1), slot = CommandBase.parseInt(args[4], 0, 35);
-                ServerTaskSchedulers.forServer(server).submit(() -> prepareAndExit(player, disk, encode, false, research, level, slot), ExecutionMode.MAIN_THREAD);
+                int slot = CommandBase.parseInt(args[3], 0, 35);
+                ServerTaskSchedulers.forServer(server).submit(() -> prepareAndExit(player, disk, encode, false, research, slot), ExecutionMode.MAIN_THREAD);
             }
             case "research-encode-output-exit" -> {
-                requireCount(args, 4);
+                requireCount(args, 3);
                 var research = location(args[1]);
-                int level = CommandBase.parseInt(args[2], 1), slot = CommandBase.parseInt(args[3], 0, 35);
-                ServerTaskSchedulers.forServer(server).submit(() -> prepareAndExit(player, false, true, true, research, level, slot), ExecutionMode.MAIN_THREAD);
+                int slot = CommandBase.parseInt(args[2], 0, 35);
+                ServerTaskSchedulers.forServer(server).submit(() -> prepareAndExit(player, false, true, true, research, slot), ExecutionMode.MAIN_THREAD);
             }
             case "research-pending" -> {
                 requireCount(args, 3);
@@ -737,7 +716,7 @@ public final class RunNetworkRender {
         return true;
     }
 
-    private static void prepareAndExit(EntityPlayerMP player, boolean disk, boolean encoding, boolean holdOutput, ResourceLocation research, int level, int slot) {
+    private static void prepareAndExit(EntityPlayerMP player, boolean disk, boolean encoding, boolean holdOutput, ResourceLocation research, int slot) {
         var server = Objects.requireNonNull(player.getServer());
         var world = ServerResearch.forServer(server);
         var membership = new FtbOwnerTeamResolver(server).resolve(player.getUniqueID());
@@ -751,25 +730,29 @@ public final class RunNetworkRender {
         var selected = new ResearchDataCenters(ServerMachineIdentities.forServer(server), () -> requireThread(server)).capture(membership.teamId(), databaseId);
         NativeChecks.check("research_prepared_real_database", selected != null && selected.current());
         var inventory = new MinecraftResearchDownloadInventory(player);
+        int downloadLevel = disk || encoding ? 1 : ResearchItemDownloadRegistry.INSTANCE.find(
+            AEItemKey.of(player.inventory.getStackInSlot(slot)), research).researchLevel();
         var nonce = UUID.randomUUID();
-        if (encoding) recordEncodingIntent(player, nonce, research, level, slot);
+        if (encoding) recordEncodingIntent(player, nonce, research, downloadLevel, slot);
         long time = Math.max(world.serverTime(), server.getWorld(0).getTotalWorldTime());
         if (disk) {
             var result = world.requestDiskImport(new ResearchDiskOperation.Intent(player.getUniqueID(), nonce, databaseId, membership.teamId(), slot),
                 membership, permission, selected.target(), selected.storage(), inventory, material -> {
                     var stack = new ItemStack(material.material());
                     NativeChecks.check("research_prepared_native_carrier", stack.getItem() instanceof ResearchDiskCarrier);
-                    return ((ResearchDiskCarrier) stack.getItem()).readResearchDisk(stack, ResearchRegistry.INSTANCE);
-                }, time, selected::current, selected::physicalCurrent,
+                    return ResearchItemImportRegistry.INSTANCE.evaluate(
+                        new ResearchItemImportContext(ResearchRegistry.INSTANCE,
+                            stack, player, databaseId, membership.teamId(), material.operationId()));
+                }, null, new MinecraftItemDeliveryAdapter(player), time, selected::current, selected::physicalCurrent,
                 () -> world.pendingDiskImports(player.getUniqueID()).stream().noneMatch(op -> op.intent().nonce().equals(nonce)));
             NativeChecks.check("research_disk_saved_prepared", result.operationId() != null && world.pendingDiskImports(player.getUniqueID()).stream()
                                                                                                     .anyMatch(op -> op.id().equals(result.operationId()) && op.status() == ResearchDiskOperation.Status.PREPARED));
         } else {
-            var intent = new ResearchDownloadOperation.Intent(player.getUniqueID(), nonce, databaseId, membership.teamId(), research, level, slot);
+            var intent = new ResearchDownloadOperation.Intent(player.getUniqueID(), nonce, databaseId, membership.teamId(), research, downloadLevel, slot, false, null);
             var result = world.requestItemDownload(intent, membership, permission, selected.snapshot(), inventory,
-                material -> ResearchItemDownloadRegistry.INSTANCE.evaluate(new ResearchItemDownloadContext(ResearchRegistry.INSTANCE, level,
+                material -> ResearchItemDownloadRegistry.INSTANCE.evaluate(new ResearchItemDownloadContext(downloadLevel,
                     new ItemStack(material.material()), ResearchRegistry.INSTANCE.require(research), player, server, player.getServerWorld(),
-                    databaseId, membership.teamId(), player.world.getTotalWorldTime(), material.operationId())), time,
+                    databaseId, membership.teamId(), player.world.getTotalWorldTime(), material.operationId())), null, null, () -> true, time,
                 new MinecraftItemDeliveryAdapter(player), selected::current, () -> holdOutput && world.pendingDownloadOperations(player.getUniqueID()).stream()
                                                                                                       .noneMatch(op -> op.intent().nonce().equals(nonce) && op.status() == ResearchDownloadOperation.Status.DELIVERING));
             NativeChecks.check("research_item_saved_prepared", result.operationId() != null && world.pendingDownloadOperations(player.getUniqueID()).stream()
@@ -846,6 +829,25 @@ public final class RunNetworkRender {
         pass(player, "client_old_process_survives_publication", "active actual v1 duration2400/codec graph/seed/data retained; current v2 duration40; successfulTicks=" + active.state().successfulTicks());
     }
 
+    private static void requestItemDownload(EntityPlayerMP player, String team, UUID database,
+                                            ResourceLocation research, int slot, UUID nonce,
+                                            Consumer<ResearchDownloadResult> result) {
+        var inventory = new MinecraftResearchDownloadInventory(player);
+        var delivery = new MinecraftItemDeliveryAdapter(player);
+        ServerResearch.requestItemDownloadPreview(player, team, database, research, slot, inventory, delivery, () -> true, preview -> {
+            if (preview == null) {
+                result.accept(new ResearchDownloadResult(ResearchDownloadResult.Status.NO_EVENT, null, null));
+                return;
+            }
+            if (!preview.ready()) {
+                result.accept(new ResearchDownloadResult(ResearchDownloadResult.Status.SOURCE_REJECTED, null, preview.sources().status()));
+                return;
+            }
+            ServerResearch.requestItemDownload(player, team, database, preview, nonce, inventory,
+                delivery, () -> true, result);
+        });
+    }
+
     private static void recordEncodingIntent(EntityPlayerMP player, UUID nonce, ResourceLocation research, int level, int slot) {
         var material = player.inventory.getStackInSlot(slot);
         NativeChecks.check("research_encoding_native_material", material.getItem() instanceof ResearchDiskCarrier
@@ -889,15 +891,16 @@ public final class RunNetworkRender {
         var output = player.inventory.getStackInSlot(outputSlot);
         NativeChecks.check("research_encoding_actual_native_output", output.getItem() instanceof ResearchDiskCarrier && output.getCount() == 1);
         var disk = ((ResearchDiskCarrier) output.getItem()).readResearchDisk(output, ResearchRegistry.INSTANCE);
-        NativeChecks.check("research_encoding_payload_and_template", disk != null && disk.tier() == tier && disk.entries().size() == 1 && disk.entries().getInt(research) == level
-            && output.serializeNBT().equals(completed.output()) && Objects.requireNonNull(output.getTagCompound()).getString("pe_run_tests_template").equals("native_encoding_preserved"));
+        NativeChecks.check("research_encoding_payload_and_native_item", disk != null && disk.tier() == tier && disk.entries().size() == 1 && disk.entries().getInt(research) == level
+            && output.serializeNBT().equals(completed.output())
+            && ((ResearchDiskCarrier) output.getItem()).emptyResearchDisk(output).serializeNBT().equals(material.serializeNBT()));
         var energy = output.getCapability(net.minecraftforge.energy.CapabilityEnergy.ENERGY, null);
         NativeChecks.check("research_encoding_actual_native_forge_caps", completed.output().hasKey("ForgeCaps") && energy != null && energy.getEnergyStored() == 37);
         NativeChecks.check("research_encoding_single_material_and_output", inventoryAmount(player, key) == saved.getLong("encoding_blank_total") - 1
             && encodedAmount(player, output.getItem(), research, level, tier) == saved.getLong("encoding_output_before") + 1
             && !MinecraftResearchDownloadInventory.hasPending(player));
-        int before = saved.getInteger("encoding_source_before"), cost = ResearchRegistry.INSTANCE.require(research).itemDownloadLevelCost();
         var sources = completed.sources();
+        int before = saved.getInteger("encoding_source_before"), cost = sources.cost();
         NativeChecks.check("research_encoding_declared_cost", sources.cost() == cost && before - cost == expectedSourceAfter);
         if (sources.policy() == com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM) {
             NativeChecks.check("research_encoding_exact_personal_source_plan", sources.memberChanges().stream().anyMatch(change -> change.memberId().equals(player.getUniqueID())
@@ -909,7 +912,7 @@ public final class RunNetworkRender {
         NativeChecks.check("research_encoding_actual_source_after", sourceLevel(player, research) == expectedSourceAfter);
         persistEvidence(player);
         pass(player, "research_actual_disk_encoding_verified", "nonce=" + nonce + " materialSlot=" + saved.getInteger("encoding_slot") + " outputSlot=" + outputSlot
-            + " tier=" + tier + " completedLevel=" + level + " source=" + before + "->" + expectedSourceAfter + " full native output+template and exactly one leaf");
+            + " tier=" + tier + " completedLevel=" + level + " source=" + before + "->" + expectedSourceAfter + " full native output and exactly one leaf");
     }
 
     private static int sourceLevel(EntityPlayerMP player, ResourceLocation research) {

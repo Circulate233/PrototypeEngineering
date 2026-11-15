@@ -66,7 +66,7 @@ public final class ResearchDownloadSources {
     }
 
     private static Evaluation evaluation(Status status) {
-        return new Evaluation(status, null);
+        return new Evaluation(status, null, 0, 0);
     }
 
     private static Preparation rejectPrepared(Status status, ObjectList<HeldPlayer> held) {
@@ -108,16 +108,15 @@ public final class ResearchDownloadSources {
     /**
      * Checks raw personal levels, never the team's cloud maximum. No source writer is acquired here.
      */
-    public Evaluation evaluate(ResearchDefinition definition, int downloadLevel, OwnerTeamResolution membership,
-                               @Nullable DataCenterResearchSnapshot database, Map<UUID, PlayerResearchState> players, TeamOwnedResearch team) {
+    public Evaluation evaluate(ResearchDefinition definition, int downloadLevel, int cost, OwnerTeamResolution membership,
+                               @Nullable DataCenterResearchSnapshot database, Map<UUID, PlayerResearchState> players, @Nullable TeamOwnedResearch team) {
         requireOwner();
         if (registry.require(definition.id()) != definition)
             throw new IllegalArgumentException("Download definition is not canonical");
         definition.stageForLevel(downloadLevel);
         if (definition.specialOnly()) return evaluation(Status.SPECIAL_ONLY_REJECTED);
         if (!membership.accepted()) return evaluation(Status.MISSING_TEAM);
-        requireTeam(membership.teamId(), team);
-        int cost = definition.itemDownloadLevelCost();
+        if (team != null) requireTeam(membership.teamId(), team);
         var members = new ObjectArrayList<>(membership.members());
         members.sort(null);
         if (definition.deliveryPolicy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM) {
@@ -127,6 +126,9 @@ public final class ResearchDownloadSources {
             if (definition.researchTierForLevel(downloadLevel) > database.level())
                 return evaluation(Status.DATA_CENTER_LEVEL_TOO_LOW);
             var changes = new ObjectArrayList<MemberChange>(members.size());
+            int teamLevel = team == null ? 0 : team.completedLevel(definition.id());
+            int beforeVisible = 0;
+            int afterVisible = 0;
             for (int index2 = 0; index2 < members.size(); index2++) {
                 var member = members.get(index2);
                 var source = player(players, member);
@@ -139,16 +141,28 @@ public final class ResearchDownloadSources {
                 requireSourceLevel(definition, before);
                 if (before < cost) return evaluation(Status.PERSONAL_LEVEL_INSUFFICIENT);
                 changes.add(new MemberChange(member, before, before - cost));
+                beforeVisible = Math.max(beforeVisible, before);
+                afterVisible = Math.max(afterVisible, before - cost);
             }
             return new Evaluation(Status.READY, new Plan(definition.deliveryPolicy(), definition.id(), downloadLevel,
-                cost, membership.teamId(), members, changes, -1, -1));
+                cost, membership.teamId(), members, changes, teamLevel, teamLevel),
+                teamLevel > 0 ? teamLevel : beforeVisible, teamLevel > 0 ? teamLevel : afterVisible);
         }
+        if (team == null) return evaluation(Status.TEAM_LEVEL_INSUFFICIENT);
         synchronized (team) {
             if (!team.canWriteResearch(definition.id())) return evaluation(Status.SOURCE_BUSY);
             int before = team.completedLevel(definition.id());
             if (before < downloadLevel || before < cost) return evaluation(Status.TEAM_LEVEL_INSUFFICIENT);
+            int personalMaximum = 0;
+            for (int index = 0; index < members.size(); index++) {
+                var source = player(players, members.get(index));
+                if (source != null) synchronized (source) {
+                    personalMaximum = Math.max(personalMaximum, source.completedLevel(definition.id()));
+                }
+            }
             return new Evaluation(Status.READY, new Plan(definition.deliveryPolicy(), definition.id(), downloadLevel,
-                cost, membership.teamId(), members, ObjectList.of(), before, before - cost));
+                cost, membership.teamId(), members, ObjectList.of(), before, before - cost),
+                before, before - cost > 0 ? before - cost : personalMaximum);
         }
     }
 
@@ -323,7 +337,6 @@ public final class ResearchDownloadSources {
         }
         if (plan.policy() == ResearchDownloadDeliveryPolicy.ITEM_ONLY)
             requireSourceLevel(definition, plan.teamBeforeLevel());
-        // Cost is the persisted cost, not a newly sampled definition.itemDownloadLevelCost().
     }
 
     private void requireTeam(String teamId, TeamOwnedResearch team) {
@@ -342,7 +355,10 @@ public final class ResearchDownloadSources {
         TEAM_LEVEL_INSUFFICIENT, PERSONAL_LEVEL_INSUFFICIENT, SOURCE_BUSY, SOURCE_CHANGED
     }
 
-    public record Evaluation(Status status, @Nullable Plan plan) {
+    public record Evaluation(Status status, @Nullable Plan plan, int teamLevelBefore, int teamLevelAfter) {
+        public int teamLevelLoss() {
+            return Math.max(0, teamLevelBefore - teamLevelAfter);
+        }
     }
 
     public record Preparation(Status status, @Nullable Prepared prepared) {

@@ -22,6 +22,7 @@ import mods.prototype_eng.research.ResearchStage;
 import mods.prototype_eng.research.ResearchFormula;
 import mods.prototype_eng.research.ResearchReward;
 import mods.prototype_eng.research.ResearchDownloads;
+import mods.prototype_eng.research.ResearchImports;
 import mods.prototype_eng.research.ResearchServer;
 import mods.pe_run_tests.NetworkRender;
 import mods.pe_run_tests.NativeChecks;
@@ -43,7 +44,7 @@ var manual = ResearchStage.create(1, 2, 0, 40, ResearchFormula.create())
     .mutex("pe_run_tests:research_mutex", 1)
     .material(Requirement.resources("pe_run_tests:research_manual_material", [Resource.item(<minecraft:iron_ingot>, 2)], []))
     .reward(1, manualReward);
-Research.create("pe_run_tests:research_manual", 2, false, "ITEM_ONLY", 1, [manual], function(context) {
+Research.create("pe_run_tests:research_manual", 2, false, "ITEM_ONLY", [manual], function(context) {
     return context.playerId != "" && context.teamId != "";
 }).display("pe_run_tests.research.manual", <minecraft:iron_ingot>).unlock("pe_run_tests:research_unlock", "pe_run_tests:net_device", 1).register();
 
@@ -52,23 +53,24 @@ var station = ResearchStage.create(1, 2, 1, 120, ResearchFormula.create().affine
     .material(Requirement.resources("pe_run_tests:research_station_material",
         [Resource.item(<minecraft:gold_ingot>, 2), Resource.item(<minecraft:redstone>, 10), Resource.item(<minecraft:iron_ingot>, 100)], []))
     .reward(1, manualReward);
-Research.create("pe_run_tests:research_station", 2, false, "DATABASE_AND_ITEM", 1, [station], function(context) {
+Research.create("pe_run_tests:research_station", 2, false, "DATABASE_AND_ITEM", [station], function(context) {
     return context.teamHasNetworkCenter && context.networkCenterLevel >= 1 && context.available(compute) >= 10;
 }).display("pe_run_tests.research.station", <minecraft:gold_ingot>).register();
-Research.create("pe_run_tests:research_mutex", 2, false, "ITEM_ONLY", 0,
+Research.create("pe_run_tests:research_mutex", 2, false, "ITEM_ONLY",
     [ResearchStage.create(1, 2, 0, 40, ResearchFormula.create()).mutex("pe_run_tests:research_manual", 1)],
     Research.alwaysAllowed()).display("pe_run_tests.research.mutex", <minecraft:book>).register();
-Research.create("pe_run_tests:research_loop", 2147483647, false, "DATABASE_AND_ITEM", 0,
+Research.create("pe_run_tests:research_loop", 2147483647, false, "DATABASE_AND_ITEM",
     [ResearchStage.create(1, 2147483647, 1, 100, ResearchFormula.create().perTick(compute, 0.1))],
     Research.alwaysAllowed()).display("pe_run_tests.research.loop", <minecraft:redstone>).register();
-Research.create("pe_run_tests:research_special", 1, true, "DATABASE_AND_ITEM", 0,
+Research.create("pe_run_tests:research_special", 1, true, "DATABASE_AND_ITEM",
     [ResearchStage.create(1, 1, 1, 100, ResearchFormula.create().constant(compute, 10))],
     Research.alwaysAllowed()).display("pe_run_tests.research.special", <minecraft:nether_star>).register();
 ResearchServer.permissions(function(action, context) { return context.standardDecision(action); });
-ResearchDownloads.register(<minecraft:paper>, function(context) {
+ResearchDownloads.register("pe_run_tests:paper_research_download", <minecraft:paper>, "pe_run_tests:research_station", 1, 1, <minecraft:book>, function(context) {
     NativeChecks.check("research_download_actual_context", context.teamId != "" && context.dataCenterId != "" && context.operationId != "");
     return <minecraft:book>;
 });
+ResearchImports.register("pe_run_tests:book_research_import", <minecraft:book>, "pe_run_tests:research_station", 1, <minecraft:paper>);
 
 var netRecipe = Recipe.withSelection("pe_run_tests:net_recipe", "v1", 80,
     [Requirement.resources("pe_run_tests:net_io", [Resource.item(<minecraft:cobblestone>, 2)], [Resource.item(<minecraft:glass>, 4)]),
@@ -78,7 +80,6 @@ NetworkRequirements.create().research("pe_run_tests:research_station", 1).resour
 NetworkRecipes.register(20, function(recipe, requirements) {
     if recipe.matches(netRecipe) { requirements.research("pe_run_tests:research_station", 1); }
 });
-NetworkRender.registerDiskEncoding();
 
 Structure.template("pe_run_tests:net_shape", "NORTH_UP", 0, 0, 0, false,
     Pattern.create().put(0, 0, 0, Predicate.notAir()).put(1, 0, 0, Predicate.resourceHatch())

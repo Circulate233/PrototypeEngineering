@@ -18,6 +18,15 @@ import java.util.UUID;
  * List arguments and results, including nested lists, must support constant-time indexed access.
  */
 public interface ItemDeliveryAdapter {
+    /**
+     * Checks the complete candidate before material or research payment. Adapters with finite output
+     * capacity override this; inventory and world delivery can split the candidate into multiple leaves.
+     * Committed operations resume their original delivery plan without this admission check.
+     */
+    default boolean canOutput(NBTTagCompound nativeTemplate, long amount) {
+        return true;
+    }
+
     ObjectList<ItemDeliveryFragment> plan(ItemDeliveryKey parent, AEKey resource, long amount);
 
     /**

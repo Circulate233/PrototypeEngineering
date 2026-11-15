@@ -8,25 +8,39 @@ import org.jetbrains.annotations.Nullable;
  */
 @SuppressWarnings("unused") // Public result consumed by download transactions.
 public final class ResearchItemDownloadEvaluation {
+    private static final ResearchItemDownloadEvaluation NO_EVENT = new ResearchItemDownloadEvaluation(Status.NO_EVENT, null, 0, 0);
+    private static final ResearchItemDownloadEvaluation REJECTED = new ResearchItemDownloadEvaluation(Status.REJECTED, null, 0, 0);
     private final Status status;
     @Nullable
     private final ItemStack output;
+    private final int researchLevel;
+    private final int levelCost;
 
-    private ResearchItemDownloadEvaluation(Status status, @Nullable ItemStack output) {
+    private ResearchItemDownloadEvaluation(Status status, @Nullable ItemStack output, int researchLevel, int levelCost) {
         this.status = status;
         this.output = output;
+        this.researchLevel = researchLevel;
+        this.levelCost = levelCost;
     }
 
     static ResearchItemDownloadEvaluation noEvent() {
-        return new ResearchItemDownloadEvaluation(Status.NO_EVENT, null);
+        return NO_EVENT;
     }
 
     static ResearchItemDownloadEvaluation rejected() {
-        return new ResearchItemDownloadEvaluation(Status.REJECTED, null);
+        return REJECTED;
     }
 
-    static ResearchItemDownloadEvaluation success(ItemStack output) {
-        return new ResearchItemDownloadEvaluation(Status.SUCCESS, output);
+    public static ResearchItemDownloadEvaluation success(ItemStack output, int researchLevel, int levelCost) {
+        return new ResearchItemDownloadEvaluation(Status.SUCCESS, output, researchLevel, levelCost);
+    }
+
+    public int researchLevel() {
+        return researchLevel;
+    }
+
+    public int levelCost() {
+        return levelCost;
     }
 
     public Status status() {

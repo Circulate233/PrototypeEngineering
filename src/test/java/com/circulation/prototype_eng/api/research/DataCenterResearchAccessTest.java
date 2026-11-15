@@ -23,6 +23,35 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 class DataCenterResearchAccessTest {
     @Test
+    @SuppressWarnings("DataFlowIssue")
+    void removalTargetsTheOpenedInactiveDatabaseAndLeavesTeamAndActiveContentsUnchanged() {
+        try (var fixture = new ResearchDataCentersTest.Fixture()) {
+            var active = fixture.dataCenter();
+            var inactive = fixture.dataCenter();
+            fixture.storage(active).downloadResearch(FIRST, 1, fixture.cloud());
+            fixture.storage(active).downloadResearch(SECOND, 1, fixture.cloud());
+            fixture.storage(inactive).downloadResearch(FIRST, 1, fixture.cloud());
+            fixture.refresh();
+            assertEquals(fixture.machineId(active), fixture.network.plan().teams().get("team").dataCenterId());
+            var world = fixture.researchWorld(ResearchPermissionPolicy.DEFAULT, _ -> fail("Removal wrote team research"));
+            var access = new DataCenterResearchAccess(world, fixture.network, fixture.selector);
+            var before = world.snapshot();
+            var removed = access.remove(fixture.membership(OWNER), fixture.permission(), fixture.machineId(inactive), FIRST, () -> true);
+            assertEquals(DataCenterStorage.Result.UPDATED, removed.storageResult());
+            assertTrue(fixture.storage(inactive).snapshot().storedResearch().isEmpty());
+            assertEquals(1, fixture.storage(active).snapshot().storedResearch().getInt(FIRST));
+            assertEquals(before, world.snapshot());
+            var deniedWorld = fixture.researchWorld((action, _) -> action == ResearchPermissionPolicy.Action.REMOVE_DATA_CENTER_RESEARCH
+                    ? ResearchPermissionPolicy.Decision.NOT_TEAM_MEMBER : ResearchPermissionPolicy.Decision.ALLOWED,
+                _ -> fail("Denied removal wrote research"));
+            var denied = new DataCenterResearchAccess(deniedWorld, fixture.network, fixture.selector)
+                .remove(fixture.membership(OWNER), fixture.permission(), fixture.machineId(active), FIRST, () -> true);
+            assertEquals(DataCenterResearchAccess.Status.PERMISSION_DENIED, denied.status());
+            assertEquals(1, fixture.storage(active).snapshot().storedResearch().getInt(FIRST));
+        }
+    }
+
+    @Test
     void consecutiveDownloadsRefreshPublicationAndAccumulateWithoutRefillingTheTickBudget() {
         try (var fixture = new ResearchDataCentersTest.Fixture()) {
             var machine = fixture.dataCenter();

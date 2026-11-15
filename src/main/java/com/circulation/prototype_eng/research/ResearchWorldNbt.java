@@ -9,6 +9,7 @@ import com.circulation.prototype_eng.api.research.ResearchWorldSnapshot;
 import com.circulation.prototype_eng.api.research.TeamOwnedResearch;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskOperation;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskOperationNbt;
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragmentNbt;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadNbt;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadOperation;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadReceipt;
@@ -34,18 +35,20 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
     private final ResearchQueueNbt queues;
     private final ManualResearchSessionNbt manual;
     private final ResearchDownloadNbt downloads;
+    private final ItemDeliveryFragmentNbt fragments;
 
     public ResearchWorldNbt(ResearchRegistry registry, ResourceKeyNbt keys) {
         players = new PlayerResearchStateNbt(registry, keys);
         queues = new ResearchQueueNbt(registry, keys);
         manual = new ManualResearchSessionNbt(registry);
         downloads = new ResearchDownloadNbt(registry, keys);
+        fragments = new ItemDeliveryFragmentNbt(keys);
     }
 
     @Override
     public NBTTagCompound encode(ResearchWorldSnapshot value) {
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 6);
+        tag.setInteger("Version", 7);
         tag.setLong("ServerTime", value.serverTime());
         var savedPlayers = new NBTTagList();
         var elements5 = value.players();
@@ -79,7 +82,7 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
         var elements4 = value.diskImports();
         for (int index4 = 0; index4 < elements4.size(); index4++) {
             var operation = elements4.get(index4);
-            disks.appendTag(ResearchDiskOperationNbt.encode(operation));
+            disks.appendTag(ResearchDiskOperationNbt.encode(operation, fragments));
         }
         tag.setTag("DiskImports", disks);
         return tag;
@@ -87,7 +90,7 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
 
     @Override
     public ResearchWorldSnapshot decode(NBTTagCompound tag) {
-        if (tag.getInteger("Version") != 6) {
+        if (tag.getInteger("Version") != 7) {
             throw new IllegalArgumentException("Unknown research world version");
         }
         var savedPlayers = tag.getTagList("Players", Constants.NBT.TAG_COMPOUND);
@@ -111,7 +114,7 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
         var diskList = new ObjectArrayList<ResearchDiskOperation>();
         var disks = tag.getTagList("DiskImports", Constants.NBT.TAG_COMPOUND);
         for (int index = 0; index < disks.tagCount(); index++)
-            diskList.add(ResearchDiskOperationNbt.decode(disks.getCompoundTagAt(index)));
+            diskList.add(ResearchDiskOperationNbt.decode(disks.getCompoundTagAt(index), fragments));
         return new ResearchWorldSnapshot(tag.getLong("ServerTime"), playerList, teamList, operationList, receiptList, diskList);
     }
 

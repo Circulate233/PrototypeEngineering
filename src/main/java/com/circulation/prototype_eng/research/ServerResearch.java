@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.research;
 import ae2.api.stacks.AEItemKey;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.api.network.MachineDataCenterStorage;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.research.DataCenterResearchAccess;
 import com.circulation.prototype_eng.api.research.DataCenterStorage;
@@ -16,18 +17,24 @@ import com.circulation.prototype_eng.api.research.ResearchServerConfiguration;
 import com.circulation.prototype_eng.api.research.ResearchWorld;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryAdapter;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKeyNbt;
-import com.circulation.prototype_eng.api.research.disk.ResearchDiskCarrier;
-import com.circulation.prototype_eng.api.research.disk.ResearchDiskData;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskImportResult;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskInteractions;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskOperation;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskRecovery;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskStorage;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadOperation;
+import com.circulation.prototype_eng.api.research.download.ResearchDownloadInventory;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadResult;
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadContext;
+import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadPreview;
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistry;
+import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadEvaluation;
+import com.circulation.prototype_eng.api.research.download.ResearchItemImportContext;
+import com.circulation.prototype_eng.api.research.download.ResearchItemImportRegistry;
+import com.circulation.prototype_eng.api.research.download.ResearchItemImportPreview;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskImport;
 import com.circulation.prototype_eng.api.research.manual.ManualResearch;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory;
 import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
@@ -60,7 +67,6 @@ import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.EnumActionResult;
 import net.minecraft.util.EnumFacing;
@@ -153,7 +159,11 @@ public final class ServerResearch {
         if (current != null && (current.server != server || current.overworld != server.getWorld(0))) {
             throw new IllegalStateException("Download recovery changed its server identity");
         }
-        if (current != null && !current.closing) recoverDownloads(current);
+        if (current != null && !current.closing) {
+            recoverMachineDiskImports(current);
+            recoverMachineDownloads(current);
+            recoverDownloads(current);
+        }
         var network = ServerNetworkRuntime.forServer(server);
         if (!network.refresh()) return;
         if (current == null || current.closing) return;
@@ -254,17 +264,134 @@ public final class ServerResearch {
         return new DataCenterResearchAccess.Result(DataCenterResearchAccess.Status.STALE_CONTEXT, null);
     }
 
+    @SuppressWarnings({"resource", "unused"})
+    public static void requestDataCenterRemove(EntityPlayerMP actor, String expectedTeam, UUID databaseId,
+                                               ResourceLocation researchId, BooleanSupplier ownerCurrent,
+                                               Consumer<DataCenterResearchAccess.Result> result) {
+        var current = actorSession(actor);
+        ServerTaskSchedulers.forServer(current.server).submit(() -> {
+            if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
+                result.accept(staleDownload());
+                return;
+            }
+            var online = onlinePlayers(current);
+            var captures = capture(current, Set.of(actor.getUniqueID()));
+            if (unavailable(captures)) {
+                result.accept(staleDownload());
+                return;
+            }
+            var membership = captures.get(actor.getUniqueID());
+            var permission = membership.accepted() && expectedTeam.equals(membership.teamId())
+                ? permission(current, actor, membership) : null;
+            if (permission == null) {
+                result.accept(staleDownload());
+                return;
+            }
+            var authority = proof(current, captures, online);
+            result.accept(current.database.remove(membership, permission, databaseId, researchId,
+                () -> authority.getAsBoolean() && currentActor(current, actor) && ownerCurrent.getAsBoolean()
+                    && permission.equals(permission(current, actor, membership))));
+        }, ExecutionMode.MAIN_THREAD);
+    }
+
     /**
-     * An exact native inventory slot supplies one material; the server freezes event output once.
+     * Queries one material conversion without source, inventory or persistent writes. The returned
+     * candidate owns the callback result used by the subsequent request, including its exact cost.
      */
     @SuppressWarnings({"resource", "unused"}) // Public request API retained while the research GUI is deferred.
-    public static void requestItemDownload(EntityPlayerMP actor, String expectedTeam, UUID expectedDataCenterId,
-                                           ResourceLocation id, int level, int slot, UUID nonce, BooleanSupplier ownerCurrent,
-                                           Consumer<ResearchDownloadResult> result) {
+    public static void requestItemDownloadPreview(EntityPlayerMP actor, String expectedTeam, UUID expectedDataCenterId,
+                                                  ResourceLocation id, int slot, ResearchDownloadInventory inventory,
+                                                  ItemDeliveryAdapter delivery, BooleanSupplier ownerCurrent,
+                                                  Consumer<ResearchItemDownloadPreview> result) {
         var current = actorSession(actor);
         var definition = ResearchRegistry.INSTANCE.require(id);
-        definition.stageForLevel(level);
-        var intent = new ResearchDownloadOperation.Intent(actor.getUniqueID(), nonce, expectedDataCenterId, expectedTeam, id, level, slot);
+        ServerTaskSchedulers.forServer(current.server).submit(() -> {
+            if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
+                result.accept(null);
+                return;
+            }
+            var online = onlinePlayers(current);
+            var captures = capture(current, Set.of(actor.getUniqueID()));
+            if (unavailable(captures)) {
+                result.accept(null);
+                return;
+            }
+            var membership = captures.get(actor.getUniqueID());
+            if (!membership.accepted() || !expectedTeam.equals(membership.teamId())) {
+                result.accept(null);
+                return;
+            }
+            var permission = permission(current, actor, membership);
+            if (permission == null) {
+                result.accept(null);
+                return;
+            }
+            var authority = proof(current, captures, online);
+            var physical = current.dataCenters.capture(expectedTeam, expectedDataCenterId);
+            if (physical == null || !membership.members().contains(physical.ownerId())) {
+                result.accept(null);
+                return;
+            }
+            var cloud = current.world.captureCloud(membership, permission, ResearchPermissionPolicy.Action.DOWNLOAD_RESEARCH_TO_DATA_CENTER,
+                () -> authority.getAsBoolean() && currentActor(current, actor) && ownerCurrent.getAsBoolean()
+                    && permission.equals(permission(current, actor, membership)));
+            if (cloud == null) {
+                result.accept(null);
+                return;
+            }
+            if (cloud.decision() != ResearchPermissionPolicy.Decision.ALLOWED) {
+                result.accept(null);
+                return;
+            }
+            if (!cloud.current().getAsBoolean()) {
+                result.accept(null);
+                return;
+            }
+            var material = inventory.capture(UUID.randomUUID(), slot);
+            if (material == null) {
+                result.accept(null);
+                return;
+            }
+            var stack = new ItemStack(material.material());
+            var recipe = ResearchItemDownloadRegistry.INSTANCE.find(AEItemKey.of(stack), id);
+            if (definition.specialOnly()) {
+                result.accept(null);
+                return;
+            }
+            var output = ResearchItemDownloadRegistry.INSTANCE.evaluate(recipe,
+                new ResearchItemDownloadContext(recipe == null ? 1 : recipe.researchLevel(), stack, definition,
+                    actor, current.server, actor.getServerWorld(), expectedDataCenterId, expectedTeam,
+                    actor.getServerWorld().getTotalWorldTime(), material.operationId()));
+            if (output.status() != ResearchItemDownloadEvaluation.Status.SUCCESS) {
+                result.accept(null);
+                return;
+            }
+            if (!delivery.canOutput(output.output().serializeNBT(), output.output().getCount())) {
+                result.accept(null);
+                return;
+            }
+            var sources = current.world.previewItemDownloadSources(definition, output.researchLevel(), output.levelCost(),
+                membership, physical.snapshot(), cloud.view());
+            result.accept(new ResearchItemDownloadPreview(id, material, output, sources,
+                inventory.machineInventory() ? physical.target() : null,
+                () -> authority.getAsBoolean() && physical.current() && cloud.current().getAsBoolean()
+                    && inventory.matches(material.inventoryBefore()) && currentActor(current, actor)
+                    && ownerCurrent.getAsBoolean() && permission.equals(permission(current, actor, membership))));
+        }, ExecutionMode.MAIN_THREAD);
+    }
+
+    /**
+     * Admits a server candidate after checking its original input and authority. The callback is
+     * not invoked again; both material and output may belong to a physical database adapter.
+     */
+    @SuppressWarnings({"resource", "unused"})
+    public static void requestItemDownload(EntityPlayerMP actor, String expectedTeam, UUID expectedDataCenterId,
+                                           ResearchItemDownloadPreview preview, UUID nonce, ResearchDownloadInventory inventory,
+                                           ItemDeliveryAdapter delivery, BooleanSupplier ownerCurrent,
+                                           Consumer<ResearchDownloadResult> result) {
+        var current = actorSession(actor);
+        var intent = new ResearchDownloadOperation.Intent(actor.getUniqueID(), nonce, expectedDataCenterId, expectedTeam,
+            preview.researchId(), preview.output().researchLevel(), preview.material().slot(), inventory.machineInventory(), preview.target());
         ServerTaskSchedulers.forServer(current.server).submit(() -> {
             if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
                 result.accept(staleItemDownload());
@@ -282,39 +409,17 @@ public final class ServerResearch {
                 return;
             }
             var permission = permission(current, actor, membership);
-            if (permission == null) {
+            var physical = current.dataCenters.capture(expectedTeam, expectedDataCenterId);
+            if (permission == null || physical == null || !membership.members().contains(physical.ownerId())
+                || !preview.ready()) {
                 result.accept(staleItemDownload());
                 return;
             }
             var authority = proof(current, captures, online);
-            var physical = current.dataCenters.capture(expectedTeam, expectedDataCenterId);
-            if (physical == null || !membership.members().contains(physical.ownerId())) {
-                result.accept(staleItemDownload());
-                return;
-            }
-            var cloud = current.world.captureCloud(membership, permission, ResearchPermissionPolicy.Action.DOWNLOAD_RESEARCH_TO_DATA_CENTER,
-                () -> authority.getAsBoolean() && currentActor(current, actor) && ownerCurrent.getAsBoolean()
-                    && permission.equals(permission(current, actor, membership)));
-            if (cloud == null) {
-                result.accept(staleItemDownload());
-                return;
-            }
-            if (cloud.decision() != ResearchPermissionPolicy.Decision.ALLOWED) {
-                result.accept(new ResearchDownloadResult(ResearchDownloadResult.Status.PERMISSION_DENIED, null, null));
-                return;
-            }
-            if (!cloud.current().getAsBoolean()) {
-                result.accept(staleItemDownload());
-                return;
-            }
-            result.accept(current.world.requestItemDownload(intent, membership, permission, physical.snapshot(),
-                new MinecraftResearchDownloadInventory(actor), material -> ResearchItemDownloadRegistry.INSTANCE.evaluate(
-                    new ResearchItemDownloadContext(ResearchRegistry.INSTANCE, level, new ItemStack(material.material()), definition,
-                        actor, current.server, actor.getServerWorld(), expectedDataCenterId, expectedTeam,
-                        actor.getServerWorld().getTotalWorldTime(), material.operationId())), operationTime(current),
-                new MinecraftItemDeliveryAdapter(actor), () -> authority.getAsBoolean() && physical.current()
-                    && currentActor(current, actor) && ownerCurrent.getAsBoolean()
-                    && permission.equals(permission(current, actor, membership)),
+            result.accept(current.world.requestItemDownload(intent, membership, permission, physical.snapshot(), inventory,
+                _ -> preview.output(), preview.sources().plan(), preview.material().operationId(), preview.current(), operationTime(current), delivery,
+                () -> authority.getAsBoolean() && physical.current() && currentActor(current, actor)
+                    && ownerCurrent.getAsBoolean() && permission.equals(permission(current, actor, membership)),
                 () -> currentActor(current, actor) && ownerCurrent.getAsBoolean()));
         }, ExecutionMode.MAIN_THREAD);
     }
@@ -391,6 +496,129 @@ public final class ServerResearch {
 
     private static void performDiskImport(Session current, EntityPlayerMP actor, String expectedTeam, UUID databaseId,
                                           int slot, UUID nonce, BooleanSupplier ownerCurrent, Consumer<ResearchDiskImportResult> result) {
+        performDiskImport(current, actor, expectedTeam, databaseId, slot, nonce, false, ownerCurrent, result);
+    }
+
+    @SuppressWarnings({"resource", "unused"})
+    public static void requestItemImportFromDataCenter(EntityPlayerMP actor, String expectedTeam, UUID databaseId,
+                                                       UUID nonce, BooleanSupplier ownerCurrent, Consumer<ResearchDiskImportResult> result) {
+        var current = actorSession(actor);
+        ServerTaskSchedulers.forServer(current.server).submit(() ->
+            performDiskImport(current, actor, expectedTeam, databaseId, 0, nonce, true, ownerCurrent, result), ExecutionMode.MAIN_THREAD);
+    }
+
+    /**
+     * Pure candidate query; the material callback runs once and its result belongs to the returned
+     * preview. Database, input, output and player research remain unchanged.
+     */
+    @SuppressWarnings({"resource", "unused"})
+    public static void requestItemImportPreview(EntityPlayerMP actor, String expectedTeam, UUID databaseId,
+                                                int slot, ResearchDownloadInventory inventory, ItemDeliveryAdapter delivery,
+                                                BooleanSupplier ownerCurrent,
+                                                Consumer<ResearchItemImportPreview> result) {
+        var current = actorSession(actor);
+        ServerTaskSchedulers.forServer(current.server).submit(() -> {
+            if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
+                result.accept(null);
+                return;
+            }
+            var online = onlinePlayers(current);
+            var captures = capture(current, Set.of(actor.getUniqueID()));
+            if (unavailable(captures)) {
+                result.accept(null);
+                return;
+            }
+            var membership = captures.get(actor.getUniqueID());
+            var permission = membership.accepted() && expectedTeam.equals(membership.teamId())
+                ? permission(current, actor, membership) : null;
+            var physical = permission == null ? null : current.dataCenters.capture(expectedTeam, databaseId);
+            if (physical == null || !membership.members().contains(physical.ownerId())
+                || !(physical.storage() instanceof ResearchDiskStorage storage) || !storage.diskPersistenceAvailable()) {
+                result.accept(null);
+                return;
+            }
+            var authority = proof(current, captures, online);
+            var cloud = current.world.captureCloud(membership, permission, ResearchPermissionPolicy.Action.DOWNLOAD_RESEARCH_TO_DATA_CENTER,
+                () -> authority.getAsBoolean() && currentActor(current, actor) && ownerCurrent.getAsBoolean()
+                    && permission.equals(permission(current, actor, membership)));
+            if (cloud == null || cloud.decision() != ResearchPermissionPolicy.Decision.ALLOWED || !cloud.current().getAsBoolean()
+                || current.world.savePending()) {
+                result.accept(null);
+                return;
+            }
+            var material = inventory.capture(UUID.randomUUID(), slot);
+            if (material == null) {
+                result.accept(null);
+                return;
+            }
+            var evaluated = ResearchItemImportRegistry.INSTANCE.evaluate(new ResearchItemImportContext(ResearchRegistry.INSTANCE,
+                new ItemStack(material.material()), actor, databaseId, expectedTeam, material.operationId()));
+            if (evaluated == null || evaluated.amount() < 1) {
+                result.accept(null);
+                return;
+            }
+            if (!delivery.canOutput(evaluated.output(), evaluated.amount())) {
+                result.accept(null);
+                return;
+            }
+            var preparation = ResearchDiskImport.prepare(material.operationId(), actor.getUniqueID(), expectedTeam,
+                evaluated.data(), physical.snapshot(), cloud.view());
+            result.accept(new ResearchItemImportPreview(material, evaluated, preparation, physical.target(), inventory.machineInventory(),
+                () -> !current.world.savePending() && authority.getAsBoolean() && cloud.current().getAsBoolean()
+                    && physical.current() && inventory.matches(material.inventoryBefore()) && currentActor(current, actor)
+                    && ownerCurrent.getAsBoolean()));
+        }, ExecutionMode.MAIN_THREAD);
+    }
+
+    @SuppressWarnings({"resource", "unused"})
+    public static void requestItemImport(EntityPlayerMP actor, String expectedTeam, UUID databaseId,
+                                         ResearchItemImportPreview preview, UUID nonce, ResearchDownloadInventory inventory,
+                                         ItemDeliveryAdapter delivery, BooleanSupplier ownerCurrent,
+                                         Consumer<ResearchDiskImportResult> result) {
+        var current = actorSession(actor);
+        var intent = new ResearchDiskOperation.Intent(actor.getUniqueID(), nonce, databaseId, expectedTeam,
+            preview.material().slot(), inventory.machineInventory());
+        ServerTaskSchedulers.forServer(current.server).submit(() -> {
+            var known = current.world.diskImportNonce(actor.getUniqueID(), nonce);
+            if (known != null && currentActor(current, actor) && ownerCurrent.getAsBoolean()) {
+                var status = !known.intent().equals(intent) ? ResearchDiskImportResult.Status.NONCE_CONFLICT
+                    : known.status() == ResearchDiskOperation.Status.ABORTED ? ResearchDiskImportResult.Status.ABORTED
+                    : known.status() == ResearchDiskOperation.Status.RELEASED ? ResearchDiskImportResult.Status.COMPLETED
+                    : ResearchDiskImportResult.Status.PENDING;
+                result.accept(new ResearchDiskImportResult(status, known.id(), null));
+                return;
+            }
+            if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean() || !preview.ready() || !preview.current().getAsBoolean()
+                || preview.machineInventory() != inventory.machineInventory()) {
+                result.accept(staleDiskImport());
+                return;
+            }
+            var online = onlinePlayers(current);
+            var captures = capture(current, Set.of(actor.getUniqueID()));
+            if (unavailable(captures)) {
+                result.accept(staleDiskImport());
+                return;
+            }
+            var membership = captures.get(actor.getUniqueID());
+            var permission = membership.accepted() && expectedTeam.equals(membership.teamId())
+                ? permission(current, actor, membership) : null;
+            var physical = permission == null ? null : current.dataCenters.capture(expectedTeam, databaseId);
+            if (physical == null || !physical.target().equals(preview.target())) {
+                result.accept(staleDiskImport());
+                return;
+            }
+            var authority = proof(current, captures, online);
+            result.accept(current.world.requestDiskImport(intent, membership, permission, physical.target(), physical.storage(), inventory,
+                _ -> preview.output(), preview.material(), delivery, operationTime(current),
+                () -> authority.getAsBoolean() && physical.current() && currentActor(current, actor) && ownerCurrent.getAsBoolean()
+                    && permission.equals(permission(current, actor, membership)), physical::physicalCurrent,
+                () -> currentActor(current, actor)));
+        }, ExecutionMode.MAIN_THREAD);
+    }
+
+    private static void performDiskImport(Session current, EntityPlayerMP actor, String expectedTeam, UUID databaseId,
+                                          int slot, UUID nonce, boolean machineInventory, BooleanSupplier ownerCurrent,
+                                          Consumer<ResearchDiskImportResult> result) {
         if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
             result.accept(staleDiskImport());
             return;
@@ -413,24 +641,26 @@ public final class ServerResearch {
             return;
         }
         var authority = proof(current, captures, online);
-        var intent = new ResearchDiskOperation.Intent(actor.getUniqueID(), nonce, databaseId, expectedTeam, slot);
+        ResearchDownloadInventory inventory;
+        ItemDeliveryAdapter delivery;
+        if (machineInventory) {
+            if (!(physical.storage() instanceof MachineDataCenterStorage storage)) {
+                result.accept(new ResearchDiskImportResult(ResearchDiskImportResult.Status.UNSUPPORTED_STORAGE, null, null));
+                return;
+            }
+            var slots = storage.transfers().forPlayer(actor.getUniqueID());
+            inventory = slots;
+            delivery = slots;
+        } else {
+            inventory = new MinecraftResearchDownloadInventory(actor);
+            delivery = new MinecraftItemDeliveryAdapter(actor);
+        }
+        var intent = new ResearchDiskOperation.Intent(actor.getUniqueID(), nonce, databaseId, expectedTeam, slot, machineInventory);
         result.accept(current.world.requestDiskImport(intent, membership, permission, physical.target(), physical.storage(),
-            new MinecraftResearchDownloadInventory(actor), material -> readDisk(material.material()), operationTime(current),
+            inventory, material -> ResearchItemImportRegistry.INSTANCE.evaluate(new ResearchItemImportContext(ResearchRegistry.INSTANCE,
+                new ItemStack(material.material()), actor, databaseId, expectedTeam, material.operationId())), null, delivery, operationTime(current),
             () -> authority.getAsBoolean() && physical.current() && currentActor(current, actor) && ownerCurrent.getAsBoolean()
                 && permission.equals(permission(current, actor, membership)), physical::physicalCurrent, () -> currentActor(current, actor)));
-    }
-
-    private static @Nullable ResearchDiskData readDisk(NBTTagCompound material) {
-        var stack = new ItemStack(material);
-        if (!(stack.getItem() instanceof ResearchDiskCarrier carrier)) return null;
-        // Strict external NBT is an input boundary. A malformed disk is rejected before a world operation exists.
-        try {
-            var data = carrier.readResearchDisk(stack, ResearchRegistry.INSTANCE);
-            if (data != null && data.tier() != carrier.researchDiskTier(stack)) return null;
-            return data;
-        } catch (IllegalArgumentException invalidDisk) {
-            return null;
-        }
     }
 
     private static ResearchDiskImportResult staleDiskImport() {
@@ -448,7 +678,21 @@ public final class ServerResearch {
                 result.accept(staleDiskImport());
                 return;
             }
-            result.accept(current.world.abortDiskImport(actor.getUniqueID(), operationId, new MinecraftResearchDownloadInventory(actor), operationTime(current)));
+            var operation = current.world.diskImport(actor.getUniqueID(), operationId);
+            if (operation == null) {
+                result.accept(new ResearchDiskImportResult(ResearchDiskImportResult.Status.RECOVERY_ERROR, operationId, null));
+                return;
+            }
+            ResearchDownloadInventory inventory;
+            if (operation.intent().machineInventory()) {
+                var original = current.dataCenters.captureOriginal(operation.target());
+                if (original == null || !(original.storage() instanceof MachineDataCenterStorage storage)) {
+                    result.accept(new ResearchDiskImportResult(ResearchDiskImportResult.Status.PENDING, operationId, null));
+                    return;
+                }
+                inventory = storage.transfers().forPlayer(actor.getUniqueID());
+            } else inventory = new MinecraftResearchDownloadInventory(actor);
+            result.accept(current.world.abortDiskImport(actor.getUniqueID(), operationId, inventory, operationTime(current)));
         }, ExecutionMode.MAIN_THREAD);
     }
 
@@ -459,13 +703,25 @@ public final class ServerResearch {
         for (int index2 = 0; index2 < elements2.size(); index2++) {
             var operation = elements2.get(index2);
             if (!currentActor(current, actor)) return;
-            var inventory = new MinecraftResearchDownloadInventory(actor);
+            var original = current.dataCenters.captureOriginal(operation.target());
+            if (original == null || !(original.storage() instanceof ResearchDiskStorage storage)) continue;
+            if (operation.intent().machineInventory() && (operation.status() != ResearchDiskOperation.Status.PREPARED
+                || storage.receipt(operation.id()) != null)) continue;
+            ResearchDownloadInventory inventory;
+            ItemDeliveryAdapter delivery;
+            if (operation.intent().machineInventory()) {
+                if (!(storage instanceof MachineDataCenterStorage machineStorage)) continue;
+                var slots = machineStorage.transfers().forPlayer(actor.getUniqueID());
+                inventory = slots;
+                delivery = slots;
+            } else {
+                inventory = new MinecraftResearchDownloadInventory(actor);
+                delivery = new MinecraftItemDeliveryAdapter(actor);
+            }
             if (operation.status() == ResearchDiskOperation.Status.ABORTING) {
                 current.world.abortDiskImport(actor.getUniqueID(), operation.id(), inventory, operationTime(current));
                 continue;
             }
-            var original = current.dataCenters.captureOriginal(operation.target());
-            if (original == null || !(original.storage() instanceof ResearchDiskStorage storage)) continue;
             OwnerTeamResolution membership = null;
             ResearchPermissionContext permission = null;
             BooleanSupplier authorized = () -> false;
@@ -491,11 +747,31 @@ public final class ServerResearch {
                     }
                 }
             }
-            current.world.recoverDiskImport(actor.getUniqueID(), operation.id(), inventory,
+            current.world.recoverDiskImport(actor.getUniqueID(), operation.id(), inventory, delivery,
                 new ResearchDiskRecovery(storage, original.target(), original::current, membership, permission, authorized), operationTime(current),
                 () -> currentActor(current, actor));
         }
 
+    }
+
+    /**
+     * Committed physical database effects do not depend on an online player or an open container.
+     * A request that has not entered its database effect still needs its captured player authority.
+     */
+    private static void recoverMachineDiskImports(Session current) {
+        var operations = current.world.pendingMachineDiskImports();
+        for (int index = 0; index < operations.size(); index++) {
+            var operation = operations.get(index);
+            var original = current.dataCenters.captureOriginal(operation.target());
+            if (original == null || !(original.storage() instanceof MachineDataCenterStorage storage)) continue;
+            if (operation.status() == ResearchDiskOperation.Status.PREPARED && storage.receipt(operation.id()) == null)
+                continue;
+            var actorId = operation.intent().playerId();
+            var slots = storage.transfers().forPlayer(actorId);
+            current.world.recoverDiskImport(actorId, operation.id(), slots, slots,
+                new ResearchDiskRecovery(storage, original.target(), original::current, null, null, () -> false), operationTime(current),
+                () -> session == current && !current.closing && original.current());
+        }
     }
 
 
@@ -518,9 +794,33 @@ public final class ServerResearch {
     private static void recoverDownloads(Session current, EntityPlayerMP actor) {
         if (!currentActor(current, actor)) return;
         recoverDiskImports(current, actor);
-        current.world.recoverItemDownloads(actor.getUniqueID(), new MinecraftResearchDownloadInventory(actor),
+        current.world.recoverItemDownloads(actor.getUniqueID(), null, new MinecraftResearchDownloadInventory(actor),
             new MinecraftItemDeliveryAdapter(actor), operationTime(current), () -> currentActor(current, actor),
             operation -> downloadAuthorized(current, actor, operation));
+    }
+
+    private static void recoverMachineDownloads(Session current) {
+        var actors = current.world.downloadInventoryActors().iterator();
+        while (actors.hasNext()) {
+            var actorId = actors.next();
+            var targets = current.world.downloadInventoryTargets(actorId).iterator();
+            while (targets.hasNext()) {
+                var target = targets.next();
+                var physical = current.dataCenters.captureOriginal(target);
+                if (physical == null || !(physical.storage() instanceof MachineDataCenterStorage storage)) continue;
+                if (!storage.transfers().locked() && !current.world.pendingDownloadInventory(actorId, target)) {
+                    targets.remove();
+                    continue;
+                }
+                var adapter = storage.transfers().forPlayer(actorId);
+                current.world.recoverItemDownloads(actorId, target, adapter, adapter, operationTime(current),
+                    physical::current, operation -> {
+                        var actor = current.server.getPlayerList().getPlayerByUUID(actorId);
+                        return actor != null && downloadAuthorized(current, actor, operation);
+                    });
+            }
+            if (current.world.downloadInventoryTargets(actorId).isEmpty()) actors.remove();
+        }
     }
 
     /**

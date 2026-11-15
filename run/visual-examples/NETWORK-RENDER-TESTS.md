@@ -152,7 +152,7 @@ emerald×2 的物品子项先交付，事件子项保持待重试；退出重进
 需要正常的 personal station 一级作为item来源才能继续。可完成站二级（需求1300、130周期，用新 gold×1/redstone×130/FE），或在独立新测试世界按前面重做。以下明确是**用户选择后退出连接**的测试命令：
 
 ```text
-/pe_run_tests research-prepare-exit item research_station 1 0
+/pe_run_tests research-prepare-exit item research_station 0
 ```
 
 命令在真实 MAIN 边界、FTB owner和实际数据库下，经正式 ResearchWorld 保存 PREPARED；在材料新效应前暂停请求，再断开当前玩家。不会编辑存档/NBT去伪造操作。单人世界退出后重新进入即为新服务器会话；多人要由用户退出并重启服务器后重连。重进后等恢复：
@@ -164,14 +164,14 @@ emerald×2 的物品子项先交付，事件子项保持待重试；退出重进
 
 `research-recovered`要求原来实际保存的 nonce 对应 COMPLETED 永久回执及原生材料证据已释放，而不只检查空队列。book总量和源研究扣级各一次。恢复前改变真实权限/队伍/数据库时 PREPARED 应保留/拒绝新授权；已支付部分仍按原代清偿。
 
-### 真实编码成盘（R30，独立于fixture写盘）
+### 真实编码成盘
 
-脚本的 `NetworkRender.registerDiskEncoding()` 在正式download注册phase调用 `ResearchDiskEncodingEvent.register`，实际blank盘转完整native研究盘。`research-encode`调用同一个 `ServerResearch.requestItemDownload`：真实玩家材料槽、nonce、当前数据库、源研究扣级和产物交付；不会直接设置盘payload来宣称编码成功。下面各正向编码子例以站一级已完成且数据库stored1、个人source1开始，先 `research-level research_station 1 1` 和 `research-database research_station 1`。如果已做paper→book耗掉一级，须先正常完成站二级补充真实来源，或在独立新测试世界按前面重做；after预期始终是实际before−1。
+空盘实现 `ResearchDiskCarrier` 后直接采用内置下载，无需注册盘配方。`research-encode` 先调用服务器预览，再提交准确候选，使用真实玩家材料槽、nonce、当前数据库、来源付款和产物交付。每次编码一级并支付来源一级。下面各正向编码子例以站一级已完成且数据库已存一级、个人来源一级开始，先执行 `research-level research_station 1 1` 和 `research-database research_station 1`。如果已用纸下载成书，应当先正常完成站二级补充来源，或在新测试世界重做；after 使用实际 before 减一。
 
 先把kit的真实tier0 blank盘放原生slot0（留至少一格空位），执行：
 
 ```text
-/pe_run_tests research-encode research_station 1 0 EVENT_REJECTED
+/pe_run_tests research-encode research_station 0 NO_EVENT
 /pe_run_tests research-encoding-rejected 1
 ```
 
@@ -179,17 +179,17 @@ emerald×2 的物品子项先交付，事件子项保持待重试；退出重进
 
 ```text
 /pe_run_tests research-encoding-blank 0 2
-/pe_run_tests research-encode research_station 1 0 COMPLETED
+/pe_run_tests research-encode research_station 0 COMPLETED
 /pe_run_tests research-encoded 0 0
 /pe_run_tests research-database research_station 1
 ```
 
-产物实际位于slot0时使用上述核对；若native交付选择了其它空位，先由库存GUI确定其原生slot，再传入该slot。`research-encoded`必须匹配刚保存的准确nonce/原材料槽、COMPLETED永久回执、盘tier2/完成等级1、完整native产物NBT与回执output完全一致、模板标记`native_encoding_preserved`、blank总量−1和同内容研究盘总量+1、实际源1→0及回执冻结的before/after、材料凭据已释放。tier2盘在tier1编码数据库合法，因为门是research tier1≤disk tier2；随即 `research-disk-import 0 DISK_REJECTED`证明导入目标才要求disk tier≤database tier，再 `research-encoded 0 0`确认拒绝没有消费产物。plain tier1 blank同样可通过真实encoding事件生成tier1输出，不需要调用fixture写盘。
+产物实际位于 slot0 时使用上述核对；若交付选择其他空位，先由库存 GUI 确定槽位，再传入该槽位。`research-encoded` 必须匹配刚保存的准确 nonce、原材料槽、COMPLETED 永久回执、盘阶级2、完成等级1、完整产物 NBT 与回执输出、其他物品 NBT 和 ForgeCaps、空盘总量减一、同内容研究盘总量加一、实际来源1降至0及回执保存的 before/after、材料凭据已释放。阶级2盘允许在阶级1数据库编码；随即执行 `research-disk-import 0 DISK_REJECTED` 检查导入目标的阶级限制，再执行 `research-encoded 0 0` 确认拒绝没有消费产物。阶级1空盘同样使用内置下载。
 
 PREPARED编码恢复子例重新具备真实个人source1/数据库stored1，将plain tier1 blank放slot0：
 
 ```text
-/pe_run_tests research-prepare-exit encode research_station 1 0
+/pe_run_tests research-prepare-exit encode research_station 0
 ```
 
 正式world writer已经保存完整encoded output候选与原材料/源计划，材料和源尚未付款，命令断开当前用户。退出世界/重启服务器后重进执行 `research-recovered encode`、`research-pending encode 0` 和 `research-encoded 0 0`；必须是原nonce的一次扣料、一次源级消费、完整产物和正式回执。多人会话需用户实际停止/重启服务端才计跨server-session，不只重连。
@@ -197,7 +197,7 @@ PREPARED编码恢复子例重新具备真实个人source1/数据库stored1，将
 另一个独立source1子例验证**材料/源已经支付、产物尚未交付**的恢复：
 
 ```text
-/pe_run_tests research-encode-output-exit research_station 1 0
+/pe_run_tests research-encode-output-exit research_station 0
 ```
 
 它沿真实download协议到SOURCE已提交并由world writer保存DELIVERING和原生盘产物，再暂停该次actor的新交付并断开。不是预制Nbt操作。重启后 `research-recovered encode_output`、`research-encoded 0 0` 必须确认原完整盘只交付一次、材料与源不重扣；再退出重进重复核对，数量仍+1。上述预期after0以before1为例；如果使用正常二级source2，则传入实际after1。
@@ -215,7 +215,7 @@ PREPARED编码恢复子例重新具备真实个人source1/数据库stored1，将
 实际消耗盘一枚，数据库持久条目一级。盘 tier限制研究tier而非 completedLevel。把低tier盘放槽0，执行 `research-disk-mismatch 0 research_special 1` 显式提供tier1 payload但保留真实tier0载体，再 `research-disk-import 0 MISSING_DISK`，应拒绝且不扣盘/写数据库；普通空盘同样 `MISSING_DISK`。PREPARED盘需新的、数据库尚未存入的准确条目（例如第二个新测试世界中先写 research_special 的盘）：
 
 ```text
-/pe_run_tests research-prepare-exit disk research_special 1 0
+/pe_run_tests research-prepare-exit disk research_special 0
 ```
 
 同样是正式world writer保存、真实载体/数据库barrier，保存后当前玩家断开；退出/重启后重进执行 `research-recovered disk`、`research-pending disk 0`、`research-database research_special 1`。准确 nonce 必须是 RELEASED，数据库效应和盘扣减各一次。真实右键数据库也走同一 ResearchDiskInteractions，可另记录本机GUI/物品交互证据。

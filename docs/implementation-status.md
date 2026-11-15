@@ -1,5 +1,19 @@
 # 实施进度
 
+## 2026-11-15 数据库下载与导入修订
+
+数据库预览右侧复用材料槽、箭头、输出槽，通过按钮切换研究下载与研究导入，底部保留完整背包。删除下载来源、下载等级及等级选择，返回按钮使用 AE `Icon.BACK`。费用按服务端本次付款导致的队伍可见等级下降显示，未下降显示“无”；无匹配配方或回调无输出不报错。云端写库继续通过独立 API 调用。
+
+自定义下载与自定义导入提供单输入、单输出定义、服务端候选预览和 JEI 自动页面。默认存盘不注册、不生成 JEI，由实现 `ResearchDiskCarrier` 的物品直接提供编码和导入；每次下载支付来源 1 级并编码 1 级，每份导入在数据库累加 1 级并返回原物品的空盘。默认数据库输入槽 0、输出槽 1 及交易回执保存在同一机器组件；恢复锁定原物理数据库，关闭窗口、卸载或操作者离线不转移未完成操作。研究移出具有独立权限，释放容量且不扣队伍研究。
+
+预览已检查 736px/320px、两种模式、单级编码、累加导入与空盘输出、费用有下降及无下降、无匹配输入、六种状态和移出确认，没有横向溢出、脚本异常或失效图片。证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261115/data-center-observations.json` 与 `data-center-*.png`。
+
+付款前统一通过 `ItemDeliveryAdapter.canOutput(nativeTemplate, amount)` 检查实际产物，直接调用与预览均覆盖；超出物理槽容量时不增加研究、不扣输入、不生成操作。已付款交易恢复使用原交付计划。现有行为用例验证加级、扣料及交付各执行一次、原目标恢复、费用实际下降、移出不影响其他回执。恢复空操作槽直接使用 `ItemStack.EMPTY`，避免构造无用物品和触发未初始化的原版物品表。没有添加源码文本、常量相等性或删除验证测试。
+
+59 Java 已经 IDEA MCP 格式化；逐文件 `errorsOnly:false` 检查了 57 项目 Java 和 2 语言文件，错误、警告、弱警告均为 0，无超时；2 run Java 被 IDE 排除，另以真实 SDK 编译。完整 `gradlew.bat build --console=plain`、Spotless、1742 tests/271 suites 和 MCP `build_project` 通过，失败、错误、跳过均为 0。统一构建包含已由其他对话提交的三设备 GUI 改版。`run/prepare-tests.ps1 -SkipInstall` 编译 27 Java addon，`run/verification/verify.ps1` 编译全部 15 ZS 并执行既有核心 API 行为检查，均通过，addon 未安装，没有启动游戏或服务端。证据为 `database-transfer-final/idea-verified.json`、`verification-summary.json`、`gradle-build-verified.log`、`test-totals.json`、`run-prepare.log` 与 `script-verification/script-verifier-result.json`，位于同一工作恢复目录。
+
+世界保存版本为 V7，下载封装版本为 2，不读取旧 V6。交易行为测试使用原生 NBT 与数据库/交付适配，未将其作为游戏中原生两槽、FTB 生命周期或画面验收。正式数据库 GUI 等待用户审核；本轮设计、后端和 JEI 完成后本地英文提交，保留用户 AGENTS.md 修改。
+
 ## 2026-11-15 三设备正式界面改版
 
 按本地提交 `2fb121e` 的三份预览和 [设备界面改版](device-gui-redesign.md) 完成研究站、网络中心与计算机正式界面。共用 `DeviceGuiDraw` 绘制 AE 配色的面板、状态标签、进度条和卡片，并统一名称截断与数值右对齐。

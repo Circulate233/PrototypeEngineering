@@ -12,6 +12,7 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.TeamResearchView;
+import com.circulation.prototype_eng.api.research.download.DataCenterTransferInventory;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskCommit;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskStorage;
 import com.circulation.prototype_eng.research.DataCenterStorageNbt;
@@ -36,11 +37,10 @@ import java.util.function.Consumer;
 public final class MachineDataCenterStorage implements ResearchDiskStorage, MachineLifecycleListener {
     public static final MachineComponentCodec<MachineDataCenterStorage> CODEC = new MachineComponentCodec<>() {
         @Override
-        @SuppressWarnings("DataFlowIssue")
         public NBTTagCompound encode(MachineInstance owner, MachineDataCenterStorage component) {
             component.requireOwner(owner);
             owner.requirePersistenceBoundary();
-            return DataCenterStorageNbt.encodeState(component.state.persistentState());
+            return component.encodeState();
         }
 
         @Override
@@ -56,6 +56,7 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
                 throw new IllegalArgumentException("Saved data-center metadata differs from its declaration");
             }
             component.state = ResearchDataCenter.restore(savedState, component.registry, component::requireThread, component::changed);
+            component.transfers.restore(saved.getCompoundTag("Transfers"));
             return component;
         }
 
@@ -73,6 +74,7 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
     private final Consumer<MachineInstance> dirty;
     private final MachineDataCenterPersistence persistence;
     private final ComponentType<MachineInstance, MachineDataCenterStorage> boundType;
+    private final DataCenterTransferInventory transfers;
     @Nullable
     private ResearchDataCenter state;
 
@@ -88,6 +90,7 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
         this.registry = registry;
         this.dirty = dirty;
         this.persistence = persistence;
+        transfers = new DataCenterTransferInventory(this::requireThread, this::changed, () -> persistCurrent(this::live));
     }
 
     /**
@@ -151,6 +154,21 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
         return state.snapshot();
     }
 
+    /**
+     * Two physical transfer slots saved with this database component, independent of any open GUI.
+     */
+    public DataCenterTransferInventory transfers() {
+        requireLive();
+        return transfers;
+    }
+
+    @SuppressWarnings("DataFlowIssue")
+    private NBTTagCompound encodeState() {
+        var tag = DataCenterStorageNbt.encodeState(state.persistentState());
+        tag.setTag("Transfers", transfers.encode());
+        return tag;
+    }
+
     @Override
     @SuppressWarnings("DataFlowIssue")
     public boolean current(DataCenterResearchSnapshot snapshot) {
@@ -170,6 +188,13 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
     public Result storeFromDisk(Object2IntMap<ResourceLocation> entries, TeamResearchView cloud, BooleanSupplier current) {
         requireLive();
         return state.storeFromDisk(entries, cloud, () -> current.getAsBoolean() && live());
+    }
+
+    @Override
+    @SuppressWarnings("DataFlowIssue")
+    public Result removeResearch(ResourceLocation id, BooleanSupplier current) {
+        requireLive();
+        return state.removeResearch(id, () -> current.getAsBoolean() && live());
     }
 
     @Override
@@ -227,7 +252,7 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
             throw new IllegalStateException("Original database persistence binding is unavailable");
         var backend = state;
         var captured = backend.persistentState();
-        var expected = DataCenterStorageNbt.encodeState(captured);
+        var expected = encodeState();
         BooleanSupplier current = () -> physicalCurrent.getAsBoolean() && live() && backend.persistentState() == captured;
         persistence.persistAndVerify(owner, boundType.id(), ownershipType.id(), expected, current);
         requireLive();

@@ -72,6 +72,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
     private static RecipeJeiDisplays registrationDisplays;
     private static RecipeJeiDisplays.Snapshot registrationDescriptions;
     private static ComputerRecipeJeiRegistration computerRecipes;
+    private ResearchDownloadJeiRegistration researchDownloads;
     private static boolean pageDataCurrent;
     @Nullable
     private static Definitions localStaticBaseline;
@@ -527,6 +528,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
         if (!deferPoolRegistration)
             bindPoolCategories(registration, pools, categoryDisplays, Set.of(), postInitialDeclaration);
         computerRecipes = new ComputerRecipeJeiRegistration(registration, categoryDisplays);
+        researchDownloads = new ResearchDownloadJeiRegistration(registration);
         registration.addRecipeCategories(new StructurePreviewJeiCategory(helper));
     }
 
@@ -535,6 +537,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
         requireClientOwner();
         ingredients = registration.getIngredientRegistry();
         registerStructures(registration);
+        researchDownloads.registerRecipes(registration);
         if (deferPoolRegistration) {
             var expected = registrationSnapshot;
             var expectedDisplays = registrationDisplays;

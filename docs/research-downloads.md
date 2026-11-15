@@ -1,22 +1,28 @@
-# 普通物品化研究下载与恢复
+# 研究下载、物品导入与恢复
 
-2026-11-13 当前状态：研究相关GUI及专用窗口消息已全部移除，延缓实现；下文涉及GUI接入的旧记录不再适用，后台Java操作保留。见[研究GUI状态](research-gui.md)。
+2026-11-15 数据库的下载和物品导入已按最新要求配方化，正式 GUI 等待预览审核。右侧复用输入、箭头、输出并切换模式，附完整玩家背包；云端写库保持独立方法调用。设计见[数据库界面](research-gui.md#数据库界面)。
 
-普通数据库下载与物品转换是两条真实服务器通路。数据库下载只把当前云研究写入活动物理数据库；普通物品转换调用材料注册的 `createOutput`，消费准确槽位的一件材料和冻结来源的等级费用，再交付完整原生产物。两者均保留永久奖励资格，不把数据库内容作为可扣减的研究来源。
+云端下载只把当前云研究写入活动物理数据库，不扣材料、来源研究等级或奖励资格。物品导出按配方消费一件材料和来源等级，再交付产物；物品导入按配方消费一件材料，向数据库增加研究并交付返回物品。数据库内部内容不作为导出的等级付款来源，物品导入也不扣队伍来源等级。
 
 ## 旧 PN 语义与本次接线
 
-已对照旧 `ResearchItemDownloadExecutionImpl` 的真实请求、来源冻结、玩家材料凭据和恢复顺序。`DATABASE_AND_ITEM` 的目标完成等级只需不高于活动数据库已存等级，同时满足数据库研究 tier 门槛；冻结全体当前成员，每人原始个人等级均须不少于 `itemDownloadLevelCost`，各扣同一费用。不能要求每人的等级达到下载目标，也不能额外要求当前云等级达到数据库已存目标。`ITEM_ONLY` 要求目标不高于队伍直属等级，费用仅从直属来源扣除。费用默认 1，可配置为 0，与输出研究完成等级独立。
+`DATABASE_AND_ITEM` 的固定配方需求等级不高于活动数据库的已存等级，且满足数据库阶级门槛；冻结全体当前成员，每人的原始个人等级必须足以支付配方 `levelCost`，各扣同一费用。不能额外要求每名成员达到配方需求等级，或要求当前云等级达到库内已存等级。`ITEM_ONLY` 使用队伍直属来源，付款仅扣该直属来源。费用由配方定义，允许 0，研究定义不再包含下载费用。存盘编码固定输出所选研究的 1 级，不接受用户选择等级。
+
+界面研究费用必须使用来源付款前后队伍可见等级的实际差。没有降低时显示“无”，降低时显示“队伍降低 N 级”。队伍直属来源仍覆盖个人最高等级时，支付个人等级可能不会改变队伍可见等级；这种情况不免除配方已经定义的来源付款。JEI 显示配方静态的研究要求和来源消耗，不能代替某个队伍的运行时费用预览。
 
 普通转换拒绝 `specialOnly`，在扣料前核对黑名单和目标阶段互斥规则。当前活动物理数据库的 owner 必须属于捕获成员；FTB 成员、角色权限、实际 actor/window、原数据库实例及 publication 证明由服务器重新捕获。全体冻结成员的真实空来源在费用为 0 时也会先创建，不能用缺失来源代替预约。
 
 ## 公开入口与真实调用
 
-- `ResearchItemDownloadRegistry` 按完整材料 AEItemKey 注册回调。`CommonProxy` 在研究注册表 freeze 后发布 `ResearchItemDownloadRegistrationEvent` 并冻结下载注册；不注册正式配方或游戏数值。
+- `ResearchItemDownloadRegistry` 按完整材料 AEItemKey 和研究索引下载配方；每份定义包含稳定 ID、固定研究要求、等级费用和输出模板，回调可计算实际输出。`CommonProxy` 在研究 freeze 后发布 `ResearchItemDownloadRegistrationEvent`，同时开放 `.registry()` 和 `.imports()`，随后冻结两份注册表，不内置游戏材料或数值。
 - `ResearchItemDownloadContext` 提供真实 actor/server/world、准确活动数据库 UUID、队伍、当前 actor world tick、目标等级、冻结单件材料及 operation UUID。回调只运行于主线程真实 actor 能力上下文。
-- `ServerResearch.requestItemDownload` 通过既有 MAIN 队列重捕获请求授权，默认 `ContainerResearch`/`GuiResearch` 的物品下载动作绑定最后绘制的研究、原队伍/数据库、当前选中快捷栏槽和 nonce。Java 平台入口可使用准确的 0..40 槽。
-- `ResearchWorld.requestItemDownload` 持有唯一世界 writer；新 actor+nonce 才运行事件，成功后冻结完整 native Count=1 模板与独立 long 数量，先持久化操作再允许材料效果。相同 nonce 和相同 intent 重试同一操作；不同 intent 返回冲突，不能再运行回调或另建操作。
+- `ServerResearch.requestItemDownloadPreview` 运行纯回调并生成准确原输入、候选输出及来源付款计划。`requestItemDownload` 使用该候选，通过 MAIN 队列重新捕获玩家、队伍、窗口、物理目标和原输入授权；客户端不提交下载等级或自行构造输出。
+- `ResearchWorld.requestItemDownload` 使用候选输出保存完整 native Count=1 模板与独立 long 数量，不在点击时再次调用事件。相同 actor+nonce 和相同 intent 重试同一操作；不同 intent 返回冲突，不能另建操作或重复付款。
 - `ResearchWorld.recoverItemDownloads`、`pendingDownloadOperations` 和 `downloadReceipts` 供服务器边界、登录及后续物品/实体加载恢复。`abortItemDownload` 仅在完整 before 库存证明材料未扣时允许明确终止。
+
+`ResearchItemImportRegistry` 提供静态和纯回调的自定义单输入、单输出导入。定义指定研究及本次增加等级，回调返回 `ResearchItemImportEvaluation`。存盘由 `ResearchDiskCarrier` 直接处理，物理阶级和内容来自实际输入，返回同一物品的空盘，不按物品、metadata 或阶级注册配方。没有匹配或回调没有输出时是正常的空查询结果，不写无对应输出错误日志或 GUI 错误文案。
+
+默认数据库的 `MachineDataCenterStorage.transfers()` 保存输入槽 0、输出槽 1 和材料、交付回执；`.forPlayer(uuid)` 提供同一物理库的付款和交付适配。物理目标与库存类别写入唯一世界操作，重选活动库或操作者换队不能转移原义务。输入在付款及输出确认期间保持原操作占用，不能提前清除回执让其他玩家开始下一笔。
 
 授权 `current` 在材料提交前重新核对 FTB、权限、物理数据库及 actor/window。World 自己核对原来源 before、预约和黑名单/互斥规则；不能把读取阶段的 cloud snapshot 证明用于 World 已初始化来源或持有短 writer 的阶段。材料提交后使用独立 `actorCurrent` 控制交付能力，换队或原数据库变化不抹去已承担的原来源义务。
 
@@ -24,12 +30,12 @@
 
 下载材料的记录只限制同一玩家同时开始另一笔研究扣料，不限制玩家的普通操作。`COMMITTED` 记录证明该笔材料已扣；恢复时保存当前库存及原记录，禁止再次扣料，也不要求玩家库存长期保持旧 after 镜像。扣料尚未提交时仍检查本次 before 和准确槽位；库存变化导致该次研究返回失败或恢复状态，不冻结玩家，也不改写死亡或重生行为。
 
-当前世界 V6 的 `ResearchWorldSnapshot` 同时包含玩家、队伍、队列、目标研究进度、手动会话、pending 下载和 terminal receipt，以及独立研究盘操作。`ResearchWorldNbt` 严格读写这一明确 schema，没有第二份下载或研究盘世界存档，也不回退旧 schema。以下普通转换的业务阶段保持原协议。
+当前世界 V7 的 `ResearchWorldSnapshot` 同时包含玩家、队伍、队列、目标进度、手动会话、pending 下载和 terminal receipt，以及物品导入操作的返回产物与交付阶段。`ResearchWorldNbt` 使用这一明确 schema，没有第二份下载或导入世界存档，不读取旧世界 schema。
 
 1. `PREPARED` 保存原 intent、成员/个人或直属来源 before/after、材料完整 native tag/ForgeCaps 与库存 before/after、输出模板和数量。按 researchId 预约，其他研究仍可推进。
 2. 保存 `materialArmed` 后才写玩家 PREPARED 凭据；消费前必须完整 before 相等，只扣准确槽一件。真实库存写入观察到完整 after 后，玩家 COMMITTED 凭据同步保存；World 再保存 `MATERIAL_COMMITTED`。
 3. 按冻结 operation UUID 借用原预约、提交原来源费用，用 `Prepared.owns/snapshot` 精确放行自己短 writer 的完整世界快照，保存 `SOURCES_COMMITTED`。保存失败保留唯一 `pendingSave` 和 after 值；先 complete 短 writer，预约直到准确 pending flush 成功才 release，不能回滚已经尝试持久化的来源结果。
-4. `SOURCES_COMMITTED` 已可靠保存后才清理玩家材料凭据。恢复此阶段及其后不重新预约、不再要求当前来源等级恰好等于旧 after，正常新研究或遗忘不能导致再次扣费。
+4. `SOURCES_COMMITTED` 已可靠保存后，原玩家背包通路可以清理材料凭据；物理数据库保留材料回执，直到输出确认且 World terminal 已可靠保存后再清理，保证输入输出槽持续归原操作使用。恢复此阶段及其后不重新预约，不要求当前来源等级仍等于旧 after，正常新研究或遗忘不能导致再次扣费。
 5. 从 frozen native 模板通过共享 `ItemDeliveryAdapter` 冻结完整计划，先保存 `DELIVERING` 操作，再逐片段 prepare、保存开始状态、全量或零效果交付、真实 effect commit 和 World CONFIRMED。片段只能按 `requireTransitionTo` 改状态，不能改 parent、完整 payload、数量或目标。
 6. 材料凭据可靠清理且全部片段已 durable CONFIRMED 后，转为 terminal nonce receipt，丢弃重型库存镜像。保留完整 CONFIRMED 片段，供卸载后再加载的掉落和登录后重复清标签；missing/released 从不补发。
 
@@ -37,19 +43,15 @@
 
 ## 分级盘物品、编码与导入
 
-`ResearchDiskCarrier` 是使用方物品的真实盘职责接口：使用方正常通过 Forge 注册自己的 `Item`，自行决定物品/等级数量、物理 tier 来源和存储布局；库不内置盘物品、等级枚举、数量表、模型、研究树或正式配方。接口提供物理 `researchDiskTier`、便于交互前探测的 `hasResearchDiskData`，及可覆盖的 `readResearchDisk`；默认解析可复用严格 `ResearchDiskNbtCodec`，自定义布局可自行实现。服务器总会比较解析内容的 tier 与该实际物品的物理 tier，完成等级仍独立保存。
+`ResearchDiskCarrier` 是使用方物品的盘接口。使用方通过 Forge 注册自己的 `Item`，决定物理 tier 来源和存储布局。接口提供 `researchDiskTier`、`hasResearchDiskData`、`readResearchDisk`、`writeResearchDisk` 和 `emptyResearchDisk`，默认使用 `ResearchDiskNbtCodec`；自定义布局必须同时覆盖读取、写入和清空方法。写入与清空返回独立输出，输入按只读方式借用，其他物品 NBT 和 ForgeCaps 保留。服务器核对内容 tier 与实际物品的物理 tier，完成等级仍独立保存。
 
-`ResearchDiskEncodingEvent.register(downloads, research, material, outputTemplate)` 从使用方盘模板的 Carrier 读取 tier，并把精确材料 AEItemKey 绑定到现编码事件；也可直接注册自定义 `ResearchItemDownloadEvent`。它直接进入上述普通下载按钮、回调、扣料/扣级和完整 native 输出保存/交付流程。编码仅检查 `researchTierForLevel(目标完成等级) ≤ diskTier`；编码数据库沿用普通转换已有研究门槛及权限，不额外检查空白盘阶级是否不高于编码数据库。产物保留模板其它 NBT/ForgeCaps。外部可以继续注册自己的材料及输出模板，或以 `ResearchDiskCarrier` 暴露自定义盘物品；特殊研究可用 `ResearchDiskData`/`ResearchDiskNbtCodec.writeCopy` 直接写入，不能强迫它经普通云下载。
+实现 `ResearchDiskCarrier` 的物品直接支持默认存盘下载与导入，不需要 Java 或 ZS 配方注册，也不生成 JEI 页面。空盘下载每次支付来源 1 级并编码所选研究的 1 级。编码只要求 `researchTierForLevel(1) ≤ diskTier`，数据库仍执行普通下载的研究门槛及权限，不额外要求空盘阶级不高于编码数据库。产物和导入后的空盘保留该实际物品的其他 NBT/ForgeCaps。特殊研究可直接用 `ResearchDiskData`/`ResearchDiskNbtCodec.writeCopy` 编码，不要求普通云下载。自定义下载与自定义导入的注册列表只包含使用方定义，JEI 从这些定义生成输入、输出与研究说明，不执行回调。
+
+盘导入每份向其中的研究增加 1 级，例如数据库已有 2 级，导入一份后为 3 级。自定义导入配方可定义其他增加量。研究最高等级、数据库阶级、容量和双向互斥按累加后的完整批次检查；整批通过后只消费一件输入，并交付单种返回物品，默认存盘返回空盘。不以取最大值合并多份盘，不逐条部分成功。
 
 已编码盘对真实 `MachineControllerHost` 数据中心普通右键，既有 `ServerResearch` 的 `RightClickBlock` hook 在 LOWEST 优先级先尊重已取消及 useItem DENY，再调用公开 `ResearchDiskInteractions.use`；合法 Carrier 交互取消为 SUCCESS，使 Forge 在方块打开 GUI 前返回。客户端保留原生使用 packet，只有真实服务器玩家排入 `ServerResearch.requestDiskImport` 的已有 MAIN owner 队列，冻结原 tile、准确主手/副手槽和物品 AEItemKey。无关物品/空白盘/目标 PASS 沿用原行为，外部自有交互调度也可直接调用此 helper。新操作核对当前 FTB 队伍、目标 owner 成员、动作权限、实际活动物理数据库、盘阶级、容量及研究互斥；只有导入目标检查 `diskTier ≤ databaseTier`。后端必须具有 `ResearchDiskStorage` 且当前真实持久能力可用，普通 `DataCenterStorage` 不据此消费盘。Java 平台入口还能明确给出原队伍、数据库 UUID、槽位和 nonce，不新增第二份 packet 或 GUI。
 
-`ResearchDiskOperation` 在 World 唯一 writer 中保存完整原 intent/目标 owner 与位置、数据库 commit before/after、准确单件盘和全库存 before/after。复用真实 `MinecraftResearchDownloadInventory` 的 player PREPARED/COMMITTED 凭据和交互、死亡/重生、光标、装备、漏斗保护，不制造研究扣级、奖励或手动会话：
-
-1. World 保存未 armed 的 `PREPARED`，再可靠保存玩家 `PREPARED` 材料凭据。
-2. World 可靠保存 `databaseArmed`，随后才调用数据库原子 `commitDisk`，同时发布研究内容和该完整 operation receipt。首次调用明确返回拒绝保证本次零效果，可以保存 `ABORTING` 后清玩家凭据；异常和重载后的 armed 缺失凭据保持未知。
-3. `persistDisk` 写入并从实际恢复来源回读当前完整数据库内容和准确 receipt，成功后 World 保存 `DATABASE_COMMITTED`。默认平台经 `MachineControllerHost`/原 machine 精确检查 Anvil chunk、tile、ownership 及完整组件 payload；外部真实宿主可供给自己的 `MachineDataCenterPersistence`，不要求继承内置 TE。
-4. 原玩家准确单槽消费一件盘，可靠保存玩家 `COMMITTED`/after，再由 World 保存 `COMPLETED`。
-5. World 的完成状态已 durable 后清理玩家和数据库凭据并分别保存，最后保存 `RELEASED` nonce 终态。缺失清理重试保存当前状态，不再次写研究或扣盘；正常后续库存变化不要求永远等于旧 after。
+`ResearchDiskOperation` 在唯一 World 存档中保存原目标 owner、位置、数据库 before/after、准确单件输入、库存 before/after，以及空盘或自定义输出的完整原生数据和交付片段。玩家输入复用 `MinecraftResearchDownloadInventory`，物理槽使用 `DataCenterTransferInventory.Adapter`，两种库存不能互换。原材料与数据库保存确认后才开始交付；输出确认与 World 终态保存完成后才清理回执，禁止在原物理输出尚未确认时开放下一笔交易。数据库发布、输入扣取及输出交付的完整次序见[数据中心导入](data-centers.md)。
 
 数据库 receipt 与正常升级共同保存，后续普通下载/同步不擦除证明，也不靠旧 after 内容相等推定成功。恢复通过 `ResearchDataCenters.captureOriginal` 锁定原 UUID、owner、维度/位置及实际存储绑定；数据库已发生效果后，换队或重选数据库不丢弃原物理义务。原目标卸载或未知材料/数据库证据保持 pending/recovery error，不补发、不重扣。`requestDiskImportCancel`/World `abortDiskImport` 仅能以未 armed 的 World 证明及准确 PREPARED before 安全取消；ABORTING 世界保存失败前不清玩家凭据。恢复明确换入另一队伍的未 armed 请求也可安全取消，已 armed 请求不能按权限变化丢弃。
 
@@ -70,11 +72,9 @@ public class AddonDisk extends AEBaseItem implements ResearchDiskCarrier {
     }
 }
 
-// 使用方在自己的 RegistryEvent.Register<Item> 中正常注册 disk。
-// 在库现有 ResearchItemDownloadRegistrationEvent 中绑定自己的材料与盘模板：
-ResearchDiskEncodingEvent.register(event.registry(), ResearchRegistry.INSTANCE, material, new ItemStack(disk));
-// 默认 namespace 的已编码输出会由库 RightClickBlock hook 处理；无须新增 GUI 或 packet。
-// 特殊研究也可直接由使用方写入：
+// Register disk in the addon's RegistryEvent.Register<Item>.
+// ResearchDiskCarrier enables default download and import without recipe registration.
+// Custom items may also encode special research directly:
 ItemStack encoded = ResearchDiskNbtCodec.writeCopy(new ItemStack(disk),
     new ResearchDiskData(ResearchRegistry.INSTANCE, tier, entries));
 ```

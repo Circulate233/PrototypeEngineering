@@ -26,7 +26,6 @@ public final class ResearchDefinition {
     private final int maxLevel;
     private final boolean specialOnly;
     private final ResearchDownloadDeliveryPolicy deliveryPolicy;
-    private final int itemDownloadLevelCost;
     private final ObjectList<ResearchLevelStage> stages;
     private final Object2IntMap<UnlockKey> unlockLevels;
     private final ResearchStartCondition startCondition;
@@ -41,10 +40,6 @@ public final class ResearchDefinition {
         maxLevel = builder.maxLevel;
         specialOnly = builder.specialOnly;
         deliveryPolicy = builder.deliveryPolicy;
-        if (builder.itemDownloadLevelCost > maxLevel) {
-            throw new IllegalArgumentException("Item download level cost exceeds maxLevel: " + id);
-        }
-        itemDownloadLevelCost = builder.itemDownloadLevelCost;
         if (builder.stages.isEmpty()) {
             throw new IllegalArgumentException("Research must declare stages: " + id);
         }
@@ -95,10 +90,6 @@ public final class ResearchDefinition {
 
     public ResearchDownloadDeliveryPolicy deliveryPolicy() {
         return deliveryPolicy;
-    }
-
-    public int itemDownloadLevelCost() {
-        return itemDownloadLevelCost;
     }
 
     public ObjectList<ResearchLevelStage> stages() {
@@ -173,7 +164,6 @@ public final class ResearchDefinition {
         private int maxLevel;
         private boolean specialOnly;
         private ResearchDownloadDeliveryPolicy deliveryPolicy;
-        private int itemDownloadLevelCost = 1;
         private ResearchStartCondition startCondition = ResearchStartCondition.ALWAYS_ALLOWED;
 
         private Builder(ResourceLocation id) {
@@ -209,14 +199,6 @@ public final class ResearchDefinition {
 
         public Builder deliveryPolicy(ResearchDownloadDeliveryPolicy policy) {
             deliveryPolicy = policy;
-            return this;
-        }
-
-        public Builder itemDownloadLevelCost(int cost) {
-            if (cost < 0) {
-                throw new IllegalArgumentException("Negative research item download level cost");
-            }
-            itemDownloadLevelCost = cost;
             return this;
         }
 

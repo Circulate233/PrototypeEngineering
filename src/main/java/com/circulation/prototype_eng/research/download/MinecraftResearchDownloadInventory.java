@@ -24,6 +24,11 @@ import java.util.UUID;
  * Real server-player single-slot material writes, backed by exact vanilla player-file evidence.
  */
 public final class MinecraftResearchDownloadInventory implements ResearchDownloadInventory {
+    @Override
+    public boolean machineInventory() {
+        return false;
+    }
+
     static final String STORE = "download_material_receipts";
     private static final String NAMESPACE = "prototype_eng";
     private final EntityPlayerMP player;

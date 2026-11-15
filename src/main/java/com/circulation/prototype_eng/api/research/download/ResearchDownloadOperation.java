@@ -1,10 +1,12 @@
 package com.circulation.prototype_eng.api.research.download;
 
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
+import com.circulation.prototype_eng.api.research.ResearchDataCenters;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
@@ -77,9 +79,10 @@ public record ResearchDownloadOperation(UUID id, Intent intent, ResearchDownload
 
     /**
      * Client retry identity and the server-confirmed original team; retries cannot replace either.
+     * Machine inventories retain a non-null original physical target; player inventories use null.
      */
     public record Intent(UUID playerId, UUID nonce, UUID databaseId, String teamId, ResourceLocation researchId,
-                         int level, int slot) {
+                         int level, int slot, boolean machineInventory, @Nullable ResearchDataCenters.Target target) {
         public Intent {
             if (level < 1 || slot < 0 || slot >= 41)
                 throw new IllegalArgumentException("Invalid download level or player inventory slot");

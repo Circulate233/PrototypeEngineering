@@ -40,10 +40,10 @@ public final class ZenResearch {
     }
 
     @ZenMethod
-    public static ZenResearch create(String id, int maxLevel, boolean specialOnly, String deliveryPolicy, int itemDownloadLevelCost, ZenResearchStage[] stages, ZenResearchStartCondition condition) {
+    public static ZenResearch create(String id, int maxLevel, boolean specialOnly, String deliveryPolicy, ZenResearchStage[] stages, ZenResearchStartCondition condition) {
         var location = new ResourceLocation(id);
         var builder = ResearchDefinition.builder(location).maxLevel(maxLevel).specialOnly(specialOnly)
-                                        .deliveryPolicy(ResearchDownloadDeliveryPolicy.valueOf(deliveryPolicy.toUpperCase(Locale.ROOT))).itemDownloadLevelCost(itemDownloadLevelCost);
+                                        .deliveryPolicy(ResearchDownloadDeliveryPolicy.valueOf(deliveryPolicy.toUpperCase(Locale.ROOT)));
         for (var stage : stages) builder.stage(stage.value());
         builder.startCondition(context -> condition.canStart(new ZenResearchStartContext(context)));
         return new ZenResearch(builder, location, maxLevel);
