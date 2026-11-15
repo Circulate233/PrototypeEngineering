@@ -72,8 +72,8 @@ final class DataCenterDiskPersistence {
                 throw new IOException("Saved database tile type or coordinates differ");
             var envelope = tile.getCompoundTag("Machine");
             var runtime = envelope.getCompoundTag("Runtime");
-            if (envelope.getInteger("Version") != 1 || !new ResourceLocation(envelope.getString("Type")).equals(location.machineType())
-                || runtime.getInteger("Version") != 2 || !new ResourceLocation(runtime.getString("Type")).equals(location.machineType()))
+            if (!new ResourceLocation(envelope.getString("Type")).equals(location.machineType())
+                || !new ResourceLocation(runtime.getString("Type")).equals(location.machineType()))
                 throw new IOException("Saved database machine declaration differs");
             var components = runtime.getTagList("Components", Constants.NBT.TAG_COMPOUND);
             int ownership = 0;

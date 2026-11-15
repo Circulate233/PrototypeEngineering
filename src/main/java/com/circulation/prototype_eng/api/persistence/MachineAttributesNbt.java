@@ -11,7 +11,7 @@ import net.minecraftforge.common.util.Constants;
 import java.util.Map;
 
 /**
- * Saves only ordered local attributes; callers restore the decoded map after complete validation.
+ * Local attribute bases and modifiers; inherited values are not persisted.
  */
 public final class MachineAttributesNbt implements NbtCodec<Map<ResourceLocation, MachineAttributes.LocalAttribute>> {
     public static final MachineAttributesNbt INSTANCE = new MachineAttributesNbt(AttributeModifierNbt.INSTANCE);
@@ -41,16 +41,12 @@ public final class MachineAttributesNbt implements NbtCodec<Map<ResourceLocation
             entries.appendTag(tag);
         }
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 2);
         tag.setTag("Attributes", entries);
         return tag;
     }
 
     @Override
     public Map<ResourceLocation, MachineAttributes.LocalAttribute> decode(NBTTagCompound tag) {
-        if (tag.getInteger("Version") != 2) {
-            throw new IllegalArgumentException("Unsupported local attribute NBT version");
-        }
         var entries = tag.getTagList("Attributes", Constants.NBT.TAG_COMPOUND);
         var replacement = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAttributes.LocalAttribute>(entries.tagCount());
         for (int index = 0; index < entries.tagCount(); index++) {
@@ -62,14 +58,10 @@ public final class MachineAttributesNbt implements NbtCodec<Map<ResourceLocation
             var localModifiers = new Object2ObjectLinkedOpenHashMap<String, AttributeModifier>(modifierList.tagCount());
             for (int modifierIndex = 0; modifierIndex < modifierList.tagCount(); modifierIndex++) {
                 var modifier = modifiers.decode(modifierList.getCompoundTagAt(modifierIndex));
-                if (localModifiers.putIfAbsent(modifier.id(), modifier) != null) {
-                    throw new IllegalArgumentException("Duplicate local attribute modifier ID: " + modifier.id());
-                }
+                localModifiers.put(modifier.id(), modifier);
             }
             var state = new MachineAttributes.LocalAttribute(base, localModifiers, inheritModifiers);
-            if (replacement.putIfAbsent(id, state) != null) {
-                throw new IllegalArgumentException("Duplicate local attribute ID: " + id);
-            }
+            replacement.put(id, state);
         }
         return replacement;
     }

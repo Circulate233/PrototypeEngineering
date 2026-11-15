@@ -2,7 +2,7 @@
 
 `MachineRecipe` 已恢复为按需求职责分组的公开定义。它保存 id、时长、配方组及 `RecipeRequirementType<?> → List<RecipeRequirement<?>>`，不再以固定输入、输出和 FE 字段限定配方。需求类型绑定自己的 `RecipeRequirementSystem<C>`；资源身份继续使用 AE2 的 AEKey/AEKeyType，不再建立 PMKey 的替代类型体系。
 
-本模块是库，不注册正式机器或玩法配方。参数、内容和自定义需求由使用方提供。高级需求、严格进程 NBT、工作槽/整组恢复、基础 admission/首刻 preparation 和受限固定 TICK/END 预筛/资源索引已完成此前阶段验证，准确证据见[实施进度](implementation-status.md)。显式 CANCELLED、业务 FAILED 清理、宿主取消协调、内置效果所有权及进程 NBT Version 2/取消回执已接入并完成此前验证；机器/世界生命周期、普通并发调度与控制器结构接线也已接入，自动扫描组件见本文。PN 配方条件已接真实消费者，见[网络消费者](network-recipes.md)；正式 PLANNED_PARALLEL、独立宿主自动接线及游戏运行证据仍待后续完成。
+本模块是库，不注册正式机器或玩法配方。参数、内容和自定义需求由使用方提供。高级需求、进程 NBT、工作槽/整组恢复、基础 admission/首刻 preparation 和受限固定 TICK/END 预筛/资源索引已完成此前阶段验证，准确证据见[实施进度](implementation-status.md)。显式 CANCELLED、业务 FAILED 清理、宿主取消协调、内置效果所有权及进程 NBT/取消回执已接入并完成此前验证；机器/世界生命周期、普通并发调度与控制器结构接线也已接入，自动扫描组件见本文。PN 配方条件已接真实消费者，见[网络消费者](network-recipes.md)；正式 PLANNED_PARALLEL、独立宿主自动接线及游戏运行证据仍待后续完成。
 
 ## 公开注册与需求扩展
 
@@ -316,7 +316,7 @@ PM 的高级需求是必须继续迁移的行为，固定资源/FE 需求不能�
 - 加权输出保留每个输出循环按权重无放回选取多个候选；`ignore_output_full` 保留部分产出并丢弃余量的效果。容量预留须覆盖实际确定的 key 和数量，不能只检查数量最大的候选而宣称覆盖所有随机结果。
 - 选择性包装器保留按顺序选择首个 START 成功的子需求、全程沿用选择、无可用候选时本次进程禁用但不阻塞，以及外部 modifier 施加进程属性效果。阻塞重试不能遗漏候选输入，也不能提前删除仍应生效的 modifier。
 - 需求 overlay 保留按类型和实例 ID 定位、每进程覆写有效需求而不改基础配方，以及外部 overlay applier 和 modifier 扩展。物品/流体 IO、流体每刻 IO、能源速率和满输出策略都是已有覆盖效果。
-- 属性 root/overlay、数量倍率、单进程刻状态、可补偿的属性需求及资源 chance/随机输出/检查点、模糊动态/路径/逻辑解析锁/选择器/需求 overlay、严格进程 NBT/组件装配与自有效果恢复已经接入并完成此前验证。当前工作槽宿主与整组恢复已接入，已通过此前工作槽阶段验证。块一真实消费者已使用这些定义和状态的纯事实及内部预算游标；正式模式、独立宿主和扫描消费者已由块二接线并验证。PM 当前物品/流体 snapshot 拒绝非空 properties，固定消耗投影不能代表任意高级外部效果已支持 planned。
+- 属性 root/overlay、数量倍率、单进程刻状态、可补偿的属性需求及资源 chance/随机输出/检查点、模糊动态/路径/逻辑解析锁/选择器/需求 overlay、进程 NBT/组件装配与自有效果恢复已经接入并完成此前验证。当前工作槽宿主与整组恢复已接入，已通过此前工作槽阶段验证。块一真实消费者已使用这些定义和状态的纯事实及内部预算游标；正式模式、独立宿主和扫描消费者已由块二接线并验证。PM 当前物品/流体 snapshot 拒绝非空 properties，固定消耗投影不能代表任意高级外部效果已支持 planned。
 
 显式取消与终态所有权保存已完成验证；宿主生命周期、结构失效暂停和控制器破坏边界见[机器生命周期](machine-lifecycle.md)。真实世界结构宿主、普通调度和 PN 配方权限已接，块二已接正式 PLANNED_PARALLEL、独立宿主与扫描内部预算，剩余迁移继续按功能核对。实现时保留外部需求、process factory、约束、matcher、modifier、codec/validator 和 overlay 扩展职责；这一排序不取消任何能力。
 
@@ -354,7 +354,7 @@ scanner 的同步 startIn 与 bounded beginAdmission 均把准确 `RecipeCatalog
 
 普通 `MachineAttributes.ValueCapture` 只跟踪本层与读取过的祖先；兄弟进程的局部编辑不互相撤销。共享用量另捕获家族变化与整机 roster revision；变动时重捕实际用量，基础建议确实改变才重造纯 candidate tuple。纯让步只保留未发布目录、工位选择、factory/无权利 check 进度；START、预留、PN permit、source resolution 和未退出 worker 仍由原 attempt 收尾。目录穷尽前执行新的预算化 live proof，库存/绑定改变后重取候选，避免旧 subset 漏掉新增输入。
 
-跨配方宿主按需追加 `pe_cross/<counter>` 工位，公开 slots 视图不可修改；声明工位不使用该运行时命名空间。固定布局 codec 保留 Version 1，动态布局使用 Version 2、Dynamic 与 NextSlot，先解析与验证整组后发布，计数器保持单调；append 与公开 restore（包括恢复空列表）均撤销旧 vacancy/roster 证明。降低共享额度或工位容量不驱逐已有工作。RESCAN 与 isCore 的扩展策略仍按后续阶段处理。
+跨配方宿主按需追加 `pe_cross/<counter>` 工位，公开 slots 视图不可修改；声明工位不使用该运行时命名空间。工位编解码不保存格式版本号，动态布局保存 Dynamic 与 NextSlot，先解析整组后发布，计数器保持单调；append 与公开 restore（包括恢复空列表）均撤销旧 vacancy/roster 证明。降低共享额度或工位容量不驱逐已有工作。RESCAN 与 isCore 的扩展策略仍按后续阶段处理。
 
 2026-11-12跨配方运行改为[统一批次](cross-recipe-batches.md)：本轮准入后封闭全部实际宿主，按原时长×最终并行数加权得到共同时间，运行期间不补入、所有成员共同END。TICK输入和输出两侧均相同才能合批，固定IO与FE原总量按共同时间精确分摊。START后的数量改写、共同速度、阻塞整批回滚及准确批次保存沿原planner执行；上述按目录继续准入只用于空载收集本批成员。
 

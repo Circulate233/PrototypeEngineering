@@ -63,8 +63,6 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
         var namespace = persisted.getCompoundTag(NAMESPACE);
         if (!namespace.hasKey(STORE)) return receipts;
         var store = namespace.getCompoundTag(STORE);
-        if (store.getInteger("version") != 1)
-            throw new IllegalArgumentException("Unknown download material store version");
         var list = store.getTagList("receipts", Constants.NBT.TAG_COMPOUND);
         if (list.tagCount() != 1)
             throw new IllegalArgumentException("Download material store must own exactly one player inventory operation");
@@ -231,7 +229,6 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
         var list = new NBTTagList();
         for (var receipt : receipts.values()) list.appendTag(ResearchDownloadMaterial.CODEC.encode(receipt));
         var store = new NBTTagCompound();
-        store.setInteger("version", 1);
         store.setTag("receipts", list);
         var data = player.getEntityData();
         var persisted = data.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG);

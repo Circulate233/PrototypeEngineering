@@ -52,7 +52,6 @@ class ResearchDownloadInventoryEvidenceTest {
 
     private static NBTTagCompound store(ResearchDownloadMaterial receipt) {
         var result = new NBTTagCompound();
-        result.setInteger("version", 1);
         var list = new NBTTagList();
         list.appendTag(ResearchDownloadMaterial.CODEC.encode(receipt));
         result.setTag("receipts", list);
@@ -137,9 +136,6 @@ class ResearchDownloadInventoryEvidenceTest {
         var duplicateStore = receiptStore(duplicate);
         duplicateStore.getTagList("receipts", 10).appendTag(ResearchDownloadMaterial.CODEC.encode(committed));
         assertThrows(IllegalArgumentException.class, () -> MinecraftResearchDownloadInventory.readReceipts(duplicate, PLAYER));
-        var malformed = data.copy();
-        receiptStore(malformed).setInteger("version", 2);
-        assertThrows(IllegalArgumentException.class, () -> MinecraftResearchDownloadInventory.readReceipts(malformed, PLAYER));
         var missingPayload = data.copy();
         receiptStore(missingPayload).setTag("receipts", new NBTTagList());
         assertThrows(IllegalArgumentException.class, () -> MinecraftResearchDownloadInventory.readReceipts(missingPayload, PLAYER));

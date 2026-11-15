@@ -20,7 +20,7 @@ import net.minecraftforge.common.util.Constants;
 import java.util.UUID;
 
 /**
- * Versioned player persistence; a complete candidate is validated before publication.
+ * Player progress, permissions and reward receipts.
  */
 @SuppressWarnings("unused") // Public codec used by save owners.
 public final class PlayerResearchStateNbt implements NbtCodec<PlayerResearchState.Snapshot> {
@@ -48,7 +48,6 @@ public final class PlayerResearchStateNbt implements NbtCodec<PlayerResearchStat
     @Override
     public NBTTagCompound encode(PlayerResearchState.Snapshot value) {
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 1);
         tag.setString("Player", value.playerUuid().toString());
         var levels = new NBTTagList();
         for (var entry : value.completedLevels().object2IntEntrySet()) {
@@ -70,8 +69,6 @@ public final class PlayerResearchStateNbt implements NbtCodec<PlayerResearchStat
 
     @Override
     public PlayerResearchState.Snapshot decode(NBTTagCompound tag) {
-        if (tag.getInteger("Version") != 1)
-            throw new IllegalArgumentException("Unknown player research version");
         var player = uuid(tag.getString("Player"));
         var levels = new Object2IntOpenHashMap<ResourceLocation>();
         var savedLevels = tag.getTagList("Completed", Constants.NBT.TAG_COMPOUND);
@@ -80,7 +77,6 @@ public final class PlayerResearchStateNbt implements NbtCodec<PlayerResearchStat
             var id = new ResourceLocation(entry.getString("Research"));
             int level = entry.getInteger("Level");
             validateLevel(id, level, true);
-            if (levels.containsKey(id)) throw new IllegalArgumentException("Duplicate completed research");
             levels.put(id, level);
         }
         var claims = new ObjectArrayList<RewardClaim>();

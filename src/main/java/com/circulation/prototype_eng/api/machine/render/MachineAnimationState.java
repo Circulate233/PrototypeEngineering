@@ -26,7 +26,6 @@ public class MachineAnimationState {
         public NBTTagCompound encode(MachineInstance owner, MachineAnimationState component) {
             var state = component.snapshot();
             var tag = new NBTTagCompound();
-            tag.setInteger("Version", 1);
             tag.setLong("Revision", state.revision());
             var layers = new NBTTagList();
             var elements = state.layers();
@@ -40,8 +39,6 @@ public class MachineAnimationState {
 
         @Override
         public MachineAnimationState restore(MachineInstance owner, MachineAnimationState component, NBTTagCompound tag) {
-            if (tag.getInteger("Version") != 1)
-                throw new IllegalArgumentException("Unsupported machine animation state version");
             var values = tag.getTagList("Layers", Constants.NBT.TAG_STRING);
             if (values.tagCount() > MAX_LAYERS) throw new IllegalArgumentException("Too many animation layers");
             var layers = new ObjectArrayList<String>(values.tagCount());

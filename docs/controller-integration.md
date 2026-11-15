@@ -6,7 +6,7 @@
 
 Forge 方块注册时，`MachineControllerBlocks` 发布 `MachineTypeRegistrationEvent`，监听者通过 `event.registry().register/registerAll` 提交不可变 `MachineType`。事件返回后 freeze，按声明顺序生成各类型的 `<namespace>:<path>_controller` 方块和物品。无声明时仍注册通用 `prototype_eng:machine_controller` TileEntity，保证库的类型映射不依赖正式内容。
 
-R31 物理基类修正：`MachineControllerBlock<T extends AEBaseTile & MachineControllerHost>` 是抽象基类，protected 构造接受规范 `MachineType`、独立注册 ID、`Class<T>`，protected `createController(World, IBlockState)` 返回同一 `T`；AE 的 typed 查询/状态桥接、方块的 GUI/放置/朝向/破坏交互贯通此类型，不擦成 AEBaseTile 后猜宿主。`BasicMachineControllerBlock` 才固定默认 `MachineControllerBlockEntity`，保留原配置创建与延迟装配。使用方可继承泛型基类并绑定独立 `AEBaseTile & MachineControllerHost` 实体，无需继承 PE 默认实体；真实实体类须有 public 无参构造并由使用方注册其 Forge NBT ID。`createItem()` 和 typed 状态钩子可覆写；异质集合/Item/声明事件使用 `MachineControllerBlock<?>`，同一声明事件仍调用 `controllerFactory(typeId, MyControllerBlock::new)`。旧 PM 的 `MachineBlock` 是 public open，但旧注册器固定创建，因此这里保留真实外部工厂链。
+`MachineControllerBlock<T extends AEBaseTile & MachineControllerHost>` 是抽象基类，protected 构造接受规范 `MachineType`、独立注册 ID、`Class<T>`，protected `createController(World, IBlockState)` 返回同一 `T`；AE 的 typed 查询/状态桥接、方块的 GUI/放置/朝向/破坏交互贯通此类型，不擦成 AEBaseTile 后猜宿主。`BasicMachineControllerBlock` 才固定默认 `MachineControllerBlockEntity`，保留原配置创建与延迟装配。使用方可继承泛型基类并绑定独立 `AEBaseTile & MachineControllerHost` 实体，无需继承 PE 默认实体；真实实体类须有 public 无参构造并由使用方注册其 Forge NBT ID。`createItem()` 和 typed 状态钩子可覆写；异质集合/Item/声明事件使用 `MachineControllerBlock<?>`，同一声明事件仍调用 `controllerFactory(typeId, MyControllerBlock::new)`。旧 PM 的 `MachineBlock` 是 public open，但旧注册器固定创建，因此这里保留真实外部工厂链。
 
 物理交互、方向工具及默认/自定义 GUI 通过 `MachineControllerHost` 使用准确实体、规范类型、运行时、完整朝向和 owner 边界；默认实体通过 `MachineControllerBlockHost` 识别承载方块。外部 AEBaseTile/AEBaseTileBlock 可独立实现这些职责，不必继承默认物理类。它们仍负责原有准确附着、权限、卸载及同步合同。
 
@@ -17,15 +17,15 @@ PostInit 在现有配方事件完成且配方注册表冻结后发布 `MachineRu
 
 ## 附着、NBT 与替换
 
-`MachineControllerBlockEntity` 无参构造不访问 World、不创建组件。具体方块的 typed 创建钩子仅给类型和朝向提示；AE final `createNewTileEntity` 直接调用真实类无参构造。Chunk 在加入 TE 映射前执行 AE validate，默认控制器复用 `syncOrientationFromBlockState` 的实际状态，仅在数据为空时补 immutable 类型和完整朝向，避免首次 tick 前状态桥接复位方向；保存/显示同步另以准确已附着方块作空数据兜底。已有显式/NBT 数据不覆盖，装配仍在原 owner 边界，放置者仍只取实际 `placedBy` 回调；`readFromNBT` 只解码复制的 `ControllerData`。保存外层保留 vanilla/Forge 的基本数据，`Machine` 子标签包含版本、规范类型、完整 AE 朝向及可选 runtime。物品数据不能把一种控制器变成另一种，附着后也不能通过 NBT 改位置。
+`MachineControllerBlockEntity` 无参构造不访问 World、不创建组件，用于 Forge 读档；新方块创建时由构造参数提供类型和朝向。`loadTag` 从 `ControllerData` 读取类型、完整 AE 朝向及可选 runtime，runtime NBT 在交接期间只读借用，不额外复制。保存外层保留 vanilla/Forge 的基本数据，`Machine` 子标签直接保存这些业务字段，不写入或检查固定格式版本号。机器装配仍在 owner 边界执行，放置者取自实际 `placedBy` 回调。
 
-AE2S 的 `readFromNBT/writeToNBT/invalidate/validate/onChunkUnload` 是 final，控制器实现使用 `loadTag/saveAdditional/setRemoved/clearRemoved/onChunkUnloaded` 钩子，并调用父钩子。父类 read 在 loadTag 之前更新 vanilla 坐标，因此控制器用仍拥有该 TE 的原 attachmentPosition 拒绝并恢复非法移动；原本的延迟装配、NBT 替换退休、显示包隔离及精确卸载仍保留。AE2 朝向查询与状态更新从 ControllerData 的同一朝向获取。
+AE2S 的 `readFromNBT/writeToNBT/invalidate/validate/onChunkUnload` 是 final，控制器实现使用 `loadTag/saveAdditional/setRemoved/clearRemoved/onChunkUnloaded` 钩子，并调用父钩子。已装配机器重新读取 NBT 时，先检查持久化边界并卸载旧运行时，再记录替换数据，交给新运行时恢复。AE2 朝向查询与方块状态更新使用控制器保存的同一朝向。
 
 当前实际依赖 `build/moddev/artifacts/cleanroom-0.6.13-alpha-sources.jar` 的调用顺序已复核：
 
 - ItemBlock 放置可以先附 World/位置并 `onLoad`，然后合并 BlockEntityTag，再调用 `onBlockPlacedBy`；processingLoadedTiles 路径也存在先 NBT/placement、后 onLoad 的反向顺序。
 - Forge 的 PlaceEvent 取消窗口位于 Item.onItemUse 返回后。因此 `onLoad` 只标记，下一次服务器 update 确认仍是准确、有效且已加载的本 TE，再在 scheduler 边界装配。tick 0 不被去重条件跳过。
-- 未装配 `writeToNBT` 保存原始副本，支持 ItemBlock 先 write、merge、再 read 的路径。客户端更新另有显示格式，不能走机器恢复。
+- 未装配 `writeToNBT` 写入持有的待恢复 runtime，支持 ItemBlock 先 write、merge、再 read 的路径。客户端更新使用显示数据格式。
 - Forge BlockSnapshot 回滚还会再次读取已装配 TE。此时先要求旧机器处于合法持久化边界，接受卸载并退休旧 controller，再保存替换数据；不会向活组件直接 restore。普通保存保留此替换，下一次有效更新由新 controller 完整装配、load 和登记。执行中/故障机器不能借 NBT 替换绕过门限。
 - 正常卸载后重复附着使用新 controller，旧对象不复活；旧原始数据或健康旧机器的保存用于恢复。load 被排队停止取消、未返回机器时保留原数据，后续有效附着可以重新创建。
 

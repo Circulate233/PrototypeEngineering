@@ -16,7 +16,6 @@ public final class ManualResearchMaterialReceiptNbt {
 
     public static NBTTagCompound encode(ManualResearchMaterialReceipt receipt) {
         var tag = new NBTTagCompound();
-        tag.setInteger("version", 1);
         tag.setString("sessionId", receipt.sessionId().toString());
         tag.setString("teamId", receipt.teamId());
         tag.setString("researchId", receipt.queueKey().researchId().toString());
@@ -36,9 +35,6 @@ public final class ManualResearchMaterialReceiptNbt {
     }
 
     public static ManualResearchMaterialReceipt decode(NBTTagCompound tag) {
-        if (tag.getInteger("version") != 1) {
-            throw new IllegalArgumentException("Unsupported material receipt version");
-        }
         String rawSession = tag.getString("sessionId");
         var session = UUID.fromString(rawSession);
         return new ManualResearchMaterialReceipt(session, tag.getString("teamId"),

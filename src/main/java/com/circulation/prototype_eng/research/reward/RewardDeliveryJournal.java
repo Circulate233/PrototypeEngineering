@@ -39,13 +39,10 @@ final class RewardDeliveryJournal {
         var namespace = persisted.getCompoundTag(NAMESPACE);
         if (!namespace.hasKey(STORE)) return result;
         var store = namespace.getCompoundTag(STORE);
-        int version = store.getInteger("version");
-        if (version != 1 && version != 2)
-            throw new IllegalArgumentException("Unsupported item delivery receipt version");
         var list = store.getTagList("receipts", Constants.NBT.TAG_COMPOUND);
         if (list.tagCount() > MAX_RECEIPTS) throw new IllegalArgumentException("Too many reward delivery receipts");
         for (int index = 0; index < list.tagCount(); index++) {
-            var receipt = decode(list.getCompoundTagAt(index), version);
+            var receipt = decode(list.getCompoundTagAt(index));
             result.requirePlayer(receipt);
             if (result.receipts.putIfAbsent(receipt.id(), receipt) != null)
                 throw new IllegalArgumentException("Duplicate reward receipt ID");
@@ -67,7 +64,6 @@ final class RewardDeliveryJournal {
         collectReceipts(union, loaded);
         collectReceipts(union, playerSaved);
         if (hostSaved != null) collectReceipts(union, hostSaved);
-        // All identities and the complete union limit have passed before creating any result.
         var result = new RewardDeliveryJournal(loaded.player);
         for (var receipt : union.values()) {
             boolean prepared = isPrepared(loaded, receipt.id()) && isPrepared(playerSaved, receipt.id())
@@ -141,11 +137,9 @@ final class RewardDeliveryJournal {
         return target;
     }
 
-    private static Receipt decode(NBTTagCompound tag, int version) {
+    private static Receipt decode(NBTTagCompound tag) {
         ItemDeliveryKey parent;
         if (tag.hasKey("delivery")) {
-            if (version != 2)
-                throw new IllegalArgumentException("Legacy reward receipt cannot contain download identity");
             var identity = tag.getCompoundTag("delivery");
             parent = ItemDeliveryKeyNbt.readIdentity(identity);
             if (parent instanceof RewardEventKey || !parent.playerUuid().equals(uuid(tag, "player"))
@@ -243,7 +237,6 @@ final class RewardDeliveryJournal {
         var list = new NBTTagList();
         for (var receipt : receipts.values()) list.appendTag(encode(receipt));
         var store = new NBTTagCompound();
-        store.setInteger("version", 2);
         store.setTag("receipts", list);
         return store;
     }

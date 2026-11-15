@@ -17,7 +17,6 @@ import net.minecraftforge.common.util.Constants;
 @SuppressWarnings("unused") // Public item persistence boundary; no item-registration policy here.
 public final class ResearchDiskNbtCodec {
     public static final String PAYLOAD_TAG = "prototype_eng_research_disk";
-    private static final int VERSION = 1;
 
     private ResearchDiskNbtCodec() {
     }
@@ -27,7 +26,6 @@ public final class ResearchDiskNbtCodec {
      */
     public static NBTTagCompound encode(ResearchDiskData data) {
         var result = new NBTTagCompound();
-        result.setInteger("version", VERSION);
         result.setInteger("tier", data.tier());
         var entries = new NBTTagList();
         for (var entry : data.entries().object2IntEntrySet()) {
@@ -40,13 +38,7 @@ public final class ResearchDiskNbtCodec {
         return result;
     }
 
-    /**
-     * Freeze the complete parsed batch only after every id, level and research tier validates.
-     */
     public static ResearchDiskData decode(NBTTagCompound stable, ResearchRegistry registry) {
-        if (stable.getInteger("version") != VERSION) {
-            throw new IllegalArgumentException("Unsupported research disk payload version");
-        }
         int tier = stable.getInteger("tier");
         var entries = stable.getTagList("entries", Constants.NBT.TAG_COMPOUND);
         if (entries.tagCount() < 1 || entries.tagCount() > ResearchDiskData.MAX_ENTRIES) {
@@ -57,9 +49,6 @@ public final class ResearchDiskNbtCodec {
             var entry = entries.getCompoundTagAt(index);
             var id = new ResourceLocation(entry.getString("researchId"));
             int level = entry.getInteger("level");
-            if (levels.containsKey(id)) {
-                throw new IllegalArgumentException("Duplicate research disk id: " + id);
-            }
             levels.put(id, level);
         }
         return new ResearchDiskData(registry, tier, levels);

@@ -336,6 +336,8 @@ ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, 
 
 `RecipeProcessNbt` 负责保存和恢复配方进程。配方时长、需求行为或组件保存格式改变后，必须更新配方 revision，并保留仍要恢复的旧版 codec。机器装配的 revision 则标识机器组件布局和保存方式。
 
+本库存档与内部同步编解码必须直接处理业务字段，禁止附加固定 `Version`/`Schema` 数字及对应拒绝检查。NBT Map/Set 按键写入，集合唯一性由生产方负责；禁止为普通数据解码建立重复键检查集合。配方和机器定义的 `revision` 用于选择实际声明及恢复代码，网络增量序号用于识别新旧发布，继续按各自接口规则使用。
+
 需要跟随运行中目录替换时，扫描器与工作槽应共用 `RecipeProcessCodecs`，并调用 `RecipeRegistry.bindProcessCodecs(...)` 和扫描器的 `follow(...)`。目录替换只影响新扫描，已经开始的进程继续使用原配方和原 codec。客户端也必须有相应的新定义，才能正确显示更新后的配方。初始化期的 `register(...)` 不能用来修改运行中的目录。
 
 `RecipeDefinitionUpdates.forServer(server).replace(expectedSession, expectedSnapshot, definitions, codecs)` 在服务器工作线程退出后的边界准备并发布新目录；请求集合及元素必须保持不变直到 future 完成。已由同一发布入口准备的目录可用 `submit(expectedSession, prepared)` 提交。结果必须同时检查 `status()` 和 `published()`：`NOTIFICATION_FAILED` 表示安装后通知失败，`INSTALLATION_FAILED` 也可能已经安装，禁止仅按失败状态重复提交。

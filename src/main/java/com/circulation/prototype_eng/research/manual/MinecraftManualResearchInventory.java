@@ -386,9 +386,6 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
             return receipts;
         }
         var stored = namespace.getCompoundTag(STORE);
-        if (stored.getInteger("version") != 1) {
-            throw new IllegalArgumentException("Unsupported manual material store version");
-        }
         var list = stored.getTagList("receipts", Constants.NBT.TAG_COMPOUND);
         if (list.tagCount() > MAX_RECEIPTS) {
             throw new IllegalArgumentException("Too many saved material receipts");
@@ -410,7 +407,6 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
             list.appendTag(ManualResearchMaterialReceiptNbt.encode(receipt));
         }
         var store = new NBTTagCompound();
-        store.setInteger("version", 1);
         store.setTag("receipts", list);
         var entity = player.getEntityData();
         var persisted = entity.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG);

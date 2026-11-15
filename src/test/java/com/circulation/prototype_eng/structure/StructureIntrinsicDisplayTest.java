@@ -27,10 +27,6 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -70,18 +66,6 @@ class StructureIntrinsicDisplayTest {
     private static TemplateStructure shape(String name, StructurePredicate predicate) {
         return TemplateStructure.create(id(name), BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false,
             new StructurePattern(new BlockPos2ObjectMap<>(Map.of(CELL, predicate))), List.of(), List.of());
-    }
-
-    private static void legacyString(DataOutputStream output, String text) throws IOException {
-        var bytes = text.getBytes(StandardCharsets.UTF_8);
-        output.writeInt(bytes.length);
-        output.write(bytes);
-    }
-
-    private static void legacyPosition(DataOutputStream output, BlockPos position) throws IOException {
-        output.writeInt(position.getX());
-        output.writeInt(position.getY());
-        output.writeInt(position.getZ());
     }
 
     private static StructurePattern countingPattern(AtomicInteger calls) {
@@ -140,55 +124,6 @@ class StructureIntrinsicDisplayTest {
         };
         assertNotNull(plan.match(StructureSnapshot.capture(plan.reads(), source)));
         assertEquals(1, calls.get());
-    }
-
-    @Test
-    void legacyVersionOnePayloadKeepsEntryDisplaysAndEmptyPropertiesThroughTheActualDecoder() throws IOException {
-        var bytes = new ByteArrayOutputStream();
-        try (var output = new DataOutputStream(bytes)) {
-            output.writeInt(1);
-            output.writeLong(1);
-            output.writeLong(2);
-            output.writeLong(3);
-            output.writeInt(1);
-            legacyString(output, id("legacy").toString());
-            output.writeByte(2);
-            output.writeByte(1);
-            output.writeBoolean(false);
-            output.writeByte(1);
-            legacyPosition(output, BlockPos.ORIGIN);
-            output.writeInt(1);
-            output.writeInt(1);
-            legacyPosition(output, BlockPos.ORIGIN);
-            output.writeInt(1);
-            legacyPosition(output, CELL);
-            output.writeInt(0);
-            output.writeInt(1);
-            legacyString(output, id("legacy").toString());
-            output.writeInt(0);
-            output.writeBoolean(false);
-            output.writeInt(1);
-            legacyPosition(output, CELL);
-            legacyString(output, "legacy/key");
-            output.writeBoolean(false);
-            output.writeInt(1);
-            legacyString(output, id("block").toString());
-            output.writeByte(3);
-            output.writeInt(1);
-            legacyString(output, "amount");
-            legacyString(output, "7");
-        }
-        var view = StructureCatalogCodec.decode(bytes.toByteArray());
-        assertTrue(view.nodes().getFirst().displays().isEmpty());
-        var display = view.entries().get(id("legacy")).displays().get(CELL);
-        assertEquals("legacy/key", display.key());
-        assertTrue(display.complete());
-        assertEquals(Map.of(), display.options().getFirst().properties());
-        assertEquals(Map.of("amount", "7"), display.options().getFirst().nbt());
-        var expansion = new StructurePreviewExpansion(view, id("legacy"), new StructurePreviewSettings(BlockOrientation.NORTH_UP));
-        while (expansion.model() == null) expansion.advance(8);
-        assertEquals(display, Objects.requireNonNull(expansion.model()).cells().getFirst().display());
-        assertEquals(display, StructureBuildPlan.expand(view, id("legacy"), BlockOrientation.NORTH_UP, Object2IntMaps.emptyMap()).cells().getFirst().display());
     }
 
     @Test

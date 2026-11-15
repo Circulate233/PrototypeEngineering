@@ -16,7 +16,7 @@ import net.minecraftforge.common.util.Constants;
 import java.util.UUID;
 
 /**
- * Versioned checkpoints. Decoding preserves the exact state; world loading calls restored().
+ * Decoding preserves checkpoint state; world loading calls restored().
  */
 @SuppressWarnings("unused")
 public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSession> {
@@ -68,9 +68,6 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
         for (int index = 0; index < list.tagCount(); index++) {
             var tag = list.getCompoundTagAt(index);
             var key = new ManualMaterialKey(new ResourceLocation(tag.getString("Requirement")), tag.getInteger("Input"));
-            if (amounts.containsKey(key)) {
-                throw new IllegalArgumentException("Duplicate saved manual material key");
-            }
             long amount = tag.getLong("Amount");
             if (amount < 0) throw new IllegalArgumentException("Negative manual work amount");
             amounts.put(key, amount);
@@ -99,9 +96,6 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
         for (int index = 0; index < saved.tagCount(); index++) {
             var baseline = saved.getCompoundTagAt(index);
             var player = uuid(baseline.getString("Player"));
-            if (baselines.containsKey(player)) {
-                throw new IllegalArgumentException("Duplicate saved manual completion member");
-            }
             int level = baseline.getInteger("Level");
             if (level < 0) throw new IllegalArgumentException("Negative manual member baseline");
             baselines.put(player, level);
@@ -126,7 +120,6 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
     @Override
     public NBTTagCompound encode(ManualResearchSession value) {
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 2);
         tag.setString("Id", value.id().toString());
         tag.setString("Team", value.teamId());
         var key = new NBTTagCompound();
@@ -154,9 +147,6 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
 
     @Override
     public ManualResearchSession decode(NBTTagCompound tag) {
-        if (tag.getInteger("Version") != 2) {
-            throw new IllegalArgumentException("Unknown manual research save version");
-        }
         var key = tag.getCompoundTag("QueueKey");
         var saved = new ManualResearchSession(uuid(tag.getString("Id")), tag.getString("Team"),
             new TeamResearchQueue.Key(new ResourceLocation(key.getString("Research")), key.getInteger("Level"), key.getLong("EntryId")),

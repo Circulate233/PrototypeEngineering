@@ -507,7 +507,6 @@ public final class ResearchDownloadSources {
         public NBTTagCompound encode(Plan plan) {
             validate(plan);
             var tag = new NBTTagCompound();
-            tag.setInteger("Version", 1);
             tag.setString("Policy", plan.policy().name());
             tag.setString("Research", plan.researchId().toString());
             tag.setInteger("DownloadLevel", plan.downloadLevel());
@@ -541,8 +540,6 @@ public final class ResearchDownloadSources {
 
         @Override
         public Plan decode(NBTTagCompound tag) {
-            if (tag.getInteger("Version") != 1)
-                throw new IllegalArgumentException("Unknown download source plan version");
             var memberTags = tag.getTagList("Members", Constants.NBT.TAG_STRING);
             var members = new ObjectArrayList<UUID>(memberTags.tagCount());
             for (int index = 0; index < memberTags.tagCount(); index++)

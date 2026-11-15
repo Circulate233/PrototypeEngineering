@@ -4,13 +4,15 @@
 
 ## 当前检查点
 
-- 2026-11-15 设备界面收尾修复：修正研究站队名查询、无权限显示、材料/资源悬停偏移、按钮重叠与滑块；网络中心改用 AE 滑块并在行数变化时重新布局；计算机页签与滚动条随提示条移动，状态配色补全；文字统一按原字号截断。10 Java 与 2 语言文件 IDEA MCP 全级零诊断，完整构建 1742 测试/271 suites 通过。入口：[改版说明](device-gui-redesign.md)、[实施记录](implementation-status.md)。下一步用户完整重启复验三个界面；其他会话未提交的研究持久化改动有 3 个测试失败，待该会话处理。
+- 2026-11-15 存档与内部同步清理完成：移除固定 Version/Schema 的读写和拒绝分支、普通 Map/Set 重复键检查、机器数据同步的临时去重集合及渲染分片 Count。30 生产 Java、13 测试 Java 已 IDEA 格式化并全级零诊断，1738 tests/271 suites、Spotless、完整构建和 MCP 构建通过。入口：[审查](defensive-programming-audit.md)、[API](../api.md)、[实施记录](implementation-status.md)。此前 V7/V6 的数字限制已删除，未增加历史字段迁移。下一步处理用户追加的中心每格说明与计算机更换组件后的 FE 状态问题。
+
+- 2026-11-15 设备界面收尾修复：修正研究站队名查询、无权限显示、材料/资源悬停偏移、按钮重叠与滑块；网络中心改用 AE 滑块并在行数变化时重新布局；计算机页签与滚动条随提示条移动，状态配色补全；文字统一按原字号截断。10 Java 与 2 语言文件 IDEA MCP 全级零诊断，完整构建 1742 测试/271 suites 通过。入口：[改版说明](device-gui-redesign.md)、[实施记录](implementation-status.md)。下一步用户完整重启复验三个界面；当时记录的 3 个持久化测试失败已由后续存档清理处理。
 
 - 2026-11-15 提交署名清理完成：删除 4 个提交中的 Claude 共同作者署名，重写对应提交及 3 个后续提交；文件树、作者、提交者和时间逐项校验一致，全引用历史无相关署名。实施记录中的预览提交引用已更新为 `424e281`。入口：[验证记录](implementation-status.md)。下一步继续既有功能复验；清理记录本地提交。
 
 - 2026-11-15 演示包启动异常已处理：用户日志中的 `ComponentType(..., Collection)` 缺失来自 run/mods 内 11 月 14 日的旧 addon；上一轮使用 `-SkipInstall` 编译，没有替换运行包。本轮执行 `run/prepare-tests.ps1`，27 Java 重新编译并成功安装，安装包与产物 SHA-256 一致，字节码调用当前 `List` 构造器。入口：[实施记录](implementation-status.md)。下一步用户完整启动客户端复验；本轮未修改 Java 或启动游戏。
 
-- 2026-11-15 数据库下载与导入修订完成：右侧共用持久输入、输出槽并切换操作，默认存盘按物品接口直接处理、不注册；JEI 只生成自定义下载与自定义导入页面。空盘下载支付来源 1 级并编码 1 级，导入每份累加 1 级并返回空盘，费用按队伍实际下降显示，云端写库保留独立 API。完整构建、1742 测试/271 suites、Spotless、IDEA MCP 构建通过；59 Java 已格式化，57 项目 Java 和 2 语言文件全级零诊断，2 run Java 被 IDE 排除并通过真实 SDK 编译，27 Java addon/15 ZS 通过。世界保存为 V7，不读取旧 V6。入口：[预览](previews/data-center.html)、[GUI 要求](research-gui.md#数据库界面)、[下载与导入](research-downloads.md)、[实施记录](implementation-status.md)。下一步用户审核数据库 GUI，再实现正式界面；本地英文提交。
+- 2026-11-15 数据库下载与导入修订完成：右侧共用持久输入、输出槽并切换操作，默认存盘按物品接口直接处理、不注册；JEI 只生成自定义下载与自定义导入页面。空盘下载支付来源 1 级并编码 1 级，导入每份累加 1 级并返回空盘，费用按队伍实际下降显示，云端写库保留独立 API。完整构建、1742 测试/271 suites、Spotless、IDEA MCP 构建通过；59 Java 已格式化，57 项目 Java 和 2 语言文件全级零诊断，2 run Java 被 IDE 排除并通过真实 SDK 编译，27 Java addon/15 ZS 通过。当时的 V7/V6 格式数字限制已由后续存档清理删除。入口：[预览](previews/data-center.html)、[GUI 要求](research-gui.md#数据库界面)、[下载与导入](research-downloads.md)、[实施记录](implementation-status.md)。下一步用户审核数据库 GUI，再实现正式界面；本地英文提交。
 
 - 2026-11-15 三设备正式界面改版完成：研究站采用材料五列图标格、顶部工作量和参与站数、状态标签及队列卡片；网络中心采用数字框、16格并发条和资源利用率条；计算机采用异常提示条、三张数据卡、文字页签和组件卡片。9Java已IDEA格式化、全级零诊断、定向编译和Spotless通过。全仓构建受其他会话研究下载JEI改动影响，完整结果未通过。入口：[改版说明](device-gui-redesign.md)、[研究站](previews/research-station.html)、[网络中心](previews/network-center.html)、[计算机](previews/computer.html)、[实施记录](implementation-status.md)。下一步用户完整重启复验画面、滚动、悬停和按钮；本地英文提交，保留其他工作区修改。
 

@@ -22,7 +22,6 @@ public final class ResearchDiskCommitNbt {
 
     public static NBTTagCompound encode(ResearchDiskCommit commit) {
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 1);
         tag.setString("Operation", commit.operationId().toString());
         tag.setString("Actor", commit.actor().toString());
         tag.setString("Team", commit.teamId());
@@ -37,8 +36,6 @@ public final class ResearchDiskCommitNbt {
     }
 
     public static ResearchDiskCommit decode(NBTTagCompound tag) {
-        if (tag.getInteger("Version") != 1)
-            throw new IllegalArgumentException("Unsupported disk import receipt schema");
         var database = uuid(tag, "Database");
         int tier = tag.getInteger("DatabaseTier");
         int capacity = tag.getInteger("Capacity");

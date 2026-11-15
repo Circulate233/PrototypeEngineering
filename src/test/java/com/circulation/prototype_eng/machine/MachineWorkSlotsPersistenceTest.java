@@ -147,7 +147,6 @@ class MachineWorkSlotsPersistenceTest {
             tag -> slots(tag).getCompoundTagAt(2).setBoolean("Core", true),
             tag -> slots(tag).getCompoundTagAt(2).setString("RestartPolicy", "LOCKED_RETRY"),
             tag -> slots(tag).getCompoundTagAt(2).setString("RestartPolicy", "UNKNOWN"),
-            tag -> tag.setInteger("Version", 2),
             tag -> tag.setString("Revision", "incompatible"),
             tag -> slots(tag).removeTag(2),
             tag -> slots(tag).getCompoundTagAt(2).removeTag("Result"));

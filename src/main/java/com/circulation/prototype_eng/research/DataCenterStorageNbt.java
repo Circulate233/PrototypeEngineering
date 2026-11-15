@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Complete strict physical storage payload. Load order, capture epoch and runtime revision are not persisted.
+ * Physical research contents and import receipts.
  */
 public final class DataCenterStorageNbt {
     private DataCenterStorageNbt() {
@@ -33,7 +33,6 @@ public final class DataCenterStorageNbt {
 
     private static NBTTagCompound encode(DataCenterResearchSnapshot snapshot, Map<UUID, ResearchDiskCommit> diskReceipts) {
         var tag = new NBTTagCompound();
-        tag.setInteger("Schema", 2);
         tag.setLong("IdMost", snapshot.dataCenterId().getMostSignificantBits());
         tag.setLong("IdLeast", snapshot.dataCenterId().getLeastSignificantBits());
         tag.setInteger("Level", snapshot.level());
@@ -65,9 +64,6 @@ public final class DataCenterStorageNbt {
     }
 
     public static ResearchDataCenter.State decodeState(NBTTagCompound tag, ResearchRegistry registry) {
-        if (tag.getInteger("Schema") != 2) {
-            throw new IllegalArgumentException("Unsupported data-center storage schema");
-        }
         var id = new UUID(tag.getLong("IdMost"), tag.getLong("IdLeast"));
         int level = tag.getInteger("Level");
         int capacity = tag.getInteger("Capacity");
@@ -76,9 +72,6 @@ public final class DataCenterStorageNbt {
         for (int index = 0; index < list.tagCount(); index++) {
             var entry = list.getCompoundTagAt(index);
             var researchId = new ResourceLocation(entry.getString("Id"));
-            if (levels.containsKey(researchId)) {
-                throw new IllegalArgumentException("Duplicate saved data-center research: " + researchId);
-            }
             levels.put(researchId, entry.getInteger("Level"));
         }
         var snapshot = new DataCenterResearchSnapshot(id, level, capacity, 0, levels);

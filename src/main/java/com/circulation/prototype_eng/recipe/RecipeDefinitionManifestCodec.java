@@ -26,7 +26,6 @@ public final class RecipeDefinitionManifestCodec {
     public static final int MAX_BYTES = 8 * 1024 * 1024;
     private static final int MAX_STRING_BYTES = 65536;
     private static final int MAX_ENTRIES = 65536;
-    private static final int VERSION = 1;
 
     private RecipeDefinitionManifestCodec() {
     }
@@ -34,7 +33,6 @@ public final class RecipeDefinitionManifestCodec {
     public static byte[] encode(RecipeDefinitionManifest manifest) {
         var bytes = new ByteArrayOutputStream();
         try (var output = new DataOutputStream(new BoundedOutput(bytes))) {
-            output.writeInt(VERSION);
             output.writeLong(manifest.serverSession().getMostSignificantBits());
             output.writeLong(manifest.serverSession().getLeastSignificantBits());
             output.writeLong(manifest.generation());
@@ -63,7 +61,6 @@ public final class RecipeDefinitionManifestCodec {
         if (bytes.length == 0 || bytes.length > MAX_BYTES)
             throw new IllegalArgumentException("Recipe manifest payload bounds");
         try (var input = new DataInputStream(new ByteArrayInputStream(bytes))) {
-            if (input.readInt() != VERSION) throw new IllegalArgumentException("Unknown recipe manifest version");
             var session = new UUID(input.readLong(), input.readLong());
             long generation = input.readLong();
             var key = new RecipeDeclarationKey(id(input), string(input));

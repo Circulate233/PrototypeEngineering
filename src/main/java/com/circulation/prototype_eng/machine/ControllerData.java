@@ -14,9 +14,6 @@ import org.jetbrains.annotations.Nullable;
 public record ControllerData(ResourceLocation type, BlockOrientation orientation, @Nullable NBTTagCompound runtime) {
 
     public static ControllerData decode(NBTTagCompound saved) {
-        if (saved.getInteger("Version") != 1) {
-            throw new IllegalArgumentException("Unsupported controller save version");
-        }
         return new ControllerData(new ResourceLocation(saved.getString("Type")),
             BlockOrientation.valueOf(saved.getString("Orientation")),
             saved.hasKey("Runtime") ? saved.getCompoundTag("Runtime") : null);
@@ -24,7 +21,6 @@ public record ControllerData(ResourceLocation type, BlockOrientation orientation
 
     public NBTTagCompound encode() {
         var saved = new NBTTagCompound();
-        saved.setInteger("Version", 1);
         saved.setString("Type", type.toString());
         saved.setString("Orientation", orientation.name());
         if (runtime != null) {

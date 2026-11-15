@@ -12,7 +12,7 @@
 
 ## 保存内容与恢复顺序
 
-机器 NBT Version 2 保存 `Type`、`Revision`、`Attributes`、`Components`、`PendingDependencies` 和 exact-long 非负 `FormationGeneration`。形成次数保留端口身份的代号，恢复后仍需重新匹配和成型，不恢复授权。组件条目保存描述符 ID、实际动态依赖与独立 `Data`。NBT 字段使用原生 getter 读取。未知组件、重复条目、不兼容修订及循环依赖仍会报告错误。
+机器 NBT 保存 `Type`、`Revision`、`Attributes`、`Components`、`PendingDependencies` 和非负 long `FormationGeneration`，不写入或校验固定格式版本号。形成次数保留端口身份的代号，恢复后仍需重新匹配和成型，不恢复授权。组件条目保存描述符 ID、实际动态依赖与独立 `Data`。NBT 字段使用原生 getter 读取。未知组件、重复组件绑定、不兼容声明修订及循环依赖仍会报告错误。
 
 恢复先解析并验证完整保存图，再创建所有已保存组件；随后按组件依赖顺序恢复数据，最后完整校验。保存的实际图优先于类型默认图：已删除的声明组件不被重新添加，运行时新增组件必须已有显式绑定，尚未安装 dependent 的 pending 约束保留。`ComponentMap.validateGraph` 与实际 dispatch 复用同一系统排序逻辑，预检不调用工厂。
 

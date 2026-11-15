@@ -332,7 +332,6 @@ class MachineAssemblyTest {
         List<Consumer<NBTTagCompound>> corruptions = List.of(
             tag -> tag.setString("Revision", "old"),
             tag -> tag.setString("Type", id("other").toString()),
-            tag -> tag.setInteger("Version", 99),
             tag -> entry(tag, second).setString("Type", id("unknown").toString()),
             tag -> tag.getTagList("Components", 10).appendTag(entry(tag, first).copy()),
             tag -> {

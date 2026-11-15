@@ -20,7 +20,6 @@ public record ResearchDownloadMaterial(UUID playerId, UUID operationId, int slot
         @Override
         public NBTTagCompound encode(ResearchDownloadMaterial value) {
             var tag = new NBTTagCompound();
-            tag.setInteger("version", 1);
             tag.setString("playerId", value.playerId().toString());
             tag.setString("operationId", value.operationId().toString());
             tag.setInteger("slot", value.slot());
@@ -33,8 +32,6 @@ public record ResearchDownloadMaterial(UUID playerId, UUID operationId, int slot
 
         @Override
         public ResearchDownloadMaterial decode(NBTTagCompound tag) {
-            if (tag.getInteger("version") != 1)
-                throw new IllegalArgumentException("Unknown download material version");
             return new ResearchDownloadMaterial(uuid(tag, "playerId"), uuid(tag, "operationId"), tag.getInteger("slot"),
                 tag.getCompoundTag("material"), tag.getCompoundTag("inventoryBefore"),
                 tag.getCompoundTag("inventoryAfter"), Status.valueOf(tag.getString("status")));

@@ -190,7 +190,6 @@ public final class TeamOwnedResearch {
         @Override
         public NBTTagCompound encode(Snapshot value) {
             var tag = new NBTTagCompound();
-            tag.setInteger("Version", 1);
             tag.setString("Team", value.teamId());
             var levels = new NBTTagList();
             for (var entry : value.levels().object2IntEntrySet()) {
@@ -205,18 +204,14 @@ public final class TeamOwnedResearch {
 
         @Override
         public Snapshot decode(NBTTagCompound tag) {
-            if (tag.getInteger("Version") != 1) {
-                throw new IllegalArgumentException("Unsupported team research version");
-            }
             var list = tag.getTagList("Levels", Constants.NBT.TAG_COMPOUND);
             var levels = new Object2IntOpenHashMap<ResourceLocation>();
             for (int index = 0; index < list.tagCount(); index++) {
                 var entry = list.getCompoundTagAt(index);
                 var id = new ResourceLocation(entry.getString("Id"));
                 int level = entry.getInteger("Level");
-                if (level < 1 || levels.putIfAbsent(id, level) != 0) {
-                    throw new IllegalArgumentException("Invalid or duplicate team research level");
-                }
+                if (level < 1) throw new IllegalArgumentException("Invalid team research level");
+                levels.put(id, level);
             }
             var teamId = tag.getString("Team");
             if (teamId.isBlank() || !teamId.equals(teamId.trim()))

@@ -1,5 +1,17 @@
 # 实施进度
 
+## 2026-11-15 存档与内部同步清理
+
+删除研究世界、玩家和队伍研究、队列、手动会话、研究下载、来源计划、存盘及回执、数据库、机器装配、工位、配方进程、控制器和动画中的固定 Version/Schema 写入与读取检查。结构目录、渲染快照和配方声明的内部二进制同步也删除固定版本整数，直接按当前字段布局解码。已有 NBT 的版本字段不参与读取，本轮没有增加历史字段迁移。
+
+普通属性、研究等级、材料及网络资源数量表、成员与黑名单直接使用 put/add，删除重复键预检。机器数据同步删除仅用于验证唯一性的临时集合，由生产方提供唯一 ID。渲染分片 Count 可从总字节数计算，删除重复传输和比对；Bytes 的重复类型检查也已删除。实际交易回执保留操作身份、付款状态和交付目标检查；配方和机器声明 revision 仍用于选择恢复定义，增量序号继续标识发布顺序，溢出与事务预检继续保留。
+
+删除 4 个只验证旧格式或重复字段限制的测试，并清除其他测试中对应断言和无用辅助代码，没有新增测试。剩余三个失败已确认分别来自空 NBT 缺版本号断言、队伍重复等级断言及手动会话重复字段断言。保留存档往返、写入失败、完整交易和恢复行为测试。
+
+30 个生产 Java 和 13 个测试 Java 经本机 IDEA MCP 格式化，逐文件 get_file_problems(errorsOnly:false) 最终错误、警告、弱警告均为 0，无超时；首轮一处冗余局部变量已删除并复查。完整 gradlew.bat build --max-workers=1 --console=plain、Spotless、1738 tests/271 suites 和 MCP build_project 通过，失败、错误、跳过均为 0。普通并行复跑曾因 Windows 内存提交不足导致测试 JVM 启动失败，改用本次命令的单 worker 参数后完成，未修改项目构建配置。
+
+证据位于 C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261115/serialization-cleanup/：java-manifest.json、idea-files.json、idea-recheck.json、idea-comment-rechecks.json、idea-build.json、gradle-build-verified.log、verification-summary.json；失败 JVM 日志保存在 jvm-crashes/。API 和相关专题文档已同步，用户 AGENTS.md 修改保留。本轮本地英文提交，不推送；实际游戏行为由用户启动复验。
+
 ## 2026-11-15 设备界面收尾修复
 
 审查提交 `334a6bd` 的研究站、网络中心与计算机正式界面并修复以下问题。

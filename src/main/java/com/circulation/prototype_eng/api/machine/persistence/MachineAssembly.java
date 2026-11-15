@@ -145,7 +145,7 @@ public final class MachineAssembly {
      */
     @Nullable
     public PersistentMachineIdentity savedIdentity(NBTTagCompound tag) {
-        if (tag.getInteger("Version") != 2 || !new ResourceLocation(tag.getString("Type")).equals(type.id())
+        if (!new ResourceLocation(tag.getString("Type")).equals(type.id())
             || !tag.getString("Revision").equals(revision)) {
             throw new IllegalArgumentException("Saved identity requires this exact machine assembly");
         }
@@ -220,7 +220,6 @@ public final class MachineAssembly {
         var local = machine.attributes().localSnapshot();
         validate(machine, bindings, pendingDependencies);
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 2);
         tag.setString("Type", type.id().toString());
         tag.setString("Revision", revision);
         tag.setLong("FormationGeneration", machine.lifecycle().formationGeneration());
@@ -255,7 +254,7 @@ public final class MachineAssembly {
     @SuppressWarnings("DataFlowIssue")
     private void restoreState(MachineInstance machine, NBTTagCompound tag) {
         requireOwner(machine);
-        if (tag.getInteger("Version") != 2 || !new ResourceLocation(tag.getString("Type")).equals(type.id())
+        if (!new ResourceLocation(tag.getString("Type")).equals(type.id())
             || !tag.getString("Revision").equals(revision)) {
             throw new IllegalArgumentException("Unsupported machine save or incompatible declaration revision");
         }

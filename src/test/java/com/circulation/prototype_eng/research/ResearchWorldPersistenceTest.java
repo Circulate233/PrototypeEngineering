@@ -19,7 +19,6 @@ import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.nbt.CompressedStreamTools;
-import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -128,20 +127,6 @@ class ResearchWorldPersistenceTest {
         assertThrows(IOException.class, file::read);
         assertArrayEquals(corrupt, Files.readAllBytes(target));
     }
-
-    @Test
-    void malformedCompressedDataPropagatesValidationFailure() throws IOException {
-        var fixture = fixture();
-        var target = directory.resolve("prototype_eng_research.dat");
-        var file = new ResearchStateFile(target, fixture.codec());
-        try (var output = Files.newOutputStream(target)) {
-            CompressedStreamTools.writeCompressed(new NBTTagCompound(), output);
-        }
-        var bytes = Files.readAllBytes(target);
-        assertThrows(IllegalArgumentException.class, file::read);
-        assertArrayEquals(bytes, Files.readAllBytes(target));
-    }
-
 
     @Test
     void atomicMoveFailureKeepsTheOriginalDestinationAndCleansTheTemporaryFile() throws IOException {

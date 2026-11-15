@@ -72,7 +72,7 @@ ZS使用 `MachineType.dataCenter(id, translationKey, structureId, level, capacit
 
 首次调用明确拒绝、无 receipt 且材料未扣时可以完成 ABORTING。抛错或重启后 databaseArmed 且缺失回执属于未知，不能据内容相等推定成功、再次扣盘或取消原义务。冲突回执、玩家证据损坏、原物理库不可用或保存尚未确认均保留待恢复状态。
 
-`MachineDataCenterStorage.CODEC` 的内容 Schema 2 保存研究、DiskReceipts 及附属 Transfers 操作库存，回执只限制本次实际导入涉及的研究，允许移出其他条目。Transfers 的空输入、空输出使用原生空 NBT 语义，可选材料与交付回执按是否存在解码，不添加字段白名单或额外库存版本检查。默认持久适配沿原机器区块保存并回读完整组件 payload，核对准确物理目标及原回执，不使用全世界保存或第二份数据库文件。
+`MachineDataCenterStorage.CODEC` 保存研究、DiskReceipts 及附属 Transfers 操作库存，不写入或校验 Schema 字段。回执只限制本次实际导入涉及的研究，允许移出其他条目。Transfers 的空输入、空输出使用原生空 NBT 语义，可选材料与交付回执按是否存在解码。默认持久适配沿原机器区块保存并回读完整组件数据，核对准确物理目标及原回执，不使用全世界保存或第二份数据库文件。
 
 ## 界面与配方操作
 

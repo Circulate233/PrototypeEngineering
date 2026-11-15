@@ -63,11 +63,6 @@ public final class ResearchDownloadNbt {
             tag.getInteger("Level"), tag.getInteger("Slot"), machine, target);
     }
 
-    private static void requireVersion(NBTTagCompound tag) {
-        if (tag.getInteger("Version") != 2)
-            throw new IllegalArgumentException("Unknown download envelope version");
-    }
-
     private static UUID uuid(String text) {
         return UUID.fromString(text);
     }
@@ -83,7 +78,6 @@ public final class ResearchDownloadNbt {
     }
 
     public ResearchDownloadOperation decodeOperation(NBTTagCompound tag) {
-        requireVersion(tag);
         return new ResearchDownloadOperation(uuid(tag.getString("Id")), intent(tag.getCompoundTag("Intent")),
             sources.codec().decode(tag.getCompoundTag("Sources")), ResearchDownloadMaterial.CODEC.decode(tag.getCompoundTag("Material")),
             tag.getCompoundTag("Output"), tag.getLong("Amount"), tag.getLong("CreatedAt"),
@@ -98,7 +92,6 @@ public final class ResearchDownloadNbt {
     }
 
     public ResearchDownloadReceipt decodeReceipt(NBTTagCompound tag) {
-        requireVersion(tag);
         return new ResearchDownloadReceipt(uuid(tag.getString("Id")), intent(tag.getCompoundTag("Intent")),
             sources.codec().decode(tag.getCompoundTag("Sources")), tag.getCompoundTag("Output"), tag.getLong("Amount"),
             ResearchDownloadReceipt.Outcome.valueOf(tag.getString("Outcome")), decodeFragments(tag));
@@ -106,7 +99,6 @@ public final class ResearchDownloadNbt {
 
     private NBTTagCompound common(UUID id, ResearchDownloadOperation.Intent intent, ResearchDownloadSources.Plan plan, NBTTagCompound output, long amount) {
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 2);
         tag.setString("Id", id.toString());
         tag.setTag("Intent", intent(intent));
         tag.setTag("Sources", sources.codec().encode(plan));

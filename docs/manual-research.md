@@ -21,7 +21,7 @@
 5. 玩家确认 SETTLEMENT_CONFIRMED，删除准确回执；世界切回 ACTIVE 或 `COMPLETION_PENDING`。
 6. 冻结传播后保存 `COMPLETION_PROPAGATED`；移除准确队头后保存 `QUEUE_HEAD_REMOVED`；最后删除会话并保存。
 
-`ManualResearchSessionNbt` 严格检查版本、字段类型、重复项、材料定义边界与完成信息。`ManualResearchMaterialReceiptNbt` 保存玩家证据。expectedWork 在准备时就完整冻结，世界和玩家使用同一个意图，不再保留旧实现中两种不同的 expectedWork 表示。
+`ManualResearchSessionNbt` 通过原生 getter 读取业务字段，材料数量表直接按键写入，不检查格式版本或重复键。材料定义边界、进度守恒与完成信息由恢复流程检查。`ManualResearchMaterialReceiptNbt` 保存玩家证据，expectedWork 在准备时完整冻结，世界和玩家使用同一个意图。
 
 正常缺料先由 `hasMaterials` 返回，不创建 PREPARED，避免旧流程把缺料库存固定为 before 后无法接受补料。`consume` 仍须再次全量检查，不能用预检代替真正扣取的验证。
 

@@ -100,17 +100,6 @@ class RewardDeliveryJournalTest {
     }
 
     @Test
-    void legacyRewardJournalMigratesWithoutChangingItsFrozenEvidence() {
-        var planned = fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7));
-        var modern = saved(planned);
-        var legacy = modern.copy();
-        store(legacy).setInteger("version", 1);
-        var recovered = RewardDeliveryJournal.read(legacy, PLAYER);
-        assertTrue(recovered.contains(planned, RewardDeliveryJournal.State.PREPARED));
-        assertEquals(RewardDeliveryJournal.read(modern, PLAYER).snapshot(), recovered.snapshot());
-    }
-
-    @Test
     void independentDownloadReceiptRetainsCapabilitiesAndRejectsOperationSubstitution() {
         var key = new DownloadOutputKey(PLAYER, new UUID(0, 10));
         var nativeStack = new NBTTagCompound();
@@ -130,7 +119,6 @@ class RewardDeliveryJournalTest {
         assertTrue(recovered.contains(planned, RewardDeliveryJournal.State.ISSUING));
         assertEquals(caps, firstReceipt(data).getCompoundTag("stack").getCompoundTag("ForgeCaps"));
         rejectsMutation(data, changed -> firstReceipt(changed).getCompoundTag("delivery").setString("Operation", new UUID(0, 11).toString()));
-        rejectsMutation(data, changed -> store(changed).setInteger("version", 1));
     }
 
     @Test

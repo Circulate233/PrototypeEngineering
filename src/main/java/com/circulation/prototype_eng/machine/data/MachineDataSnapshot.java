@@ -9,7 +9,7 @@ import java.util.List;
 /**
  * Complete ordinary data fact. Identities are attachment-local observations, never execution rights.
  * Producers supply unique host/process IDs and slot names. Borrowed lists must remain unchanged;
- * consumers must not modify them. Network validation is performed by MachineDataSnapshotCodec.
+ * consumers must not modify them. List access must support constant-time indexing.
  */
 public record MachineDataSnapshot(long generation, long revision, @Nullable ComponentData.Snapshot machine,
                                   List<Host> hosts) {

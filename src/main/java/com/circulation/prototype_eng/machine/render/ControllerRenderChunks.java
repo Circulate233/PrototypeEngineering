@@ -6,7 +6,6 @@ import com.circulation.prototype_eng.machine.data.MachineDataSnapshot;
 import com.circulation.prototype_eng.machine.data.MachineDataSnapshotCodec;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraftforge.common.util.Constants;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
@@ -66,14 +65,9 @@ public final class ControllerRenderChunks {
         }
 
         public static Part decode(ControllerDisplayData display, NBTTagCompound tag) {
-            if (tag.getInteger("Version") != 1 || !tag.hasKey("Bytes", Constants.NBT.TAG_BYTE_ARRAY))
-                throw new IllegalArgumentException("Invalid machine render chunk schema");
-            var part = new Part(display, new MachineRenderSnapshot.CatalogToken(new UUID(tag.getLong("SessionMost"),
+            return new Part(display, new MachineRenderSnapshot.CatalogToken(new UUID(tag.getLong("SessionMost"),
                 tag.getLong("SessionLeast")), tag.getLong("CatalogSequence")),
                 tag.getInteger("Total"), tag.getInteger("Index"), tag.getByteArray("Bytes"));
-            if (tag.getInteger("Count") != part.count())
-                throw new IllegalArgumentException("Conflicting machine render chunk count");
-            return part;
         }
 
         public int count() {
@@ -85,13 +79,11 @@ public final class ControllerRenderChunks {
          */
         public NBTTagCompound encode() {
             var tag = new NBTTagCompound();
-            tag.setInteger("Version", 1);
             tag.setLong("SessionMost", catalog.session().getMostSignificantBits());
             tag.setLong("SessionLeast", catalog.session().getLeastSignificantBits());
             tag.setLong("CatalogSequence", catalog.sequence());
             tag.setInteger("Total", totalBytes);
             tag.setInteger("Index", index);
-            tag.setInteger("Count", count());
             tag.setByteArray("Bytes", bytes);
             return tag;
         }

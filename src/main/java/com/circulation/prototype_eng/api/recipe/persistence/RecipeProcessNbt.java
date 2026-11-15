@@ -174,7 +174,6 @@ public final class RecipeProcessNbt {
         }
         var index = process.definitionIndex();
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 2);
         tag.setString("Identity", process.identity().toString());
         if (process.isMaterialCycle()) {
             tag.setBoolean("MaterialCycle", true);
@@ -236,7 +235,7 @@ public final class RecipeProcessNbt {
     private RecipeProcess decode(MachineInstance owner, NBTTagCompound tag, @Nullable MachineHatches hatches) {
         if (hatches != null && !tag.getBoolean("MaterialCycle"))
             throw new IllegalArgumentException("Expected a material cycle save");
-        if (tag.getInteger("Version") != 2 || !new ResourceLocation(tag.getString("Recipe")).equals(recipe.id())
+        if (!new ResourceLocation(tag.getString("Recipe")).equals(recipe.id())
             || !tag.getString("Revision").equals(revision) || tag.getInteger("Duration") != recipe.durationTicks()) {
             throw new IllegalArgumentException("Unsupported process save or incompatible recipe revision");
         }

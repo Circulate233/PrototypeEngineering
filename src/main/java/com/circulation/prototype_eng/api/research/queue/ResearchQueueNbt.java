@@ -34,7 +34,6 @@ public final class ResearchQueueNbt implements NbtCodec<TeamResearchQueue.Snapsh
     @Override
     public NBTTagCompound encode(TeamResearchQueue.Snapshot value) {
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 3);
         tag.setString("Team", value.teamId());
         tag.setLong("NextEntryId", value.nextEntryId());
         tag.setLong("Epoch", value.epoch());
@@ -86,8 +85,6 @@ public final class ResearchQueueNbt implements NbtCodec<TeamResearchQueue.Snapsh
 
     @Override
     public TeamResearchQueue.Snapshot decode(NBTTagCompound tag) {
-        if (tag.getInteger("Version") != 3)
-            throw new IllegalArgumentException("Unsupported research queue save version");
         var entries = new ObjectArrayList<TeamResearchQueue.Entry>();
         var queue = tag.getTagList("Queue", Constants.NBT.TAG_COMPOUND);
         if (queue.tagCount() > TeamResearchQueue.CAPACITY)
@@ -107,7 +104,6 @@ public final class ResearchQueueNbt implements NbtCodec<TeamResearchQueue.Snapsh
             for (int materialIndex = 0; materialIndex < materialList.tagCount(); materialIndex++) {
                 var material = materialList.getCompoundTagAt(materialIndex);
                 var key = keys.decode(material.getCompoundTag("Key"));
-                if (materials.containsKey(key)) throw new IllegalArgumentException("Duplicate saved research material");
                 materials.put(key, material.getLong("Remaining"));
             }
             var resources = new Reference2DoubleOpenHashMap<NetworkResourceType>();
@@ -115,8 +111,6 @@ public final class ResearchQueueNbt implements NbtCodec<TeamResearchQueue.Snapsh
             for (int resourceIndex = 0; resourceIndex < resourceList.tagCount(); resourceIndex++) {
                 var resource = resourceList.getCompoundTagAt(resourceIndex);
                 var type = resourceType(target, new ResourceLocation(resource.getString("Resource")));
-                if (resources.containsKey(type))
-                    throw new IllegalArgumentException("Duplicate saved research resource");
                 resources.put(type, resource.getDouble("Amount"));
             }
             states.add(new ResearchProgress.Snapshot(target, saved.getLong("Elapsed"), materials, resources));

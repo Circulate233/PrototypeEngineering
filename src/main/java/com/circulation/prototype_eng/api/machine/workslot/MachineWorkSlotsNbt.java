@@ -68,7 +68,6 @@ public final class MachineWorkSlotsNbt {
         var codecs = recipes.snapshot();
         var snapshot = host.snapshot();
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", host.dynamicRoster() ? 2 : 1);
         if (host.dynamicRoster()) {
             tag.setBoolean("Dynamic", true);
             tag.setLong("NextSlot", host.nextRuntimeSlot());
@@ -95,11 +94,10 @@ public final class MachineWorkSlotsNbt {
         host.owner().requirePersistenceBoundary();
         var codecs = recipes.snapshot();
         var old = host.snapshot();
-        int version = tag.getInteger("Version");
-        if (version != (host.dynamicRoster() ? 2 : 1) || !tag.getString("Revision").equals(revision)
+        if (!tag.getString("Revision").equals(revision)
             || host.dynamicRoster() && !tag.getBoolean("Dynamic")
             || !host.dynamicRoster() && (tag.hasKey("Dynamic") || tag.hasKey("NextSlot"))) {
-            throw new IllegalArgumentException("Unsupported work-slot save or incompatible layout revision");
+            throw new IllegalArgumentException("Incompatible work-slot layout revision");
         }
         var slots = tag.getTagList("Slots", Constants.NBT.TAG_COMPOUND);
         if (!host.dynamicRoster() && slots.tagCount() != old.size()) {

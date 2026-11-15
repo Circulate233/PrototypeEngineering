@@ -38,7 +38,7 @@ IO 和确认仍在真实服务器所有者线程逐片段完成，使用现有�
 
 ## 效果前凭据与加载恢复
 
-`RewardDeliveryJournal` 复用玩家 `ForgeData / PlayerPersisted / prototype_eng / reward_delivery_receipts`，与手动材料凭据并列。每条记录保存完整片段身份、父奖励、数量、物品 NBT、目标和 PREPARED/ISSUING；不另造 AEKey 类型、claim 或世界文件。严格检查版本、重复 ID、嵌入身份、数量及目标，最多 4096 条；读写深拷贝并保留手动凭据和其他命名空间。
+`RewardDeliveryJournal` 复用玩家 `ForgeData / PlayerPersisted / prototype_eng / reward_delivery_receipts`，与手动材料凭据并列。每条记录保存完整片段身份、父奖励、数量、物品 NBT、目标和 PREPARED/ISSUING，不另建 AEKey 类型、claim 或世界文件。格式不携带版本号；奖励与下载按记录内的身份类型解码。付款与交付证明继续检查操作 ID、嵌入身份、数量及目标，最多 4096 条，其他命名空间保留。
 
 prepare 即使发现相同的内存 PREPARED 也重新执行保存和核验，因为上一次写入可能失败。issue 先将内存改为 ISSUING，再调用原玩家 writer，并回读核对完整 journal 和受保护光标；单人宿主要求 UUID.dat 与 level.dat/Data.Player 都成功。保存、核验、会话或内存后验失败均不进入库存插入/掉落回调，也不把 ISSUING 回退。只有已经持久保存的 RETRY_PLANNED 才能重新准备同一片段；直接重复 deliver 被拒绝。
 

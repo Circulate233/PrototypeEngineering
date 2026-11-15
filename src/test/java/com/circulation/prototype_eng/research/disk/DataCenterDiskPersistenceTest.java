@@ -68,11 +68,9 @@ class DataCenterDiskPersistenceTest {
         components.appendTag(component(OWNERSHIP, IDENTITY.encode()));
         components.appendTag(component(STORAGE, storage));
         var runtime = new NBTTagCompound();
-        runtime.setInteger("Version", 2);
         runtime.setString("Type", MACHINE.toString());
         runtime.setTag("Components", components);
         var envelope = new NBTTagCompound();
-        envelope.setInteger("Version", 1);
         envelope.setString("Type", MACHINE.toString());
         envelope.setTag("Runtime", runtime);
         tile.setTag("Machine", envelope);

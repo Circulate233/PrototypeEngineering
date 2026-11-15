@@ -165,7 +165,7 @@ class ResearchDiskTest {
     }
 
     @Test
-    void decodingValidatesTheWholeBatchIncludingLaterUnknownOutOfRangeAndDuplicateEntries() {
+    void decodingRejectsUnknownResearchAndOutOfRangeLevels() {
         var registry = registry(definition("first", 10, 1), definition("second", 10, 1));
         var data = new ResearchDiskData(registry, 1, levels("first", 5, "second", 7));
         var payload = ResearchDiskNbtCodec.encode(data);
@@ -174,10 +174,6 @@ class ResearchDiskTest {
         assertThrows(IllegalArgumentException.class, () -> ResearchDiskNbtCodec.decode(payload, registry));
         last.setString("researchId", id("second").toString());
         last.setInteger("level", 11);
-        assertThrows(IllegalArgumentException.class, () -> ResearchDiskNbtCodec.decode(payload, registry));
-        var first = payload.getTagList("entries", 10).getCompoundTagAt(0);
-        last.setString("researchId", first.getString("researchId"));
-        last.setInteger("level", first.getInteger("level"));
         assertThrows(IllegalArgumentException.class, () -> ResearchDiskNbtCodec.decode(payload, registry));
         assertTrue(ResearchDiskImport.precheck(data, storage(registry, 1, 2).snapshot(), cloud(registry)).accepted());
     }

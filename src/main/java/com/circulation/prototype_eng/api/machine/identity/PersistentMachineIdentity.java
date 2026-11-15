@@ -8,16 +8,9 @@ import java.util.UUID;
  * Saved machine and real owner UUIDs; neither UUID grants current team or execution permission.
  */
 public record PersistentMachineIdentity(UUID machineId, UUID ownerId) {
-    private static final int SCHEMA_VERSION = 1;
 
 
-    /**
-     * Validates the entire borrowed compound before returning a new identity, without mutating the input.
-     */
     public static PersistentMachineIdentity decode(NBTTagCompound tag) {
-        if (tag.getInteger("version") != SCHEMA_VERSION) {
-            throw new IllegalArgumentException("Unsupported persistent machine identity version");
-        }
         long machineMost = tag.getLong("machineMost");
         long machineLeast = tag.getLong("machineLeast");
         long ownerMost = tag.getLong("ownerMost");
@@ -27,7 +20,6 @@ public record PersistentMachineIdentity(UUID machineId, UUID ownerId) {
 
     public NBTTagCompound encode() {
         var tag = new NBTTagCompound();
-        tag.setInteger("version", SCHEMA_VERSION);
         tag.setLong("machineMost", machineId.getMostSignificantBits());
         tag.setLong("machineLeast", machineId.getLeastSignificantBits());
         tag.setLong("ownerMost", ownerId.getMostSignificantBits());

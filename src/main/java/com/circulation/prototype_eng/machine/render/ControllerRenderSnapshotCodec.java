@@ -33,7 +33,6 @@ import java.util.UUID;
  */
 public final class ControllerRenderSnapshotCodec {
     public static final int MAX_BYTES = 64 * 1024 * 1024;
-    private static final int VERSION = 1;
     private static final int MAX_STRING_BYTES = 4096;
 
     private ControllerRenderSnapshotCodec() {
@@ -66,7 +65,6 @@ public final class ControllerRenderSnapshotCodec {
     public static byte[] encode(MachineRenderSnapshot snapshot) {
         var bytes = new ByteArrayOutputStream();
         try (var out = new DataOutputStream(new BoundedOutput(bytes))) {
-            out.writeInt(VERSION);
             var display = snapshot.display();
             id(out, display.type());
             out.writeByte(display.orientation().getSide(RelativeSide.FRONT).getIndex());
@@ -126,7 +124,6 @@ public final class ControllerRenderSnapshotCodec {
         if (bytes.length > MAX_BYTES)
             throw new IllegalArgumentException("Machine render payload exceeds supported scale");
         try (var in = new DataInputStream(new ByteArrayInputStream(bytes))) {
-            if (in.readInt() != VERSION) throw new IllegalArgumentException("Unknown machine render schema");
             var type = id(in);
             int front = in.readUnsignedByte(), top = in.readUnsignedByte();
             if (front > 5 || top > 5 || EnumFacing.byIndex(front).getAxis() == EnumFacing.byIndex(top).getAxis())

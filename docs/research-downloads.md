@@ -30,7 +30,7 @@
 
 下载材料的记录只限制同一玩家同时开始另一笔研究扣料，不限制玩家的普通操作。`COMMITTED` 记录证明该笔材料已扣；恢复时保存当前库存及原记录，禁止再次扣料，也不要求玩家库存长期保持旧 after 镜像。扣料尚未提交时仍检查本次 before 和准确槽位；库存变化导致该次研究返回失败或恢复状态，不冻结玩家，也不改写死亡或重生行为。
 
-当前世界 V7 的 `ResearchWorldSnapshot` 同时包含玩家、队伍、队列、目标进度、手动会话、pending 下载和 terminal receipt，以及物品导入操作的返回产物与交付阶段。`ResearchWorldNbt` 使用这一明确 schema，没有第二份下载或导入世界存档，不读取旧世界 schema。
+`ResearchWorldSnapshot` 同时保存玩家、队伍、队列、目标进度、手动会话、未完成下载、终态回执，以及物品导入的返回产物与交付阶段。`ResearchWorldNbt` 和各子编解码直接处理业务字段，不写入或检查固定格式版本号；已有 NBT 中的 Version/Schema 字段不参与读取。下载与导入共用这一份世界存档。
 
 1. `PREPARED` 保存原 intent、成员/个人或直属来源 before/after、材料完整 native tag/ForgeCaps 与库存 before/after、输出模板和数量。按 researchId 预约，其他研究仍可推进。
 2. 保存 `materialArmed` 后才写玩家 PREPARED 凭据；消费前必须完整 before 相等，只扣准确槽一件。真实库存写入观察到完整 after 后，玩家 COMMITTED 凭据同步保存；World 再保存 `MATERIAL_COMMITTED`。

@@ -40,9 +40,6 @@ public record ControllerDisplayData(ResourceLocation type, BlockOrientation orie
     }
 
     public static ControllerDisplayData decode(NBTTagCompound tag) {
-        if (tag.getInteger("Version") != 1) {
-            throw new IllegalArgumentException("Unsupported controller display version");
-        }
         return new ControllerDisplayData(new ResourceLocation(tag.getString("Type")), BlockOrientation.valueOf(tag.getString("Orientation")),
             tag.getBoolean("Formed"), tag.getLong("Generation"), tag.getLong("Sequence"));
     }
@@ -54,7 +51,6 @@ public record ControllerDisplayData(ResourceLocation type, BlockOrientation orie
 
     public NBTTagCompound encode() {
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 1);
         tag.setString("Type", type.toString());
         tag.setString("Orientation", orientation.name());
         tag.setBoolean("Formed", formed);

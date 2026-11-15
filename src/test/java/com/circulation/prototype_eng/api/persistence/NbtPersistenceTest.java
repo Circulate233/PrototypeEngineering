@@ -126,7 +126,7 @@ class NbtPersistenceTest {
     }
 
     @Test
-    void attributeDecodeFailuresLeaveTargetUnchangedAndRejectDuplicateIds() {
+    void attributeDecodeFailuresLeaveTargetUnchanged() {
         var codec = MachineAttributesNbt.INSTANCE;
         var first = new ResourceLocation("persistence_test", "first");
         var second = new ResourceLocation("persistence_test", "second");
@@ -139,25 +139,9 @@ class NbtPersistenceTest {
         var entries = saved.getTagList("Attributes", 10);
         var modifiers = entries.getCompoundTagAt(1).getTagList("Modifiers", 10);
         modifiers.getCompoundTagAt(0).getCompoundTag("Data").setString("Operation", "invalid");
-        var invalidOperation = saved;
-        assertThrows(IllegalArgumentException.class, () -> target.restoreLocal(codec.decode(invalidOperation)));
+        assertThrows(IllegalArgumentException.class, () -> target.restoreLocal(codec.decode(saved)));
         assertEquals(9, target.value(first));
         assertEquals(1, target.localSnapshot().size());
-
-        saved = codec.encode(source.localSnapshot());
-        entries = saved.getTagList("Attributes", 10);
-        entries.appendTag(entries.getCompoundTagAt(0).copy());
-        var duplicateAttribute = saved;
-        assertThrows(IllegalArgumentException.class, () -> codec.decode(duplicateAttribute));
-        saved = codec.encode(source.localSnapshot());
-        modifiers = saved.getTagList("Attributes", 10).getCompoundTagAt(1).getTagList("Modifiers", 10);
-        modifiers.appendTag(modifiers.getCompoundTagAt(0).copy());
-        var duplicateModifier = saved;
-        assertThrows(IllegalArgumentException.class, () -> codec.decode(duplicateModifier));
-        saved = codec.encode(source.localSnapshot());
-        saved.setInteger("Version", 99);
-        var incompatible = saved;
-        assertThrows(IllegalArgumentException.class, () -> codec.decode(incompatible));
     }
 
     @Test
@@ -180,10 +164,6 @@ class NbtPersistenceTest {
         leaf.addModifier(id, new NumericAttributeModifier("leaf", 2, AttributeModifier.Operation.ADDITION));
         assertEquals(7, leaf.value(id));
 
-        var oldVersion = saved.copy();
-        oldVersion.setInteger("Version", 1);
-        assertThrows(IllegalArgumentException.class, () -> restored.restoreLocal(codec.decode(oldVersion)));
-        assertEquals(5, restored.value(id));
         assertTrue(restored.clearBase(id));
         assertEquals(22, restored.value(id));
     }

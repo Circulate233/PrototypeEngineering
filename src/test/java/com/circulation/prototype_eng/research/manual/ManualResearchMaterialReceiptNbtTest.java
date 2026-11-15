@@ -83,9 +83,6 @@ class ManualResearchMaterialReceiptNbtTest {
         var invalidPrepared = ManualResearchMaterialReceiptNbt.encode(receipt);
         invalidPrepared.setByteArray("inventoryAfter", receipt.inventoryBefore());
         assertThrows(IllegalArgumentException.class, () -> ManualResearchMaterialReceiptNbt.decode(invalidPrepared));
-        var unsupportedVersion = ManualResearchMaterialReceiptNbt.encode(receipt);
-        unsupportedVersion.setInteger("version", 2);
-        assertThrows(IllegalArgumentException.class, () -> ManualResearchMaterialReceiptNbt.decode(unsupportedVersion));
         assertThrows(IllegalArgumentException.class, () -> receipt.committed(receipt.inventoryBefore(), 9));
         var committed = receipt.committed(ManualResearchMaterialReceiptNbt.encodeInventory(inventory(4)), 11);
         assertThrows(IllegalArgumentException.class, () -> committed.confirmed(10));

@@ -123,9 +123,6 @@ class ControllerRenderChunksTest {
         var next = snapshot(1, 3, 0, 1);
         assertEquals(next, assembler.receive(ControllerRenderChunks.split(next).getFirst()));
         assertThrows(IllegalArgumentException.class, () -> new ControllerRenderChunks.Part(next.display(), next.catalog(), 16385, 0, new byte[1]));
-        var tag = ControllerRenderChunks.split(next).getFirst().encode();
-        tag.setInteger("Count", 99);
-        assertThrows(IllegalArgumentException.class, () -> ControllerRenderChunks.Part.decode(next.display(), tag));
     }
 
     @Test

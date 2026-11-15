@@ -187,7 +187,7 @@ class TeamResearchCompletionTest {
     }
 
     @Test
-    void savedTeamSourceRoundTripsAndRejectsWrongOwnershipOrDuplicateEntries() {
+    void savedTeamSourceRoundTripsAndRejectsWrongOwnership() {
         var registry = registry();
         var source = new TeamOwnedResearch("team", registry);
         var mutation = source.prepareCompletion(TEAM, 2);
@@ -197,9 +197,6 @@ class TeamResearchCompletionTest {
         var restored = new TeamOwnedResearch("team", registry);
         restored.restore(TeamOwnedResearch.CODEC.decode(tag));
         assertEquals(2, restored.completedLevel(TEAM));
-        var levels = tag.getTagList("Levels", 10);
-        levels.appendTag(levels.getCompoundTagAt(0).copy());
-        assertThrows(IllegalArgumentException.class, () -> TeamOwnedResearch.CODEC.decode(tag));
         var personal = new Object2IntOpenHashMap<ResourceLocation>();
         personal.put(PERSONAL, 2);
         assertThrows(IllegalArgumentException.class, () -> restored.restore(new TeamOwnedResearch.Snapshot("team", personal)));

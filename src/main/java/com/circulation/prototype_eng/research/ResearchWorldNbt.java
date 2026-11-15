@@ -48,7 +48,6 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
     @Override
     public NBTTagCompound encode(ResearchWorldSnapshot value) {
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 7);
         tag.setLong("ServerTime", value.serverTime());
         var savedPlayers = new NBTTagList();
         var elements5 = value.players();
@@ -90,9 +89,6 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
 
     @Override
     public ResearchWorldSnapshot decode(NBTTagCompound tag) {
-        if (tag.getInteger("Version") != 7) {
-            throw new IllegalArgumentException("Unknown research world version");
-        }
         var savedPlayers = tag.getTagList("Players", Constants.NBT.TAG_COMPOUND);
         var playerList = new ObjectArrayList<PlayerResearchState.Snapshot>(savedPlayers.tagCount());
         for (int index = 0; index < savedPlayers.tagCount(); index++) {
@@ -147,18 +143,12 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
         var members = new ObjectLinkedOpenHashSet<UUID>();
         var savedMembers = tag.getTagList("KnownMembers", Constants.NBT.TAG_STRING);
         for (int index = 0; index < savedMembers.tagCount(); index++) {
-            var text = savedMembers.getStringTagAt(index);
-            var member = UUID.fromString(text);
-            if (!members.add(member)) {
-                throw new IllegalArgumentException("Invalid or duplicate known team member");
-            }
+            members.add(UUID.fromString(savedMembers.getStringTagAt(index)));
         }
         var blacklist = new ObjectLinkedOpenHashSet<ResourceLocation>();
         var savedBlacklist = tag.getTagList("Blacklist", Constants.NBT.TAG_STRING);
         for (int index = 0; index < savedBlacklist.tagCount(); index++) {
-            if (!blacklist.add(new ResourceLocation(savedBlacklist.getStringTagAt(index)))) {
-                throw new IllegalArgumentException("Duplicate research blacklist id");
-            }
+            blacklist.add(new ResourceLocation(savedBlacklist.getStringTagAt(index)));
         }
         var sessions = new ObjectArrayList<ManualResearchSession>();
         var savedSessions = tag.getTagList("ManualSessions", Constants.NBT.TAG_COMPOUND);
