@@ -29,9 +29,12 @@
     #pe-research-station .rs-resource + .rs-resource { border-top:1px solid var(--rs-line); }
     #pe-research-station .rs-pair { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:20px; }
     #pe-research-station .rs-number { white-space:nowrap; font-variant-numeric:tabular-nums; }
-    #pe-research-station .rs-material { display:grid; grid-template-columns:18px minmax(0,1fr) auto; align-items:center; gap:6px; min-height:27px; }
-    #pe-research-station .rs-material img { width:18px; height:18px; image-rendering:pixelated; }
-    #pe-research-station .rs-material-name { min-width:0; }
+    #pe-research-station #rs-materials { display:grid; grid-template-columns:repeat(4,minmax(0,66.667px)); grid-auto-rows:40px; }
+    #pe-research-station #rs-materials:has(> .rs-small) { grid-auto-rows:24px; }
+    #pe-research-station .rs-material { position:relative; min-width:0; height:40px; }
+    #pe-research-station .rs-material img { position:absolute; top:2px; left:4px; width:27px; height:27px; image-rendering:pixelated; }
+    #pe-research-station .rs-material .rs-number { position:absolute; right:3px; bottom:2px; font-size:11px; line-height:12px; color:var(--rs-light); text-shadow:1px 1px var(--rs-dark),-1px 0 var(--rs-dark),0 -1px var(--rs-dark); }
+    #pe-research-station #rs-materials > .rs-small { grid-column:1 / -1; }
     #pe-research-station .rs-total { font-size:12px; line-height:18px; }
     #pe-research-station .rs-participation { padding:7px 0 0; border-top:1px solid var(--rs-line); }
     #pe-research-station .rs-queue { list-style:none; margin:0; padding:0; flex:1; }
@@ -149,6 +152,9 @@
       let renderedCurrent;
       const byId = id => root.querySelector("#" + id);
       const number = value => value.toLocaleString("zh-CN",{maximumFractionDigits:3});
+      const compact = value => value >= 1000000000 ? number(value / 1000000000) + "G"
+        : value >= 1000000 ? number(value / 1000000) + "M"
+        : value >= 1000 ? number(value / 1000) + "k" : number(value);
 
       function emptyRow(parent, text) {
         const empty = document.createElement("div");
@@ -186,8 +192,11 @@
           for (const amount of material.availableByStation) available += amount;
           const row = document.createElement("div");
           row.className = "rs-material";
-          row.innerHTML = '<img alt="" src="' + assets[material.icon] + '"><span class="rs-material-name">' + material.name +
-            '</span><span class="rs-number">' + number(Math.min(available,remaining)) + " / " + number(remaining) + "</span>";
+          const currentAvailable = Math.min(available,remaining);
+          row.setAttribute("aria-label", material.name + "，当前可用 " + number(currentAvailable) + "，剩余需求 " + number(remaining));
+          row.dataset.tooltip = material.name + "：" + number(currentAvailable) + " / " + number(remaining);
+          row.innerHTML = '<img alt="" src="' + assets[material.icon] + '"><span class="rs-number">' +
+            compact(currentAvailable) + "/" + compact(remaining) + "</span>";
           materials.append(row);
         }
         const resourceList = byId("rs-resources");

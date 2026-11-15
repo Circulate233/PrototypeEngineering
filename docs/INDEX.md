@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-15 研究站材料网格预览已更新：固定四列图标，右下角显示当前可用/剩余需求，悬停显示名称及完整数量；其余区域沿现状。736/320px、队首切换和多行滚动已检查，无脚本异常或横向溢出。入口：[预览](previews/research-station.html)、[GUI要求](research-gui.md)、[验证记录](implementation-status.md)。下一步用户核对后接入正式 Java 材料区、简写缓存和悬停索引；本地英文提交，保留 AGENTS.md 用户修改。
+
 - 2026-11-15 ME 样板镜像与内存卡完成：内存卡潜行右键样板总成保存位置，普通右键镜像绑定；右键另一总成复制配置并按 AE 原生规则支付、录入样板。镜像没有 GUI，按加载事件缓存来源，机器读取不查目标TE；共用库存身份、分区、context和observer，重绑/卸载撤销旧令牌。完整构建、1736测试/271 suites和MCP构建通过，13Java已格式化/全级零诊断。入口：[方块与内存卡](block-registration.md#me-样板镜像与内存卡)、[API](../api.md)、[验证记录](implementation-status.md)。下一步用户完整重启复验内存卡、样板录入和模型；本地英文提交，保留 AGENTS.md 用户修改。
 
 - 2026-11-15 API 复核与文档更新完成：清理预算/patch/属性/联网开关的原始类型包装、缓存命中分配、拒绝结果分配、属性和研究重复遍历、保存前后整表检查。Java/ZS 文档与示例已同步最新签名及只读要求。完整构建、1727测试/269 suites、MCP构建、27 run Java/15 run ZS及2文档Java/3文档ZS通过；59Java已格式化/全级检查，58份零诊断、1份文档示例被IDE排除并以真实SDK编译。入口：[API](../api.md)、[ZS参考](../api-zs-reference.md)、[审查](defensive-programming-audit.md)、[验证记录](implementation-status.md)。下一步由用户完整重启复验；本地英文提交，保留 AGENTS.md 用户修改。
