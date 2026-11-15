@@ -1,0 +1,7 @@
+{
+  "parent": "prototype_eng:block/me_pattern_assembly",
+  "textures": {
+    "4": "prototype_eng:blocks/bus/mix/io_side",
+    "particle": "prototype_eng:blocks/bus/mix/io_side"
+  }
+}

@@ -401,6 +401,7 @@ tile.prototype_eng.me_input_assembly.name=ME Machinery Input Assembly
 tile.prototype_eng.me_output_assembly.name=ME Machinery Output Assembly
 tile.prototype_eng.me_interface.name=ME Machinery Interface
 tile.prototype_eng.me_pattern_assembly.name=ME Machinery Pattern Assembly
+tile.prototype_eng.me_pattern_mirror.name=ME Pattern Mirror
 parallel.prototype_eng.Normal=Normal Parallel Controller
 parallel.prototype_eng.Reinforced=Reinforced Parallel Controller
 parallel.prototype_eng.Elite=Elite Parallel Controller

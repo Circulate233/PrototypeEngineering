@@ -401,6 +401,7 @@ tile.prototype_eng.me_input_assembly.name=ME机械输入总成
 tile.prototype_eng.me_output_assembly.name=ME机械输出总成
 tile.prototype_eng.me_interface.name=ME机械接口
 tile.prototype_eng.me_pattern_assembly.name=ME机械样板总成
+tile.prototype_eng.me_pattern_mirror.name=ME样板镜像
 parallel.prototype_eng.Normal=普通并行控制器
 parallel.prototype_eng.Reinforced=强化并行控制器
 parallel.prototype_eng.Elite=精英并行控制器

@@ -91,6 +91,7 @@ public final class MEPatternAssemblyBlockEntity extends AEBaseTile implements II
     private @Nullable MEPatternAssemblyStorage storage;
     private @Nullable NBTTagCompound suspendedStorage;
     private @Nullable IManagedGridNode mainNode;
+    private @Nullable MEPatternMirrorLinks.Publication mirrorSource;
     private @Nullable NBTTagCompound nodeData;
     @SuppressWarnings("unused") // Workers publish through STORAGE_DIRTY; the server tick drains it.
     private boolean storageDirty;
@@ -119,6 +120,42 @@ public final class MEPatternAssemblyBlockEntity extends AEBaseTile implements II
         return patternRevision;
     }
 
+    public NBTTagCompound exportMemoryCardSettings() {
+        requireOwner();
+        var tag = new NBTTagCompound();
+        tag.setString("Mode", mode().name());
+        tag.setString("ResourceColor", color.name());
+        tag.setBoolean("TerminalVisible", terminalVisible);
+        if (customName != null) tag.setString("TerminalName", customName);
+        patterns.writeToNBT(tag, "patterns");
+        return tag;
+    }
+
+    /**
+     * Reads this assembly's card format on the server owner; source tags are borrowed read-only.
+     */
+    public boolean importMemoryCardSettings(NBTTagCompound tag, EntityPlayer player) {
+        requireOwner();
+        var target = storage();
+        if (!target.idle()) return false;
+        var nextMode = Mode.valueOf(tag.getString("Mode"));
+        var nextColor = AEColor.valueOf(tag.getString("ResourceColor"));
+        var nextName = tag.hasKey("TerminalName", 8) ? tag.getString("TerminalName") : null;
+        if (!target.setMode(nextMode)) return false;
+        color = nextColor;
+        customName = nextName;
+        terminalVisible = tag.getBoolean("TerminalVisible");
+        batchingPatterns = true;
+        try {
+            MEPatternAssemblyMemoryCard.restorePatterns(tag, patterns, player, world);
+        } finally {
+            batchingPatterns = false;
+            player.inventory.markDirty();
+            patternInventoryChanged();
+        }
+        return true;
+    }
+
     public Mode mode() {
         return storage().mode();
     }
@@ -137,6 +174,7 @@ public final class MEPatternAssemblyBlockEntity extends AEBaseTile implements II
                 : MEPatternAssemblyStorage.load(suspendedStorage, patterns.size(), this::inputColor, this::requestStorageSave);
             suspendedStorage = null;
             if (isInvalid()) storage.invalidate();
+            if (mirrorSource != null) mirrorSource.replace(storage);
         }
         return storage;
     }
@@ -355,7 +393,12 @@ public final class MEPatternAssemblyBlockEntity extends AEBaseTile implements II
     public void onReady() {
         super.onReady();
         if (world.isRemote) return;
-        storage();
+        if (mirrorSource != null) {
+            mirrorSource.close();
+            mirrorSource = null;
+        }
+        var resources = storage();
+        mirrorSource = MEPatternMirrorLinks.forWorld(world).publish(world.provider.getDimension(), pos.toLong(), resources);
         rebuildPatterns();
         var node = node();
         if (!node.isReady()) {
@@ -541,6 +584,7 @@ public final class MEPatternAssemblyBlockEntity extends AEBaseTile implements II
         customName = nextName;
         storage = nextStorage;
         suspendedStorage = null;
+        if (mirrorSource != null) mirrorSource.replace(nextStorage);
 
         if (mainNode != null) mainNode.loadFromNBT(tag);
         else nodeData = tag;
@@ -629,7 +673,10 @@ public final class MEPatternAssemblyBlockEntity extends AEBaseTile implements II
     }
 
     private void suspend() {
-
+        if (mirrorSource != null) {
+            mirrorSource.close();
+            mirrorSource = null;
+        }
         if (mainNode != null) {
             var saved = new NBTTagCompound();
             mainNode.saveToNBT(saved);

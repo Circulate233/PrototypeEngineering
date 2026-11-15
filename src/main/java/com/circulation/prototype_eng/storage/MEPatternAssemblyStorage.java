@@ -201,6 +201,10 @@ public final class MEPatternAssemblyStorage implements ResourceHatch {
         return new ResourceInputGroup(color.get());
     }
 
+    AEColor inputColor() {
+        return color.get();
+    }
+
     /**
      * Published partitions are stable and must not be modified by consumers.
      */

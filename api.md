@@ -233,6 +233,8 @@ Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 
 
 `me_input_assembly`、`me_output_assembly`、`me_interface` 和 `me_pattern_assembly` 是通用 ME 资源组件，不按物品、流体或气体拆分。输入总成与接口的标记表示期望保有量，由 ME 补足；输入槽数在 `me_assemblies.cfg` 的 `resources.inputSlots` 配置，默认 18。输出按真实 `AEKey` 缓存动态显示，每种资源支持到 `Long.MAX_VALUE`，不设种类上限。ME 资源总成只通过 ME 和机器事务转移实际缓存。
 
+`me_pattern_mirror` 暴露稳定的 `ResourceHatch`，通过内存卡潜行右键样板总成、普通右键镜像绑定位置。机器访问缓存的源库存，保留原分区、StorageContext 和 observer 身份；未加载时供给为空，来源加载、替换、镜像重绑或卸载通过生命周期事件更新引用。旧端口和预留令牌失效，回滚仍操作原库存。镜像没有 GUI 或独立库存，也不强制加载源区块。内存卡普通右键其他样板总成还可复制配置并按 AE 规则支付、录入样板，见[样板镜像与内存卡](docs/block-registration.md#me-样板镜像与内存卡)。
+
 所有资源仓室默认使用 AE2 福鲁伊克斯透明色（无色），并以无色输入形成独立库存；任一有色输入组也能通用读取这份库存，但不会读取其他不同颜色库存。开启样板槽隔离后，不再使用总成颜色：每个槽单独扫描，只接入自身输入、该总成共享催化剂及其他未分区无色库存，不与其他槽或有色普通仓拼料。未开启样板隔离时才按总成颜色分组。FE 仓室不分组；已运行进程保留选中的组。样板每页固定 36 槽，页数由 `patterns.pages` 配置；五种工作模式及实际 GUI 操作见[方块与 ME 总成](docs/block-registration.md)。
 
 `ResourceHatchConfiguration.Side.fromItemEquivalent(...)` 以槽数和单槽物品等价值配置容量；流体默认每 1000 mB 对应一个物品单位。需要直接给每类资源设置原生容量时，向构造器传 `Reference2LongMap<AEKeyType>`。混合仓输入和输出分别配置。

@@ -30,5 +30,8 @@ public final class MEAssemblyModels {
         var pattern = MEAssemblyBlocks.pattern();
         ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(pattern), 0,
             new ModelResourceLocation(pattern.getRegistryName(), "inventory"));
+        var mirror = MEAssemblyBlocks.mirror();
+        ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(mirror), 0,
+            new ModelResourceLocation(mirror.getRegistryName(), "inventory"));
     }
 }

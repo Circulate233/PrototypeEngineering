@@ -8,6 +8,7 @@ import com.circulation.prototype_eng.OrientationToolConfig;
 import com.circulation.prototype_eng.ParallelControllerConfig;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.Tags;
+import com.circulation.prototype_eng.storage.MEPatternMirrorLinks;
 import com.circulation.prototype_eng.api.gui.EnergyHatchGuiHost;
 import com.circulation.prototype_eng.api.gui.MachineGuiRegistry;
 import com.circulation.prototype_eng.api.gui.ParallelControllerGuiHost;
@@ -191,6 +192,7 @@ public class CommonProxy implements IGuiHandler {
         ServerResearch.stop();
         ServerNetworkRuntime.stop();
         ServerMachineIdentities.stop();
+        MEPatternMirrorLinks.stop();
     }
 
     /**

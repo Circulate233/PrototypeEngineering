@@ -1,5 +1,17 @@
 # 实施进度
 
+## 2026-11-15 ME 样板镜像与内存卡
+
+新增 `me_pattern_mirror`，中文名为 ME样板镜像，提供没有 GUI 的物理 ResourceHatch。AE 内存卡潜行右键样板总成保存维度、位置、模式、颜色、终端设置与样板，普通右键镜像绑定来源。镜像保存位置并通过来源和镜像的加载、卸载、拆除事件更新缓存，不在机器读取时查询目标 TE，也不强制加载源区块。同位置来源替换和存储对象替换都会撤销旧绑定；跨维度卸载与服务器停止清理订阅。
+
+源总成和所有镜像共用实际库存、StorageContext、分区、催化剂和 observer 身份，避免重复计算及扣取。镜像稳定宿主在未绑定时仍可被结构发现，之后的绑定和来源加载通过分区变化生效。旧端口、数量证明与预留令牌失效，原事务的完成、回滚和来源通知仍交给原库存。绑定相同位置不会重复撤销正在使用的引用，镜像自身不存材料。
+
+内存卡普通右键另一样板总成复制已有配置并按目标槽数录入样板，拒绝修改有输入材料、预留或执行中配方的总成。原生样板归还为空白样板，addon 样板归还原物品；优先从无线网络取已编码样板，缺少时逐个支付空白样板后录入。缺料保留已成功项并发送 AE 原生提示；异常记录日志，已经录入的项目已有付款。创意模式免费。页数、资源库存、节点和所有权不随卡复制，来源没有样板时只复制配置。
+
+新增方块、物品、实体、本地化和模型注册，模型复用原样板总成几何及现有接口侧面。13份改动 Java 已通过本机 IDEA 格式化和逐文件 errorsOnly:false，错误、警告及弱警告均为0。完整 Gradle build、Spotless、IDEA MCP 构建及1736项测试/271 suites通过，失败、错误和跳过均为0。9项新增行为测试验证实际共享库存、隔离、锁定解除、预留撤销、回滚及加载目录；未启动 World/FML 或游戏。
+
+最后移除镜像方块交互中的重复潜行判断，重新编译、打包和 IDEA MCP 构建通过，沿用完整行为测试结果。证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261115/`：`me-pattern-mirror-inspections-complete.json`、`me-pattern-mirror-final-build.log`、`me-pattern-mirror-dispatch-build.log`、`me-pattern-mirror-idea-build.json`、`me-pattern-mirror-test-counts.json` 和 `me-pattern-mirror-storage-test-results/`。内存卡原生交互、物品录入和模型画面仍由用户完整重启复验。入口：[方块与内存卡](block-registration.md#me-样板镜像与内存卡)、[API](../api.md)。本轮本地英文提交，保留用户 AGENTS.md 修改。
+
 ## 2026-11-15 API 复核与文档更新
 
 按 `6862850` 后的当前源码重新核对 API 与调用点，修正残留的可空原始类型包装。预算接受判断统一为共享 `BudgetResult.YIELDED/ACCEPTED/REJECTED`；FE patch 数量使用 long 的 -1 继承，布尔覆盖与普通控制器联网覆盖使用 int 的 -1/0/1，属性基础值使用 double 的 NaN 表示未设置。命令开关也移除 Boolean 包装；依赖 Gecko 接口要求的 Integer 保留。

@@ -13,12 +13,13 @@
 | `me_output_assembly`  | ME机械输出总成 | ME Machinery Output Assembly  |
 | `me_interface`        | ME机械接口     | ME Machinery Interface        |
 | `me_pattern_assembly` | ME机械样板总成 | ME Machinery Pattern Assembly |
+| `me_pattern_mirror` | ME样板镜像 | ME Pattern Mirror |
 
 用户已逐项确认下面的 ME 存储、隔离、样板五模式和并行控制器行为；未根据图标新增红石、相邻容器传输或升级功能。
 
 ## 创造物品栏
 
-所有本库方块和工具集中在“原型工程”（Prototype Engineering）创造页，图标为方向工具，使用原生CreativeTabs与创造搜索枚举。84内置方块包含60普通仓室、4ME总成、15装饰和5并行组件；另有3工具。Java/CT声明生成的控制器、继承HatchBlock的扩展仓室和并行组件使用相同默认页，作者仍可通过原生setCreativeTab调整归属。注册事件与NBT身份保持原样；缺创造页不意味着物品未注册。
+所有本库方块和工具集中在“原型工程”（Prototype Engineering）创造页，图标为方向工具，使用原生CreativeTabs与创造搜索枚举。内置仓室包含60普通仓室、4运算仓和5ME总成，另有装饰方块、并行组件和工具。Java/CT声明生成的控制器、继承HatchBlock的扩展仓室和并行组件使用相同默认页，作者仍可通过原生setCreativeTab调整归属。注册事件与NBT身份保持原样；缺创造页不意味着物品未注册。
 
 ## 当前装饰方块
 
@@ -58,7 +59,7 @@ PNG 的可见像素与包内一致；当前共享工作树有 PNG 重编码和�
 `bus_in`、`bus_out` 及其 BLOOM 元数据，添加当前已有的 `prototype_eng_bloom` 回退标记。模型保留原 credit、几何和
 UV，迁移命名空间，并沿现有仓室规范把发光覆盖层后绘且设为 `shade=false`。
 
-四个 `me_*` 均有独立方块、物品与模型注册。三种资源总成已接入独立事务库存及实际 ME 节点；样板总成按下节规则接入，最终验证见实施进度。
+五个 `me_*` 均有独立方块、物品与模型注册。三种资源总成已接入独立事务库存及实际 ME 节点；样板总成按下节规则接入。样板镜像使用样板总成几何和现有接口侧面纹理，最终验证见实施进度。
 
 GUI输入/输出原图采用用户指定的 `prototypemachinery/textures/gui/gui_bus/gui_item_bus.png`，接口采用 `gui_item_io_bus.png`；当前资源文件分别使用通用命名 `gui_resource_bus.png`、`gui_resource_io_bus.png`，正式GUI不再引用item命名。保留下角标记槽及实际槽两个18×18图案，移除无功能的升级列与自动IO按钮；导出的mix原图没有这两个图案，保留其原布局但不替换正式GUI主图。
 
@@ -67,6 +68,14 @@ GUI输入/输出原图采用用户指定的 `prototypemachinery/textures/gui/gui
 `gui_bus_slot.png`、`gui_pattern_bus_slot.png`、`io_mode.png`及两张调色板从原文件恢复，不作像素修改。五张背景逐像素核对确认白名单外RGBA与原图完全一致；mix及样板主界面完整区域与原图一致。共享工作区出现PNG重编码，最终以完整RGBA一致性验证，不把文件字节变化当作像素改变。修图清单与逐张放大前后对比保存在`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/gui-artwork-repair/`，资源构建与游戏画面验证分别记录于实施进度。
 
 随后2026-11-12纹理使用清理移除了确认无消费者的`gui_mix_bus.png`、`gui_mix_io_bus.png`、`gui_bus_slot.png`和`color_palette_shadow.png`。正式ME GUI仍使用上述通用命名两张资源主图、样板主图及其slot图集，`io_mode.png`和`color_palette.png`保留。未被模型或CTM元数据引用的导出备用图也已删除，注册装饰方块实际使用的基础面和已有CTM元数据引用不变。
+
+## ME 样板镜像与内存卡
+
+`me_pattern_mirror` 提供没有 GUI 的物理仓室。手持 AE 内存卡潜行右键样板总成，保存该总成所在维度和位置，以及当前配置和样板；普通右键镜像绑定来源。镜像只保存位置，区块加载与拆除、卸载事件更新缓存引用，机器读取不会通过 World 查找目标 TE。目标未加载时暂停供料，重新加载或同位置换成另一台样板总成后自动取得新来源，不强制加载区块。镜像拆除后只掉落自身和绑定设置，库存仍由源总成保存。
+
+镜像直接使用源总成的输入、输出、催化剂、颜色与样板隔离规则，多个镜像和源总成共用实际 StorageContext、库存身份和来源通知，不重复计算库存。必须在来源替换、镜像重绑或卸载时撤销旧端口和令牌，禁止把旧事务转给新来源；原事务的回滚和完成继续交给原库存。维度卸载和服务器停止时清理缓存订阅。
+
+已保存这份内存卡后，普通右键另一样板总成会复制工作模式、隔离组、终端可见性和名称，并按目标槽数录入样板。页数、材料库存、ME 节点及所有权不随卡复制。按 AE 原生方式归还目标旧样板，优先从玩家绑定的无线网络取已编码样板；没有对应物品时逐个支付空白样板后录入，创意模式免费。缺少空白样板时保留已录入项并显示原生缺料提示。源没有样板时卡中不写样板列表，导入仅修改配置。输入库存尚有材料或正在执行配方时拒绝修改。交互使用当前 AE 的 Platform.hasPermissions 和内存卡提示消息。
 
 ## 通用 ME 库存
 
