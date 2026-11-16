@@ -21,23 +21,7 @@
     #pe-ov .ov-scenarios button { font:12px/20px "Microsoft YaHei","Segoe UI",sans-serif; color:#d6d9e0; background:#363940; border:1px solid #555b66; padding:1px 9px; cursor:pointer; }
     #pe-ov .ov-scenarios button[aria-pressed=true] { background:#cbccd4; color:#2a2c33; border-color:#cbccd4; }
 
-    #pe-ov .ov-screen { position:relative; height:calc(100vh - 44px); min-height:640px; user-select:none; }
-    #pe-ov .ov-window { position:absolute; inset:0; display:flex; flex-direction:column; padding:4px 10px 6px; background:var(--base);
-      border:7px solid transparent; border-image:var(--frame) 4 / 7px stretch; }
-    #pe-ov .ov-head { display:flex; align-items:center; flex-wrap:wrap; gap:4px 12px; min-height:32px; padding:0 4px; }
-    #pe-ov .ov-title { display:flex; align-items:baseline; gap:10px; min-width:0; flex:1; }
-    #pe-ov .ov-title span:first-child { white-space:nowrap; font-size:15px; }
-    #pe-ov .ov-title span:last-child { font-size:12px; color:var(--soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    #pe-ov .ov-headright { display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
-    #pe-ov .ov-tabs { display:flex; align-items:flex-end; padding-left:6px; margin-bottom:-2px; position:relative; z-index:1; }
-    #pe-ov .ov-tab { display:flex; align-items:baseline; gap:6px; height:24px; padding:0 14px; font:13px/20px "Microsoft YaHei","Segoe UI",sans-serif; color:var(--soft);
-      background:var(--slot); border:2px solid var(--light); border-bottom:0; margin-right:-2px; cursor:pointer; }
-    #pe-ov .ov-tab small { font-size:11px; color:var(--soft); font-variant-numeric:tabular-nums; }
-    #pe-ov .ov-tab[aria-selected=true] { background:var(--panel); color:var(--text); height:26px; }
-    #pe-ov .ov-board { position:relative; flex:1; min-height:0; background:var(--panel); border:2px solid var(--light); overflow:hidden; }
-    #pe-ov .ov-foot { display:flex; justify-content:space-between; gap:12px; padding:4px 4px 0; font-size:12px; line-height:18px; color:var(--soft); }
-    #pe-ov .ov-key { padding:0 5px; margin-right:6px; font:11px/16px Consolas,monospace; color:var(--text); box-shadow:inset 0 0 0 1px var(--line); background:var(--slot); }
-
+    #pe-ov .ov-screen { position:relative; height:calc(100vh - 44px); min-height:640px; overflow:hidden; user-select:none; background:var(--panel); }
     #pe-ov .ov-viewport { position:absolute; inset:0; cursor:grab; touch-action:none;
       background-image:linear-gradient(rgba(65,63,84,0.09) 1px, transparent 1px), linear-gradient(90deg, rgba(65,63,84,0.09) 1px, transparent 1px); }
     #pe-ov .ov-viewport.panning { cursor:grabbing; }
@@ -59,12 +43,11 @@
     #pe-ov .ov-node.locked, #pe-ov .ov-node.dim { background:var(--locked); border-color:var(--muted); cursor:default; }
     #pe-ov .ov-node.locked:hover, #pe-ov .ov-node.dim:hover { filter:none; }
     #pe-ov .ov-node.locked > img, #pe-ov .ov-node.dim > img { opacity:0.35; filter:grayscale(1); }
+    #pe-ov .ov-viewport.editing .ov-node.locked { cursor:pointer; }
     #pe-ov .ov-node.blocked { background:var(--bad-bg); border-color:var(--bad); }
     #pe-ov .ov-node.blocked > img { opacity:0.6; }
     #pe-ov .ov-node.special { background:var(--warn-bg); border-color:var(--warn); }
-    #pe-ov .ov-node.editable { cursor:pointer; }
-    #pe-ov .ov-node.movable { cursor:move; }
-    #pe-ov .ov-node.dragging { z-index:6; opacity:0.85; filter:none; }
+    #pe-ov .ov-node.dragging { z-index:6; cursor:move; filter:none; opacity:0.9; box-shadow:0 0 0 2px var(--light), 4px 4px 0 rgba(65,63,84,0.45); }
     #pe-ov .ov-node.expanded { z-index:5; padding:0 8px; filter:none; box-shadow:0 0 0 1px var(--light), 3px 3px 0 rgba(65,63,84,0.45); }
     #pe-ov .ov-pct { font:13px/16px Consolas,"Microsoft YaHei",monospace; color:var(--text); white-space:nowrap; pointer-events:none; }
     #pe-ov .ov-ninfo { display:flex; flex-direction:column; min-width:0; flex:1; gap:1px; pointer-events:none; }
@@ -80,40 +63,61 @@
     #pe-ov .ov-node.blocked .ov-lock { background:var(--bad); }
     #pe-ov .ov-node.special .ov-lock { background:var(--warn); }
 
-    #pe-ov .ov-float { position:absolute; display:flex; flex-direction:column; background:var(--base); border:7px solid transparent; border-image:var(--frame) 4 / 7px stretch; }
-    #pe-ov .ov-tl { left:6px; top:6px; width:304px; padding:2px 4px 4px; gap:6px; }
-    #pe-ov .ov-sec { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:20px; font-size:12px; color:var(--soft); }
-    #pe-ov .ov-sec b { font-weight:500; font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    #pe-ov .ov-queue { display:flex; gap:4px; }
-    #pe-ov .ov-q, #pe-ov .ov-slot { position:relative; width:36px; height:36px; flex:none; padding:2px; border:0; background:var(--slot);
-      box-shadow:inset 0 2px var(--line), inset 2px 0 var(--line), inset 0 -2px var(--light), inset -2px 0 var(--light); }
-    #pe-ov .ov-q { cursor:pointer; }
-    #pe-ov .ov-q:hover { background:var(--hover); }
-    #pe-ov .ov-q.empty { cursor:default; background:var(--slot); }
-    #pe-ov .ov-q img, #pe-ov .ov-slot img { width:32px; height:32px; display:block; }
-    #pe-ov .ov-q b { position:absolute; left:2px; top:2px; padding:0 3px; font:400 10px/12px Consolas,sans-serif; color:var(--light); background:var(--dark); }
-    #pe-ov .ov-q i { position:absolute; left:3px; right:3px; bottom:3px; height:3px; background:var(--light); }
-    #pe-ov .ov-q i > u { position:absolute; left:0; top:0; bottom:0; background:var(--dark); }
-    #pe-ov .ov-slot b { position:absolute; right:1px; bottom:0; font:400 11px/12px Consolas,monospace; color:#fff; text-shadow:1px 1px #3f3f3f; }
-    #pe-ov .ov-inset { background:var(--panel); border:2px solid var(--light); padding:6px 8px; display:flex; flex-direction:column; gap:3px; }
-    #pe-ov .ov-work { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 8px; font-size:12px; line-height:16px; }
+    #pe-ov .ov-banner { position:absolute; top:0; left:50%; transform:translateX(-50%); height:30px; padding:0 40px; display:flex; align-items:center; gap:8px; white-space:nowrap; font-size:13px; color:var(--text);
+      background:repeating-linear-gradient(135deg, var(--base) 0 10px, var(--hover) 10px 20px); clip-path:polygon(0 0, 100% 0, calc(100% - 14px) 100%, 14px 100%); pointer-events:none; }
+    #pe-ov .ov-banner::before { content:""; width:0; height:0; border-left:7px solid var(--dark); border-top:5px solid transparent; border-bottom:5px solid transparent; }
+    #pe-ov .ov-banner.edit { color:var(--warn); background:repeating-linear-gradient(135deg, var(--warn-bg) 0 10px, #d4c6a3 10px 20px); }
+    #pe-ov .ov-banner.edit::before { border-left-color:var(--warn); }
+
+    #pe-ov .ov-tl { position:absolute; left:16px; top:62px; width:296px; display:flex; flex-direction:column; gap:8px; }
+    #pe-ov .ov-pages { position:absolute; left:16px; top:0; max-width:calc(50% - 180px); display:flex; flex-wrap:wrap; gap:0 10px; }
+    #pe-ov .ov-page { width:136px; height:52px; padding:9px 6px 0; display:block; text-align:center; font:24px/32px "Microsoft YaHei","Segoe UI",sans-serif;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--soft); background:none; border:0; border-top:5px solid var(--muted); cursor:pointer; }
+    #pe-ov .ov-page:hover { color:var(--text); border-top-color:var(--line); }
+    #pe-ov .ov-page[aria-selected=true] { color:var(--dark); font-weight:500; border-top-color:var(--dark); background:linear-gradient(rgba(242,242,242,0.55), rgba(242,242,242,0) 80%); }
+    #pe-ov .ov-queue { display:flex; align-items:center; gap:8px; padding-left:4px; }
+    #pe-ov .ov-q { position:relative; width:46px; height:46px; border-radius:50%; padding:3px; border:0; background:var(--line); cursor:pointer; }
+    #pe-ov .ov-q.head { background:conic-gradient(var(--dark) calc(var(--p) * 1%), var(--slot) 0); }
+    #pe-ov .ov-q > span { display:flex; align-items:center; justify-content:center; width:100%; height:100%; border-radius:50%; background:var(--slot); }
+    #pe-ov .ov-q.head > span { background:var(--light); }
+    #pe-ov .ov-q:hover > span { background:var(--hover); }
+    #pe-ov .ov-q img { width:24px; height:24px; }
+    #pe-ov .ov-q b { position:absolute; right:-3px; top:-3px; min-width:16px; height:16px; padding:0 4px; border-radius:8px; font:500 11px/16px Consolas,sans-serif; text-align:center; color:var(--light); background:var(--dark); }
+    #pe-ov .ov-q.empty { background:none; box-shadow:inset 0 0 0 2px var(--line); cursor:default; }
+    #pe-ov .ov-q.empty > span { background:none; }
+
+    #pe-ov .ov-card, #pe-ov .ov-stat, #pe-ov .ov-side { background:var(--base); border:7px solid transparent; border-image:var(--frame) 4 / 7px stretch; }
+    #pe-ov .ov-card { display:flex; flex-direction:column; }
+    #pe-ov .ov-card header { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 2px 5px; border-bottom:1px solid var(--line); }
+    #pe-ov .ov-card header span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #pe-ov .ov-card header small { font-size:11px; color:var(--soft); white-space:nowrap; }
+    #pe-ov .ov-card-body { padding:5px 2px 0; display:flex; flex-direction:column; gap:4px; }
+    #pe-ov .ov-work { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 8px; font-size:12px; line-height:16px; color:var(--soft); }
     #pe-ov .ov-work .ov-bar { grid-column:1 / -1; }
     #pe-ov .ov-bar { position:relative; height:6px; background:var(--slot); box-shadow:inset 0 0 0 1px var(--line); }
     #pe-ov .ov-bar > u { position:absolute; left:0; top:0; bottom:0; background:var(--dark); }
-    #pe-ov .ov-mrow { display:grid; grid-template-columns:24px minmax(0,1fr) auto; align-items:center; gap:8px; height:26px; font-size:12px; }
+    #pe-ov .ov-mrow { display:grid; grid-template-columns:28px minmax(0,1fr) auto; align-items:center; gap:8px; height:30px; }
     #pe-ov .ov-mrow img { width:24px; height:24px; }
-    #pe-ov .ov-mrow span:nth-child(2) { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    #pe-ov .ov-mrow span:last-child { font:13px/16px Consolas,"Microsoft YaHei",monospace; }
+    #pe-ov .ov-mrow span:nth-child(2) { font-size:12px; color:var(--soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #pe-ov .ov-mrow span:last-child { font:14px/18px Consolas,"Microsoft YaHei",monospace; }
     #pe-ov .ov-mrow .short { color:var(--bad); }
-    #pe-ov .ov-nrow { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 8px; font-size:12px; line-height:16px; padding:2px 0; }
+    #pe-ov .ov-nrow { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 8px; font-size:12px; line-height:16px; padding:3px 0; }
     #pe-ov .ov-nrow span:last-of-type { font-family:Consolas,"Microsoft YaHei",monospace; }
     #pe-ov .ov-nrow .ov-bar { grid-column:1 / -1; height:4px; }
     #pe-ov .ov-small { font-size:11px; line-height:16px; color:var(--soft); }
-    #pe-ov .ov-checkbox { display:flex; align-items:center; gap:8px; padding:2px 0; font:12px/20px "Microsoft YaHei",sans-serif; color:var(--text); background:none; border:0; cursor:pointer; text-align:left; }
-    #pe-ov .ov-checkbox i { width:14px; height:14px; flex:none; position:relative; background:var(--slot); box-shadow:inset 0 0 0 1px var(--line); }
-    #pe-ov .ov-checkbox[aria-pressed=true] i::after { content:""; position:absolute; inset:3px; background:var(--good); }
-    #pe-ov .ov-checkbox:hover { color:#517497; }
+    #pe-ov .ov-check { display:flex; align-items:center; gap:8px; margin-top:4px; padding:4px 8px; font:13px/20px "Microsoft YaHei",sans-serif; color:var(--light); background:var(--line); border:0; cursor:pointer; text-align:left; }
+    #pe-ov .ov-check:hover { background:var(--dark); }
+    #pe-ov .ov-check i { width:16px; height:16px; flex:none; position:relative; box-shadow:inset 0 0 0 2px var(--light); }
+    #pe-ov .ov-check[aria-pressed=true] i::after { content:""; position:absolute; left:5px; top:1px; width:5px; height:10px; border:solid var(--light); border-width:0 2px 2px 0; transform:rotate(45deg); }
+    #pe-ov .ov-check.off { background:var(--muted); }
 
+    #pe-ov .ov-tr { position:absolute; top:8px; right:16px; display:flex; flex-direction:column; align-items:flex-end; gap:6px; transition:right .15s; }
+    #pe-ov .ov-tr.shift, #pe-ov .ov-br.shift { right:356px; }
+    #pe-ov .ov-stat { display:grid; grid-template-columns:auto auto; gap:0 12px; padding:0 3px; font-size:12px; line-height:18px; }
+    #pe-ov .ov-stat span:nth-child(odd) { color:var(--soft); }
+    #pe-ov .ov-stat span:nth-child(even) { text-align:right; font-family:Consolas,"Microsoft YaHei",monospace; }
+    #pe-ov .ov-stat .bad { color:var(--bad); font-family:inherit; }
+    #pe-ov .ov-row { display:flex; gap:6px; align-items:center; }
     #pe-ov .ov-chip { display:inline-flex; align-items:center; gap:5px; height:20px; padding:0 8px; font-size:12px; white-space:nowrap; background:var(--idle-bg); color:var(--text); box-shadow:inset 0 0 0 1px var(--line); }
     #pe-ov .ov-chip::before { content:""; width:6px; height:6px; background:var(--muted); }
     #pe-ov .ov-chip.good { background:var(--good-bg); color:var(--good); box-shadow:inset 0 0 0 1px var(--good-line); }
@@ -127,21 +131,26 @@
       background:transparent; border:4px solid transparent; border-image:var(--button) 2 fill / 4px stretch; white-space:nowrap; cursor:pointer; }
     #pe-ov .ov-action:hover:not(.off) { color:#517497; border-image-source:var(--button-hover); }
     #pe-ov .ov-action.off { opacity:0.5; cursor:default; }
-    #pe-ov .ov-action .box { width:12px; height:12px; background:var(--slot); box-shadow:inset 0 0 0 1px var(--line); position:relative; }
-    #pe-ov .ov-action[aria-pressed=true] .box::after { content:""; position:absolute; inset:3px; background:var(--good); }
     #pe-ov .ov-square { width:30px; height:30px; padding:3px; border:0; background:var(--square) center / 100% 100%; cursor:pointer; flex:none; }
     #pe-ov .ov-square:hover { background-image:var(--square-hover); }
     #pe-ov .ov-square img { width:100%; height:100%; display:block; }
 
-    #pe-ov .ov-banner { position:absolute; top:0; left:50%; transform:translateX(-50%); padding:2px 14px; font-size:12px; white-space:nowrap; color:var(--warn); background:var(--warn-bg); box-shadow:inset 0 0 0 1px var(--warn-line); pointer-events:none; }
-    #pe-ov .ov-toast { position:absolute; left:50%; bottom:12px; transform:translateX(-50%); padding:4px 14px; font-size:12px; white-space:nowrap; pointer-events:none;
+    #pe-ov .ov-bl, #pe-ov .ov-br { position:absolute; bottom:8px; font-size:12px; color:var(--dark); display:flex; align-items:center; gap:8px; transition:right .15s; }
+    #pe-ov .ov-bl { left:16px; }
+    #pe-ov .ov-br { right:16px; }
+    #pe-ov .ov-key { padding:0 5px; font:11px/16px Consolas,monospace; color:var(--text); background:var(--slot); box-shadow:inset 0 0 0 1px var(--line); }
+    #pe-ov .ov-toast { position:absolute; left:50%; bottom:40px; transform:translateX(-50%); padding:5px 14px; font-size:13px; white-space:nowrap; pointer-events:none;
       background:var(--base); color:var(--text); box-shadow:inset 0 0 0 1px var(--line), 0 2px 0 rgba(65,63,84,0.4); }
 
-    #pe-ov .ov-side { top:6px; right:6px; bottom:6px; width:min(340px, calc(100% - 12px)); transform:translateX(calc(100% + 12px)); transition:transform .15s; }
+    #pe-ov .ov-side { position:absolute; top:0; right:0; bottom:0; width:min(340px, 100%); display:flex; flex-direction:column; transform:translateX(105%); transition:transform .15s; }
     #pe-ov .ov-side.open { transform:none; }
-    #pe-ov .ov-shead { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:2px 10px; align-items:center; padding:2px 4px 8px; border-bottom:1px solid var(--line); }
+    #pe-ov .ov-shead { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:2px 10px; align-items:center; padding:4px 4px 8px; border-bottom:1px solid var(--line); }
+    #pe-ov .ov-slot { position:relative; width:36px; height:36px; flex:none; padding:2px; background:var(--slot);
+      box-shadow:inset 0 2px var(--line), inset 2px 0 var(--line), inset 0 -2px var(--light), inset -2px 0 var(--light); }
+    #pe-ov .ov-slot img { width:32px; height:32px; display:block; }
+    #pe-ov .ov-slot b { position:absolute; right:1px; bottom:0; font:400 11px/12px Consolas,monospace; color:#fff; text-shadow:1px 1px #3f3f3f; }
     #pe-ov .ov-shead .ov-slot { width:44px; height:44px; padding:6px; grid-row:span 2; }
-    #pe-ov .ov-shead strong { font-size:15px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #pe-ov .ov-shead strong { font-size:16px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     #pe-ov .ov-shead .ov-square { grid-row:span 2; align-self:start; }
     #pe-ov .ov-chips { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
     #pe-ov .ov-sbody { flex:1; min-height:0; overflow-y:auto; padding:8px 4px; display:flex; flex-direction:column; gap:6px; scrollbar-width:thin; scrollbar-color:var(--muted) var(--base); }
@@ -202,33 +211,27 @@
   </div>
 
   <div class="ov-screen" id="ov-screen">
-    <section class="ov-window" aria-label="研究总览">
-      <header class="ov-head">
-        <div class="ov-title"><span id="ov-title">研究总览</span><span id="ov-sub"></span></div>
-        <div class="ov-headright" id="ov-headright"></div>
-      </header>
-      <div class="ov-tabs" id="ov-tabs" role="tablist"></div>
-      <div class="ov-board" id="ov-board">
-        <div class="ov-viewport" id="ov-viewport"><div class="ov-plane" id="ov-plane"></div></div>
-        <div class="ov-banner" id="ov-banner" hidden>编辑模式：点击研究直接完成下一级</div>
-        <div class="ov-float ov-tl" id="ov-tl"></div>
-        <aside class="ov-float ov-side" id="ov-side" aria-label="研究详情"></aside>
-        <div class="ov-toast" id="ov-toast" hidden></div>
-      </div>
-      <footer class="ov-foot"><span id="ov-zoom"></span><span><span class="ov-key">ESC</span><span id="ov-esc"></span></span></footer>
-    </section>
+    <div class="ov-viewport" id="ov-viewport"><div class="ov-plane" id="ov-plane"></div></div>
+    <div class="ov-banner" id="ov-banner"></div>
+    <div class="ov-pages" id="ov-pages" role="tablist"></div>
+    <div class="ov-tl" id="ov-tl"></div>
+    <div class="ov-tr" id="ov-tr"></div>
+    <div class="ov-bl" id="ov-bl"></div>
+    <div class="ov-br" id="ov-br"></div>
+    <aside class="ov-side" id="ov-side" aria-label="研究详情"></aside>
+    <div class="ov-toast" id="ov-toast" hidden></div>
   </div>
 
   <div class="ov-below">
     <div class="ov-legend" id="ov-legend"></div>
     <ul class="ov-notes">
-      <li>全屏界面。滚轮以光标为中心缩放（50%～200%），按住左键在画布任意位置拖动平移；点击空白处或按 ESC 收起右侧详情，再按 ESC 关闭界面。</li>
-      <li>研究平时只显示方块和图标；正在研究或保留部分进度的研究，方块右侧显示百分比。点击后展开为长框，显示名称、等级状态和进度条，同时在右侧弹出详情。</li>
-      <li>左上角显示研究队列和当前研究：研究站研究显示工作量、材料“当前可用 / 剩余需求”和网络资源累计；手动研究显示投料玩家、材料“已投入 / 需求”和“消耗背包中的物品”。</li>
+      <li>全屏界面，沿用 AE 配色与贴图。滚轮以光标为中心缩放（50%～200%），按住左键在画布任意位置拖动平移；点击空白处或按 ESC 收起右侧详情，再按 ESC 关闭界面。</li>
+      <li>研究平时只显示方块和图标；正在研究或保留部分进度的研究，方块右侧显示百分比。点击后展开为长框，显示名称、状态和进度条，同时在右侧弹出详情；展开的长框不会盖住其他研究。</li>
+      <li>左上角为分页、研究队列和当前研究：研究站研究显示工作量、材料“当前可用 / 剩余需求”和网络资源累计；手动研究显示投料玩家、材料“已投入 / 需求”和“消耗背包中的物品”。</li>
       <li>“运行测试”页使用仓库示例脚本与 Java 示例的研究、材料、网络资源和奖励（自动布局）；“示例扩展”页为演示多前置、跨页前置、互斥与手动布局的虚构内容。</li>
       <li>玩家模式：前置未完成的研究点击无反馈，悬停列出还需完成的研究；按钮不可用时悬停显示原因。下载到数据库不会重复，队伍任一数据库已存等级不低于队伍等级时提示“已下载到 …”。</li>
       <li>数据库模式：只能选择本数据库已存的研究（数据库与物品）或队伍直属已完成的研究（仅物品），其余研究变暗且点击无反馈。</li>
-      <li>编辑模式：由命令打开。点击研究直接完成下一级，缺少的前置研究同时补到所需等级；特殊研究写入当前活动数据库。开启“手动布局”后可拖动研究，“导出”覆盖该页的分页文件。</li>
+      <li>编辑模式：由命令打开。所有研究都可以点击打开详情，详情中的“开始研究”立即完成下一级，缺少的前置研究同时补齐，特殊研究的按钮为“写入数据库”。长按研究约 0.3 秒后可直接拖动，松开后吸附网格并自动记录位置，该页随之改为手动布局；“导出”覆盖该页的分页文件。</li>
       <li>研究名称、简介、图标和奖励组文字来自客户端研究内容 JSON；分页 ID 为研究命名空间，分页名称读取自动生成的本地化键。</li>
     </ul>
     <div class="ov-export" id="ov-export" hidden><p id="ov-export-path"></p><pre id="ov-export-json"></pre></div>
@@ -239,9 +242,10 @@
     (() => {
       const A = {"ae_clear": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAAJUExURUdwTPLy8k1NZ77pt7AAAAABdFJOUwBA5thmAAAALUlEQVQI12NgwAYCWIFEiCiQmBoGJFQjgARrAJAQDQESYVOBRIQqkFjAha4TALM4BPdYwlb9AAAAAElFTkSuQmCC", "blaze_powder": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAA3UlEQVR42mNgoBWYaszwnyLN//9v/U+yITANQBrMBtFEuwps6z/D/8iGYMgvZsDtKmy2IivG5SoUxeiaYTbichWK4uetqM6D2QgyhGCAooc6zNb///PA9KkeThQ57AbcdPr/e78hisb/pyGa/z9AWLDCH0tAwpz6YzGqBjAbSIO9AYwhEH2pgRmrAXBvgGz9f8MJbMjZMKgryqBhcd/t/4lEhv+r7RhwG/K7ByIJ03w2FUi/8v3/qgvi/BWe8JjBnxbAhqRCbANpAmmG2YwzOpHjGskwdExS3sDA6AAADiD3CAFQdVwAAAAASUVORK5CYII=", "book_enchanted": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABaUlEQVQ4y6WTX0vCUBjGd+PaxgS12ErTWlDp5lQqRYkJWRdSdBPdeVsfKdHoKoIor4JofYuIavVtns472WnmYIgXD+84e5/fec4/AYAwj2IbHEtBcVVCi9WZAMW8BKes4PJE57LXZcQCfrIdfG22J4xHuyn+ba5JiAQ4VQWlgoTRQRv31S4e9QY3hwEkKwQRKhsyunV1ooFSEIDqf0hQm+Z4T4QaA1wcL00ASAQgUZqopTSLKkrGAoTGtgL35Rnn7cWpJjKTKAmfmRlJruui1+tBsA0Znuf5A1EQMr/frOBtkIVjqxgOh34vVR9w2FCYMTMFCUf9uNXw2c/i+qrPza2SCiOXHO+knk74xjAkiPrqPsHLdfBQ6fr/gvE9c3wS/BgLuogz5w8SiGYbZXbwzZZCxrolIa+JiLxItS0Jp820DyEjiUy0kQQxlsX4m9iyZOybSR5VSyVwV7Yw02OiiAUmm53z3K8xTr8ZeFecenyf2AAAAABJRU5ErkJggg==", "book_normal": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAmklEQVR42mNgoDVQk+b4D8NkaUz1FodjogxB12ihwUOcIdhshBkAw1gNwaYR3Va8hoAYIXbCWG1GF0OXFxNg/Q83AJshuDSC8Pbt2/9HR0cjDAAJ4DMEpnHmzJlgtSAabADIGSCN165dw2oIso3ImuFeAAFshqBrhGmGiYP0wA3AZggME9SIDJANgdlKlEZshpCsEd0QsjSSAwAfTxSRtD7JpgAAAABJRU5ErkJggg==", "comparator": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAC0ElEQVQ4T22T7UuTYRTGL7/4hgrqmChqtqYuo+Zbbo7ZdOQyMjUnsYUalDCNitDUQU6wkQ3LFEFNi8qYFisY1rCUmqlF5iuVmTqyFET/i3XuO/YU0ocDh907v3Ou65wH3z+OgUVudDT69XpMttagTq1GqUyGouRkHtbQUEzW1WHIaMTVnBz+28q0G8962gCnzYyjKTLkBwTAVlyMuOBg/gdWwAo76i9jengQ2QkJOOPvj+rAQFyS78PEczs881Pgxeb8fF4si4zEycREXrg2NYK758oxP/ESj3tvIyMmhgMMfn5eFqP2+9CLxUBKWBh0SUmICgrC2awsTHXdws7mKjxz41ibGYPjXidOSKXYQ1CZSMQBMsBbSXlFZiawMdjCxzVly3E6W4Gdn8vck8/uYewlaI5EAlV8PFxtVrzr7kB3vc6rPSzxNhOQNUQxae8oK8PbwX5hPOZLjVYDaUQEvrgc+DHrxqTjIVx3bAJARF4doHeui+lf+vBKGE9MnVnxzuYK1hYmyOgmjLa1QC+Xw1Sa5lWkRHnfPOiFggzlK2OAp31/x1ukx+2NFWytf0OfpRG5GakcaNHpBMB72oyBZOCKSgU2DtPKHhlg+9cyNlcXYKkywJh3RJBmKSnCFnm0tb4Ez9AjlCgOAs1aLd+7/cmA1zcBy1kopBJ0l58SpLm62rG+PAfPqBMq8o7J58XXQkI4wDeer6MP5AO3lxvg7LmJDLraWprarNGAr+JGVQWqTReEAtaNhQ/UUKnkACPdi5wOijVVk4HpBBJufH94OIf8D/SvNGb4zGsnDkWJ/tzBjNkMa2Ehzqen41NjI5pIzm4Qm4BJY/nX8RFIqXtTXh7S2ASzrdf55SXR7p0mEyrJmItKJY6xD2cXiOWpVGQrKICcTplLWHQ7BICGTrYiXoxoypkkptNuIONqjThO30NnaS6U5IE6NhbKuDi8sDbgN8S5XRVKNb4JAAAAAElFTkSuQmCC", "diamond": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAmUlEQVR42mNgGLSAx9zgPxomTTM6INoQmOZF357D8cVfn/8b3N5L2BCYZpAGmGYQ8Hp7EYyJNgCmEWQQDIMMwOsKdM09Xx6hYIWpjfhdgWwAyEZcBuB0BbL/dc5uxGqAdHU2GOM1ABZgIA3IGGQoCIPYeL0B0gyyBaYBhmFieGMCJAnyIy4D8NqObAiyk4lyOhH5gPT8QCwAAFI5PMFG0bbyAAAAAElFTkSuQmCC", "emerald": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABE0lEQVR42mNgwAfiRBCYZADSFMzwH45JMgSq+eb/1/+3/b8AxsQbAtUM0tT0be1/8btJYMywSgdiiDs/8Zo3/zwL0bzb7T9Dueh/hvla/xks8RkC1Hwb6GyY5ojnfRADNlj8Z5iqCTGgXRZiCC4DQLY7fm75n/517v9d/6+ADUr+Mus/w2KD/wzzgHiyBn4D1v89CzYAhEEGgFwDYoNdscz4P0ObPPEGgGxHMQDkgolq+A0o+rAIbgBMc8SXyQgDCLkAZID8nTSwRpDfQZqTvs6CBGK1BIFAhKW+Dcb/pa9BQ3+FKUJznSSBaEQzBKwZZAjRmpENASleYAzBk1VI0AwDIMUgTSCsS6pmZENA2JYXpxIAA/H+OODjldgAAAAASUVORK5CYII=", "ender_pearl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAtElEQVR42mNgoBXgMTeAY7I0qraUgOj/SJg4zSYzO+AagYaAsXR1NtwgojQDaTAWiAuEY5AhMIPwOR2usefLo/86Zzf+5/Z1AmNkwzAMQfYzyABkzWyWhmCMbBBWA2B+BilA1syspgDGeA1BNwBdM7IBMDXYXAEOJEIGwMIIpzdAhsCcCvM/TDPIa1g143IFMgZpBgUuXgNghsCiC+Zn5DSBVzOyIcgGwTQSpRmbQSRrJAUAAJ3r2tVBgV96AAAAAElFTkSuQmCC", "glowstone_dust": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAdklEQVR42t2S0QnAIAxEs6MjuItLuJULpRzhQEoaG4V+VDgE5d6dEpF/r1JEoW3zGKY0BAZVM/cu2loCMidTALyCeGYCarVWj5C5NqtjxxkbhE2YTqP3BLQIAbhkqgdY/gUhBEFMhcI/uA+Pl5qaBxqOpvGTdQFH8r41Ld4WnwAAAABJRU5ErkJggg==", "gold_ingot": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAjUlEQVR42mNgGDIgIIDhPwiTpQmE///nBmOChmBqAoFuJIzFEOya0DXiMATEuHeP4T8qwK6xrY0BBdvYAA2B2Pofagh+TSA1yBjFAJBimCH4NIHwnTJhMEYyAOG3devwa4Lh7YkCCANuLxIGY2wGYNMEwyixADMEZAC6bVg1YYt/mAE4bSIm5ZGsacABAO/4TV2yFTYUAAAAAElFTkSuQmCC", "gold_nugget": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAVklEQVR42mNgGAU4QWUlw38YJkvz///c/yGg+7+np8h/MgyAaP7/n+H/vXsMpBmCbsCdMmGwAUBMqisQtgMNYSDZAJBmsmynigEwQ8hyPpoh5GseGgAARQdbMUJkI7gAAAAASUVORK5CYII=", "iron_ingot": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAhklEQVR42tWRwQnAIBAE05QdWIxvGxAswhosyW4Me3BymlOTfEIWBvJwJojH8ZtZayt4JYGcM7GNjBJWSmmoEU0axWkEHymlKjcTnXMdxphKAQyRnYQzki6AwxxZScB7T7SAvFsIYSlJWiDGSGgBKfC9me4VOIKA9qeLpL2/DNyStMhj6fOd2ipU+SWu7xYAAAAASUVORK5CYII=", "map_filled": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAArElEQVQ4y8XTwQnEIBAF0GnKInL0YBcWYCFh8brVbAfBGtKEyRe+DDohCzlE+Jcw/2kMkVqrPIk8BrCccxJCaIkxSkqpZ99/Fck5C4JZrg547zsCgAjLDGYugVKKcAAAS9v2adHIJYDoogY0YgLjjhYwIg2wincI04Bz879K+hk6iHqFe4Qnxex0BxZiAbo8AUSsO+GRZVgTMJ6ERf3tuZbvagNErB1N4PW/8QDwMkCTOEDYewAAAABJRU5ErkJggg==", "nether_star": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAuUlEQVR42mPwXDiFAYbJAmRrJMYAcy8vOCYLgDTuPHnyf2h29n+yNJ++du3/rUeP/ncsWUKaITBnf/j8+f/f/yvgBhDlFWTNIBeADADRIAwyBKdLYBpBCmGaYQaAwgHEBrkEp2tgAQbyM0gTDF+6xPD/waNyOB+kBmuYgAwACYIkYTaCaJBmmM0wV+AND5g/kb0A04w3DLC5BuQCWCASHQvILkF3NsmJCWYILs0E8xHMK7icTlEOhmEAtI35rmtGUaEAAAAASUVORK5CYII=", "paper": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAY0lEQVR42s3Q0QnAMAhF0azo8g7hEi0GDK/WoJiPVvCncE8lY/x+ROTSPYpbiEXMPLeMYIhAivg/RkCIRGGG2E6AiEoRftNGd11RQezSR4jjkQjYxohEb/I6OUNaoUda4SdzA37wTpMEKWZDAAAAAElFTkSuQmCC", "prismarine_crystals": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABiUlEQVQ4y52Sb0vCUBTGz9fTF36CkqwwIkTwAxT1Kh1FEYGlQlGEabQycypqZEikps0sNxRUkGRBfyEoCE7eC3dMtyI8cBg7e55z7vntgvysAMuhghj3q2W1SUtp0TqpWcbH/tdA2+S83dAli0K1SAf0NdauQMTkGWhK4KsUYEsSwX9fBu/NpWom33UnY+bOUwc2ZREU/Abx4xFu37pQeu/CjlyCQF2kGsPV2Aq+3pRiz+Da9SJ3EUdP7ACXUxH0JHkkteznK4SaNWMW7ARE6E4fY6HbQqF+jYlaHqNSHlcyR2iZtmGwLYEjGjJu4JfK4E4c4kntCjOtCjaVBk0uzeNiikeTfRQJj5nTsN6sBefa8+JGLomrOQHXcgl6fGLW8ugLI3A2bg6d2+s4sbRgyEM1M3Dy1wtohbOxIDUzHmwdLQ+1yXxWACIkgkFw3FlE5XH3UO3joTZg4NiUQaGWh2lyhKbuLwyCY0JHPAzmKSua7Vb6Tu7Lr6EVOlMRcAo8rZObR4x/moeNHwX2xUebOKyoAAAAAElFTkSuQmCC", "quartz": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAACkElEQVQ4T1WT7UtTYRjGL7/4Bkq+oCluCE1dFmpDzMFsChkalqAQKs2gPsyC+tAyBpVgI5kmZe8vFjSZiWaNKZiJbLhZE3NJJmkZSqKZDav/4Om5n3gO88N1nvNy/677es65DxYCYyCVpqXhcW0tfG2nYTEYUKPV4mhOjpAtLg4+iwXP6+txoaRE3Fuc8uDF/Q7AZbfiYK4W5VFRsFdXQxUbKwoIIPBm8zlMuXuhz8xEQ2QkmqKjcTZ/FyYGnVgK+iFga3m5gLVJSTiSlSXAr/4RPDx5HMGJYfQ86ETBzgyhuogIoTfOJ6hNSQFy4+NxKDsbqTExOFFUBP/t6/i5+gVLM16Mv3QwbsAIPKDW8Lq9UO9IghZAY3IyTIWFwPfeVhHXrM/HMf1+pRPJ63ayv1ubwoRguZJJC09JDVHN9x4OyU4kMvgd+sHWv82z5YUPTCailUz2JCZCASVEqtTmCU2O9LPQxipbX/ksIBIlGujuEtsiE6UrrQSFG1E3/i7YR49bgedn/OxRRyszHTaKFIoBFUvRNUWW+5dGIslQP2u/ZNluQAX0kAAZd3L0lTj/tbYsYKp5Nz7Eeu60bzeggzShwj+hDba1ucY8g89YYMwtXqBvuE+YkmG4gdVohPgUZEI3yGQuMMaW5qZY8K2HDXbfEoCMv7I4q8AGPpE6Pv7KjEsT+akmXw8wB4fvtl1hT29cE6CEp0ddyEtN/j8H01YrbFVVOKXTKSb3ONTZ0qxAEiR98o5Aw7tfLivDPkrwvu2q+Buz+Si7zGY08h9GFofL2edAk/kMCjhkr6hAPh9lsYVZz4BiYFSrYVKnII2f705IAO3TWVcH1/l6VGo06KopRXF6OgwZGShWqTBku4h/U0SzXP/DrtMAAAAASUVORK5CYII=", "redstone_dust": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAbUlEQVR42mNgGN5Al4HhPwiTrbkIikk2BKThP1RzCBB7kmIIss0w7EmsIdg0wwwwg7oKpyHIzoY5vQgq5omGsRqii6YRmxfMCBngiWQrNgMIhoUukiKYZjMksf/EBqQuDltJSg+6SJrITo10AQD9d3Y/D5AqowAAAABJRU5ErkJggg==", "repeater": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAfUlEQVR42mNgGHIggpHxPwhTZIAGAwP5BkwtdfvvZKo0gAakBxn+N9cS/0904CxZvvA/CBNlAHLgwDTCDIYZAjSAAWgAbr+hawQZCsLIrsDpN5AB2DSCcEZ6Fm4DQApgLsCmEUgzAGkGvAbAAockjUgGMJClEYshpGukFAAAZWCF1qhrshMAAAAASUVORK5CYII=", "slimeball": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAo0lEQVQ4jWNgGLTAKt7sPzImWWPhmuT/LSeKwRjEBomZBOvjNwhdIwjXQnHqotj/ke2++A0BGQDSBAMgdtm+XLgBIIzTAGTb0Q2AYZB8CC5XwGyvRcIgTTCvgNggFxA0ANlGEG4CisEwyICABk/cBuAKQBDOBsrhdQHMEJBCEMamGaftMACSBNkA04CMQZoJGgAzBIRhGpA1EtSMzSCSNdIdAAA5pwgGVnucwQAAAABJRU5ErkJggg==", "back": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAAJUExURUdwTPLy8k1NZ77pt7AAAAABdFJOUwBA5thmAAAAJ0lEQVQI12NgQAMsIEIERISGwohpS4GECiuQ4AARDKwosqtWIWkHAK/qBYsPDDtwAAAAAElFTkSuQmCC"};
       const $ = id => document.getElementById(id);
-      const root = $("pe-ov"), board = $("ov-board"), viewport = $("ov-viewport"), plane = $("ov-plane");
+      const root = $("pe-ov"), screen = $("ov-screen"), viewport = $("ov-viewport"), plane = $("ov-plane");
       // The expanded box must end before the next column's link bend (COL - 14), so expanding never covers another research.
-      const COL = 156, ROW = 66, NODE = 44, WIDE = 84, EXP_W = 128, EXP_H = 52, MAX = 2147483647, HOME = {x: 340, y: 24};
+      const COL = 156, ROW = 66, NODE = 44, WIDE = 84, EXP_W = 128, EXP_H = 52, MAX = 2147483647;
+      const HOME = {x: 340, y: 120}, LEFT = 320, SIDE = 352, HOLD = 300;
       const fmt = n => Number.isInteger(n) ? n.toLocaleString("en-US") : n.toLocaleString("en-US", {maximumFractionDigits: 2});
       const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
       const ITEM = {iron_ingot: "铁锭", gold_ingot: "金锭", redstone_dust: "红石", gold_nugget: "金粒", emerald: "绿宝石", paper: "纸", quartz: "下界石英",
@@ -414,6 +418,19 @@
         return {ok: true, text: "加入后排在第 " + (state.queue.length + 1) + " 位"};
       }
 
+      function editAction(id) {
+        const r = R[id];
+        if (r.special) {
+          const db = activeDb(), now = db ? db.stored[id] || 0 : 0;
+          if (!db) return {ok: false, label: "写入数据库", text: "没有活动数据库"};
+          if (!(id in db.stored) && stored(db) >= db.capacity) return {ok: false, label: "写入数据库", text: db.name + " 容量已满"};
+          if (now >= r.max) return {ok: false, label: "写入数据库", text: "已达到最高等级"};
+          return {ok: true, label: "写入数据库", text: "立即写入 " + db.name + " Lv." + (now + 1)};
+        }
+        if (level(id) >= r.max) return {ok: false, label: "开始研究", text: "已达到最高等级"};
+        return {ok: true, label: "开始研究", text: "立即完成 Lv." + (level(id) + 1) + "，无视前置、互斥、权限与材料"};
+      }
+
       function selectable(id) {
         const r = R[id], db = homeDb();
         if (r.special) return {ok: false, text: "特殊研究不能作为下载目标"};
@@ -457,13 +474,6 @@
       function nodeTip(id) {
         const r = R[id], c = level(id), lines = [r.name + (r.max > 1 ? "  Lv." + c + " / " + maxText(r) : "")];
         if (r.summary) lines.push(r.summary);
-        if (editing()) {
-          const db = activeDb();
-          if (r.special) lines.push(db ? "点击写入 " + db.name + " Lv." + ((db.stored[id] || 0) + 1) : "没有活动数据库");
-          else lines.push(c >= r.max ? "已达到最高等级" : "点击直接完成 Lv." + (c + 1));
-          lines.push(page().layout === "manual" ? "拖动调整位置" : "开启手动布局后可拖动");
-          return lines.join("\n");
-        }
         if (picking()) {
           const s = selectable(id);
           lines.push(s.ok ? "可选择：Lv." + s.level + "（" + s.source + "）" : s.text);
@@ -473,6 +483,10 @@
         lines.push(s.text);
         if (s.key === "locked") lines.push("还需完成：" + missing(id).map(label).join("、"));
         if (s.key === "blocked") lines.push("互斥：已完成 " + mutexHit(id).map(label).join("、"));
+        if (editing()) {
+          lines.push("点击打开详情，用研究按钮立即完成", "长按拖动调整位置");
+          return lines.join("\n");
+        }
         if (!r.special) {
           const dl = download(id);
           lines.push(dl.done ? dl.text : dl.ok ? "可下载到数据库" : "无法下载：" + dl.text);
@@ -515,7 +529,6 @@
             if (q >= 0) marks += `<span class="ov-qi">${q + 1}</span>`;
             if (["locked", "blocked", "special"].includes(s.key)) marks += `<span class="ov-lock"></span>`;
             if (download(id).done) marks += `<span class="ov-db"></span>`;
-            if (editing()) cls += page().layout === "manual" ? " movable" : " editable";
           }
           let body, style;
           if (expanded) {
@@ -533,11 +546,11 @@
         plane.innerHTML = `<svg class="ov-links" width="${maxX}" height="${maxY}">${svg}</svg>` + html;
       }
 
-      function currentResearch() {
+      function headCard() {
         const q = state.queue[0];
-        if (!q) return `<div class="ov-inset"><span class="ov-none">研究队列为空，点击研究后在右侧开始研究</span></div>`;
+        if (!q) return `<div class="ov-card"><div class="ov-card-body"><span class="ov-none">研究队列为空，点击研究后在右侧开始研究</span></div></div>`;
         const r = R[q.id], tier = r.tier(q.target), f = progressOf(q.id), elapsed = Math.round(r.ticks * f);
-        const work = (name) => `<div class="ov-work"><span>${name} ${fmt(elapsed)} / ${fmt(r.ticks)} t</span><span>${Math.round(f * 100)}%</span><i class="ov-bar"><u style="width:${f * 100}%"></u></i></div>`;
+        const work = name => `<div class="ov-work"><span>${name} ${fmt(elapsed)} / ${fmt(r.ticks)} t</span><span>${Math.round(f * 100)}%</span><i class="ov-bar"><u style="width:${f * 100}%"></u></i></div>`;
         if (tier === 0) {
           const m = state.manual, mine = !!m && m.contributor === state.viewer && !m.paused;
           const who = m && m.contributor ? m.contributor : "无人投料";
@@ -545,9 +558,9 @@
             const paid = Math.floor(n * f), short = paid < n && !(state.inventory[icon] > 0);
             return `<div class="ov-mrow" data-tip="${esc(ITEM[icon] + "\n已投入 " + paid + " / 需求 " + n + (short ? "\n投料玩家背包中没有此材料" : ""))}"><img src="${A[icon]}" alt=""><span>${ITEM[icon]}</span><span class="${short ? "short" : ""}">${paid} / ${n}</span></div>`;
           }).join("");
-          return `<div class="ov-sec"><b>${esc(r.name)} Lv.${q.target}</b><span class="ov-chip ${m && m.paused ? "warn" : "good"}">手动研究（${esc(who)}）${m && m.paused ? " · 已暂停" : ""}</span></div>
-            <div class="ov-inset">${work("研究时间")}${rows}</div>
-            <button type="button" class="ov-checkbox" id="ov-contribute" aria-pressed="${mine}" data-tip="${esc(mine ? "取消后暂停投料，已投入的材料和进度保留" : "由你接管投料，从你的背包扣取材料")}"><i></i>消耗背包中的物品</button>`;
+          return `<div class="ov-card"><header><span>手动研究（${esc(who)}）</span><small>${m && m.paused ? "已暂停" : esc(r.name) + " Lv." + q.target}</small></header>
+            <div class="ov-card-body">${work("研究时间")}${rows}
+            <button type="button" class="ov-check${mine ? "" : " off"}" id="ov-contribute" aria-pressed="${mine}" data-tip="${esc(mine ? "取消后暂停投料，已投入的材料和进度保留" : "由你接管投料，从你的背包扣取材料")}"><i></i>消耗背包中的物品</button></div></div>`;
         }
         const mats = r.materials.map(([icon, n]) => {
           const remaining = n - Math.floor(n * f), avail = Math.min(state.stock[icon] || 0, remaining), short = avail < remaining;
@@ -557,47 +570,58 @@
           const done = Math.round(x.total * f * 10) / 10;
           return `<div class="ov-nrow"><span>${x.name}</span><span>${fmt(done)} / ${fmt(x.total)}</span><i class="ov-bar"><u style="width:${f * 100}%"></u></i></div>`;
         }).join("");
-        return `<div class="ov-sec"><b>${esc(r.name)} Lv.${q.target}</b><span class="ov-chip good">研究中 · 参与 ${state.env.working} 台</span></div>
-          <div class="ov-inset">${work("工作量")}${mats ? `<div class="ov-small">材料 当前可用 / 剩余需求</div>${mats}` : `<span class="ov-none">无材料需求</span>`}
-          ${res ? `<div class="ov-small">网络资源 已累计 / 总需求</div>${res}` : ""}</div>`;
+        return `<div class="ov-card"><header><span>${esc(r.name)} Lv.${q.target}</span><small>研究站 · 参与 ${state.env.working} 台</small></header>
+          <div class="ov-card-body">${work("工作量")}${mats ? `<div class="ov-small">材料 当前可用 / 剩余需求</div>${mats}` : `<span class="ov-none">无材料需求</span>`}
+          ${res ? `<div class="ov-small">网络资源 已累计 / 总需求</div>${res}` : ""}</div></div>`;
       }
 
       function renderChrome() {
         const db = homeDb(), adb = activeDb();
-        $("ov-title").textContent = editing() ? "研究总览 · 编辑模式" : picking() ? "研究总览 · 选择下载研究" : "研究总览";
-        $("ov-sub").textContent = picking() ? db.name : state.team;
-        let right;
-        if (editing()) {
-          const manual = page().layout === "manual";
-          right = `<button type="button" class="ov-action" id="ov-manual" aria-pressed="${manual}" data-tip="${esc(manual ? "关闭后按前置关系自动排列" : "开启后以当前位置作为初始坐标，可拖动研究")}"><span class="box"></span>手动布局</button>` +
-            `<button type="button" class="ov-action" id="ov-exportbtn" data-tip="${esc("覆盖 config/prototype_eng/research_content/data/" + pageId + ".json")}">导出</button>`;
-        } else if (picking()) {
-          right = `<span class="ov-chip plain">阶级 ${db.tier} · 已存 ${stored(db)}/${db.capacity}</span><button type="button" class="ov-square" id="ov-back" data-tip="返回数据库"><img src="${A.back}" alt=""></button>`;
-        } else {
-          right = (adb ? `<span class="ov-chip good" data-tip="下载写入当前活动数据库">${esc(adb.name)} · 阶级 ${adb.tier} · ${stored(adb)}/${adb.capacity}</span>` : `<span class="ov-chip bad">没有活动数据库</span>`) +
-            `<span class="ov-chip plain">网络中心 Lv.${state.env.center}</span><span class="ov-chip plain">最高研究站 Lv.${state.env.station}</span>`;
-        }
-        $("ov-headright").innerHTML = right;
-        $("ov-tabs").innerHTML = PAGES.slice().sort((a, b) => a.order - b.order).map(p => {
+        $("ov-pages").innerHTML = PAGES.slice().sort((a, b) => a.order - b.order).map(p => {
           const ids = ORDER.filter(id => R[id].page === p.id);
-          const count = picking() ? ids.filter(id => selectable(id).ok).length + " 可选" : ids.filter(id => !R[id].special && level(id) >= R[id].max).length + "/" + ids.length;
-          return `<button type="button" class="ov-tab" role="tab" data-page="${p.id}" aria-selected="${p.id === pageId}" data-tip="${esc("分页 " + p.id + "\n名称键 gui.prototype_eng.research_page." + p.id)}">${p.name}<small>${count}</small></button>`;
+          const count = picking() ? "可选 " + ids.filter(id => selectable(id).ok).length + " 项" : "已完成 " + ids.filter(id => !R[id].special && level(id) >= R[id].max).length + " / " + ids.length;
+          const tip = p.name + "\n" + count + (editing() ? "\n分页 ID " + p.id + "\n名称键 gui.prototype_eng.research_page." + p.id : "");
+          return `<button type="button" class="ov-page" role="tab" data-page="${p.id}" aria-selected="${p.id === pageId}" data-tip="${esc(tip)}">${esc(p.name)}</button>`;
         }).join("");
+        let tl = "";
         if (picking()) {
-          $("ov-tl").innerHTML = `<div class="ov-sec"><b>研究下载 · 选择研究</b></div><div class="ov-inset"><div class="ov-small">数据库与物品研究按本数据库已存等级下载；仅物品研究按队伍直属等级下载。特殊研究不能作为下载目标。</div></div>`;
+          tl += `<div class="ov-card"><header><span>研究下载 · 选择研究</span><small>${esc(db.name)}</small></header><div class="ov-card-body">
+            <div class="ov-stat" style="border:0;padding:0;background:none"><span>数据库阶级</span><span>${db.tier}</span><span>已存研究</span><span>${stored(db)} / ${db.capacity}</span></div>
+            <div class="ov-small">数据库与物品研究按本数据库已存等级下载；仅物品研究按队伍直属等级下载。特殊研究不能作为下载目标。</div></div></div>`;
         } else {
           let slots = "";
           for (let i = 0; i < 5; i++) {
             const q = state.queue[i];
-            slots += q ? `<button type="button" class="ov-q" data-focus="${q.id}" data-tip="${esc((i + 1) + ". " + R[q.id].name + " Lv." + q.target + (progressOf(q.id) > 0 ? "\n进度 " + Math.round(progressOf(q.id) * 100) + "%" : "") + "\n点击定位")}"><img src="${A[R[q.id].icon]}" alt=""><b>${i + 1}</b>` +
-              (i === 0 ? `<i><u style="width:${progressOf(q.id) * 100}%"></u></i>` : "") + `</button>`
-              : `<div class="ov-q empty" data-tip="空位"></div>`;
+            slots += q ? `<button type="button" class="ov-q${i === 0 ? " head" : ""}" data-focus="${q.id}" style="--p:${Math.round(progressOf(q.id) * 100)}" data-tip="${esc((i + 1) + ". " + R[q.id].name + " Lv." + q.target + (progressOf(q.id) > 0 ? "\n进度 " + Math.round(progressOf(q.id) * 100) + "%" : "") + "\n点击定位")}"><span><img src="${A[R[q.id].icon]}" alt=""></span><b>${i + 1}</b></button>`
+              : `<div class="ov-q empty"><span></span></div>`;
           }
-          $("ov-tl").innerHTML = `<div class="ov-sec"><span>研究队列 ${state.queue.length}/5</span></div><div class="ov-queue">${slots}</div>${currentResearch()}`;
+          tl += `<div class="ov-queue">${slots}</div>${headCard()}`;
         }
-        $("ov-banner").hidden = !editing();
-        $("ov-zoom").textContent = "缩放 " + Math.round(view.z * 100) + "% · 滚轮缩放 · 拖动平移";
-        $("ov-esc").textContent = selected ? "收起详情" : picking() ? "返回数据库" : "关闭";
+        $("ov-tl").innerHTML = tl;
+
+        const banner = $("ov-banner");
+        banner.className = "ov-banner" + (editing() ? " edit" : "");
+        banner.textContent = editing() ? "编辑模式 · 研究按钮立即完成 · 长按研究拖动" : picking() ? db.name + " · 选择下载研究" : state.team + " · 研究总览";
+
+        let tr;
+        if (picking()) {
+          tr = `<button type="button" class="ov-square" id="ov-back" data-tip="返回数据库"><img src="${A.back}" alt=""></button>`;
+        } else {
+          tr = `<div class="ov-stat">` + (adb ? `<span>活动数据库</span><span>${esc(adb.name)}</span><span>阶级 · 已存</span><span>${adb.tier} · ${stored(adb)}/${adb.capacity}</span>`
+            : `<span>活动数据库</span><span class="bad">无</span>`) + `<span>网络中心</span><span>Lv.${state.env.center}</span><span>最高研究站</span><span>Lv.${state.env.station}</span></div>`;
+          if (editing()) {
+            const manual = page().layout === "manual";
+            tr = `<div class="ov-row"><span class="ov-chip ${manual ? "warn" : "plain"}" data-tip="${esc(manual ? "本页使用分页文件中的坐标" : "本页按前置关系自动排列，拖动任一研究后改为手动布局")}">${manual ? "手动布局" : "自动布局"}</span>` +
+              `<button type="button" class="ov-action" id="ov-exportbtn" data-tip="${esc("覆盖 config/prototype_eng/research_content/data/" + pageId + ".json")}">导出</button></div>` + tr;
+          }
+        }
+        $("ov-tr").innerHTML = tr;
+        $("ov-bl").innerHTML = `<span id="ov-zoom">缩放 ${Math.round(view.z * 100)}%</span><span>滚轮缩放 · 拖动平移${editing() ? " · 长按研究拖动位置" : ""}</span>`;
+        $("ov-br").innerHTML = `<span class="ov-key">ESC</span><span>${selected ? "收起详情" : picking() ? "返回数据库" : "关闭"}</span>`;
+        $("ov-tr").classList.toggle("shift", !!selected);
+        $("ov-br").classList.toggle("shift", !!selected);
+        viewport.classList.toggle("editing", editing());
+
         $("ov-legend").innerHTML = (picking()
           ? [["var(--good-bg)", "var(--good)", "可选择"], ["var(--locked)", "var(--muted)", "不可选择"]]
           : [["var(--good-bg)", "var(--good)", "已完成"], ["var(--good-bg)", "var(--good-line)", "部分等级完成"], ["var(--slot)", "var(--line)", "可研究"], ["var(--light)", "var(--dark)", "研究中"],
@@ -626,7 +650,7 @@
               : `<div class="ov-group"><span>${esc(g.title)}</span>${kids}</div>`;
           }).join("");
           const ready = !multi || choice[key];
-          const claim = st === "UNCLAIMED" && !editing() ? `<button type="button" class="ov-action${ready ? "" : " off"}" data-claim="${key}" data-tip="${esc(ready ? "领取 Lv." + l + " 奖励" : "先选择一组奖励")}">领取奖励</button>` : "";
+          const claim = st === "UNCLAIMED" ? `<button type="button" class="ov-action${ready ? "" : " off"}" data-claim="${key}" data-tip="${esc(ready ? "领取 Lv." + l + " 奖励" : "先选择一组奖励")}">领取奖励</button>` : "";
           return `<div class="ov-reward"><div class="ov-reward-head"><span>Lv.${l}${multi ? " · 任选其一" : ""}</span>${chip}</div>${cards}${claim}</div>`;
         }).join("");
       }
@@ -650,25 +674,31 @@
           const res = r.resources(t);
           const resHtml = res.length ? `<div class="ov-res">${res.map(x => `<span>${x.name}</span><span>${fmt(x.total)}${x.tick ? "（单站上限 " + fmt(x.tick) + "/t）" : ""}</span>`).join("")}</div>`
             : `<div class="ov-none">${tier === 0 ? "手动研究不使用网络资源" : "无网络资源需求"}</div>`;
+          let info = `<span>${done ? "最高等级" : "目标等级"}</span><span>Lv.${t}</span><span>研究阶级</span><span>${tier === 0 ? "0（手动研究）" : tier}</span>` +
+            `<span>研究时间</span><span>${fmt(r.ticks)} t</span><span>下载方式</span><span>${policy}</span>`;
+          if (editing()) {
+            const [col, row] = positions(page())[r.path];
+            info += `<span>研究 ID</span><span>${id}</span><span>坐标</span><span>[${col}, ${row}]${page().layout === "manual" ? "" : "（自动布局）"}</span>`;
+          }
           body = (percent !== null ? `<div class="ov-work"><span>Lv.${t} 研究进度</span><span>${percent}%</span><i class="ov-bar"><u style="width:${percent}%"></u></i></div>` : "") +
-            `<div class="ov-h"><span>研究信息</span></div><div class="ov-kv"><span>${done ? "最高等级" : "目标等级"}</span><span>Lv.${t}</span><span>研究阶级</span><span>${tier === 0 ? "0（手动研究）" : tier}</span>` +
-            `<span>研究时间</span><span>${fmt(r.ticks)} t</span><span>下载方式</span><span>${policy}</span></div>` +
+            `<div class="ov-h"><span>研究信息</span></div><div class="ov-kv">${info}</div>` +
             `<div class="ov-h"><span>前置研究</span></div>${reqList(r.prereq, ([p, lvl]) => level(p) < lvl, "已完成", "未完成")}` +
             (r.mutex.length ? `<div class="ov-h"><span>互斥研究</span></div>${reqList(r.mutex, ([m, lvl]) => level(m) >= lvl, "未完成", "已完成")}` : "") +
             (done && !r.special ? "" : `<div class="ov-h"><span>材料</span><small>Lv.${t}</small></div>${mats}<div class="ov-h"><span>网络资源</span><small>Lv.${t}</small></div>${resHtml}`) +
             `<div class="ov-h"><span>完成奖励</span></div>${rewardHtml(id)}`;
+          const dl = download(id), qi = queueIndex(id);
+          const dlButton = wide => `<button type="button" class="ov-action${dl.ok ? "" : " off"}${wide ? " wide" : ""}" id="ov-download" data-tip="${esc(dl.text)}">下载到数据库</button>`;
           if (editing()) {
-            const [col, row] = positions(page())[r.path];
-            foot = `<div class="ov-kv"><span>研究 ID</span><span>${id}</span><span>坐标</span><span>[${col}, ${row}]${page().layout === "manual" ? "" : "（自动布局）"}</span></div>` +
-              `<div class="ov-msg warn">点击研究方块直接完成下一级，无视前置、互斥、权限与材料</div>`;
+            const e = editAction(id);
+            foot = `<div class="ov-buttons"><button type="button" class="ov-action${e.ok ? "" : " off"}" id="ov-instant" data-tip="${esc(e.text)}">${e.label}</button>${dlButton(false)}</div>` +
+              `<div class="ov-msg warn" data-tip="${esc(e.text)}">编辑模式：${r.special ? "写入数据库立即加 1 级" : "开始研究立即完成下一级，缺少的前置同时补齐"}</div>`;
           } else {
-            const q = enqueue(id), dl = download(id), qi = queueIndex(id);
+            const q = enqueue(id);
             let queueButtons;
             if (qi === 0) queueButtons = `<button type="button" class="ov-action" id="ov-remove" data-tip="移出后保留已研究的进度">移出队列</button>`;
             else if (qi > 0) queueButtons = `<button type="button" class="ov-action" id="ov-current" data-tip="移到队首，原队首保留进度">设为当前</button><button type="button" class="ov-action" id="ov-remove" data-tip="移出后保留已研究的进度">移出队列</button>`;
             else queueButtons = `<button type="button" class="ov-action${q.ok ? "" : " off"}" id="ov-enqueue" data-tip="${esc(q.text)}">${progressOf(id) > 0 ? "继续研究" : "开始研究"}</button>`;
-            const dlButton = `<button type="button" class="ov-action${dl.ok ? "" : " off"}${qi > 0 ? " wide" : ""}" id="ov-download" data-tip="${esc(dl.text)}">下载到数据库</button>`;
-            foot = `<div class="ov-buttons">${queueButtons}${dlButton}</div><div class="ov-msg ${dl.done ? "good" : dl.ok ? "" : "bad"}" data-tip="${esc(dl.text)}">${esc(dl.ok || dl.done ? dl.text : "无法下载：" + dl.text)}</div>`;
+            foot = `<div class="ov-buttons">${queueButtons}${dlButton(qi > 0)}</div><div class="ov-msg ${dl.done ? "good" : dl.ok ? "" : "bad"}" data-tip="${esc(dl.text)}">${esc(dl.ok || dl.done ? dl.text : "无法下载：" + dl.text)}</div>`;
           }
         }
         side.innerHTML = `<div class="ov-shead"><div class="ov-slot"><img src="${A[r.icon]}" alt=""></div><strong data-tip="${esc(r.name + "\n" + id)}">${esc(r.name)}</strong>` +
@@ -695,21 +725,21 @@
         t.textContent = text;
         t.hidden = false;
         clearTimeout(toastTimer);
-        toastTimer = setTimeout(() => t.hidden = true, 2200);
+        toastTimer = setTimeout(() => t.hidden = true, 2400);
       }
 
       function focus(id) {
         pageId = R[id].page;
-        const [x, y] = at(positions(page())[R[id].path]), left = 320, right = 352;
-        view.x = Math.round(left + (board.clientWidth - left - right) / 2 - (x + EXP_W / 2) * view.z);
-        view.y = Math.round(board.clientHeight / 2 - (y + NODE / 2) * view.z);
+        const [x, y] = at(positions(page())[R[id].path]);
+        view.x = Math.round(LEFT + (screen.clientWidth - LEFT - SIDE) / 2 - (x + EXP_W / 2) * view.z);
+        view.y = Math.round(screen.clientHeight / 2 - (y + NODE / 2) * view.z);
       }
 
       function reveal(id) {
-        const [x] = at(positions(page())[R[id].path]), left = 320, right = board.clientWidth - 352;
+        const [x] = at(positions(page())[R[id].path]), right = screen.clientWidth - SIDE;
         const start = view.x + x * view.z, end = view.x + (x + EXP_W) * view.z;
         if (end > right) view.x -= end - right + 16;
-        else if (start < left) view.x += left - start + 16;
+        else if (start < LEFT) view.x += LEFT - start + 16;
       }
 
       function complete(id, lvl) {
@@ -718,34 +748,42 @@
         state.queue = state.queue.filter(q => !(q.id === id && q.target <= lvl));
       }
 
-      function activate(id) {
+      function instant(id) {
         const r = R[id];
-        if (editing()) {
-          if (r.special) {
-            const db = activeDb();
-            if (!db) { toast("没有活动数据库，无法写入特殊研究"); return; }
-            if (!(id in db.stored) && stored(db) >= db.capacity) { toast(db.name + " 容量已满"); return; }
-            if ((db.stored[id] || 0) >= r.max) { toast(r.name + " 已达到最高等级"); return; }
-            db.stored[id] = (db.stored[id] || 0) + 1;
-            toast("已将 " + r.name + " Lv." + db.stored[id] + " 写入 " + db.name);
-          } else if (level(id) >= r.max) {
-            toast(r.name + " 已达到最高等级");
-          } else {
-            const before = {...state.levels};
-            const fill = (rid, need) => {
-              R[rid].prereq.forEach(([p, lvl]) => fill(p, lvl));
-              for (let l = level(rid) + 1; l <= need; l++) complete(rid, l);
-            };
-            R[id].prereq.forEach(([p, lvl]) => fill(p, lvl));
-            const added = ORDER.filter(k => k !== id && level(k) > (before[k] || 0)).map(k => R[k].name + " Lv." + level(k));
-            complete(id, level(id) + 1);
-            toast("已完成 " + r.name + " Lv." + level(id) + (added.length ? "，补齐前置：" + added.join("、") : ""));
-          }
-          selected = id;
-          render();
+        if (r.special) {
+          const db = activeDb();
+          db.stored[id] = (db.stored[id] || 0) + 1;
+          toast("已将 " + r.name + " Lv." + db.stored[id] + " 写入 " + db.name);
           return;
         }
-        if (picking() ? !selectable(id).ok : status(id).key === "locked") return;
+        const before = {...state.levels};
+        const fill = (rid, need) => {
+          R[rid].prereq.forEach(([p, lvl]) => fill(p, lvl));
+          for (let l = level(rid) + 1; l <= need; l++) complete(rid, l);
+        };
+        r.prereq.forEach(([p, lvl]) => fill(p, lvl));
+        const added = ORDER.filter(k => k !== id && level(k) > (before[k] || 0)).map(k => R[k].name + " Lv." + level(k));
+        complete(id, level(id) + 1);
+        toast("已完成 " + r.name + " Lv." + level(id) + (added.length ? "，补齐前置：" + added.join("、") : ""));
+      }
+
+      function place(g) {
+        const p = page(), path = R[g.id].path;
+        const top = parseFloat(g.node.style.top) + (g.node.classList.contains("expanded") ? (EXP_H - NODE) / 2 : 0);
+        const col = Math.max(0, Math.round(parseFloat(g.node.style.left) / COL)), row = Math.max(0, Math.round(top / ROW));
+        const taken = Object.entries(positions(p)).find(([k, v]) => k !== path && v[0] === col && v[1] === row);
+        if (taken) {
+          toast("该位置已有 " + R[p.id + ":" + taken[0]].name + "，位置未改变");
+        } else {
+          if (p.layout !== "manual") { p.positions = autoPositions(p); p.layout = "manual"; }
+          p.positions[path] = [col, row];
+          toast("已记录 " + R[g.id].name + " 的位置 [" + col + ", " + row + "]，导出后写入分页文件");
+        }
+        render();
+      }
+
+      function activate(id) {
+        if (!editing() && (picking() ? !selectable(id).ok : status(id).key === "locked")) return;
         selected = selected === id ? null : id;
         if (selected) reveal(id);
         render();
@@ -755,48 +793,66 @@
       viewport.addEventListener("pointerdown", event => {
         if (event.button !== 0) return;
         const node = event.target.closest(".ov-node");
-        gesture = {node, id: node && node.dataset.id, x: event.clientX, y: event.clientY, vx: view.x, vy: view.y, moved: false};
-        if (node && editing() && page().layout === "manual") {
-          gesture.drag = true;
-          gesture.ox = parseFloat(node.style.left);
-          gesture.oy = parseFloat(node.style.top);
+        const g = gesture = {node, id: node && node.dataset.id, x: event.clientX, y: event.clientY, px: event.clientX, py: event.clientY,
+          vx: view.x, vy: view.y, moved: false, drag: false, dragged: false, hold: 0};
+        if (node && editing()) {
+          g.hold = setTimeout(() => {
+            if (gesture !== g || g.moved) return;
+            g.drag = true;
+            g.x = g.px;
+            g.y = g.py;
+            g.ox = parseFloat(node.style.left);
+            g.oy = parseFloat(node.style.top);
+            node.classList.add("dragging");
+            $("ov-tooltip").hidden = true;
+          }, HOLD);
         }
         if (event.pointerType) viewport.setPointerCapture(event.pointerId);
       });
       viewport.addEventListener("pointermove", event => {
-        if (!gesture) return;
-        const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
-        if (!gesture.moved && Math.abs(dx) + Math.abs(dy) > 3) gesture.moved = true;
-        if (!gesture.moved) return;
-        $("ov-tooltip").hidden = true;
-        if (gesture.drag) {
-          gesture.node.classList.add("dragging");
-          gesture.node.style.left = Math.max(0, gesture.ox + dx / view.z) + "px";
-          gesture.node.style.top = Math.max(0, gesture.oy + dy / view.z) + "px";
-        } else {
-          viewport.classList.add("panning");
-          view.x = gesture.vx + dx;
-          view.y = gesture.vy + dy;
-          applyView();
+        const g = gesture;
+        if (!g) return;
+        g.px = event.clientX;
+        g.py = event.clientY;
+        const dx = event.clientX - g.x, dy = event.clientY - g.y;
+        if (g.drag) {
+          g.dragged = true;
+          g.node.style.left = Math.max(0, g.ox + dx / view.z) + "px";
+          g.node.style.top = Math.max(0, g.oy + dy / view.z) + "px";
+          return;
         }
+        if (!g.moved && Math.abs(dx) + Math.abs(dy) > 3) {
+          g.moved = true;
+          clearTimeout(g.hold);
+        }
+        if (!g.moved) return;
+        $("ov-tooltip").hidden = true;
+        viewport.classList.add("panning");
+        view.x = g.vx + dx;
+        view.y = g.vy + dy;
+        applyView();
       });
       viewport.addEventListener("pointerup", () => {
         const g = gesture;
         gesture = null;
-        viewport.classList.remove("panning");
         if (!g) return;
-        if (g.moved && g.drag) {
-          const p = page(), path = R[g.id].path;
-          const col = Math.max(0, Math.round(parseFloat(g.node.style.left) / COL)), row = Math.max(0, Math.round(parseFloat(g.node.style.top) / ROW));
-          const taken = Object.entries(p.positions).find(([k, v]) => k !== path && v[0] === col && v[1] === row);
-          if (taken) toast("该位置已有 " + R[p.id + ":" + taken[0]].name);
-          else p.positions[path] = [col, row];
-          render();
+        clearTimeout(g.hold);
+        viewport.classList.remove("panning");
+        if (g.drag) {
+          if (g.dragged) place(g);
+          else render();
           return;
         }
         if (g.moved) return;
         if (g.id) activate(g.id);
         else if (selected) { selected = null; render(); }
+      });
+      viewport.addEventListener("pointercancel", () => {
+        if (!gesture) return;
+        clearTimeout(gesture.hold);
+        gesture = null;
+        viewport.classList.remove("panning");
+        render();
       });
       viewport.addEventListener("wheel", event => {
         event.preventDefault();
@@ -806,7 +862,7 @@
         view.y = my - (my - view.y) * z / view.z;
         view.z = z;
         applyView();
-        $("ov-zoom").textContent = "缩放 " + Math.round(z * 100) + "% · 滚轮缩放 · 拖动平移";
+        $("ov-zoom").textContent = "缩放 " + Math.round(z * 100) + "%";
       }, {passive: false});
 
       root.addEventListener("click", event => {
@@ -816,7 +872,7 @@
         if (b.dataset.page) { pageId = b.dataset.page; selected = null; view.x = HOME.x; view.y = HOME.y; render(); return; }
         if (b.dataset.focus) {
           focus(b.dataset.focus);
-          if (status(b.dataset.focus).key !== "locked") selected = b.dataset.focus;
+          if (editing() || status(b.dataset.focus).key !== "locked") selected = b.dataset.focus;
           render();
           return;
         }
@@ -834,19 +890,19 @@
           case "ov-close": selected = null; render(); break;
           case "ov-back": toast("返回数据库界面"); break;
           case "ov-pick": toast("已选择 " + R[selected].name + "，返回数据库"); break;
+          case "ov-instant": instant(selected); render(); break;
           case "ov-enqueue":
             state.queue.push({id: selected, target: target(selected)});
             if (state.queue.length === 1 && R[selected].tier(target(selected)) === 0) state.manual = {contributor: state.viewer, paused: false};
             toast(R[selected].name + " 已加入研究队列（第 " + state.queue.length + " 位）");
             render();
             break;
-          case "ov-current": {
+          case "ov-current":
             state.queue.unshift(state.queue.splice(queueIndex(selected), 1)[0]);
             state.manual = R[selected].tier(target(selected)) === 0 ? {contributor: null, paused: true} : null;
             toast(R[selected].name + " 已设为当前研究");
             render();
             break;
-          }
           case "ov-remove":
             state.queue.splice(queueIndex(selected), 1);
             toast(R[selected].name + " 已移出队列，进度保留");
@@ -863,14 +919,6 @@
             const m = state.manual || (state.manual = {contributor: null, paused: true});
             if (m.contributor === state.viewer && !m.paused) { m.paused = true; toast("已暂停投料，进度保留"); }
             else { m.contributor = state.viewer; m.paused = false; toast("由你继续投料"); }
-            render();
-            break;
-          }
-          case "ov-manual": {
-            const p = page();
-            if (p.layout === "manual") p.layout = "auto";
-            else { p.positions = autoPositions(p); p.layout = "manual"; }
-            toast(p.layout === "manual" ? "已开启手动布局，可拖动研究" : "已恢复自动布局");
             render();
             break;
           }
@@ -894,7 +942,7 @@
 
       const tooltip = $("ov-tooltip");
       root.addEventListener("mousemove", event => {
-        const owner = gesture && gesture.moved ? null : event.target.closest("[data-tip]");
+        const owner = gesture && (gesture.moved || gesture.drag) ? null : event.target.closest("[data-tip]");
         tooltip.hidden = !owner;
         if (!owner) return;
         tooltip.textContent = owner.dataset.tip;
