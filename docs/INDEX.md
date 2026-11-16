@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-16 研究总览预览与客户端内容规则：全屏 AE 亮色界面，玩家与数据库接口两个构造；滚轮缩放、拖动平移，研究方块点击展开并在右侧弹出详情和操作按钮，左上角显示队列与当前研究；编辑模式可直接完成研究、手动布局并导出分页文件。研究名称、文字、图标、分页与布局改由客户端 `research_content` JSON 提供，`data` 基础文件由语言目录覆盖，图标按 `kind` 注册解析。本轮只有 HTML 和文档，代码未改。入口：[设计说明](research-overview.md)、[预览](previews/research-overview.html)、[实施记录](implementation-status.md#2026-11-16-研究总览预览与客户端内容规则)。下一步用户审核预览，确认后实现客户端内容加载与图标注册、总览界面、数据捕获、编辑命令，并接入数据库“选择研究”；本地英文提交，保留 AGENTS.md 用户修改。
+
 - 2026-11-16 数据库正式界面完成：384×290 的已存列表、滚动与二次确认移出、下载/导入共用操作槽和完整背包已接入，使用 AE 按钮及既有灰紫配色。选择研究按钮按要求点击无操作，研究总览与选择返回待后续实现。完整构建、1740 tests/272 suites、Spotless 与 IDEA MCP 构建通过；9 Java、2 语言文件全级零诊断，1858 class 服务端调用检查零发现。入口：[数据库 GUI](research-gui.md#数据库界面)、[默认数据库](data-centers.md)、[实施记录](implementation-status.md#2026-11-16-数据库正式界面)。下一步用户复验实际画面与槽位操作；本轮本地英文提交，保留 AGENTS.md。
 
 - 2026-11-15 GUI 文档与源码核对：当前共有 13 个直接继承 AEBaseGui 的正式界面类；研究站、网络中心、计算机已接入专用容器与默认入口，计算机仅概览/组件两页。数据库已有预览、操作后台和自定义下载/导入 JEI，专用 GUI 与研究总览尚未实现；其余研究页面继续延缓。旧四列材料预览、计算机三页及数据库后台待实现记录按历史时点阅读。入口：[当前核对表](implementation-status.md#2026-11-15-gui-文档与源码核对)、[机器 GUI](machine-gui.md)、[研究 GUI](research-gui.md)。下一步仍为中心“每格”说明、计算机更换组件后的 FE 状态处理和游戏内复验；数据库正式界面待预览审核。本次 8 Java 的 IDEA MCP 均拒绝分析，错误/警告/弱警告未知，未作游戏验收。五份文档已更新，暂存因 `.git/index.lock` 写权限被拒而失败，尚未本地提交。
@@ -253,6 +255,7 @@
 | 普通数据库下载/自动升级/真实物理授权/数据库 GUI | [data-centers.md](data-centers.md) |
 | 普通物品转换/材料和来源费用/nonce与原生输出恢复/分级盘边界 | [research-downloads.md](research-downloads.md) |
 | 研究站 GUI 与其余延缓界面 | [research-gui.md](research-gui.md) |
+| 研究总览界面/客户端研究内容 JSON/分页与布局/图标解析注册 | [research-overview.md](research-overview.md) |
 | 研究站/网络中心/计算机界面改版要求 | [device-gui-redesign.md](device-gui-redesign.md) |
 | 研究定义/资格/入队/队列/完成传播/奖励与服务器缺口 | [research-features.md](research-features.md)、[pn-research-execution-audit.md](pn-research-execution-audit.md) |
 | 研究站时间/逐项材料支付/网络累计/共同提交 | [research-stations.md](research-stations.md) |

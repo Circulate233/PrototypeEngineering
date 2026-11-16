@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>研究总览 · GUI 预览</title>
+<body style="margin:0;background:#2a2c33">
+<div id="pe-ov">
+  <style>
+    #pe-ov { --base:#cbccd4; --panel:#9a9fb4; --slot:#adb0c4; --light:#f2f2f2; --dark:#413f54; --line:#696d88; --muted:#878fa5; --text:#404040; --soft:#5a5d72; --hover:#b6baca;
+      --card:#a3a7bb; --card-line:#8d92a8; --locked:#8f94a9; --idle-bg:#b9bccb; --mark:#d8a43a;
+      --good:#1f6b2a; --good-bg:#c2d4c5; --good-line:#8fb095; --warn:#7a5200; --warn-bg:#ddd2b6; --warn-line:#b9a77a; --bad:#a02020; --bad-bg:#dcc3c6; --bad-line:#c09398;
+      --frame:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAADyCAYAAABEWhLBAAADuklEQVR4nO3YsW0CQRBA0TuLOgjtMhAFIBIqoCeHpgeLaiCkhGsAhC0kN2DO8n8v2GCTneyvZlyvdtcBgJzF/fg8HobT+fJ18fa6nHsmAH7ZdrP/DsBPjxAA8D89Pvovcw8CwDwEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKIEACBKAACiBAAgSgAAogQAIEoAAKLGaZqucw8BwHNtN/th8f5xfPKzAPwFVkAAUeN6tbMCAhh6brlyFUbPokkcAAAAAElFTkSuQmCC); --button:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAAUAgMAAAC1yppZAAAACXBIWXMAAAsTAAALEwEAmpwYAAAADFBMVEWtsMRpbYian7RBP1TFg3A3AAAALElEQVQoz2P4TzJgOMBAImBmOLWKRLB4VMuoFpprISMlXw0lEYTTSQvpGRkAEMNJfplgmvYAAAAASUVORK5CYII=); --button-hover:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAAUBAMAAAA6im/5AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAD1BMVEVHcExwjLra//9BP1Sc0//2meR8AAAAAXRSTlMAQObYZgAAADNJREFUOMtjYKAHMKYDYDBSojlQZjByoTkYtWTUklFLRi0ZopbQoxQ2FKQ5EKaPJfSoGQEAYqbfOaAPDgAAAABJRU5ErkJggg==); --square:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAACVBMVEWtsMSan7RNTWfr1GZNAAAAHElEQVQI12NYBQQMDQwMTAytoaFB5BJgA0BGAQDUjRhhQYP65QAAAABJRU5ErkJggg==); --square-hover:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAACVBMVEXa//+c0/9NTWcigGDRAAAAHElEQVQI12NYBQQMDQwMTAytoaFB5BJgA0BGAQDUjRhhQYP65QAAAABJRU5ErkJggg==);
+      font:14px/20px "Microsoft YaHei","Segoe UI",sans-serif; color:var(--text); background:#2a2c33; }
+    #pe-ov * { box-sizing:border-box; }
+    #pe-ov [hidden] { display:none !important; }
+    #pe-ov img { image-rendering:pixelated; }
+
+    #pe-ov .ov-top { display:flex; align-items:center; gap:12px; flex-wrap:wrap; min-height:44px; padding:6px 16px; color:#d6d9e0; background:#24262c; border-bottom:1px solid #383c45; }
+    #pe-ov .ov-top strong { font-weight:500; font-size:15px; }
+    #pe-ov .ov-scenarios { display:flex; flex-wrap:wrap; gap:4px; }
+    #pe-ov .ov-scenarios button { font:12px/20px "Microsoft YaHei","Segoe UI",sans-serif; color:#d6d9e0; background:#363940; border:1px solid #555b66; padding:1px 9px; cursor:pointer; }
+    #pe-ov .ov-scenarios button[aria-pressed=true] { background:#cbccd4; color:#2a2c33; border-color:#cbccd4; }
+
+    #pe-ov .ov-screen { position:relative; height:calc(100vh - 44px); min-height:640px; user-select:none; }
+    #pe-ov .ov-window { position:absolute; inset:0; display:flex; flex-direction:column; padding:4px 10px 6px; background:var(--base);
+      border:7px solid transparent; border-image:var(--frame) 4 / 7px stretch; }
+    #pe-ov .ov-head { display:flex; align-items:center; flex-wrap:wrap; gap:4px 12px; min-height:32px; padding:0 4px; }
+    #pe-ov .ov-title { display:flex; align-items:baseline; gap:10px; min-width:0; flex:1; }
+    #pe-ov .ov-title span:first-child { white-space:nowrap; font-size:15px; }
+    #pe-ov .ov-title span:last-child { font-size:12px; color:var(--soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #pe-ov .ov-headright { display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+    #pe-ov .ov-tabs { display:flex; align-items:flex-end; padding-left:6px; margin-bottom:-2px; position:relative; z-index:1; }
+    #pe-ov .ov-tab { display:flex; align-items:baseline; gap:6px; height:24px; padding:0 14px; font:13px/20px "Microsoft YaHei","Segoe UI",sans-serif; color:var(--soft);
+      background:var(--slot); border:2px solid var(--light); border-bottom:0; margin-right:-2px; cursor:pointer; }
+    #pe-ov .ov-tab small { font-size:11px; color:var(--soft); font-variant-numeric:tabular-nums; }
+    #pe-ov .ov-tab[aria-selected=true] { background:var(--panel); color:var(--text); height:26px; }
+    #pe-ov .ov-board { position:relative; flex:1; min-height:0; background:var(--panel); border:2px solid var(--light); overflow:hidden; }
+    #pe-ov .ov-foot { display:flex; justify-content:space-between; gap:12px; padding:4px 4px 0; font-size:12px; line-height:18px; color:var(--soft); }
+    #pe-ov .ov-key { padding:0 5px; margin-right:6px; font:11px/16px Consolas,monospace; color:var(--text); box-shadow:inset 0 0 0 1px var(--line); background:var(--slot); }
+
+    #pe-ov .ov-viewport { position:absolute; inset:0; cursor:grab; touch-action:none;
+      background-image:linear-gradient(rgba(65,63,84,0.09) 1px, transparent 1px), linear-gradient(90deg, rgba(65,63,84,0.09) 1px, transparent 1px); }
+    #pe-ov .ov-viewport.panning { cursor:grabbing; }
+    #pe-ov .ov-plane { position:absolute; left:0; top:0; transform-origin:0 0; }
+    #pe-ov .ov-links { position:absolute; left:0; top:0; overflow:visible; pointer-events:none; }
+    #pe-ov .ov-links path { fill:none; stroke-width:2; }
+    #pe-ov .ov-links .lit { stroke:var(--dark); }
+    #pe-ov .ov-links .unlit { stroke:#c4c7d3; }
+    #pe-ov .ov-links .cross { stroke-dasharray:4 3; }
+    #pe-ov .ov-links circle { stroke-width:2; fill:var(--panel); }
+
+    #pe-ov .ov-node { position:absolute; width:44px; height:44px; padding:0 6px; display:flex; align-items:center; gap:7px; border:2px solid var(--line); background:var(--slot);
+      color:var(--text); font:inherit; text-align:left; cursor:pointer; }
+    #pe-ov .ov-node > img { width:28px; height:28px; flex:none; pointer-events:none; }
+    #pe-ov .ov-node:hover { filter:brightness(1.07); }
+    #pe-ov .ov-node.done, #pe-ov .ov-node.pick { background:var(--good-bg); border-color:var(--good); }
+    #pe-ov .ov-node.partial { background:var(--good-bg); border-color:var(--good-line); }
+    #pe-ov .ov-node.head { background:var(--light); border-color:var(--dark); box-shadow:0 0 0 1px var(--light); }
+    #pe-ov .ov-node.locked, #pe-ov .ov-node.dim { background:var(--locked); border-color:var(--muted); cursor:default; }
+    #pe-ov .ov-node.locked:hover, #pe-ov .ov-node.dim:hover { filter:none; }
+    #pe-ov .ov-node.locked > img, #pe-ov .ov-node.dim > img { opacity:0.35; filter:grayscale(1); }
+    #pe-ov .ov-node.blocked { background:var(--bad-bg); border-color:var(--bad); }
+    #pe-ov .ov-node.blocked > img { opacity:0.6; }
+    #pe-ov .ov-node.special { background:var(--warn-bg); border-color:var(--warn); }
+    #pe-ov .ov-node.editable { cursor:pointer; }
+    #pe-ov .ov-node.movable { cursor:move; }
+    #pe-ov .ov-node.dragging { z-index:6; opacity:0.85; filter:none; }
+    #pe-ov .ov-node.expanded { z-index:5; padding:0 8px; filter:none; box-shadow:0 0 0 1px var(--light), 3px 3px 0 rgba(65,63,84,0.45); }
+    #pe-ov .ov-pct { font:13px/16px Consolas,"Microsoft YaHei",monospace; color:var(--text); white-space:nowrap; pointer-events:none; }
+    #pe-ov .ov-ninfo { display:flex; flex-direction:column; min-width:0; flex:1; gap:1px; pointer-events:none; }
+    #pe-ov .ov-ninfo strong { font-weight:500; font-size:13px; line-height:17px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #pe-ov .ov-ninfo small { font-size:11px; line-height:14px; color:var(--soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #pe-ov .ov-nbar { position:relative; height:4px; margin-top:2px; background:var(--slot); box-shadow:inset 0 0 0 1px var(--line); }
+    #pe-ov .ov-nbar > u { position:absolute; left:0; top:0; bottom:0; background:var(--dark); }
+    #pe-ov .ov-qi { position:absolute; left:0; top:0; padding:0 3px; font:10px/12px Consolas,sans-serif; color:var(--light); background:var(--dark); pointer-events:none; }
+    #pe-ov .ov-lv { position:absolute; right:2px; bottom:0; font:11px/12px Consolas,sans-serif; color:#fff; text-shadow:1px 1px #3f3f3f; pointer-events:none; }
+    #pe-ov .ov-node.expanded .ov-lv { display:none; }
+    #pe-ov .ov-db { position:absolute; right:2px; top:2px; width:6px; height:6px; background:var(--mark); box-shadow:0 0 0 1px var(--dark); pointer-events:none; }
+    #pe-ov .ov-lock { position:absolute; left:2px; bottom:2px; width:6px; height:6px; background:var(--muted); box-shadow:0 0 0 1px var(--dark); pointer-events:none; }
+    #pe-ov .ov-node.blocked .ov-lock { background:var(--bad); }
+    #pe-ov .ov-node.special .ov-lock { background:var(--warn); }
+
+    #pe-ov .ov-float { position:absolute; display:flex; flex-direction:column; background:var(--base); border:7px solid transparent; border-image:var(--frame) 4 / 7px stretch; }
+    #pe-ov .ov-tl { left:6px; top:6px; width:304px; padding:2px 4px 4px; gap:6px; }
+    #pe-ov .ov-sec { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:20px; font-size:12px; color:var(--soft); }
+    #pe-ov .ov-sec b { font-weight:500; font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #pe-ov .ov-queue { display:flex; gap:4px; }
+    #pe-ov .ov-q, #pe-ov .ov-slot { position:relative; width:36px; height:36px; flex:none; padding:2px; border:0; background:var(--slot);
+      box-shadow:inset 0 2px var(--line), inset 2px 0 var(--line), inset 0 -2px var(--light), inset -2px 0 var(--light); }
+    #pe-ov .ov-q { cursor:pointer; }
+    #pe-ov .ov-q:hover { background:var(--hover); }
+    #pe-ov .ov-q.empty { cursor:default; background:var(--slot); }
+    #pe-ov .ov-q img, #pe-ov .ov-slot img { width:32px; height:32px; display:block; }
+    #pe-ov .ov-q b { position:absolute; left:2px; top:2px; padding:0 3px; font:400 10px/12px Consolas,sans-serif; color:var(--light); background:var(--dark); }
+    #pe-ov .ov-q i { position:absolute; left:3px; right:3px; bottom:3px; height:3px; background:var(--light); }
+    #pe-ov .ov-q i > u { position:absolute; left:0; top:0; bottom:0; background:var(--dark); }
+    #pe-ov .ov-slot b { position:absolute; right:1px; bottom:0; font:400 11px/12px Consolas,monospace; color:#fff; text-shadow:1px 1px #3f3f3f; }
+    #pe-ov .ov-inset { background:var(--panel); border:2px solid var(--light); padding:6px 8px; display:flex; flex-direction:column; gap:3px; }
+    #pe-ov .ov-work { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 8px; font-size:12px; line-height:16px; }
+    #pe-ov .ov-work .ov-bar { grid-column:1 / -1; }
+    #pe-ov .ov-bar { position:relative; height:6px; background:var(--slot); box-shadow:inset 0 0 0 1px var(--line); }
+    #pe-ov .ov-bar > u { position:absolute; left:0; top:0; bottom:0; background:var(--dark); }
+    #pe-ov .ov-mrow { display:grid; grid-template-columns:24px minmax(0,1fr) auto; align-items:center; gap:8px; height:26px; font-size:12px; }
+    #pe-ov .ov-mrow img { width:24px; height:24px; }
+    #pe-ov .ov-mrow span:nth-child(2) { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #pe-ov .ov-mrow span:last-child { font:13px/16px Consolas,"Microsoft YaHei",monospace; }
+    #pe-ov .ov-mrow .short { color:var(--bad); }
+    #pe-ov .ov-nrow { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 8px; font-size:12px; line-height:16px; padding:2px 0; }
+    #pe-ov .ov-nrow span:last-of-type { font-family:Consolas,"Microsoft YaHei",monospace; }
+    #pe-ov .ov-nrow .ov-bar { grid-column:1 / -1; height:4px; }
+    #pe-ov .ov-small { font-size:11px; line-height:16px; color:var(--soft); }
+    #pe-ov .ov-checkbox { display:flex; align-items:center; gap:8px; padding:2px 0; font:12px/20px "Microsoft YaHei",sans-serif; color:var(--text); background:none; border:0; cursor:pointer; text-align:left; }
+    #pe-ov .ov-checkbox i { width:14px; height:14px; flex:none; position:relative; background:var(--slot); box-shadow:inset 0 0 0 1px var(--line); }
+    #pe-ov .ov-checkbox[aria-pressed=true] i::after { content:""; position:absolute; inset:3px; background:var(--good); }
+    #pe-ov .ov-checkbox:hover { color:#517497; }
+
+    #pe-ov .ov-chip { display:inline-flex; align-items:center; gap:5px; height:20px; padding:0 8px; font-size:12px; white-space:nowrap; background:var(--idle-bg); color:var(--text); box-shadow:inset 0 0 0 1px var(--line); }
+    #pe-ov .ov-chip::before { content:""; width:6px; height:6px; background:var(--muted); }
+    #pe-ov .ov-chip.good { background:var(--good-bg); color:var(--good); box-shadow:inset 0 0 0 1px var(--good-line); }
+    #pe-ov .ov-chip.good::before { background:var(--good); }
+    #pe-ov .ov-chip.warn { background:var(--warn-bg); color:var(--warn); box-shadow:inset 0 0 0 1px var(--warn-line); }
+    #pe-ov .ov-chip.warn::before { background:var(--warn); }
+    #pe-ov .ov-chip.bad { background:var(--bad-bg); color:var(--bad); box-shadow:inset 0 0 0 1px var(--bad-line); }
+    #pe-ov .ov-chip.bad::before { background:var(--bad); }
+    #pe-ov .ov-chip.plain::before { display:none; }
+    #pe-ov .ov-action { display:flex; align-items:center; justify-content:center; gap:6px; height:24px; min-width:0; padding:0 10px; font:12px/14px "Microsoft YaHei","Segoe UI",sans-serif; color:var(--light);
+      background:transparent; border:4px solid transparent; border-image:var(--button) 2 fill / 4px stretch; white-space:nowrap; cursor:pointer; }
+    #pe-ov .ov-action:hover:not(.off) { color:#517497; border-image-source:var(--button-hover); }
+    #pe-ov .ov-action.off { opacity:0.5; cursor:default; }
+    #pe-ov .ov-action .box { width:12px; height:12px; background:var(--slot); box-shadow:inset 0 0 0 1px var(--line); position:relative; }
+    #pe-ov .ov-action[aria-pressed=true] .box::after { content:""; position:absolute; inset:3px; background:var(--good); }
+    #pe-ov .ov-square { width:30px; height:30px; padding:3px; border:0; background:var(--square) center / 100% 100%; cursor:pointer; flex:none; }
+    #pe-ov .ov-square:hover { background-image:var(--square-hover); }
+    #pe-ov .ov-square img { width:100%; height:100%; display:block; }
+
+    #pe-ov .ov-banner { position:absolute; top:0; left:50%; transform:translateX(-50%); padding:2px 14px; font-size:12px; white-space:nowrap; color:var(--warn); background:var(--warn-bg); box-shadow:inset 0 0 0 1px var(--warn-line); pointer-events:none; }
+    #pe-ov .ov-toast { position:absolute; left:50%; bottom:12px; transform:translateX(-50%); padding:4px 14px; font-size:12px; white-space:nowrap; pointer-events:none;
+      background:var(--base); color:var(--text); box-shadow:inset 0 0 0 1px var(--line), 0 2px 0 rgba(65,63,84,0.4); }
+
+    #pe-ov .ov-side { top:6px; right:6px; bottom:6px; width:min(340px, calc(100% - 12px)); transform:translateX(calc(100% + 12px)); transition:transform .15s; }
+    #pe-ov .ov-side.open { transform:none; }
+    #pe-ov .ov-shead { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:2px 10px; align-items:center; padding:2px 4px 8px; border-bottom:1px solid var(--line); }
+    #pe-ov .ov-shead .ov-slot { width:44px; height:44px; padding:6px; grid-row:span 2; }
+    #pe-ov .ov-shead strong { font-size:15px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #pe-ov .ov-shead .ov-square { grid-row:span 2; align-self:start; }
+    #pe-ov .ov-chips { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+    #pe-ov .ov-sbody { flex:1; min-height:0; overflow-y:auto; padding:8px 4px; display:flex; flex-direction:column; gap:6px; scrollbar-width:thin; scrollbar-color:var(--muted) var(--base); }
+    #pe-ov .ov-summary { font-size:13px; line-height:19px; }
+    #pe-ov .ov-desc { margin:0; padding:0; list-style:none; font-size:12px; line-height:18px; color:var(--soft); display:flex; flex-direction:column; gap:2px; }
+    #pe-ov .ov-h { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:4px; padding-bottom:2px; font-size:13px; font-weight:500; border-bottom:1px solid var(--line); }
+    #pe-ov .ov-h small { color:var(--soft); font-size:11px; font-weight:400; }
+    #pe-ov .ov-kv { display:grid; grid-template-columns:auto minmax(0,1fr); gap:0 12px; font-size:12px; line-height:19px; }
+    #pe-ov .ov-kv span:nth-child(odd) { color:var(--soft); }
+    #pe-ov .ov-kv span:nth-child(even) { text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #pe-ov .ov-req { list-style:none; margin:0; padding:0; font-size:12px; line-height:20px; }
+    #pe-ov .ov-req li { display:grid; grid-template-columns:10px minmax(0,1fr) auto; gap:6px; align-items:center; }
+    #pe-ov .ov-req li::before { content:""; width:6px; height:6px; background:var(--good); }
+    #pe-ov .ov-req li.miss::before { background:var(--bad); }
+    #pe-ov .ov-req li span:first-child { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #pe-ov .ov-req li span:last-child { color:var(--soft); }
+    #pe-ov .ov-req li.miss span:last-child { color:var(--bad); }
+    #pe-ov .ov-none { font-size:12px; color:var(--soft); }
+    #pe-ov .ov-slots { display:flex; flex-wrap:wrap; gap:4px; }
+    #pe-ov .ov-res { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:0 10px; font-size:12px; line-height:19px; }
+    #pe-ov .ov-res span:nth-child(even) { font-family:Consolas,"Microsoft YaHei",monospace; text-align:right; white-space:nowrap; }
+    #pe-ov .ov-reward { display:flex; flex-direction:column; gap:5px; padding:6px; background:var(--panel); border:2px solid var(--light); }
+    #pe-ov .ov-reward-head { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; }
+    #pe-ov .ov-group { display:flex; flex-direction:column; gap:4px; width:100%; padding:5px 6px; border:0; font:inherit; color:inherit; text-align:left; background:var(--card); box-shadow:inset 0 0 0 1px var(--card-line); }
+    #pe-ov .ov-group.choice { cursor:pointer; }
+    #pe-ov .ov-group.choice:hover { background:var(--hover); }
+    #pe-ov .ov-group[aria-pressed=true] { background:var(--light); box-shadow:inset 0 0 0 1px var(--line); }
+    #pe-ov .ov-group > span { font-size:12px; }
+    #pe-ov .ov-group small { font-size:11px; line-height:15px; color:var(--soft); }
+    #pe-ov .ov-sfoot { flex:none; padding:8px 4px 2px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:5px; }
+    #pe-ov .ov-buttons { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+    #pe-ov .ov-buttons > .wide { grid-column:1 / -1; }
+    #pe-ov .ov-msg { font-size:12px; line-height:16px; min-height:16px; color:var(--soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #pe-ov .ov-msg.good { color:var(--good); }
+    #pe-ov .ov-msg.bad { color:var(--bad); }
+    #pe-ov .ov-msg.warn { color:var(--warn); }
+
+    #pe-ov .ov-below { max-width:1100px; margin:0 auto; padding:14px 16px 40px; color:#c3c7d0; }
+    #pe-ov .ov-legend { display:flex; flex-wrap:wrap; gap:10px 18px; font-size:12px; }
+    #pe-ov .ov-legend span { display:inline-flex; align-items:center; gap:6px; }
+    #pe-ov .ov-legend i { width:18px; height:14px; border:2px solid; }
+    #pe-ov .ov-notes { margin:12px 0 0; padding-left:18px; color:#a9adb8; font-size:12px; line-height:19px; }
+    #pe-ov .ov-export { margin-top:12px; }
+    #pe-ov .ov-export p { margin:0 0 4px; font-size:12px; }
+    #pe-ov .ov-export pre { margin:0; padding:10px 12px; max-height:300px; overflow:auto; font:12px/17px Consolas,monospace; color:#d6d9e0; background:#1d1e24; border:1px solid #444955; }
+    #pe-ov .ov-tooltip { position:fixed; z-index:20; pointer-events:none; padding:3px 6px; background:#100010f0; border:2px solid #2d0a63; color:#f2f2f2; font-size:12px; line-height:16px; white-space:pre; }
+  </style>
+
+  <div class="ov-top">
+    <strong>研究总览预览</strong>
+    <div class="ov-scenarios" id="ov-scenarios">
+      <button type="button" data-scenario="station" aria-pressed="true">玩家 · 研究站研究</button>
+      <button type="button" data-scenario="manual" aria-pressed="false">玩家 · 手动研究</button>
+      <button type="button" data-scenario="nodb" aria-pressed="false">玩家 · 无活动数据库</button>
+      <button type="button" data-scenario="database" aria-pressed="false">数据库 · 选择下载研究</button>
+      <button type="button" data-scenario="edit" aria-pressed="false">编辑模式</button>
+    </div>
+  </div>
+
+  <div class="ov-screen" id="ov-screen">
+    <section class="ov-window" aria-label="研究总览">
+      <header class="ov-head">
+        <div class="ov-title"><span id="ov-title">研究总览</span><span id="ov-sub"></span></div>
+        <div class="ov-headright" id="ov-headright"></div>
+      </header>
+      <div class="ov-tabs" id="ov-tabs" role="tablist"></div>
+      <div class="ov-board" id="ov-board">
+        <div class="ov-viewport" id="ov-viewport"><div class="ov-plane" id="ov-plane"></div></div>
+        <div class="ov-banner" id="ov-banner" hidden>编辑模式：点击研究直接完成下一级</div>
+        <div class="ov-float ov-tl" id="ov-tl"></div>
+        <aside class="ov-float ov-side" id="ov-side" aria-label="研究详情"></aside>
+        <div class="ov-toast" id="ov-toast" hidden></div>
+      </div>
+      <footer class="ov-foot"><span id="ov-zoom"></span><span><span class="ov-key">ESC</span><span id="ov-esc"></span></span></footer>
+    </section>
+  </div>
+
+  <div class="ov-below">
+    <div class="ov-legend" id="ov-legend"></div>
+    <ul class="ov-notes">
+      <li>全屏界面。滚轮以光标为中心缩放（50%～200%），按住左键在画布任意位置拖动平移；点击空白处或按 ESC 收起右侧详情，再按 ESC 关闭界面。</li>
+      <li>研究平时只显示方块和图标；正在研究或保留部分进度的研究，方块右侧显示百分比。点击后展开为长框，显示名称、等级状态和进度条，同时在右侧弹出详情。</li>
+      <li>左上角显示研究队列和当前研究：研究站研究显示工作量、材料“当前可用 / 剩余需求”和网络资源累计；手动研究显示投料玩家、材料“已投入 / 需求”和“消耗背包中的物品”。</li>
+      <li>“运行测试”页使用仓库示例脚本与 Java 示例的研究、材料、网络资源和奖励（自动布局）；“示例扩展”页为演示多前置、跨页前置、互斥与手动布局的虚构内容。</li>
+      <li>玩家模式：前置未完成的研究点击无反馈，悬停列出还需完成的研究；按钮不可用时悬停显示原因。下载到数据库不会重复，队伍任一数据库已存等级不低于队伍等级时提示“已下载到 …”。</li>
+      <li>数据库模式：只能选择本数据库已存的研究（数据库与物品）或队伍直属已完成的研究（仅物品），其余研究变暗且点击无反馈。</li>
+      <li>编辑模式：由命令打开。点击研究直接完成下一级，缺少的前置研究同时补到所需等级；特殊研究写入当前活动数据库。开启“手动布局”后可拖动研究，“导出”覆盖该页的分页文件。</li>
+      <li>研究名称、简介、图标和奖励组文字来自客户端研究内容 JSON；分页 ID 为研究命名空间，分页名称读取自动生成的本地化键。</li>
+    </ul>
+    <div class="ov-export" id="ov-export" hidden><p id="ov-export-path"></p><pre id="ov-export-json"></pre></div>
+  </div>
+  <div class="ov-tooltip" id="ov-tooltip" hidden></div>
+
+  <script>
+    (() => {
+      const A = {"ae_clear": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAAJUExURUdwTPLy8k1NZ77pt7AAAAABdFJOUwBA5thmAAAALUlEQVQI12NgwAYCWIFEiCiQmBoGJFQjgARrAJAQDQESYVOBRIQqkFjAha4TALM4BPdYwlb9AAAAAElFTkSuQmCC", "blaze_powder": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAA3UlEQVR42mNgoBWYaszwnyLN//9v/U+yITANQBrMBtFEuwps6z/D/8iGYMgvZsDtKmy2IivG5SoUxeiaYTbichWK4uetqM6D2QgyhGCAooc6zNb///PA9KkeThQ57AbcdPr/e78hisb/pyGa/z9AWLDCH0tAwpz6YzGqBjAbSIO9AYwhEH2pgRmrAXBvgGz9f8MJbMjZMKgryqBhcd/t/4lEhv+r7RhwG/K7ByIJ03w2FUi/8v3/qgvi/BWe8JjBnxbAhqRCbANpAmmG2YwzOpHjGskwdExS3sDA6AAADiD3CAFQdVwAAAAASUVORK5CYII=", "book_enchanted": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABaUlEQVQ4y6WTX0vCUBjGd+PaxgS12ErTWlDp5lQqRYkJWRdSdBPdeVsfKdHoKoIor4JofYuIavVtns472WnmYIgXD+84e5/fec4/AYAwj2IbHEtBcVVCi9WZAMW8BKes4PJE57LXZcQCfrIdfG22J4xHuyn+ba5JiAQ4VQWlgoTRQRv31S4e9QY3hwEkKwQRKhsyunV1ooFSEIDqf0hQm+Z4T4QaA1wcL00ASAQgUZqopTSLKkrGAoTGtgL35Rnn7cWpJjKTKAmfmRlJruui1+tBsA0Znuf5A1EQMr/frOBtkIVjqxgOh34vVR9w2FCYMTMFCUf9uNXw2c/i+qrPza2SCiOXHO+knk74xjAkiPrqPsHLdfBQ6fr/gvE9c3wS/BgLuogz5w8SiGYbZXbwzZZCxrolIa+JiLxItS0Jp820DyEjiUy0kQQxlsX4m9iyZOybSR5VSyVwV7Yw02OiiAUmm53z3K8xTr8ZeFecenyf2AAAAABJRU5ErkJggg==", "book_normal": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAmklEQVR42mNgoDVQk+b4D8NkaUz1FodjogxB12ihwUOcIdhshBkAw1gNwaYR3Va8hoAYIXbCWG1GF0OXFxNg/Q83AJshuDSC8Pbt2/9HR0cjDAAJ4DMEpnHmzJlgtSAabADIGSCN165dw2oIso3ImuFeAAFshqBrhGmGiYP0wA3AZggME9SIDJANgdlKlEZshpCsEd0QsjSSAwAfTxSRtD7JpgAAAABJRU5ErkJggg==", "comparator": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAC0ElEQVQ4T22T7UuTYRTGL7/4hgrqmChqtqYuo+Zbbo7ZdOQyMjUnsYUalDCNitDUQU6wkQ3LFEFNi8qYFisY1rCUmqlF5iuVmTqyFET/i3XuO/YU0ocDh907v3Ou65wH3z+OgUVudDT69XpMttagTq1GqUyGouRkHtbQUEzW1WHIaMTVnBz+28q0G8962gCnzYyjKTLkBwTAVlyMuOBg/gdWwAo76i9jengQ2QkJOOPvj+rAQFyS78PEczs881Pgxeb8fF4si4zEycREXrg2NYK758oxP/ESj3tvIyMmhgMMfn5eFqP2+9CLxUBKWBh0SUmICgrC2awsTHXdws7mKjxz41ibGYPjXidOSKXYQ1CZSMQBMsBbSXlFZiawMdjCxzVly3E6W4Gdn8vck8/uYewlaI5EAlV8PFxtVrzr7kB3vc6rPSzxNhOQNUQxae8oK8PbwX5hPOZLjVYDaUQEvrgc+DHrxqTjIVx3bAJARF4doHeui+lf+vBKGE9MnVnxzuYK1hYmyOgmjLa1QC+Xw1Sa5lWkRHnfPOiFggzlK2OAp31/x1ukx+2NFWytf0OfpRG5GakcaNHpBMB72oyBZOCKSgU2DtPKHhlg+9cyNlcXYKkywJh3RJBmKSnCFnm0tb4Ez9AjlCgOAs1aLd+7/cmA1zcBy1kopBJ0l58SpLm62rG+PAfPqBMq8o7J58XXQkI4wDeer6MP5AO3lxvg7LmJDLraWprarNGAr+JGVQWqTReEAtaNhQ/UUKnkACPdi5wOijVVk4HpBBJufH94OIf8D/SvNGb4zGsnDkWJ/tzBjNkMa2Ehzqen41NjI5pIzm4Qm4BJY/nX8RFIqXtTXh7S2ASzrdf55SXR7p0mEyrJmItKJY6xD2cXiOWpVGQrKICcTplLWHQ7BICGTrYiXoxoypkkptNuIONqjThO30NnaS6U5IE6NhbKuDi8sDbgN8S5XRVKNb4JAAAAAElFTkSuQmCC", "diamond": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAmUlEQVR42mNgGLSAx9zgPxomTTM6INoQmOZF357D8cVfn/8b3N5L2BCYZpAGmGYQ8Hp7EYyJNgCmEWQQDIMMwOsKdM09Xx6hYIWpjfhdgWwAyEZcBuB0BbL/dc5uxGqAdHU2GOM1ABZgIA3IGGQoCIPYeL0B0gyyBaYBhmFieGMCJAnyIy4D8NqObAiyk4lyOhH5gPT8QCwAAFI5PMFG0bbyAAAAAElFTkSuQmCC", "emerald": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABE0lEQVR42mNgwAfiRBCYZADSFMzwH45JMgSq+eb/1/+3/b8AxsQbAtUM0tT0be1/8btJYMywSgdiiDs/8Zo3/zwL0bzb7T9Dueh/hvla/xks8RkC1Hwb6GyY5ojnfRADNlj8Z5iqCTGgXRZiCC4DQLY7fm75n/517v9d/6+ADUr+Mus/w2KD/wzzgHiyBn4D1v89CzYAhEEGgFwDYoNdscz4P0ObPPEGgGxHMQDkgolq+A0o+rAIbgBMc8SXyQgDCLkAZID8nTSwRpDfQZqTvs6CBGK1BIFAhKW+Dcb/pa9BQ3+FKUJznSSBaEQzBKwZZAjRmpENASleYAzBk1VI0AwDIMUgTSCsS6pmZENA2JYXpxIAA/H+OODjldgAAAAASUVORK5CYII=", "ender_pearl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAtElEQVR42mNgoBXgMTeAY7I0qraUgOj/SJg4zSYzO+AagYaAsXR1NtwgojQDaTAWiAuEY5AhMIPwOR2usefLo/86Zzf+5/Z1AmNkwzAMQfYzyABkzWyWhmCMbBBWA2B+BilA1syspgDGeA1BNwBdM7IBMDXYXAEOJEIGwMIIpzdAhsCcCvM/TDPIa1g143IFMgZpBgUuXgNghsCiC+Zn5DSBVzOyIcgGwTQSpRmbQSRrJAUAAJ3r2tVBgV96AAAAAElFTkSuQmCC", "glowstone_dust": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAdklEQVR42t2S0QnAIAxEs6MjuItLuJULpRzhQEoaG4V+VDgE5d6dEpF/r1JEoW3zGKY0BAZVM/cu2loCMidTALyCeGYCarVWj5C5NqtjxxkbhE2YTqP3BLQIAbhkqgdY/gUhBEFMhcI/uA+Pl5qaBxqOpvGTdQFH8r41Ld4WnwAAAABJRU5ErkJggg==", "gold_ingot": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAjUlEQVR42mNgGDIgIIDhPwiTpQmE///nBmOChmBqAoFuJIzFEOya0DXiMATEuHeP4T8qwK6xrY0BBdvYAA2B2Pofagh+TSA1yBjFAJBimCH4NIHwnTJhMEYyAOG3devwa4Lh7YkCCANuLxIGY2wGYNMEwyixADMEZAC6bVg1YYt/mAE4bSIm5ZGsacABAO/4TV2yFTYUAAAAAElFTkSuQmCC", "gold_nugget": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAVklEQVR42mNgGAU4QWUlw38YJkvz///c/yGg+7+np8h/MgyAaP7/n+H/vXsMpBmCbsCdMmGwAUBMqisQtgMNYSDZAJBmsmynigEwQ8hyPpoh5GseGgAARQdbMUJkI7gAAAAASUVORK5CYII=", "iron_ingot": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAhklEQVR42tWRwQnAIBAE05QdWIxvGxAswhosyW4Me3BymlOTfEIWBvJwJojH8ZtZayt4JYGcM7GNjBJWSmmoEU0axWkEHymlKjcTnXMdxphKAQyRnYQzki6AwxxZScB7T7SAvFsIYSlJWiDGSGgBKfC9me4VOIKA9qeLpL2/DNyStMhj6fOd2ipU+SWu7xYAAAAASUVORK5CYII=", "map_filled": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAArElEQVQ4y8XTwQnEIBAF0GnKInL0YBcWYCFh8brVbAfBGtKEyRe+DDohCzlE+Jcw/2kMkVqrPIk8BrCccxJCaIkxSkqpZ99/Fck5C4JZrg547zsCgAjLDGYugVKKcAAAS9v2adHIJYDoogY0YgLjjhYwIg2wincI04Bz879K+hk6iHqFe4Qnxex0BxZiAbo8AUSsO+GRZVgTMJ6ERf3tuZbvagNErB1N4PW/8QDwMkCTOEDYewAAAABJRU5ErkJggg==", "nether_star": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAuUlEQVR42mPwXDiFAYbJAmRrJMYAcy8vOCYLgDTuPHnyf2h29n+yNJ++du3/rUeP/ncsWUKaITBnf/j8+f/f/yvgBhDlFWTNIBeADADRIAwyBKdLYBpBCmGaYQaAwgHEBrkEp2tgAQbyM0gTDF+6xPD/waNyOB+kBmuYgAwACYIkYTaCaJBmmM0wV+AND5g/kb0A04w3DLC5BuQCWCASHQvILkF3NsmJCWYILs0E8xHMK7icTlEOhmEAtI35rmtGUaEAAAAASUVORK5CYII=", "paper": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAY0lEQVR42s3Q0QnAMAhF0azo8g7hEi0GDK/WoJiPVvCncE8lY/x+ROTSPYpbiEXMPLeMYIhAivg/RkCIRGGG2E6AiEoRftNGd11RQezSR4jjkQjYxohEb/I6OUNaoUda4SdzA37wTpMEKWZDAAAAAElFTkSuQmCC", "prismarine_crystals": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABiUlEQVQ4y52Sb0vCUBTGz9fTF36CkqwwIkTwAxT1Kh1FEYGlQlGEabQycypqZEikps0sNxRUkGRBfyEoCE7eC3dMtyI8cBg7e55z7vntgvysAMuhghj3q2W1SUtp0TqpWcbH/tdA2+S83dAli0K1SAf0NdauQMTkGWhK4KsUYEsSwX9fBu/NpWom33UnY+bOUwc2ZREU/Abx4xFu37pQeu/CjlyCQF2kGsPV2Aq+3pRiz+Da9SJ3EUdP7ACXUxH0JHkkteznK4SaNWMW7ARE6E4fY6HbQqF+jYlaHqNSHlcyR2iZtmGwLYEjGjJu4JfK4E4c4kntCjOtCjaVBk0uzeNiikeTfRQJj5nTsN6sBefa8+JGLomrOQHXcgl6fGLW8ugLI3A2bg6d2+s4sbRgyEM1M3Dy1wtohbOxIDUzHmwdLQ+1yXxWACIkgkFw3FlE5XH3UO3joTZg4NiUQaGWh2lyhKbuLwyCY0JHPAzmKSua7Vb6Tu7Lr6EVOlMRcAo8rZObR4x/moeNHwX2xUebOKyoAAAAAElFTkSuQmCC", "quartz": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAACkElEQVQ4T1WT7UtTYRjGL7/4Bkq+oCluCE1dFmpDzMFsChkalqAQKs2gPsyC+tAyBpVgI5kmZe8vFjSZiWaNKZiJbLhZE3NJJmkZSqKZDav/4Om5n3gO88N1nvNy/677es65DxYCYyCVpqXhcW0tfG2nYTEYUKPV4mhOjpAtLg4+iwXP6+txoaRE3Fuc8uDF/Q7AZbfiYK4W5VFRsFdXQxUbKwoIIPBm8zlMuXuhz8xEQ2QkmqKjcTZ/FyYGnVgK+iFga3m5gLVJSTiSlSXAr/4RPDx5HMGJYfQ86ETBzgyhuogIoTfOJ6hNSQFy4+NxKDsbqTExOFFUBP/t6/i5+gVLM16Mv3QwbsAIPKDW8Lq9UO9IghZAY3IyTIWFwPfeVhHXrM/HMf1+pRPJ63ayv1ubwoRguZJJC09JDVHN9x4OyU4kMvgd+sHWv82z5YUPTCailUz2JCZCASVEqtTmCU2O9LPQxipbX/ksIBIlGujuEtsiE6UrrQSFG1E3/i7YR49bgedn/OxRRyszHTaKFIoBFUvRNUWW+5dGIslQP2u/ZNluQAX0kAAZd3L0lTj/tbYsYKp5Nz7Eeu60bzeggzShwj+hDba1ucY8g89YYMwtXqBvuE+YkmG4gdVohPgUZEI3yGQuMMaW5qZY8K2HDXbfEoCMv7I4q8AGPpE6Pv7KjEsT+akmXw8wB4fvtl1hT29cE6CEp0ddyEtN/j8H01YrbFVVOKXTKSb3ONTZ0qxAEiR98o5Aw7tfLivDPkrwvu2q+Buz+Si7zGY08h9GFofL2edAk/kMCjhkr6hAPh9lsYVZz4BiYFSrYVKnII2f705IAO3TWVcH1/l6VGo06KopRXF6OgwZGShWqTBku4h/U0SzXP/DrtMAAAAASUVORK5CYII=", "redstone_dust": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAbUlEQVR42mNgGN5Al4HhPwiTrbkIikk2BKThP1RzCBB7kmIIss0w7EmsIdg0wwwwg7oKpyHIzoY5vQgq5omGsRqii6YRmxfMCBngiWQrNgMIhoUukiKYZjMksf/EBqQuDltJSg+6SJrITo10AQD9d3Y/D5AqowAAAABJRU5ErkJggg==", "repeater": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAfUlEQVR42mNgGHIggpHxPwhTZIAGAwP5BkwtdfvvZKo0gAakBxn+N9cS/0904CxZvvA/CBNlAHLgwDTCDIYZAjSAAWgAbr+hawQZCsLIrsDpN5AB2DSCcEZ6Fm4DQApgLsCmEUgzAGkGvAbAAockjUgGMJClEYshpGukFAAAZWCF1qhrshMAAAAASUVORK5CYII=", "slimeball": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAo0lEQVQ4jWNgGLTAKt7sPzImWWPhmuT/LSeKwRjEBomZBOvjNwhdIwjXQnHqotj/ke2++A0BGQDSBAMgdtm+XLgBIIzTAGTb0Q2AYZB8CC5XwGyvRcIgTTCvgNggFxA0ANlGEG4CisEwyICABk/cBuAKQBDOBsrhdQHMEJBCEMamGaftMACSBNkA04CMQZoJGgAzBIRhGpA1EtSMzSCSNdIdAAA5pwgGVnucwQAAAABJRU5ErkJggg==", "back": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAAJUExURUdwTPLy8k1NZ77pt7AAAAABdFJOUwBA5thmAAAAJ0lEQVQI12NgQAMsIEIERISGwohpS4GECiuQ4AARDKwosqtWIWkHAK/qBYsPDDtwAAAAAElFTkSuQmCC"};
+      const $ = id => document.getElementById(id);
+      const root = $("pe-ov"), board = $("ov-board"), viewport = $("ov-viewport"), plane = $("ov-plane");
+      // The expanded box must end before the next column's link bend (COL - 14), so expanding never covers another research.
+      const COL = 156, ROW = 66, NODE = 44, WIDE = 84, EXP_W = 128, EXP_H = 52, MAX = 2147483647, HOME = {x: 340, y: 24};
+      const fmt = n => Number.isInteger(n) ? n.toLocaleString("en-US") : n.toLocaleString("en-US", {maximumFractionDigits: 2});
+      const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
+      const ITEM = {iron_ingot: "铁锭", gold_ingot: "金锭", redstone_dust: "红石", gold_nugget: "金粒", emerald: "绿宝石", paper: "纸", quartz: "下界石英",
+        comparator: "红石比较器", repeater: "红石中继器", ender_pearl: "末影珍珠", glowstone_dust: "荧石粉", blaze_powder: "烈焰粉", prismarine_crystals: "海晶砂粒",
+        book_enchanted: "附魔书", book_normal: "书", map_filled: "地图", slimeball: "黏液球", diamond: "钻石", nether_star: "下界之星"};
+
+      const PAGES = [
+        {id: "pe_run_tests", name: "运行测试", order: 0, layout: "auto", positions: {}},
+        {id: "pe_demo", name: "示例扩展", order: 10, layout: "manual", positions: {}}
+      ];
+      const DEMO_POSITIONS = {basic_circuit: [0, 2], data_storage: [1, 1], signal_amp: [1, 3], high_heat: [1, 5], cartography: [2, 0], logic_array: [2, 2],
+        crystal_resonance: [2, 3], refining: [2, 5], quantum_link: [3, 2], optical_link: [3, 3], sticky_seal: [3, 4], alloy: [3, 5], enchant_theory: [4, 1], gemology: [4, 6]};
+
+      const R = {}, ORDER = [];
+      const T = t => () => t;
+      function def(id, o) {
+        R[id] = Object.assign({id, page: id.split(":")[0], path: id.split(":")[1], max: 1, policy: "DATABASE_AND_ITEM", special: false,
+          tier: T(1), ticks: 100, prereq: [], mutex: [], materials: [], resources: () => [], desc: [], rewards: {}}, o);
+        ORDER.push(id);
+      }
+      const BASIC_REWARD = {id: "pe_run_tests:research_reward", title: "基础奖励", desc: "领取时额外触发示例奖励事件", children: [{item: "emerald", n: 2}]};
+      def("pe_run_tests:research_manual", {name: "基础研究", icon: "iron_ingot", max: 2, policy: "ITEM_ONLY", tier: T(0), ticks: 40,
+        mutex: [["pe_run_tests:research_mutex", 1]], materials: [["iron_ingot", 2]], rewards: {1: [BASIC_REWARD]},
+        summary: "手动研究示例，由玩家投入铁锭推进。", desc: ["阶级 0 研究从投料玩家的背包扣取材料，不使用网络资源。", "与互斥研究不能同时完成。"]});
+      def("pe_run_tests:research_mutex", {name: "互斥研究", icon: "book_normal", max: 2, policy: "ITEM_ONLY", tier: T(0), ticks: 40,
+        mutex: [["pe_run_tests:research_manual", 1]], summary: "与基础研究互斥的示例。", desc: ["队伍完成基础研究 Lv.1 后不能再开始此研究。"]});
+      def("pe_run_tests:research_station", {name: "网络研究", icon: "gold_ingot", max: 2, ticks: 120, prereq: [["pe_run_tests:research_manual", 1]],
+        materials: [["gold_ingot", 2], ["redstone_dust", 10], ["iron_ingot", 100]], resources: l => [{name: "网络算力", total: 1200 + 100 * (l - 1)}],
+        rewards: {1: [BASIC_REWARD]}, summary: "研究站示例，需要网络中心和网络算力。", desc: ["开始条件：队伍拥有 1 级以上网络中心，且可用网络算力不少于 10。"]});
+      def("pe_run_tests:research_loop", {name: "持续研究", icon: "redstone_dust", max: MAX, ticks: 100,
+        resources: () => [{name: "网络算力", total: 10, tick: 0.1}], summary: "可以持续升级的研究示例。", desc: ["每一级需要相同的研究时间与网络算力。"]});
+      def("pe_run_tests:research_special", {name: "特殊研究", icon: "nether_star", special: true, resources: () => [{name: "网络算力", total: 10}],
+        summary: "只能通过研究盘导入数据库。", desc: ["不能入队研究，也不能作为普通下载目标。"]});
+      ["并行处理", "数据压缩", "自动化协调", "精密采样", "高速连接"].forEach((name, i) => {
+        const path = ["parallel", "compression", "coordination", "sampling", "connection"][i];
+        def("pe_run_tests:java_research_" + path, {name, icon: "book_normal", ticks: 600,
+          materials: [["iron_ingot", 2], ["redstone_dust", 10], ["gold_nugget", 100]],
+          resources: () => {
+            const list = [{name: "算力", total: (5 + i) * 600, tick: 5 + i}, {name: "带宽", total: 600 * (i + 1)}];
+            if (i >= 2) list.push({name: "信号处理", total: 300, tick: 0.5});
+            if (i === 4) list.push({name: "内存", total: 4800, tick: 8}, {name: "存储吞吐", total: 1200});
+            return list;
+          }, summary: "Java 示例研究：" + name + "。", desc: ["材料与网络资源数量互不相同，用于检查研究站显示。"]});
+      });
+      def("pe_demo:basic_circuit", {name: "基础电路", icon: "redstone_dust", policy: "ITEM_ONLY", tier: T(0), ticks: 200, materials: [["redstone_dust", 16]], summary: "手动研究，解锁基础电路。"});
+      def("pe_demo:data_storage", {name: "数据存储", icon: "paper", ticks: 300, prereq: [["pe_demo:basic_circuit", 1]], materials: [["paper", 32], ["quartz", 4]],
+        resources: () => [{name: "算力", total: 1500, tick: 5}], summary: "研究数据的保存方式。"});
+      def("pe_demo:signal_amp", {name: "信号放大", icon: "comparator", ticks: 300, prereq: [["pe_demo:basic_circuit", 1]], materials: [["redstone_dust", 24]],
+        resources: () => [{name: "信号处理", total: 150, tick: 0.5}], summary: "提高信号强度。"});
+      def("pe_demo:high_heat", {name: "高能熔炼", icon: "blaze_powder", policy: "ITEM_ONLY", ticks: 400, prereq: [["pe_demo:basic_circuit", 1]], materials: [["blaze_powder", 8]], summary: "高温加工的基础。"});
+      def("pe_demo:cartography", {name: "制图", icon: "map_filled", ticks: 300, prereq: [["pe_demo:data_storage", 1]], materials: [["paper", 64]],
+        resources: () => [{name: "存储吞吐", total: 800}], summary: "记录地形数据。"});
+      def("pe_demo:logic_array", {name: "逻辑门阵列", icon: "repeater", ticks: 600, prereq: [["pe_demo:data_storage", 1], ["pe_demo:signal_amp", 1]],
+        materials: [["repeater", 16], ["quartz", 8]], resources: () => [{name: "算力", total: 6000, tick: 10}, {name: "内存", total: 2400, tick: 4}],
+        rewards: {1: [{id: "pe_demo:circuit_kit", title: "电路套件", children: [{item: "repeater", n: 8}, {item: "comparator", n: 4}]},
+          {id: "pe_demo:research_notes", title: "研究资料", children: [{item: "paper", n: 32}, {item: "book_normal", n: 2}]}]},
+        summary: "组合多个逻辑门。", desc: ["完成后从两组奖励中任选其一。"]});
+      def("pe_demo:crystal_resonance", {name: "晶体共振", icon: "quartz", ticks: 400, prereq: [["pe_demo:signal_amp", 1]], materials: [["quartz", 32]],
+        resources: () => [{name: "信号处理", total: 400, tick: 1}], summary: "利用晶体传导信号。"});
+      def("pe_demo:refining", {name: "精炼工艺", icon: "glowstone_dust", ticks: 400, prereq: [["pe_demo:high_heat", 1]], materials: [["glowstone_dust", 16]],
+        resources: () => [{name: "算力", total: 2000, tick: 5}], summary: "提纯矿物。"});
+      def("pe_demo:quantum_link", {name: "量子缠绕", icon: "ender_pearl", ticks: 1200, tier: T(2), prereq: [["pe_demo:logic_array", 1], ["pe_run_tests:research_station", 2]],
+        materials: [["ender_pearl", 16], ["diamond", 4]], resources: () => [{name: "网络算力", total: 24000, tick: 20}, {name: "带宽", total: 6000}],
+        rewards: {1: [{id: "pe_demo:quantum_reward", title: "量子样本", children: [{item: "ender_pearl", n: 4}]}]}, summary: "跨页前置示例：需要运行测试页的网络研究 Lv.2。"});
+      def("pe_demo:optical_link", {name: "光学传输", icon: "prismarine_crystals", ticks: 600, prereq: [["pe_demo:crystal_resonance", 1]], mutex: [["pe_demo:sticky_seal", 1]],
+        materials: [["prismarine_crystals", 24]], resources: () => [{name: "带宽", total: 3600, tick: 6}], summary: "与黏性封装互斥。"});
+      def("pe_demo:sticky_seal", {name: "黏性封装", icon: "slimeball", ticks: 600, prereq: [["pe_demo:refining", 1]], mutex: [["pe_demo:optical_link", 1]],
+        materials: [["slimeball", 24]], resources: () => [{name: "算力", total: 3000, tick: 5}], summary: "与光学传输互斥。"});
+      def("pe_demo:alloy", {name: "合金工艺", icon: "diamond", max: 3, tier: l => l === 1 ? 1 : 2, ticks: 800, prereq: [["pe_demo:refining", 1]],
+        materials: [["iron_ingot", 64], ["gold_ingot", 16]], resources: l => [{name: "算力", total: 4000 * l, tick: 5 * l}],
+        rewards: {1: [{id: "pe_demo:alloy_1", title: "合金样品", children: [{item: "iron_ingot", n: 16}]}], 3: [{id: "pe_demo:alloy_3", title: "精炼合金", children: [{item: "diamond", n: 2}]}]},
+        summary: "多等级研究，Lv.2 起为阶级 2。"});
+      def("pe_demo:enchant_theory", {name: "附魔理论", icon: "book_enchanted", ticks: 900, tier: T(2), prereq: [["pe_demo:cartography", 1], ["pe_demo:alloy", 2]],
+        materials: [["book_normal", 8], ["emerald", 4]], resources: () => [{name: "算力", total: 9000, tick: 10}], summary: "需要合金工艺 Lv.2。"});
+      def("pe_demo:gemology", {name: "宝石学", icon: "emerald", ticks: 600, prereq: [["pe_demo:alloy", 1]], materials: [["emerald", 8]],
+        resources: () => [{name: "算力", total: 3000, tick: 5}], summary: "研究宝石的性质。"});
+
+      function initial(kind) {
+        const s = {team: "工程队", viewer: "Steve", env: {center: 1, station: 1, working: 2},
+          levels: {"pe_run_tests:research_manual": 2, "pe_run_tests:research_station": 1, "pe_run_tests:research_loop": 12,
+            "pe_run_tests:java_research_parallel": 1, "pe_run_tests:java_research_compression": 1,
+            "pe_demo:basic_circuit": 1, "pe_demo:data_storage": 1, "pe_demo:signal_amp": 1, "pe_demo:high_heat": 1, "pe_demo:refining": 1,
+            "pe_demo:crystal_resonance": 1, "pe_demo:optical_link": 1, "pe_demo:alloy": 1},
+          progress: {"pe_run_tests:research_station": {target: 2, f: 0.38}, "pe_run_tests:java_research_coordination": {target: 1, f: 0.2}, "pe_demo:gemology": {target: 1, f: 0.55}},
+          queue: [{id: "pe_run_tests:research_station", target: 2}, {id: "pe_run_tests:java_research_coordination", target: 1}, {id: "pe_demo:logic_array", target: 1}],
+          stock: {gold_ingot: 40, redstone_dust: 6, iron_ingot: 500, gold_nugget: 30, paper: 100, quartz: 2, repeater: 20},
+          inventory: {iron_ingot: 0},
+          manual: null,
+          claims: {"pe_run_tests:research_manual": {1: "UNCLAIMED"}, "pe_run_tests:research_station": {1: "CLAIMED"}, "pe_demo:alloy": {1: "UNCLAIMED"}},
+          databases: [
+            {name: "演示数据库", active: true, tier: 1, capacity: 16, stored: {"pe_run_tests:research_station": 1, "pe_run_tests:research_loop": 10,
+              "pe_run_tests:java_research_parallel": 1, "pe_demo:data_storage": 1, "pe_run_tests:research_special": 1}},
+            {name: "原生持久数据库", active: false, tier: 2, capacity: 8, stored: {"pe_run_tests:java_research_compression": 1}}
+          ]};
+        if (kind === "manual") {
+          s.levels["pe_run_tests:research_manual"] = 1;
+          s.queue.unshift({id: "pe_run_tests:research_manual", target: 2});
+          s.progress["pe_run_tests:research_manual"] = {target: 2, f: 0.5};
+          s.manual = {contributor: "Steve", paused: false};
+        }
+        if (kind === "nodb") s.databases.forEach(d => d.active = false);
+        return s;
+      }
+
+      let state, scenario, pageId = "pe_run_tests", selected = null, choice = {}, toastTimer = 0;
+      const view = {x: HOME.x, y: HOME.y, z: 1};
+      const page = () => PAGES.find(p => p.id === pageId);
+      const pageOf = id => PAGES.find(p => p.id === R[id].page);
+      const picking = () => scenario === "database";
+      const editing = () => scenario === "edit";
+      const level = id => R[id].special ? 0 : (state.levels[id] || 0);
+      const maxText = r => r.max === MAX ? "∞" : String(r.max);
+      const target = id => Math.min(level(id) + 1, R[id].max);
+      const label = ([id, lvl]) => R[id].name + " Lv." + lvl + (R[id].page !== pageId ? "（" + pageOf(id).name + "）" : "");
+      const missing = id => level(id) >= R[id].max ? [] : R[id].prereq.filter(([p, lvl]) => level(p) < lvl);
+      const mutexHit = id => R[id].mutex.filter(([m, lvl]) => level(m) >= lvl);
+      const queueIndex = id => state.queue.findIndex(q => q.id === id);
+      const activeDb = () => state.databases.find(d => d.active) || null;
+      const homeDb = () => state.databases[0];
+      const stored = db => Object.keys(db.stored).length;
+      const progressOf = id => {
+        const p = state.progress[id];
+        return p && p.target === target(id) && level(id) < R[id].max ? p.f : 0;
+      };
+      function pct(id) {
+        if (picking()) return null;
+        const f = progressOf(id);
+        if (queueIndex(id) === 0) return Math.round(f * 100);
+        return f > 0 ? Math.round(f * 100) : null;
+      }
+
+      function status(id) {
+        const r = R[id], c = level(id);
+        if (r.special) return {key: "special", text: "特殊研究", tone: "warn"};
+        if (c >= r.max) return {key: "done", text: "已完成", tone: "good"};
+        if (missing(id).length) return {key: "locked", text: "前置未完成", tone: "bad"};
+        if (mutexHit(id).length) return {key: "blocked", text: "互斥阻止", tone: "bad"};
+        const q = queueIndex(id);
+        if (q === 0) return {key: "head", text: "研究中 " + pct(id) + "%", tone: "good"};
+        if (q > 0) return {key: "queued", text: "队列第 " + (q + 1) + " 位", tone: "warn"};
+        if (progressOf(id) > 0) return {key: "saved", text: "已研究 " + pct(id) + "%", tone: ""};
+        return {key: c > 0 ? "partial" : "avail", text: c > 0 ? "可继续研究" : "可研究", tone: ""};
+      }
+
+      function download(id) {
+        const r = R[id], c = level(id);
+        if (r.special) return {ok: false, text: "特殊研究只能通过研究盘导入数据库"};
+        if (r.policy === "ITEM_ONLY") return {ok: false, text: "此研究只能下载到物品"};
+        if (c < 1) return {ok: false, text: "尚未完成此研究"};
+        const holder = state.databases.find(d => (d.stored[id] || 0) >= c);
+        if (holder) return {ok: false, done: true, text: "已下载到 " + holder.name + "（Lv." + holder.stored[id] + "）"};
+        const db = activeDb();
+        if (!db) return {ok: false, text: "队伍没有活动数据库"};
+        if (r.tier(c) > db.tier) return {ok: false, text: "数据库阶级不足（需要 " + r.tier(c) + "，当前 " + db.tier + "）"};
+        if (!(id in db.stored) && stored(db) >= db.capacity) return {ok: false, text: "数据库容量已满"};
+        const clash = r.mutex.find(([m, lvl]) => (db.stored[m] || 0) >= lvl);
+        if (clash) return {ok: false, text: "与数据库中的 " + R[clash[0]].name + " 互斥"};
+        return {ok: true, text: db.stored[id] ? "将 " + db.name + " 中的等级从 Lv." + db.stored[id] + " 更新为 Lv." + c : "写入 " + db.name + "（Lv." + c + "）"};
+      }
+
+      function enqueue(id) {
+        const r = R[id], s = status(id), tier = r.tier(target(id)), db = activeDb();
+        if (r.special) return {ok: false, text: "特殊研究不能入队"};
+        if (s.key === "done") return {ok: false, text: "已达到最高等级"};
+        if (s.key === "blocked") return {ok: false, text: "互斥：已完成 " + mutexHit(id).map(label).join("、")};
+        if (state.queue.length >= 5) return {ok: false, text: "研究队列已满（5/5）"};
+        if (tier > 0 && !state.env.center) return {ok: false, text: "队伍没有可用的网络中心"};
+        if (tier > 0 && (db ? db.tier : 0) < tier) return {ok: false, text: db ? "数据库阶级不足（需要 " + tier + "，当前 " + db.tier + "）" : "需要阶级 " + tier + " 以上的活动数据库"};
+        if (tier > 0 && state.env.station < tier) return {ok: false, text: "研究站等级不足（需要 " + tier + "，当前 " + state.env.station + "）"};
+        return {ok: true, text: "加入后排在第 " + (state.queue.length + 1) + " 位"};
+      }
+
+      function selectable(id) {
+        const r = R[id], db = homeDb();
+        if (r.special) return {ok: false, text: "特殊研究不能作为下载目标"};
+        if (r.policy === "ITEM_ONLY") return level(id) > 0 ? {ok: true, level: level(id), source: "队伍直属研究"} : {ok: false, text: "队伍尚未完成此研究"};
+        return db.stored[id] ? {ok: true, level: db.stored[id], source: "本数据库"} : {ok: false, text: "本数据库没有存储此研究"};
+      }
+
+      function autoPositions(p) {
+        const ids = ORDER.filter(id => R[id].page === p.id), depth = {}, pos = {}, linked = new Set();
+        ids.forEach(id => R[id].prereq.forEach(([q]) => { if (R[q].page === p.id) { linked.add(id); linked.add(q); } }));
+        const d = id => {
+          if (depth[id] !== undefined) return depth[id];
+          depth[id] = 0;
+          let m = 0;
+          for (const [q] of R[id].prereq) if (R[q].page === p.id) m = Math.max(m, d(q) + 1);
+          return depth[id] = m;
+        };
+        const tree = ids.filter(id => linked.has(id)), lone = ids.filter(id => !linked.has(id));
+        tree.forEach(d);
+        const want = id => {
+          const rows = R[id].prereq.filter(([q]) => pos[R[q].path]).map(([q]) => pos[R[q].path][1]);
+          return rows.length ? Math.min(...rows) : Infinity;
+        };
+        for (let c = 0; c <= Math.max(0, ...tree.map(id => depth[id])); c++) {
+          const used = new Set();
+          tree.filter(id => depth[id] === c).sort((a, b) => (want(a) - want(b)) || ids.indexOf(a) - ids.indexOf(b)).forEach(id => {
+            let row = isFinite(want(id)) ? want(id) : 0;
+            while (used.has(row)) row++;
+            used.add(row);
+            pos[R[id].path] = [c, row];
+          });
+        }
+        const top = tree.length ? Math.max(...Object.values(pos).map(v => v[1])) + 2 : 0;
+        lone.forEach((id, i) => pos[R[id].path] = [i % 6, top + Math.floor(i / 6)]);
+        return pos;
+      }
+      const positions = p => p.layout === "manual" ? p.positions : autoPositions(p);
+      const at = ([c, r]) => [c * COL, r * ROW];
+      const width = id => pct(id) === null ? NODE : WIDE;
+
+      function nodeTip(id) {
+        const r = R[id], c = level(id), lines = [r.name + (r.max > 1 ? "  Lv." + c + " / " + maxText(r) : "")];
+        if (r.summary) lines.push(r.summary);
+        if (editing()) {
+          const db = activeDb();
+          if (r.special) lines.push(db ? "点击写入 " + db.name + " Lv." + ((db.stored[id] || 0) + 1) : "没有活动数据库");
+          else lines.push(c >= r.max ? "已达到最高等级" : "点击直接完成 Lv." + (c + 1));
+          lines.push(page().layout === "manual" ? "拖动调整位置" : "开启手动布局后可拖动");
+          return lines.join("\n");
+        }
+        if (picking()) {
+          const s = selectable(id);
+          lines.push(s.ok ? "可选择：Lv." + s.level + "（" + s.source + "）" : s.text);
+          return lines.join("\n");
+        }
+        const s = status(id);
+        lines.push(s.text);
+        if (s.key === "locked") lines.push("还需完成：" + missing(id).map(label).join("、"));
+        if (s.key === "blocked") lines.push("互斥：已完成 " + mutexHit(id).map(label).join("、"));
+        if (!r.special) {
+          const dl = download(id);
+          lines.push(dl.done ? dl.text : dl.ok ? "可下载到数据库" : "无法下载：" + dl.text);
+        }
+        return lines.join("\n");
+      }
+
+      function renderPlane() {
+        const p = page(), pos = positions(p), ids = ORDER.filter(id => R[id].page === p.id);
+        let maxX = 0, maxY = 0, svg = "", html = "";
+        ids.forEach(id => { const [x, y] = at(pos[R[id].path]); maxX = Math.max(maxX, x + EXP_W); maxY = Math.max(maxY, y + EXP_H); });
+        plane.style.width = maxX + "px";
+        plane.style.height = maxY + "px";
+        ids.forEach(id => {
+          const [tx, ty] = at(pos[R[id].path]), cy = ty + NODE / 2;
+          R[id].prereq.forEach(([q, lvl]) => {
+            const cls = level(q) >= lvl ? "lit" : "unlit";
+            if (R[q].page !== p.id) {
+              svg += `<path class="${cls} cross" d="M${tx - 24} ${cy} H${tx}"/><circle class="${cls}" style="stroke:${cls === "lit" ? "var(--dark)" : "#c4c7d3"}" cx="${tx - 28}" cy="${cy}" r="4"/>`;
+              return;
+            }
+            const [sx, sy] = at(pos[R[q].path]), mid = tx - 14;
+            svg += `<path class="${cls}" d="M${sx + width(q)} ${sy + NODE / 2} H${mid} V${cy} H${tx}"/>`;
+          });
+        });
+        ids.forEach(id => {
+          const r = R[id], [x, y] = at(pos[r.path]), c = level(id), expanded = selected === id, percent = pct(id);
+          let cls, line, marks = "";
+          let badge = r.max > 1 ? (r.max === MAX ? String(c) : c + "/" + r.max) : "";
+          if (picking()) {
+            const s = selectable(id);
+            cls = s.ok ? "pick" : "dim";
+            badge = s.ok && r.max > 1 ? "Lv." + s.level : "";
+            line = s.ok ? "可选择 Lv." + s.level : s.text;
+          } else {
+            const s = status(id);
+            cls = {queued: c > 0 ? "partial" : "avail", saved: c > 0 ? "partial" : "avail"}[s.key] || s.key;
+            line = r.max > 1 && ["partial", "avail", "queued"].includes(s.key) ? "Lv." + c + " / " + maxText(r) : s.text;
+            const q = queueIndex(id);
+            if (q >= 0) marks += `<span class="ov-qi">${q + 1}</span>`;
+            if (["locked", "blocked", "special"].includes(s.key)) marks += `<span class="ov-lock"></span>`;
+            if (download(id).done) marks += `<span class="ov-db"></span>`;
+            if (editing()) cls += page().layout === "manual" ? " movable" : " editable";
+          }
+          let body, style;
+          if (expanded) {
+            cls += " expanded";
+            style = `left:${x}px;top:${y - (EXP_H - NODE) / 2}px;width:${EXP_W}px;height:${EXP_H}px`;
+            body = `<img src="${A[r.icon]}" alt=""><span class="ov-ninfo"><strong>${esc(r.name)}</strong><small>${esc(line)}</small>` +
+              (percent !== null ? `<i class="ov-nbar"><u style="width:${percent}%"></u></i>` : "") + `</span>`;
+          } else {
+            style = `left:${x}px;top:${y}px;width:${percent === null ? NODE : WIDE}px`;
+            body = `<img src="${A[r.icon]}" alt="">` + (percent !== null ? `<span class="ov-pct">${percent}%</span>` : "");
+          }
+          html += `<button type="button" class="ov-node ${cls}" data-id="${id}" data-tip="${esc(nodeTip(id))}" style="${style}" aria-label="${esc(r.name)}">${body}${marks}` +
+            (badge ? `<span class="ov-lv">${badge}</span>` : "") + `</button>`;
+        });
+        plane.innerHTML = `<svg class="ov-links" width="${maxX}" height="${maxY}">${svg}</svg>` + html;
+      }
+
+      function currentResearch() {
+        const q = state.queue[0];
+        if (!q) return `<div class="ov-inset"><span class="ov-none">研究队列为空，点击研究后在右侧开始研究</span></div>`;
+        const r = R[q.id], tier = r.tier(q.target), f = progressOf(q.id), elapsed = Math.round(r.ticks * f);
+        const work = (name) => `<div class="ov-work"><span>${name} ${fmt(elapsed)} / ${fmt(r.ticks)} t</span><span>${Math.round(f * 100)}%</span><i class="ov-bar"><u style="width:${f * 100}%"></u></i></div>`;
+        if (tier === 0) {
+          const m = state.manual, mine = !!m && m.contributor === state.viewer && !m.paused;
+          const who = m && m.contributor ? m.contributor : "无人投料";
+          const rows = r.materials.map(([icon, n]) => {
+            const paid = Math.floor(n * f), short = paid < n && !(state.inventory[icon] > 0);
+            return `<div class="ov-mrow" data-tip="${esc(ITEM[icon] + "\n已投入 " + paid + " / 需求 " + n + (short ? "\n投料玩家背包中没有此材料" : ""))}"><img src="${A[icon]}" alt=""><span>${ITEM[icon]}</span><span class="${short ? "short" : ""}">${paid} / ${n}</span></div>`;
+          }).join("");
+          return `<div class="ov-sec"><b>${esc(r.name)} Lv.${q.target}</b><span class="ov-chip ${m && m.paused ? "warn" : "good"}">手动研究（${esc(who)}）${m && m.paused ? " · 已暂停" : ""}</span></div>
+            <div class="ov-inset">${work("研究时间")}${rows}</div>
+            <button type="button" class="ov-checkbox" id="ov-contribute" aria-pressed="${mine}" data-tip="${esc(mine ? "取消后暂停投料，已投入的材料和进度保留" : "由你接管投料，从你的背包扣取材料")}"><i></i>消耗背包中的物品</button>`;
+        }
+        const mats = r.materials.map(([icon, n]) => {
+          const remaining = n - Math.floor(n * f), avail = Math.min(state.stock[icon] || 0, remaining), short = avail < remaining;
+          return `<div class="ov-mrow" data-tip="${esc(ITEM[icon] + "\n当前可用 " + avail + " / 剩余需求 " + remaining)}"><img src="${A[icon]}" alt=""><span>${ITEM[icon]}</span><span class="${short ? "short" : ""}">${avail} / ${remaining}</span></div>`;
+        }).join("");
+        const res = r.resources(q.target).map(x => {
+          const done = Math.round(x.total * f * 10) / 10;
+          return `<div class="ov-nrow"><span>${x.name}</span><span>${fmt(done)} / ${fmt(x.total)}</span><i class="ov-bar"><u style="width:${f * 100}%"></u></i></div>`;
+        }).join("");
+        return `<div class="ov-sec"><b>${esc(r.name)} Lv.${q.target}</b><span class="ov-chip good">研究中 · 参与 ${state.env.working} 台</span></div>
+          <div class="ov-inset">${work("工作量")}${mats ? `<div class="ov-small">材料 当前可用 / 剩余需求</div>${mats}` : `<span class="ov-none">无材料需求</span>`}
+          ${res ? `<div class="ov-small">网络资源 已累计 / 总需求</div>${res}` : ""}</div>`;
+      }
+
+      function renderChrome() {
+        const db = homeDb(), adb = activeDb();
+        $("ov-title").textContent = editing() ? "研究总览 · 编辑模式" : picking() ? "研究总览 · 选择下载研究" : "研究总览";
+        $("ov-sub").textContent = picking() ? db.name : state.team;
+        let right;
+        if (editing()) {
+          const manual = page().layout === "manual";
+          right = `<button type="button" class="ov-action" id="ov-manual" aria-pressed="${manual}" data-tip="${esc(manual ? "关闭后按前置关系自动排列" : "开启后以当前位置作为初始坐标，可拖动研究")}"><span class="box"></span>手动布局</button>` +
+            `<button type="button" class="ov-action" id="ov-exportbtn" data-tip="${esc("覆盖 config/prototype_eng/research_content/data/" + pageId + ".json")}">导出</button>`;
+        } else if (picking()) {
+          right = `<span class="ov-chip plain">阶级 ${db.tier} · 已存 ${stored(db)}/${db.capacity}</span><button type="button" class="ov-square" id="ov-back" data-tip="返回数据库"><img src="${A.back}" alt=""></button>`;
+        } else {
+          right = (adb ? `<span class="ov-chip good" data-tip="下载写入当前活动数据库">${esc(adb.name)} · 阶级 ${adb.tier} · ${stored(adb)}/${adb.capacity}</span>` : `<span class="ov-chip bad">没有活动数据库</span>`) +
+            `<span class="ov-chip plain">网络中心 Lv.${state.env.center}</span><span class="ov-chip plain">最高研究站 Lv.${state.env.station}</span>`;
+        }
+        $("ov-headright").innerHTML = right;
+        $("ov-tabs").innerHTML = PAGES.slice().sort((a, b) => a.order - b.order).map(p => {
+          const ids = ORDER.filter(id => R[id].page === p.id);
+          const count = picking() ? ids.filter(id => selectable(id).ok).length + " 可选" : ids.filter(id => !R[id].special && level(id) >= R[id].max).length + "/" + ids.length;
+          return `<button type="button" class="ov-tab" role="tab" data-page="${p.id}" aria-selected="${p.id === pageId}" data-tip="${esc("分页 " + p.id + "\n名称键 gui.prototype_eng.research_page." + p.id)}">${p.name}<small>${count}</small></button>`;
+        }).join("");
+        if (picking()) {
+          $("ov-tl").innerHTML = `<div class="ov-sec"><b>研究下载 · 选择研究</b></div><div class="ov-inset"><div class="ov-small">数据库与物品研究按本数据库已存等级下载；仅物品研究按队伍直属等级下载。特殊研究不能作为下载目标。</div></div>`;
+        } else {
+          let slots = "";
+          for (let i = 0; i < 5; i++) {
+            const q = state.queue[i];
+            slots += q ? `<button type="button" class="ov-q" data-focus="${q.id}" data-tip="${esc((i + 1) + ". " + R[q.id].name + " Lv." + q.target + (progressOf(q.id) > 0 ? "\n进度 " + Math.round(progressOf(q.id) * 100) + "%" : "") + "\n点击定位")}"><img src="${A[R[q.id].icon]}" alt=""><b>${i + 1}</b>` +
+              (i === 0 ? `<i><u style="width:${progressOf(q.id) * 100}%"></u></i>` : "") + `</button>`
+              : `<div class="ov-q empty" data-tip="空位"></div>`;
+          }
+          $("ov-tl").innerHTML = `<div class="ov-sec"><span>研究队列 ${state.queue.length}/5</span></div><div class="ov-queue">${slots}</div>${currentResearch()}`;
+        }
+        $("ov-banner").hidden = !editing();
+        $("ov-zoom").textContent = "缩放 " + Math.round(view.z * 100) + "% · 滚轮缩放 · 拖动平移";
+        $("ov-esc").textContent = selected ? "收起详情" : picking() ? "返回数据库" : "关闭";
+        $("ov-legend").innerHTML = (picking()
+          ? [["var(--good-bg)", "var(--good)", "可选择"], ["var(--locked)", "var(--muted)", "不可选择"]]
+          : [["var(--good-bg)", "var(--good)", "已完成"], ["var(--good-bg)", "var(--good-line)", "部分等级完成"], ["var(--slot)", "var(--line)", "可研究"], ["var(--light)", "var(--dark)", "研究中"],
+            ["var(--locked)", "var(--muted)", "前置未完成"], ["var(--bad-bg)", "var(--bad)", "互斥阻止"], ["var(--warn-bg)", "var(--warn)", "特殊研究"]])
+          .map(([bg, bd, t]) => `<span><i style="background:${bg};border-color:${bd}"></i>${t}</span>`).join("") +
+          (picking() ? "" : `<span><i style="background:var(--mark);border:1px solid var(--dark);width:8px;height:8px"></i>已下载到数据库</span>`);
+      }
+
+      function reqList(rows, bad, good, badText) {
+        if (!rows.length) return `<div class="ov-none">无</div>`;
+        return `<ul class="ov-req">${rows.map(row => `<li class="${bad(row) ? "miss" : ""}"><span>${esc(label(row))}</span><span>${bad(row) ? badText : good}</span></li>`).join("")}</ul>`;
+      }
+
+      function rewardHtml(id) {
+        const r = R[id], c = level(id), t = target(id), claims = state.claims[id] || {};
+        const levels = Object.keys(r.rewards).map(Number).filter(l => l <= c || (l === t && c < r.max)).sort((a, b) => a - b);
+        if (!levels.length) return `<div class="ov-none">${Object.keys(r.rewards).length ? "下一级没有奖励" : "无完成奖励"}</div>`;
+        return levels.map(l => {
+          const groups = r.rewards[l], st = l <= c ? (claims[l] || "UNCLAIMED") : "LOCKED", multi = groups.length > 1, key = id + "@" + l;
+          const chip = {CLAIMED: `<span class="ov-chip good">已领取</span>`, UNCLAIMED: `<span class="ov-chip warn">可领取</span>`, LOCKED: `<span class="ov-chip">完成后可领取</span>`}[st];
+          const cards = groups.map(g => {
+            const kids = `<div class="ov-slots">${g.children.map(k => `<div class="ov-slot" data-tip="${esc(ITEM[k.item] + " ×" + k.n)}"><img src="${A[k.item]}" alt=""><b>${k.n}</b></div>`).join("")}</div>` +
+              (g.desc ? `<small>${esc(g.desc)}</small>` : "");
+            return multi && st === "UNCLAIMED"
+              ? `<button type="button" class="ov-group choice" data-choice="${key}" data-group="${g.id}" aria-pressed="${choice[key] === g.id}"><span>${esc(g.title)}</span>${kids}</button>`
+              : `<div class="ov-group"><span>${esc(g.title)}</span>${kids}</div>`;
+          }).join("");
+          const ready = !multi || choice[key];
+          const claim = st === "UNCLAIMED" && !editing() ? `<button type="button" class="ov-action${ready ? "" : " off"}" data-claim="${key}" data-tip="${esc(ready ? "领取 Lv." + l + " 奖励" : "先选择一组奖励")}">领取奖励</button>` : "";
+          return `<div class="ov-reward"><div class="ov-reward-head"><span>Lv.${l}${multi ? " · 任选其一" : ""}</span>${chip}</div>${cards}${claim}</div>`;
+        }).join("");
+      }
+
+      function renderSide() {
+        const side = $("ov-side");
+        if (!selected || R[selected].page !== pageId) { side.classList.remove("open"); return; }
+        const id = selected, r = R[id], c = level(id), t = target(id), done = c >= r.max, tier = r.tier(t);
+        const policy = r.special ? "仅研究盘" : r.policy === "ITEM_ONLY" ? "仅物品" : "数据库与物品";
+        let chips, body, foot;
+        if (picking()) {
+          const s = selectable(id);
+          chips = `<span class="ov-chip good">Lv.${s.level}</span><span class="ov-chip plain">${s.source}</span>`;
+          body = `<div class="ov-h"><span>下载信息</span></div><div class="ov-kv"><span>下载等级</span><span>Lv.${s.level}</span><span>研究阶级</span><span>${r.tier(s.level)}</span><span>下载方式</span><span>${policy}</span></div>`;
+          foot = `<div class="ov-buttons"><button type="button" class="ov-action wide" id="ov-pick">选择此研究</button></div><div class="ov-msg">返回数据库后在操作区显示研究阶级与费用</div>`;
+        } else {
+          const s = status(id), percent = pct(id);
+          chips = `<span class="ov-chip ${s.tone}">${s.text}</span>` + (r.max > 1 ? `<span class="ov-chip plain">Lv.${c} / ${maxText(r)}</span>` : "");
+          const mats = r.materials.length ? `<div class="ov-slots">${r.materials.map(([icon, n]) => `<div class="ov-slot" data-tip="${esc(ITEM[icon] + " ×" + n)}"><img src="${A[icon]}" alt=""><b>${fmt(n)}</b></div>`).join("")}</div>`
+            : `<div class="ov-none">无材料需求</div>`;
+          const res = r.resources(t);
+          const resHtml = res.length ? `<div class="ov-res">${res.map(x => `<span>${x.name}</span><span>${fmt(x.total)}${x.tick ? "（单站上限 " + fmt(x.tick) + "/t）" : ""}</span>`).join("")}</div>`
+            : `<div class="ov-none">${tier === 0 ? "手动研究不使用网络资源" : "无网络资源需求"}</div>`;
+          body = (percent !== null ? `<div class="ov-work"><span>Lv.${t} 研究进度</span><span>${percent}%</span><i class="ov-bar"><u style="width:${percent}%"></u></i></div>` : "") +
+            `<div class="ov-h"><span>研究信息</span></div><div class="ov-kv"><span>${done ? "最高等级" : "目标等级"}</span><span>Lv.${t}</span><span>研究阶级</span><span>${tier === 0 ? "0（手动研究）" : tier}</span>` +
+            `<span>研究时间</span><span>${fmt(r.ticks)} t</span><span>下载方式</span><span>${policy}</span></div>` +
+            `<div class="ov-h"><span>前置研究</span></div>${reqList(r.prereq, ([p, lvl]) => level(p) < lvl, "已完成", "未完成")}` +
+            (r.mutex.length ? `<div class="ov-h"><span>互斥研究</span></div>${reqList(r.mutex, ([m, lvl]) => level(m) >= lvl, "未完成", "已完成")}` : "") +
+            (done && !r.special ? "" : `<div class="ov-h"><span>材料</span><small>Lv.${t}</small></div>${mats}<div class="ov-h"><span>网络资源</span><small>Lv.${t}</small></div>${resHtml}`) +
+            `<div class="ov-h"><span>完成奖励</span></div>${rewardHtml(id)}`;
+          if (editing()) {
+            const [col, row] = positions(page())[r.path];
+            foot = `<div class="ov-kv"><span>研究 ID</span><span>${id}</span><span>坐标</span><span>[${col}, ${row}]${page().layout === "manual" ? "" : "（自动布局）"}</span></div>` +
+              `<div class="ov-msg warn">点击研究方块直接完成下一级，无视前置、互斥、权限与材料</div>`;
+          } else {
+            const q = enqueue(id), dl = download(id), qi = queueIndex(id);
+            let queueButtons;
+            if (qi === 0) queueButtons = `<button type="button" class="ov-action" id="ov-remove" data-tip="移出后保留已研究的进度">移出队列</button>`;
+            else if (qi > 0) queueButtons = `<button type="button" class="ov-action" id="ov-current" data-tip="移到队首，原队首保留进度">设为当前</button><button type="button" class="ov-action" id="ov-remove" data-tip="移出后保留已研究的进度">移出队列</button>`;
+            else queueButtons = `<button type="button" class="ov-action${q.ok ? "" : " off"}" id="ov-enqueue" data-tip="${esc(q.text)}">${progressOf(id) > 0 ? "继续研究" : "开始研究"}</button>`;
+            const dlButton = `<button type="button" class="ov-action${dl.ok ? "" : " off"}${qi > 0 ? " wide" : ""}" id="ov-download" data-tip="${esc(dl.text)}">下载到数据库</button>`;
+            foot = `<div class="ov-buttons">${queueButtons}${dlButton}</div><div class="ov-msg ${dl.done ? "good" : dl.ok ? "" : "bad"}" data-tip="${esc(dl.text)}">${esc(dl.ok || dl.done ? dl.text : "无法下载：" + dl.text)}</div>`;
+          }
+        }
+        side.innerHTML = `<div class="ov-shead"><div class="ov-slot"><img src="${A[r.icon]}" alt=""></div><strong data-tip="${esc(r.name + "\n" + id)}">${esc(r.name)}</strong>` +
+          `<button type="button" class="ov-square" id="ov-close" data-tip="收起 (ESC)"><img src="${A.ae_clear}" alt=""></button><div class="ov-chips">${chips}</div></div>` +
+          `<div class="ov-sbody">${r.summary ? `<div class="ov-summary">${esc(r.summary)}</div>` : ""}${r.desc.length ? `<ul class="ov-desc">${r.desc.map(l => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}${body}</div>` +
+          `<div class="ov-sfoot">${foot}</div>`;
+        side.classList.add("open");
+      }
+
+      function applyView() {
+        plane.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
+        viewport.style.backgroundSize = `${COL * view.z}px ${ROW * view.z}px`;
+        viewport.style.backgroundPosition = `${view.x - (COL - NODE) / 2 * view.z}px ${view.y - (ROW - NODE) / 2 * view.z}px`;
+      }
+      function render() {
+        renderPlane();
+        renderChrome();
+        renderSide();
+        applyView();
+      }
+
+      function toast(text) {
+        const t = $("ov-toast");
+        t.textContent = text;
+        t.hidden = false;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => t.hidden = true, 2200);
+      }
+
+      function focus(id) {
+        pageId = R[id].page;
+        const [x, y] = at(positions(page())[R[id].path]), left = 320, right = 352;
+        view.x = Math.round(left + (board.clientWidth - left - right) / 2 - (x + EXP_W / 2) * view.z);
+        view.y = Math.round(board.clientHeight / 2 - (y + NODE / 2) * view.z);
+      }
+
+      function reveal(id) {
+        const [x] = at(positions(page())[R[id].path]), left = 320, right = board.clientWidth - 352;
+        const start = view.x + x * view.z, end = view.x + (x + EXP_W) * view.z;
+        if (end > right) view.x -= end - right + 16;
+        else if (start < left) view.x += left - start + 16;
+      }
+
+      function complete(id, lvl) {
+        state.levels[id] = lvl;
+        if (R[id].rewards[lvl]) (state.claims[id] = state.claims[id] || {})[lvl] = "UNCLAIMED";
+        state.queue = state.queue.filter(q => !(q.id === id && q.target <= lvl));
+      }
+
+      function activate(id) {
+        const r = R[id];
+        if (editing()) {
+          if (r.special) {
+            const db = activeDb();
+            if (!db) { toast("没有活动数据库，无法写入特殊研究"); return; }
+            if (!(id in db.stored) && stored(db) >= db.capacity) { toast(db.name + " 容量已满"); return; }
+            if ((db.stored[id] || 0) >= r.max) { toast(r.name + " 已达到最高等级"); return; }
+            db.stored[id] = (db.stored[id] || 0) + 1;
+            toast("已将 " + r.name + " Lv." + db.stored[id] + " 写入 " + db.name);
+          } else if (level(id) >= r.max) {
+            toast(r.name + " 已达到最高等级");
+          } else {
+            const before = {...state.levels};
+            const fill = (rid, need) => {
+              R[rid].prereq.forEach(([p, lvl]) => fill(p, lvl));
+              for (let l = level(rid) + 1; l <= need; l++) complete(rid, l);
+            };
+            R[id].prereq.forEach(([p, lvl]) => fill(p, lvl));
+            const added = ORDER.filter(k => k !== id && level(k) > (before[k] || 0)).map(k => R[k].name + " Lv." + level(k));
+            complete(id, level(id) + 1);
+            toast("已完成 " + r.name + " Lv." + level(id) + (added.length ? "，补齐前置：" + added.join("、") : ""));
+          }
+          selected = id;
+          render();
+          return;
+        }
+        if (picking() ? !selectable(id).ok : status(id).key === "locked") return;
+        selected = selected === id ? null : id;
+        if (selected) reveal(id);
+        render();
+      }
+
+      let gesture = null;
+      viewport.addEventListener("pointerdown", event => {
+        if (event.button !== 0) return;
+        const node = event.target.closest(".ov-node");
+        gesture = {node, id: node && node.dataset.id, x: event.clientX, y: event.clientY, vx: view.x, vy: view.y, moved: false};
+        if (node && editing() && page().layout === "manual") {
+          gesture.drag = true;
+          gesture.ox = parseFloat(node.style.left);
+          gesture.oy = parseFloat(node.style.top);
+        }
+        if (event.pointerType) viewport.setPointerCapture(event.pointerId);
+      });
+      viewport.addEventListener("pointermove", event => {
+        if (!gesture) return;
+        const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
+        if (!gesture.moved && Math.abs(dx) + Math.abs(dy) > 3) gesture.moved = true;
+        if (!gesture.moved) return;
+        $("ov-tooltip").hidden = true;
+        if (gesture.drag) {
+          gesture.node.classList.add("dragging");
+          gesture.node.style.left = Math.max(0, gesture.ox + dx / view.z) + "px";
+          gesture.node.style.top = Math.max(0, gesture.oy + dy / view.z) + "px";
+        } else {
+          viewport.classList.add("panning");
+          view.x = gesture.vx + dx;
+          view.y = gesture.vy + dy;
+          applyView();
+        }
+      });
+      viewport.addEventListener("pointerup", () => {
+        const g = gesture;
+        gesture = null;
+        viewport.classList.remove("panning");
+        if (!g) return;
+        if (g.moved && g.drag) {
+          const p = page(), path = R[g.id].path;
+          const col = Math.max(0, Math.round(parseFloat(g.node.style.left) / COL)), row = Math.max(0, Math.round(parseFloat(g.node.style.top) / ROW));
+          const taken = Object.entries(p.positions).find(([k, v]) => k !== path && v[0] === col && v[1] === row);
+          if (taken) toast("该位置已有 " + R[p.id + ":" + taken[0]].name);
+          else p.positions[path] = [col, row];
+          render();
+          return;
+        }
+        if (g.moved) return;
+        if (g.id) activate(g.id);
+        else if (selected) { selected = null; render(); }
+      });
+      viewport.addEventListener("wheel", event => {
+        event.preventDefault();
+        const rect = viewport.getBoundingClientRect(), mx = event.clientX - rect.left, my = event.clientY - rect.top;
+        const z = Math.min(2, Math.max(0.5, view.z * (event.deltaY < 0 ? 1.15 : 1 / 1.15)));
+        view.x = mx - (mx - view.x) * z / view.z;
+        view.y = my - (my - view.y) * z / view.z;
+        view.z = z;
+        applyView();
+        $("ov-zoom").textContent = "缩放 " + Math.round(z * 100) + "% · 滚轮缩放 · 拖动平移";
+      }, {passive: false});
+
+      root.addEventListener("click", event => {
+        const b = event.target.closest("button");
+        if (!b || b.classList.contains("ov-node")) return;
+        if (b.dataset.scenario) { reset(b.dataset.scenario); return; }
+        if (b.dataset.page) { pageId = b.dataset.page; selected = null; view.x = HOME.x; view.y = HOME.y; render(); return; }
+        if (b.dataset.focus) {
+          focus(b.dataset.focus);
+          if (status(b.dataset.focus).key !== "locked") selected = b.dataset.focus;
+          render();
+          return;
+        }
+        if (b.dataset.choice) { choice[b.dataset.choice] = b.dataset.group; render(); return; }
+        if (b.dataset.claim) {
+          if (b.classList.contains("off")) return;
+          const [id, l] = b.dataset.claim.split("@");
+          state.claims[id][l] = "CLAIMED";
+          toast("已领取 " + R[id].name + " Lv." + l + " 奖励");
+          render();
+          return;
+        }
+        if (b.classList.contains("off")) return;
+        switch (b.id) {
+          case "ov-close": selected = null; render(); break;
+          case "ov-back": toast("返回数据库界面"); break;
+          case "ov-pick": toast("已选择 " + R[selected].name + "，返回数据库"); break;
+          case "ov-enqueue":
+            state.queue.push({id: selected, target: target(selected)});
+            if (state.queue.length === 1 && R[selected].tier(target(selected)) === 0) state.manual = {contributor: state.viewer, paused: false};
+            toast(R[selected].name + " 已加入研究队列（第 " + state.queue.length + " 位）");
+            render();
+            break;
+          case "ov-current": {
+            state.queue.unshift(state.queue.splice(queueIndex(selected), 1)[0]);
+            state.manual = R[selected].tier(target(selected)) === 0 ? {contributor: null, paused: true} : null;
+            toast(R[selected].name + " 已设为当前研究");
+            render();
+            break;
+          }
+          case "ov-remove":
+            state.queue.splice(queueIndex(selected), 1);
+            toast(R[selected].name + " 已移出队列，进度保留");
+            render();
+            break;
+          case "ov-download": {
+            const db = activeDb();
+            db.stored[selected] = level(selected);
+            toast("已下载 " + R[selected].name + " Lv." + level(selected) + " 到 " + db.name);
+            render();
+            break;
+          }
+          case "ov-contribute": {
+            const m = state.manual || (state.manual = {contributor: null, paused: true});
+            if (m.contributor === state.viewer && !m.paused) { m.paused = true; toast("已暂停投料，进度保留"); }
+            else { m.contributor = state.viewer; m.paused = false; toast("由你继续投料"); }
+            render();
+            break;
+          }
+          case "ov-manual": {
+            const p = page();
+            if (p.layout === "manual") p.layout = "auto";
+            else { p.positions = autoPositions(p); p.layout = "manual"; }
+            toast(p.layout === "manual" ? "已开启手动布局，可拖动研究" : "已恢复自动布局");
+            render();
+            break;
+          }
+          case "ov-exportbtn": {
+            const p = page(), json = {order: p.order, layout: p.layout};
+            if (p.layout === "manual") json.positions = Object.fromEntries(ORDER.filter(id => R[id].page === p.id).map(id => [R[id].path, p.positions[R[id].path]]));
+            $("ov-export-path").textContent = "已覆盖 config/prototype_eng/research_content/data/" + p.id + ".json：";
+            $("ov-export-json").textContent = JSON.stringify(json, null, 2).replace(/\[\n\s+(\d+),\n\s+(\d+)\n\s+\]/g, "[$1, $2]");
+            $("ov-export").hidden = false;
+            toast("已导出到 research_content/data/" + p.id + ".json");
+            break;
+          }
+        }
+      });
+
+      document.addEventListener("keydown", event => {
+        if (event.key !== "Escape") return;
+        if (selected) { selected = null; render(); }
+        else toast(picking() ? "返回数据库界面" : "关闭研究总览");
+      });
+
+      const tooltip = $("ov-tooltip");
+      root.addEventListener("mousemove", event => {
+        const owner = gesture && gesture.moved ? null : event.target.closest("[data-tip]");
+        tooltip.hidden = !owner;
+        if (!owner) return;
+        tooltip.textContent = owner.dataset.tip;
+        tooltip.style.left = Math.min(event.clientX + 12, window.innerWidth - tooltip.offsetWidth - 4) + "px";
+        tooltip.style.top = event.clientY - 18 + "px";
+      });
+      root.addEventListener("mouseleave", () => tooltip.hidden = true);
+
+      function reset(next) {
+        scenario = next;
+        state = initial(next);
+        PAGES[0].layout = "auto";
+        PAGES[0].positions = {};
+        PAGES[1].layout = "manual";
+        PAGES[1].positions = JSON.parse(JSON.stringify(DEMO_POSITIONS));
+        selected = null;
+        choice = {};
+        pageId = "pe_run_tests";
+        view.x = HOME.x; view.y = HOME.y; view.z = 1;
+        $("ov-export").hidden = true;
+        document.querySelectorAll("#ov-scenarios button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.scenario === scenario)));
+        render();
+      }
+      reset("station");
+    })();
+  </script>
+</div>
+</body>
+</html>

@@ -264,7 +264,7 @@ first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表�
 
 `Research.alwaysAllowed()` 表示资格函数不增加额外条件，实际权限仍会由服务器规则检查。自定义资格函数读取 `targetLevel`、`networkCenterLevel`、`sharedLevel(researchId)` 和 `available(resource)` 等捕获事实，返回 bool；它不能修改资源或把当前数量当作后续工作已经预留的数量。`unlock(effectId, targetId, level)` 声明达到指定等级后的解锁效果，必须在研究定义被注册前完成。
 
-`Research.display(translationKey, icon)` 必须在 `register()` 前设置，icon 为 IItemStack。研究站显示内容与目标进度自动同步；材料按总量直接结算。
+`Research.display(translationKey, icon)` 必须在 `register()` 前设置，icon 为 IItemStack。研究总览实现时，名称与图标改由客户端 `config/prototype_eng/research_content/` 下的 JSON 提供，脚本只注册研究数据，此方法随之移除，规则见 [研究总览](docs/research-overview.md#客户端研究内容与分页文件)。研究站显示内容与目标进度自动同步；材料按总量直接结算。
 
 `ResearchServer.permissions(callback)` 设置服务端权限回调。回调的 action 和返回值使用 Java 对应枚举的字符串名称；不添加特例时调用 `context.standardDecision(action)`。在启动阶段注册，否则研究服务可能已完成初始化。
 

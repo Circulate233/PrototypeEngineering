@@ -251,7 +251,7 @@ Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 
 
 ### 研究与计算网络
 
-`ResearchDefinition.builder(id)` 创建研究，`.displayName(LocalizationEnum)` 与 `.icon(AEKey)` 指定显示内容。`ResearchLevelStage.builder(first, last)` 必须设置 `.durationTicks(long)`、研究阶数和网络资源公式，多个阶段完整覆盖 `1..maxLevel`。时间为单站基准 tick，多站可加速。阶数 0 使用玩家手动研究且禁止网络资源；正阶由研究站推进。`.material(AEKey, long)` 添加普通资源总量，`.materialRequirement(...)` 只接受固定静态输入。
+`ResearchDefinition.builder(id)` 创建研究，`.displayName(LocalizationEnum)` 与 `.icon(AEKey)` 指定显示内容。按 2026-11-16 确认的[研究总览规则](docs/research-overview.md#客户端研究内容与分页文件)，名称、图标、简介和分页后续改由客户端 `research_content` JSON 提供，这两个方法将在研究总览实现时移除。`ResearchLevelStage.builder(first, last)` 必须设置 `.durationTicks(long)`、研究阶数和网络资源公式，多个阶段完整覆盖 `1..maxLevel`。时间为单站基准 tick，多站可加速。阶数 0 使用玩家手动研究且禁止网络资源；正阶由研究站推进。`.material(AEKey, long)` 添加普通资源总量，`.materialRequirement(...)` 只接受固定静态输入。
 
 `ResearchResourceFormula.builder().constant(type, total)` / `.affine(type, base, slope)` 定义网络资源总量，`.perTick(type, limit)` / `.affinePerTick(type, base, slope)` 定义单站 tick 上限。等级增长使用 `当前等级 - 阶段首级`，总量与上限按研究时间 T 换算，数量为 double。同一资源重复添加及混用总量/tick 定义会相加，最终总量除以 T 得到单站上限。公式直接借用 builder 完成的 Map，交付后必须停止修改。站点自身速率与研究 tick 上限共同限制本次增量。`DATABASE_AND_ITEM` 允许个人研究写入数据库或下载成物品；`ITEM_ONLY` 普通完成量归队伍并通过物品下载交付。
 
@@ -534,7 +534,7 @@ ParallelController.create("example:parallel_module", "tile.example.parallel_modu
 
 仓室容量由 `ResourceSide.itemEquivalent(slots, capacity)` 和 `EnergySide.create(capacity, transfer)` 定义，再交给 `Configuration.resources/energy(tier, input, output)`。两侧可以只提供一侧，不能都为空。`configureDefaults` 设置启动默认值，运行中调用 `request` 返回更新任务。
 
-研究用 `Research.create(...)` 声明，`.display(translationKey, icon)` 设置名称和图标。`ResearchStage.create(first, last, tier, durationTicks, formula)` 设置等级段和 long 时间；`ResearchFormula.constant/affine` 定义网络资源总量，`perTick/affinePerTick` 定义单站 tick 上限。stage 的 `.material(...)` 只接受静态总量输入，`.prerequisite(...)`、`.mutex(...)` 和 `.reward(...)` 定义前置、互斥及奖励。原 `.materialPersistence(...)` 已删除。
+研究用 `Research.create(...)` 声明，`.display(translationKey, icon)` 设置名称和图标；该方法与 Java 显示方法一样，将在研究总览实现时由客户端研究内容 JSON 取代。`ResearchStage.create(first, last, tier, durationTicks, formula)` 设置等级段和 long 时间；`ResearchFormula.constant/affine` 定义网络资源总量，`perTick/affinePerTick` 定义单站 tick 上限。stage 的 `.material(...)` 只接受静态总量输入，`.prerequisite(...)`、`.mutex(...)` 和 `.reward(...)` 定义前置、互斥及奖励。原 `.materialPersistence(...)` 已删除。
 
 在 preinit 脚本中，专用控制器使用下面的快捷入口（`compute` 是已经声明的数值计算资源）；它们不调用 `processing` 或添加配方工位：
 
