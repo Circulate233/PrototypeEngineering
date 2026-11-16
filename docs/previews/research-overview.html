@@ -44,6 +44,7 @@
     #pe-ov .ov-node.locked:hover, #pe-ov .ov-node.dim:hover { filter:none; }
     #pe-ov .ov-node.locked > img, #pe-ov .ov-node.dim > img { opacity:0.35; filter:grayscale(1); }
     #pe-ov .ov-viewport.editing .ov-node.locked { cursor:pointer; }
+    #pe-ov .ov-node.short { border-color:var(--bad-line); }
     #pe-ov .ov-node.blocked { background:var(--bad-bg); border-color:var(--bad); }
     #pe-ov .ov-node.blocked > img { opacity:0.6; }
     #pe-ov .ov-node.special { background:var(--warn-bg); border-color:var(--warn); }
@@ -187,6 +188,12 @@
     #pe-ov .ov-msg.good { color:var(--good); }
     #pe-ov .ov-msg.bad { color:var(--bad); }
     #pe-ov .ov-msg.warn { color:var(--warn); }
+    #pe-ov .ov-step { display:grid; grid-template-columns:auto minmax(0,1fr) auto auto; align-items:center; gap:6px; font-size:12px; }
+    #pe-ov .ov-step b { font-weight:500; }
+    #pe-ov .ov-step .ov-square { width:24px; height:24px; padding:0; font:16px/24px Consolas,sans-serif; color:var(--text); }
+    #pe-ov .ov-step .ov-square.off { opacity:0.5; cursor:default; }
+    #pe-ov .ov-info { font-size:11px; line-height:16px; color:var(--soft); display:flex; flex-direction:column; gap:2px; }
+    #pe-ov .ov-info .bad { color:var(--bad); }
 
     #pe-ov .ov-below { max-width:1100px; margin:0 auto; padding:14px 16px 40px; color:#c3c7d0; }
     #pe-ov .ov-legend { display:flex; flex-wrap:wrap; gap:10px 18px; font-size:12px; }
@@ -229,9 +236,9 @@
       <li>研究平时只显示方块和图标；正在研究或保留部分进度的研究，方块右侧显示百分比。点击后展开为长框，显示名称、状态和进度条，同时在右侧弹出详情；展开的长框不会盖住其他研究。</li>
       <li>左上角为分页、研究队列和当前研究：研究站研究显示工作量、材料“当前可用 / 剩余需求”和网络资源累计；手动研究显示投料玩家、材料“已投入 / 需求”和“消耗背包中的物品”。</li>
       <li>“运行测试”页使用仓库示例脚本与 Java 示例的研究、材料、网络资源和奖励（自动布局）；“示例扩展”页为演示多前置、跨页前置、互斥与手动布局的虚构内容。</li>
-      <li>玩家模式：前置未完成的研究点击无反馈，悬停列出还需完成的研究；按钮不可用时悬停显示原因。下载到数据库不会重复，队伍任一数据库已存等级不低于队伍等级时提示“已下载到 …”。</li>
-      <li>数据库模式：只能选择本数据库已存的研究（数据库与物品）或队伍直属已完成的研究（仅物品），其余研究变暗且点击无反馈。</li>
-      <li>编辑模式：由命令打开。所有研究都可以点击打开详情，详情中的“开始研究”立即完成下一级，缺少的前置研究同时补齐，特殊研究的按钮为“写入数据库”。长按研究约 0.3 秒后可直接拖动，松开后吸附网格并自动记录位置，该页随之改为手动布局；“导出”覆盖该页的分页文件。</li>
+      <li>玩家模式：前置未完成的研究点击无反馈，悬停列出还需完成的研究；研究阶级高于活动数据库阶级或研究站等级的研究不能开始，也不能下载到数据库，按钮禁用并在悬停时说明。下载到数据库不会重复，队伍任一数据库已存等级不低于队伍等级时提示“已下载到 …”。</li><li>遗忘：详情底部的“遗忘个人等级”只移除自己的个人等级（可选择从哪一级起遗忘），队伍等级按全体成员重新计算；前置因此不足的研究会一并回退，并提示受影响的研究与队列条目。仅物品研究和特殊研究不能个人遗忘。</li>
+      <li>数据库模式用于选择下载到物品的研究：任意队伍已完成、研究阶级不高于本数据库阶级的研究都可以选择，不要求已存于本数据库；特殊研究、未完成或阶级过高的研究变暗且点击无反馈，悬停说明原因。</li>
+      <li>编辑模式：由命令打开。所有研究都可以点击打开详情，详情中的“开始研究”立即完成下一级，缺少的前置研究同时补齐，特殊研究的按钮为“写入数据库”。长按研究约 0.3 秒后可直接拖动到任意位置，松开后记录像素坐标，该页随之改为手动布局，连线按位置自动计算；“导出”覆盖该页的分页文件。</li>
       <li>研究名称、简介、图标和奖励组文字来自客户端研究内容 JSON；分页 ID 为研究命名空间，分页名称读取自动生成的本地化键。</li>
     </ul>
     <div class="ov-export" id="ov-export" hidden><p id="ov-export-path"></p><pre id="ov-export-json"></pre></div>
@@ -243,8 +250,10 @@
       const A = {"ae_clear": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAAJUExURUdwTPLy8k1NZ77pt7AAAAABdFJOUwBA5thmAAAALUlEQVQI12NgwAYCWIFEiCiQmBoGJFQjgARrAJAQDQESYVOBRIQqkFjAha4TALM4BPdYwlb9AAAAAElFTkSuQmCC", "blaze_powder": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAA3UlEQVR42mNgoBWYaszwnyLN//9v/U+yITANQBrMBtFEuwps6z/D/8iGYMgvZsDtKmy2IivG5SoUxeiaYTbichWK4uetqM6D2QgyhGCAooc6zNb///PA9KkeThQ57AbcdPr/e78hisb/pyGa/z9AWLDCH0tAwpz6YzGqBjAbSIO9AYwhEH2pgRmrAXBvgGz9f8MJbMjZMKgryqBhcd/t/4lEhv+r7RhwG/K7ByIJ03w2FUi/8v3/qgvi/BWe8JjBnxbAhqRCbANpAmmG2YwzOpHjGskwdExS3sDA6AAADiD3CAFQdVwAAAAASUVORK5CYII=", "book_enchanted": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABaUlEQVQ4y6WTX0vCUBjGd+PaxgS12ErTWlDp5lQqRYkJWRdSdBPdeVsfKdHoKoIor4JofYuIavVtns472WnmYIgXD+84e5/fec4/AYAwj2IbHEtBcVVCi9WZAMW8BKes4PJE57LXZcQCfrIdfG22J4xHuyn+ba5JiAQ4VQWlgoTRQRv31S4e9QY3hwEkKwQRKhsyunV1ooFSEIDqf0hQm+Z4T4QaA1wcL00ASAQgUZqopTSLKkrGAoTGtgL35Rnn7cWpJjKTKAmfmRlJruui1+tBsA0Znuf5A1EQMr/frOBtkIVjqxgOh34vVR9w2FCYMTMFCUf9uNXw2c/i+qrPza2SCiOXHO+knk74xjAkiPrqPsHLdfBQ6fr/gvE9c3wS/BgLuogz5w8SiGYbZXbwzZZCxrolIa+JiLxItS0Jp820DyEjiUy0kQQxlsX4m9iyZOybSR5VSyVwV7Yw02OiiAUmm53z3K8xTr8ZeFecenyf2AAAAABJRU5ErkJggg==", "book_normal": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAmklEQVR42mNgoDVQk+b4D8NkaUz1FodjogxB12ihwUOcIdhshBkAw1gNwaYR3Va8hoAYIXbCWG1GF0OXFxNg/Q83AJshuDSC8Pbt2/9HR0cjDAAJ4DMEpnHmzJlgtSAabADIGSCN165dw2oIso3ImuFeAAFshqBrhGmGiYP0wA3AZggME9SIDJANgdlKlEZshpCsEd0QsjSSAwAfTxSRtD7JpgAAAABJRU5ErkJggg==", "comparator": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAC0ElEQVQ4T22T7UuTYRTGL7/4hgrqmChqtqYuo+Zbbo7ZdOQyMjUnsYUalDCNitDUQU6wkQ3LFEFNi8qYFisY1rCUmqlF5iuVmTqyFET/i3XuO/YU0ocDh907v3Ou65wH3z+OgUVudDT69XpMttagTq1GqUyGouRkHtbQUEzW1WHIaMTVnBz+28q0G8962gCnzYyjKTLkBwTAVlyMuOBg/gdWwAo76i9jengQ2QkJOOPvj+rAQFyS78PEczs881Pgxeb8fF4si4zEycREXrg2NYK758oxP/ESj3tvIyMmhgMMfn5eFqP2+9CLxUBKWBh0SUmICgrC2awsTHXdws7mKjxz41ibGYPjXidOSKXYQ1CZSMQBMsBbSXlFZiawMdjCxzVly3E6W4Gdn8vck8/uYewlaI5EAlV8PFxtVrzr7kB3vc6rPSzxNhOQNUQxae8oK8PbwX5hPOZLjVYDaUQEvrgc+DHrxqTjIVx3bAJARF4doHeui+lf+vBKGE9MnVnxzuYK1hYmyOgmjLa1QC+Xw1Sa5lWkRHnfPOiFggzlK2OAp31/x1ukx+2NFWytf0OfpRG5GakcaNHpBMB72oyBZOCKSgU2DtPKHhlg+9cyNlcXYKkywJh3RJBmKSnCFnm0tb4Ez9AjlCgOAs1aLd+7/cmA1zcBy1kopBJ0l58SpLm62rG+PAfPqBMq8o7J58XXQkI4wDeer6MP5AO3lxvg7LmJDLraWprarNGAr+JGVQWqTReEAtaNhQ/UUKnkACPdi5wOijVVk4HpBBJufH94OIf8D/SvNGb4zGsnDkWJ/tzBjNkMa2Ehzqen41NjI5pIzm4Qm4BJY/nX8RFIqXtTXh7S2ASzrdf55SXR7p0mEyrJmItKJY6xD2cXiOWpVGQrKICcTplLWHQ7BICGTrYiXoxoypkkptNuIONqjThO30NnaS6U5IE6NhbKuDi8sDbgN8S5XRVKNb4JAAAAAElFTkSuQmCC", "diamond": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAmUlEQVR42mNgGLSAx9zgPxomTTM6INoQmOZF357D8cVfn/8b3N5L2BCYZpAGmGYQ8Hp7EYyJNgCmEWQQDIMMwOsKdM09Xx6hYIWpjfhdgWwAyEZcBuB0BbL/dc5uxGqAdHU2GOM1ABZgIA3IGGQoCIPYeL0B0gyyBaYBhmFieGMCJAnyIy4D8NqObAiyk4lyOhH5gPT8QCwAAFI5PMFG0bbyAAAAAElFTkSuQmCC", "emerald": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABE0lEQVR42mNgwAfiRBCYZADSFMzwH45JMgSq+eb/1/+3/b8AxsQbAtUM0tT0be1/8btJYMywSgdiiDs/8Zo3/zwL0bzb7T9Dueh/hvla/xks8RkC1Hwb6GyY5ojnfRADNlj8Z5iqCTGgXRZiCC4DQLY7fm75n/517v9d/6+ADUr+Mus/w2KD/wzzgHiyBn4D1v89CzYAhEEGgFwDYoNdscz4P0ObPPEGgGxHMQDkgolq+A0o+rAIbgBMc8SXyQgDCLkAZID8nTSwRpDfQZqTvs6CBGK1BIFAhKW+Dcb/pa9BQ3+FKUJznSSBaEQzBKwZZAjRmpENASleYAzBk1VI0AwDIMUgTSCsS6pmZENA2JYXpxIAA/H+OODjldgAAAAASUVORK5CYII=", "ender_pearl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAtElEQVR42mNgoBXgMTeAY7I0qraUgOj/SJg4zSYzO+AagYaAsXR1NtwgojQDaTAWiAuEY5AhMIPwOR2usefLo/86Zzf+5/Z1AmNkwzAMQfYzyABkzWyWhmCMbBBWA2B+BilA1syspgDGeA1BNwBdM7IBMDXYXAEOJEIGwMIIpzdAhsCcCvM/TDPIa1g143IFMgZpBgUuXgNghsCiC+Zn5DSBVzOyIcgGwTQSpRmbQSRrJAUAAJ3r2tVBgV96AAAAAElFTkSuQmCC", "glowstone_dust": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAdklEQVR42t2S0QnAIAxEs6MjuItLuJULpRzhQEoaG4V+VDgE5d6dEpF/r1JEoW3zGKY0BAZVM/cu2loCMidTALyCeGYCarVWj5C5NqtjxxkbhE2YTqP3BLQIAbhkqgdY/gUhBEFMhcI/uA+Pl5qaBxqOpvGTdQFH8r41Ld4WnwAAAABJRU5ErkJggg==", "gold_ingot": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAjUlEQVR42mNgGDIgIIDhPwiTpQmE///nBmOChmBqAoFuJIzFEOya0DXiMATEuHeP4T8qwK6xrY0BBdvYAA2B2Pofagh+TSA1yBjFAJBimCH4NIHwnTJhMEYyAOG3devwa4Lh7YkCCANuLxIGY2wGYNMEwyixADMEZAC6bVg1YYt/mAE4bSIm5ZGsacABAO/4TV2yFTYUAAAAAElFTkSuQmCC", "gold_nugget": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAVklEQVR42mNgGAU4QWUlw38YJkvz///c/yGg+7+np8h/MgyAaP7/n+H/vXsMpBmCbsCdMmGwAUBMqisQtgMNYSDZAJBmsmynigEwQ8hyPpoh5GseGgAARQdbMUJkI7gAAAAASUVORK5CYII=", "iron_ingot": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAhklEQVR42tWRwQnAIBAE05QdWIxvGxAswhosyW4Me3BymlOTfEIWBvJwJojH8ZtZayt4JYGcM7GNjBJWSmmoEU0axWkEHymlKjcTnXMdxphKAQyRnYQzki6AwxxZScB7T7SAvFsIYSlJWiDGSGgBKfC9me4VOIKA9qeLpL2/DNyStMhj6fOd2ipU+SWu7xYAAAAASUVORK5CYII=", "map_filled": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAArElEQVQ4y8XTwQnEIBAF0GnKInL0YBcWYCFh8brVbAfBGtKEyRe+DDohCzlE+Jcw/2kMkVqrPIk8BrCccxJCaIkxSkqpZ99/Fck5C4JZrg547zsCgAjLDGYugVKKcAAAS9v2adHIJYDoogY0YgLjjhYwIg2wincI04Bz879K+hk6iHqFe4Qnxex0BxZiAbo8AUSsO+GRZVgTMJ6ERf3tuZbvagNErB1N4PW/8QDwMkCTOEDYewAAAABJRU5ErkJggg==", "nether_star": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAuUlEQVR42mPwXDiFAYbJAmRrJMYAcy8vOCYLgDTuPHnyf2h29n+yNJ++du3/rUeP/ncsWUKaITBnf/j8+f/f/yvgBhDlFWTNIBeADADRIAwyBKdLYBpBCmGaYQaAwgHEBrkEp2tgAQbyM0gTDF+6xPD/waNyOB+kBmuYgAwACYIkYTaCaJBmmM0wV+AND5g/kb0A04w3DLC5BuQCWCASHQvILkF3NsmJCWYILs0E8xHMK7icTlEOhmEAtI35rmtGUaEAAAAASUVORK5CYII=", "paper": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAY0lEQVR42s3Q0QnAMAhF0azo8g7hEi0GDK/WoJiPVvCncE8lY/x+ROTSPYpbiEXMPLeMYIhAivg/RkCIRGGG2E6AiEoRftNGd11RQezSR4jjkQjYxohEb/I6OUNaoUda4SdzA37wTpMEKWZDAAAAAElFTkSuQmCC", "prismarine_crystals": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABiUlEQVQ4y52Sb0vCUBTGz9fTF36CkqwwIkTwAxT1Kh1FEYGlQlGEabQycypqZEikps0sNxRUkGRBfyEoCE7eC3dMtyI8cBg7e55z7vntgvysAMuhghj3q2W1SUtp0TqpWcbH/tdA2+S83dAli0K1SAf0NdauQMTkGWhK4KsUYEsSwX9fBu/NpWom33UnY+bOUwc2ZREU/Abx4xFu37pQeu/CjlyCQF2kGsPV2Aq+3pRiz+Da9SJ3EUdP7ACXUxH0JHkkteznK4SaNWMW7ARE6E4fY6HbQqF+jYlaHqNSHlcyR2iZtmGwLYEjGjJu4JfK4E4c4kntCjOtCjaVBk0uzeNiikeTfRQJj5nTsN6sBefa8+JGLomrOQHXcgl6fGLW8ugLI3A2bg6d2+s4sbRgyEM1M3Dy1wtohbOxIDUzHmwdLQ+1yXxWACIkgkFw3FlE5XH3UO3joTZg4NiUQaGWh2lyhKbuLwyCY0JHPAzmKSua7Vb6Tu7Lr6EVOlMRcAo8rZObR4x/moeNHwX2xUebOKyoAAAAAElFTkSuQmCC", "quartz": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAACkElEQVQ4T1WT7UtTYRjGL7/4Bkq+oCluCE1dFmpDzMFsChkalqAQKs2gPsyC+tAyBpVgI5kmZe8vFjSZiWaNKZiJbLhZE3NJJmkZSqKZDav/4Om5n3gO88N1nvNy/677es65DxYCYyCVpqXhcW0tfG2nYTEYUKPV4mhOjpAtLg4+iwXP6+txoaRE3Fuc8uDF/Q7AZbfiYK4W5VFRsFdXQxUbKwoIIPBm8zlMuXuhz8xEQ2QkmqKjcTZ/FyYGnVgK+iFga3m5gLVJSTiSlSXAr/4RPDx5HMGJYfQ86ETBzgyhuogIoTfOJ6hNSQFy4+NxKDsbqTExOFFUBP/t6/i5+gVLM16Mv3QwbsAIPKDW8Lq9UO9IghZAY3IyTIWFwPfeVhHXrM/HMf1+pRPJ63ayv1ubwoRguZJJC09JDVHN9x4OyU4kMvgd+sHWv82z5YUPTCailUz2JCZCASVEqtTmCU2O9LPQxipbX/ksIBIlGujuEtsiE6UrrQSFG1E3/i7YR49bgedn/OxRRyszHTaKFIoBFUvRNUWW+5dGIslQP2u/ZNluQAX0kAAZd3L0lTj/tbYsYKp5Nz7Eeu60bzeggzShwj+hDba1ucY8g89YYMwtXqBvuE+YkmG4gdVohPgUZEI3yGQuMMaW5qZY8K2HDXbfEoCMv7I4q8AGPpE6Pv7KjEsT+akmXw8wB4fvtl1hT29cE6CEp0ddyEtN/j8H01YrbFVVOKXTKSb3ONTZ0qxAEiR98o5Aw7tfLivDPkrwvu2q+Buz+Si7zGY08h9GFofL2edAk/kMCjhkr6hAPh9lsYVZz4BiYFSrYVKnII2f705IAO3TWVcH1/l6VGo06KopRXF6OgwZGShWqTBku4h/U0SzXP/DrtMAAAAASUVORK5CYII=", "redstone_dust": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAbUlEQVR42mNgGN5Al4HhPwiTrbkIikk2BKThP1RzCBB7kmIIss0w7EmsIdg0wwwwg7oKpyHIzoY5vQgq5omGsRqii6YRmxfMCBngiWQrNgMIhoUukiKYZjMksf/EBqQuDltJSg+6SJrITo10AQD9d3Y/D5AqowAAAABJRU5ErkJggg==", "repeater": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAfUlEQVR42mNgGHIggpHxPwhTZIAGAwP5BkwtdfvvZKo0gAakBxn+N9cS/0904CxZvvA/CBNlAHLgwDTCDIYZAjSAAWgAbr+hawQZCsLIrsDpN5AB2DSCcEZ6Fm4DQApgLsCmEUgzAGkGvAbAAockjUgGMJClEYshpGukFAAAZWCF1qhrshMAAAAASUVORK5CYII=", "slimeball": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAo0lEQVQ4jWNgGLTAKt7sPzImWWPhmuT/LSeKwRjEBomZBOvjNwhdIwjXQnHqotj/ke2++A0BGQDSBAMgdtm+XLgBIIzTAGTb0Q2AYZB8CC5XwGyvRcIgTTCvgNggFxA0ANlGEG4CisEwyICABk/cBuAKQBDOBsrhdQHMEJBCEMamGaftMACSBNkA04CMQZoJGgAzBIRhGpA1EtSMzSCSNdIdAAA5pwgGVnucwQAAAABJRU5ErkJggg==", "back": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAAJUExURUdwTPLy8k1NZ77pt7AAAAABdFJOUwBA5thmAAAAJ0lEQVQI12NgQAMsIEIERISGwohpS4GECiuQ4AARDKwosqtWIWkHAK/qBYsPDDtwAAAAAElFTkSuQmCC"};
       const $ = id => document.getElementById(id);
       const root = $("pe-ov"), screen = $("ov-screen"), viewport = $("ov-viewport"), plane = $("ov-plane");
-      // The expanded box must end before the next column's link bend (COL - 14), so expanding never covers another research.
-      const COL = 156, ROW = 66, NODE = 44, WIDE = 84, EXP_W = 128, EXP_H = 52, MAX = 2147483647;
+      // Page files store GUI pixels; the preview draws them S times larger. Auto layout uses a 92×40 GUI pixel grid,
+      // so the expanded box (EXP_W) ends before the next column's link bend (COL - BEND).
+      const S = 1.7, GRID_COL = 92, GRID_ROW = 40, COL = GRID_COL * S, ROW = GRID_ROW * S;
+      const NODE = 44, WIDE = 84, EXP_W = 128, EXP_H = 52, BEND = 14, MAX = 2147483647;
       const HOME = {x: 340, y: 120}, LEFT = 320, SIDE = 352, HOLD = 300;
       const fmt = n => Number.isInteger(n) ? n.toLocaleString("en-US") : n.toLocaleString("en-US", {maximumFractionDigits: 2});
       const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
@@ -256,8 +265,9 @@
         {id: "pe_run_tests", name: "运行测试", order: 0, layout: "auto", positions: {}},
         {id: "pe_demo", name: "示例扩展", order: 10, layout: "manual", positions: {}}
       ];
-      const DEMO_POSITIONS = {basic_circuit: [0, 2], data_storage: [1, 1], signal_amp: [1, 3], high_heat: [1, 5], cartography: [2, 0], logic_array: [2, 2],
-        crystal_resonance: [2, 3], refining: [2, 5], quantum_link: [3, 2], optical_link: [3, 3], sticky_seal: [3, 4], alloy: [3, 5], enchant_theory: [4, 1], gemology: [4, 6]};
+      const DEMO_POSITIONS = {basic_circuit: [0, 110], data_storage: [100, 50], signal_amp: [100, 130], high_heat: [100, 220], cartography: [200, 0],
+        logic_array: [205, 75], crystal_resonance: [200, 130], refining: [200, 220], quantum_link: [310, 75], optical_link: [310, 130], sticky_seal: [310, 180],
+        alloy: [310, 230], enchant_theory: [420, 40], gemology: [420, 270]};
 
       const R = {}, ORDER = [];
       const T = t => () => t;
@@ -303,8 +313,8 @@
         rewards: {1: [{id: "pe_demo:circuit_kit", title: "电路套件", children: [{item: "repeater", n: 8}, {item: "comparator", n: 4}]},
           {id: "pe_demo:research_notes", title: "研究资料", children: [{item: "paper", n: 32}, {item: "book_normal", n: 2}]}]},
         summary: "组合多个逻辑门。", desc: ["完成后从两组奖励中任选其一。"]});
-      def("pe_demo:crystal_resonance", {name: "晶体共振", icon: "quartz", ticks: 400, prereq: [["pe_demo:signal_amp", 1]], materials: [["quartz", 32]],
-        resources: () => [{name: "信号处理", total: 400, tick: 1}], summary: "利用晶体传导信号。"});
+      def("pe_demo:crystal_resonance", {name: "晶体共振", icon: "quartz", ticks: 400, tier: T(2), prereq: [["pe_demo:signal_amp", 1]], materials: [["quartz", 32]],
+        resources: () => [{name: "信号处理", total: 400, tick: 1}], summary: "阶级 2 研究，研究阶级高于阶级 1 的数据库。"});
       def("pe_demo:refining", {name: "精炼工艺", icon: "glowstone_dust", ticks: 400, prereq: [["pe_demo:high_heat", 1]], materials: [["glowstone_dust", 16]],
         resources: () => [{name: "算力", total: 2000, tick: 5}], summary: "提纯矿物。"});
       def("pe_demo:quantum_link", {name: "量子缠绕", icon: "ender_pearl", ticks: 1200, tier: T(2), prereq: [["pe_demo:logic_array", 1], ["pe_run_tests:research_station", 2]],
@@ -324,11 +334,15 @@
         resources: () => [{name: "算力", total: 3000, tick: 5}], summary: "研究宝石的性质。"});
 
       function initial(kind) {
+        // personal: the viewer's own levels; others: the highest personal level among other current members; direct: ITEM_ONLY team levels.
         const s = {team: "工程队", viewer: "Steve", env: {center: 1, station: 1, working: 2},
-          levels: {"pe_run_tests:research_manual": 2, "pe_run_tests:research_station": 1, "pe_run_tests:research_loop": 12,
-            "pe_run_tests:java_research_parallel": 1, "pe_run_tests:java_research_compression": 1,
-            "pe_demo:basic_circuit": 1, "pe_demo:data_storage": 1, "pe_demo:signal_amp": 1, "pe_demo:high_heat": 1, "pe_demo:refining": 1,
+          direct: {"pe_run_tests:research_manual": 2, "pe_demo:basic_circuit": 1, "pe_demo:high_heat": 1},
+          personal: {"pe_run_tests:research_station": 1, "pe_run_tests:research_loop": 12, "pe_run_tests:java_research_parallel": 1,
+            "pe_run_tests:java_research_compression": 1, "pe_demo:data_storage": 1, "pe_demo:signal_amp": 1, "pe_demo:refining": 1,
             "pe_demo:crystal_resonance": 1, "pe_demo:optical_link": 1, "pe_demo:alloy": 1},
+          others: {"pe_run_tests:research_station": 1, "pe_run_tests:research_loop": 8, "pe_run_tests:java_research_parallel": 1,
+            "pe_demo:data_storage": 1, "pe_demo:refining": 1, "pe_demo:crystal_resonance": 1, "pe_demo:alloy": 1},
+          reserved: {"pe_run_tests:java_research_parallel": true},
           progress: {"pe_run_tests:research_station": {target: 2, f: 0.38}, "pe_run_tests:java_research_coordination": {target: 1, f: 0.2}, "pe_demo:gemology": {target: 1, f: 0.55}},
           queue: [{id: "pe_run_tests:research_station", target: 2}, {id: "pe_run_tests:java_research_coordination", target: 1}, {id: "pe_demo:logic_array", target: 1}],
           stock: {gold_ingot: 40, redstone_dust: 6, iron_ingot: 500, gold_nugget: 30, paper: 100, quartz: 2, repeater: 20},
@@ -341,7 +355,7 @@
             {name: "原生持久数据库", active: false, tier: 2, capacity: 8, stored: {"pe_run_tests:java_research_compression": 1}}
           ]};
         if (kind === "manual") {
-          s.levels["pe_run_tests:research_manual"] = 1;
+          s.direct["pe_run_tests:research_manual"] = 1;
           s.queue.unshift({id: "pe_run_tests:research_manual", target: 2});
           s.progress["pe_run_tests:research_manual"] = {target: 2, f: 0.5};
           s.manual = {contributor: "Steve", paused: false};
@@ -350,13 +364,28 @@
         return s;
       }
 
-      let state, scenario, pageId = "pe_run_tests", selected = null, choice = {}, toastTimer = 0;
+      let state, scenario, pageId = "pe_run_tests", selected = null, choice = {}, toastTimer = 0, forgetting = null;
       const view = {x: HOME.x, y: HOME.y, z: 1};
       const page = () => PAGES.find(p => p.id === pageId);
       const pageOf = id => PAGES.find(p => p.id === R[id].page);
       const picking = () => scenario === "database";
       const editing = () => scenario === "edit";
-      const level = id => R[id].special ? 0 : (state.levels[id] || 0);
+      // Team level as the server computes it: ITEM_ONLY reads the direct team source, others the highest member personal
+      // level; a research whose prerequisites are not met drops to 0.
+      const raw = (src, id) => R[id].special ? 0 : R[id].policy === "ITEM_ONLY" ? src.direct[id] || 0 : Math.max(src.personal[id] || 0, src.others[id] || 0);
+      function effective(src) {
+        const out = {};
+        const get = id => {
+          if (id in out) return out[id];
+          out[id] = 0;
+          const v = raw(src, id);
+          return out[id] = v > 0 && R[id].prereq.every(([p, l]) => get(p) >= l) ? v : 0;
+        };
+        ORDER.forEach(get);
+        return out;
+      }
+      const level = id => effective(state)[id];
+      const personal = id => state.personal[id] || 0;
       const maxText = r => r.max === MAX ? "∞" : String(r.max);
       const target = id => Math.min(level(id) + 1, R[id].max);
       const label = ([id, lvl]) => R[id].name + " Lv." + lvl + (R[id].page !== pageId ? "（" + pageOf(id).name + "）" : "");
@@ -377,6 +406,17 @@
         return f > 0 ? Math.round(f * 100) : null;
       }
 
+      // Device conditions the server checks before queueing a positive tier target; each entry is [short, full].
+      function envReasons(id) {
+        const r = R[id], tier = r.tier(target(id)), db = activeDb(), out = [];
+        if (r.special || level(id) >= r.max || tier === 0) return out;
+        if (!state.env.center) out.push(["没有网络中心", "队伍没有可用的网络中心"]);
+        if (!db) out.push(["没有活动数据库", "没有活动数据库（需要阶级 " + tier + "）"]);
+        else if (db.tier < tier) out.push(["数据库阶级不足", "活动数据库阶级不足（需要 " + tier + "，当前 " + db.tier + "）"]);
+        if (state.env.station < tier) out.push(["研究站等级不足", "研究站等级不足（需要 " + tier + "，当前最高 " + state.env.station + "）"]);
+        return out;
+      }
+
       function status(id) {
         const r = R[id], c = level(id);
         if (r.special) return {key: "special", text: "特殊研究", tone: "warn"};
@@ -386,6 +426,8 @@
         const q = queueIndex(id);
         if (q === 0) return {key: "head", text: "研究中 " + pct(id) + "%", tone: "good"};
         if (q > 0) return {key: "queued", text: "队列第 " + (q + 1) + " 位", tone: "warn"};
+        const env = envReasons(id);
+        if (env.length) return {key: "short", text: "设备条件不足", tone: "bad"};
         if (progressOf(id) > 0) return {key: "saved", text: "已研究 " + pct(id) + "%", tone: ""};
         return {key: c > 0 ? "partial" : "avail", text: c > 0 ? "可继续研究" : "可研究", tone: ""};
       }
@@ -399,23 +441,42 @@
         if (holder) return {ok: false, done: true, text: "已下载到 " + holder.name + "（Lv." + holder.stored[id] + "）"};
         const db = activeDb();
         if (!db) return {ok: false, text: "队伍没有活动数据库"};
-        if (r.tier(c) > db.tier) return {ok: false, text: "数据库阶级不足（需要 " + r.tier(c) + "，当前 " + db.tier + "）"};
+        if (r.tier(c) > db.tier) return {ok: false, text: "Lv." + c + " 的研究阶级 " + r.tier(c) + " 高于活动数据库阶级 " + db.tier};
         if (!(id in db.stored) && stored(db) >= db.capacity) return {ok: false, text: "数据库容量已满"};
         const clash = r.mutex.find(([m, lvl]) => (db.stored[m] || 0) >= lvl);
         if (clash) return {ok: false, text: "与数据库中的 " + R[clash[0]].name + " 互斥"};
-        return {ok: true, text: db.stored[id] ? "将 " + db.name + " 中的等级从 Lv." + db.stored[id] + " 更新为 Lv." + c : "写入 " + db.name + "（Lv." + c + "）"};
+        return {ok: true, text: (db.stored[id] ? "将 " + db.name + " 中的 Lv." + db.stored[id] + " 更新为 Lv." + c : "写入 " + db.name + " Lv." + c) + "（研究阶级 " + r.tier(c) + "）"};
       }
 
       function enqueue(id) {
-        const r = R[id], s = status(id), tier = r.tier(target(id)), db = activeDb();
+        const r = R[id], s = status(id);
         if (r.special) return {ok: false, text: "特殊研究不能入队"};
         if (s.key === "done") return {ok: false, text: "已达到最高等级"};
         if (s.key === "blocked") return {ok: false, text: "互斥：已完成 " + mutexHit(id).map(label).join("、")};
+        const env = envReasons(id);
+        if (env.length) return {ok: false, text: env.map(e => e[1]).join("\n")};
         if (state.queue.length >= 5) return {ok: false, text: "研究队列已满（5/5）"};
-        if (tier > 0 && !state.env.center) return {ok: false, text: "队伍没有可用的网络中心"};
-        if (tier > 0 && (db ? db.tier : 0) < tier) return {ok: false, text: db ? "数据库阶级不足（需要 " + tier + "，当前 " + db.tier + "）" : "需要阶级 " + tier + " 以上的活动数据库"};
-        if (tier > 0 && state.env.station < tier) return {ok: false, text: "研究站等级不足（需要 " + tier + "，当前 " + state.env.station + "）"};
         return {ok: true, text: "加入后排在第 " + (state.queue.length + 1) + " 位"};
+      }
+
+      function forgetCheck(id) {
+        const r = R[id];
+        if (r.special) return {ok: false, text: "特殊研究没有个人等级"};
+        if (r.policy === "ITEM_ONLY") return {ok: false, text: "仅物品研究记录在队伍直属等级，不能个人遗忘"};
+        if (personal(id) < 1) return {ok: false, text: "你没有此研究的个人等级"};
+        if (state.reserved[id]) return {ok: false, text: "此研究的个人等级正被未完成的物品下载占用，完成后才能遗忘"};
+        return {ok: true, text: "移除你的个人等级，队伍等级按全体成员重新计算"};
+      }
+
+      // Simulates the server result of forgetting from level keep + 1 upward without changing state.
+      function forgetPlan(id, keep) {
+        const src = {direct: state.direct, others: state.others, personal: {...state.personal}};
+        if (keep > 0) src.personal[id] = keep;
+        else delete src.personal[id];
+        const now = effective(state), after = effective(src);
+        const changed = ORDER.filter(k => k !== id && after[k] < now[k]);
+        const dropped = state.queue.filter(q => R[q.id].prereq.some(([p, l]) => after[p] < l) || q.target > after[q.id] + 1);
+        return {src, now, after, changed, dropped};
       }
 
       function editAction(id) {
@@ -431,13 +492,18 @@
         return {ok: true, label: "开始研究", text: "立即完成 Lv." + (level(id) + 1) + "，无视前置、互斥、权限与材料"};
       }
 
+      // Item download target: a research the team has completed with at least one completed level whose tier does not exceed this database.
       function selectable(id) {
-        const r = R[id], db = homeDb();
-        if (r.special) return {ok: false, text: "特殊研究不能作为下载目标"};
-        if (r.policy === "ITEM_ONLY") return level(id) > 0 ? {ok: true, level: level(id), source: "队伍直属研究"} : {ok: false, text: "队伍尚未完成此研究"};
-        return db.stored[id] ? {ok: true, level: db.stored[id], source: "本数据库"} : {ok: false, text: "本数据库没有存储此研究"};
+        const r = R[id], db = homeDb(), c = level(id);
+        if (r.special) return {ok: false, text: "特殊研究不能下载到物品"};
+        if (c < 1) return {ok: false, text: "队伍尚未完成此研究"};
+        let top = 0;
+        for (let l = 1; l <= c; l++) if (r.tier(l) <= db.tier) top = l;
+        if (!top) return {ok: false, text: "研究阶级 " + r.tier(1) + " 高于本数据库阶级 " + db.tier};
+        return {ok: true, level: c, top, source: r.policy === "ITEM_ONLY" ? "队伍直属等级" : "成员个人等级"};
       }
 
+      // Auto layout in GUI pixels: column = same-page prerequisite depth, rows follow the first prerequisite.
       function autoPositions(p) {
         const ids = ORDER.filter(id => R[id].page === p.id), depth = {}, pos = {}, linked = new Set();
         ids.forEach(id => R[id].prereq.forEach(([q]) => { if (R[q].page === p.id) { linked.add(id); linked.add(q); } }));
@@ -465,22 +531,42 @@
         }
         const top = tree.length ? Math.max(...Object.values(pos).map(v => v[1])) + 2 : 0;
         lone.forEach((id, i) => pos[R[id].path] = [i % 6, top + Math.floor(i / 6)]);
+        for (const k in pos) pos[k] = [pos[k][0] * GRID_COL, pos[k][1] * GRID_ROW];
         return pos;
       }
-      const positions = p => p.layout === "manual" ? p.positions : autoPositions(p);
-      const at = ([c, r]) => [c * COL, r * ROW];
+      // Manual layout uses free GUI pixel coordinates; research without a saved position goes below the lowest one.
+      function positions(p) {
+        if (p.layout !== "manual") return autoPositions(p);
+        const pos = {...p.positions}, ids = ORDER.filter(id => R[id].page === p.id), lost = ids.filter(id => !pos[R[id].path]);
+        const below = Object.values(pos).reduce((m, v) => Math.max(m, v[1] + GRID_ROW * 2), 0);
+        lost.forEach((id, i) => pos[R[id].path] = [(i % 6) * GRID_COL, below + Math.floor(i / 6) * GRID_ROW]);
+        return pos;
+      }
+      const at = ([x, y]) => [x * S, y * S];
       const width = id => pct(id) === null ? NODE : WIDE;
+      // Space an expanded research occupies, in GUI pixels; manual positions must keep these apart.
+      const footprint = ([x, y]) => ({l: x, t: y - (EXP_H - NODE) / 2 / S, r: x + EXP_W / S, b: y + (EXP_H + NODE) / 2 / S});
+      const overlaps = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+
+      // Orthogonal link from the right edge of the prerequisite to the left edge of the target, bending BEND before the target.
+      function route(sx, sy, sBottom, sTop, tx, ty, tTop, tBottom) {
+        const bend = tx - BEND;
+        if (sx + 8 <= bend) return `M${sx} ${sy} H${bend} V${ty} H${tx}`;
+        const mid = sBottom + 6 <= tTop ? (sBottom + tTop) / 2 : tBottom + 6 <= sTop ? (tBottom + sTop) / 2 : Math.max(sBottom, tBottom) + 10;
+        return `M${sx} ${sy} H${sx + 8} V${mid} H${bend} V${ty} H${tx}`;
+      }
 
       function nodeTip(id) {
         const r = R[id], c = level(id), lines = [r.name + (r.max > 1 ? "  Lv." + c + " / " + maxText(r) : "")];
         if (r.summary) lines.push(r.summary);
         if (picking()) {
           const s = selectable(id);
-          lines.push(s.ok ? "可选择：Lv." + s.level + "（" + s.source + "）" : s.text);
+          lines.push(s.ok ? "可选择：队伍已完成 Lv." + s.level + (s.top < s.level ? "，本数据库可处理到 Lv." + s.top : "") : s.text);
           return lines.join("\n");
         }
         const s = status(id);
-        lines.push(s.text);
+        if (s.key === "short") lines.push("无法开始 Lv." + target(id) + "（研究阶级 " + R[id].tier(target(id)) + "）", ...envReasons(id).map(e => e[1]));
+        else lines.push(s.text);
         if (s.key === "locked") lines.push("还需完成：" + missing(id).map(label).join("、"));
         if (s.key === "blocked") lines.push("互斥：已完成 " + mutexHit(id).map(label).join("、"));
         if (editing()) {
@@ -508,8 +594,8 @@
               svg += `<path class="${cls} cross" d="M${tx - 24} ${cy} H${tx}"/><circle class="${cls}" style="stroke:${cls === "lit" ? "var(--dark)" : "#c4c7d3"}" cx="${tx - 28}" cy="${cy}" r="4"/>`;
               return;
             }
-            const [sx, sy] = at(pos[R[q].path]), mid = tx - 14;
-            svg += `<path class="${cls}" d="M${sx + width(q)} ${sy + NODE / 2} H${mid} V${cy} H${tx}"/>`;
+            const [sx, sy] = at(pos[R[q].path]);
+            svg += `<path class="${cls}" d="${route(sx + width(q), sy + NODE / 2, sy + NODE, sy, tx, cy, ty, ty + NODE)}"/>`;
           });
         });
         ids.forEach(id => {
@@ -520,14 +606,14 @@
             const s = selectable(id);
             cls = s.ok ? "pick" : "dim";
             badge = s.ok && r.max > 1 ? "Lv." + s.level : "";
-            line = s.ok ? "可选择 Lv." + s.level : s.text;
+            line = s.ok ? "可选择 · 已完成 Lv." + s.level : s.text;
           } else {
-            const s = status(id);
-            cls = {queued: c > 0 ? "partial" : "avail", saved: c > 0 ? "partial" : "avail"}[s.key] || s.key;
+            const s = status(id), base = c > 0 ? "partial" : "avail";
+            cls = {queued: base, saved: base, short: base + " short"}[s.key] || s.key;
             line = r.max > 1 && ["partial", "avail", "queued"].includes(s.key) ? "Lv." + c + " / " + maxText(r) : s.text;
             const q = queueIndex(id);
             if (q >= 0) marks += `<span class="ov-qi">${q + 1}</span>`;
-            if (["locked", "blocked", "special"].includes(s.key)) marks += `<span class="ov-lock"></span>`;
+            if (["locked", "blocked", "special", "short"].includes(s.key)) marks += `<span class="ov-lock"></span>`;
             if (download(id).done) marks += `<span class="ov-db"></span>`;
           }
           let body, style;
@@ -543,7 +629,7 @@
           html += `<button type="button" class="ov-node ${cls}" data-id="${id}" data-tip="${esc(nodeTip(id))}" style="${style}" aria-label="${esc(r.name)}">${body}${marks}` +
             (badge ? `<span class="ov-lv">${badge}</span>` : "") + `</button>`;
         });
-        plane.innerHTML = `<svg class="ov-links" width="${maxX}" height="${maxY}">${svg}</svg>` + html;
+        plane.innerHTML = `<svg class="ov-links" width="${maxX}" height="${maxY + EXP_H}">${svg}</svg>` + html;
       }
 
       function headCard() {
@@ -585,9 +671,10 @@
         }).join("");
         let tl = "";
         if (picking()) {
-          tl += `<div class="ov-card"><header><span>研究下载 · 选择研究</span><small>${esc(db.name)}</small></header><div class="ov-card-body">
-            <div class="ov-stat" style="border:0;padding:0;background:none"><span>数据库阶级</span><span>${db.tier}</span><span>已存研究</span><span>${stored(db)} / ${db.capacity}</span></div>
-            <div class="ov-small">数据库与物品研究按本数据库已存等级下载；仅物品研究按队伍直属等级下载。特殊研究不能作为下载目标。</div></div></div>`;
+          const pickable = ORDER.filter(id => selectable(id).ok).length;
+          tl += `<div class="ov-card"><header><span>下载到物品 · 选择研究</span><small>${esc(db.name)}</small></header><div class="ov-card-body">
+            <div class="ov-stat" style="border:0;padding:0;background:none"><span>数据库阶级</span><span>${db.tier}</span><span>可选研究</span><span>${pickable}</span></div>
+            <div class="ov-small">可以选择队伍已完成、研究阶级不高于本数据库阶级的任意研究，不要求研究已存于本数据库。特殊研究不能下载到物品。</div></div></div>`;
         } else {
           let slots = "";
           for (let i = 0; i < 5; i++) {
@@ -601,17 +688,18 @@
 
         const banner = $("ov-banner");
         banner.className = "ov-banner" + (editing() ? " edit" : "");
-        banner.textContent = editing() ? "编辑模式 · 研究按钮立即完成 · 长按研究拖动" : picking() ? db.name + " · 选择下载研究" : state.team + " · 研究总览";
+        banner.textContent = editing() ? "编辑模式 · 研究按钮立即完成 · 长按研究拖动" : picking() ? db.name + " · 选择下载到物品的研究" : state.team + " · 研究总览";
 
         let tr;
         if (picking()) {
           tr = `<button type="button" class="ov-square" id="ov-back" data-tip="返回数据库"><img src="${A.back}" alt=""></button>`;
         } else {
           tr = `<div class="ov-stat">` + (adb ? `<span>活动数据库</span><span>${esc(adb.name)}</span><span>阶级 · 已存</span><span>${adb.tier} · ${stored(adb)}/${adb.capacity}</span>`
-            : `<span>活动数据库</span><span class="bad">无</span>`) + `<span>网络中心</span><span>Lv.${state.env.center}</span><span>最高研究站</span><span>Lv.${state.env.station}</span></div>`;
+            : `<span>活动数据库</span><span class="bad">无</span>`) + `<span>网络中心</span><span>Lv.${state.env.center}</span><span>最高研究站</span>` +
+            (state.env.station ? `<span>Lv.${state.env.station}</span>` : `<span class="bad">无</span>`) + `</div>`;
           if (editing()) {
             const manual = page().layout === "manual";
-            tr = `<div class="ov-row"><span class="ov-chip ${manual ? "warn" : "plain"}" data-tip="${esc(manual ? "本页使用分页文件中的坐标" : "本页按前置关系自动排列，拖动任一研究后改为手动布局")}">${manual ? "手动布局" : "自动布局"}</span>` +
+            tr = `<div class="ov-row"><span class="ov-chip ${manual ? "warn" : "plain"}" data-tip="${esc(manual ? "本页使用分页文件中的自由坐标，连线按位置自动计算" : "本页按前置关系自动排列，拖动任一研究后改为手动布局")}">${manual ? "手动布局" : "自动布局"}</span>` +
               `<button type="button" class="ov-action" id="ov-exportbtn" data-tip="${esc("覆盖 config/prototype_eng/research_content/data/" + pageId + ".json")}">导出</button></div>` + tr;
           }
         }
@@ -625,7 +713,7 @@
         $("ov-legend").innerHTML = (picking()
           ? [["var(--good-bg)", "var(--good)", "可选择"], ["var(--locked)", "var(--muted)", "不可选择"]]
           : [["var(--good-bg)", "var(--good)", "已完成"], ["var(--good-bg)", "var(--good-line)", "部分等级完成"], ["var(--slot)", "var(--line)", "可研究"], ["var(--light)", "var(--dark)", "研究中"],
-            ["var(--locked)", "var(--muted)", "前置未完成"], ["var(--bad-bg)", "var(--bad)", "互斥阻止"], ["var(--warn-bg)", "var(--warn)", "特殊研究"]])
+            ["var(--slot)", "var(--bad-line)", "设备条件不足"], ["var(--locked)", "var(--muted)", "前置未完成"], ["var(--bad-bg)", "var(--bad)", "互斥阻止"], ["var(--warn-bg)", "var(--warn)", "特殊研究"]])
           .map(([bg, bd, t]) => `<span><i style="background:${bg};border-color:${bd}"></i>${t}</span>`).join("") +
           (picking() ? "" : `<span><i style="background:var(--mark);border:1px solid var(--dark);width:8px;height:8px"></i>已下载到数据库</span>`);
       }
@@ -662,10 +750,12 @@
         const policy = r.special ? "仅研究盘" : r.policy === "ITEM_ONLY" ? "仅物品" : "数据库与物品";
         let chips, body, foot;
         if (picking()) {
-          const s = selectable(id);
-          chips = `<span class="ov-chip good">Lv.${s.level}</span><span class="ov-chip plain">${s.source}</span>`;
-          body = `<div class="ov-h"><span>下载信息</span></div><div class="ov-kv"><span>下载等级</span><span>Lv.${s.level}</span><span>研究阶级</span><span>${r.tier(s.level)}</span><span>下载方式</span><span>${policy}</span></div>`;
-          foot = `<div class="ov-buttons"><button type="button" class="ov-action wide" id="ov-pick">选择此研究</button></div><div class="ov-msg">返回数据库后在操作区显示研究阶级与费用</div>`;
+          const s = selectable(id), db = homeDb();
+          chips = `<span class="ov-chip good">可选择</span><span class="ov-chip plain">已完成 Lv.${s.level}</span>`;
+          body = `<div class="ov-h"><span>下载信息</span></div><div class="ov-kv"><span>队伍等级</span><span>Lv.${s.level}（研究阶级 ${r.tier(s.level)}）</span>` +
+            `<span>本数据库阶级</span><span>${db.tier}</span><span>下载方式</span><span>${policy}</span></div>` +
+            (s.top < s.level ? `<div class="ov-small">Lv.${s.top + 1} 起研究阶级高于本数据库，要求更高等级的下载配方由数据库界面拒绝</div>` : "");
+          foot = `<div class="ov-buttons"><button type="button" class="ov-action wide" id="ov-pick">选择此研究</button></div><div class="ov-msg">返回数据库后由放入的材料确定下载配方与费用</div>`;
         } else {
           const s = status(id), percent = pct(id);
           chips = `<span class="ov-chip ${s.tone}">${s.text}</span>` + (r.max > 1 ? `<span class="ov-chip plain">Lv.${c} / ${maxText(r)}</span>` : "");
@@ -674,14 +764,27 @@
           const res = r.resources(t);
           const resHtml = res.length ? `<div class="ov-res">${res.map(x => `<span>${x.name}</span><span>${fmt(x.total)}${x.tick ? "（单站上限 " + fmt(x.tick) + "/t）" : ""}</span>`).join("")}</div>`
             : `<div class="ov-none">${tier === 0 ? "手动研究不使用网络资源" : "无网络资源需求"}</div>`;
-          let info = `<span>${done ? "最高等级" : "目标等级"}</span><span>Lv.${t}</span><span>研究阶级</span><span>${tier === 0 ? "0（手动研究）" : tier}</span>` +
-            `<span>研究时间</span><span>${fmt(r.ticks)} t</span><span>下载方式</span><span>${policy}</span>`;
+          let info = r.special ? "" : `<span>队伍等级</span><span>${c > 0 ? "Lv." + c + "（研究阶级 " + r.tier(c) + "）" : "未完成"}</span>`;
+          if (!done && !r.special) info += `<span>目标等级</span><span>Lv.${t}（研究阶级 ${tier}${tier === 0 ? "，手动研究" : ""}）</span>`;
+          if (r.special) info += `<span>研究阶级</span><span>${tier}</span>`;
+          if (!r.special && r.policy !== "ITEM_ONLY") info += `<span>你的个人等级</span><span>Lv.${personal(id)}</span>`;
+          info += `<span>研究时间</span><span>${fmt(r.ticks)} t</span><span>下载方式</span><span>${policy}</span>`;
           if (editing()) {
-            const [col, row] = positions(page())[r.path];
-            info += `<span>研究 ID</span><span>${id}</span><span>坐标</span><span>[${col}, ${row}]${page().layout === "manual" ? "" : "（自动布局）"}</span>`;
+            const [x, y] = positions(page())[r.path];
+            info += `<span>研究 ID</span><span>${id}</span><span>坐标</span><span>(${x}, ${y})${page().layout === "manual" ? "" : "（自动布局）"}</span>`;
+          }
+          let cond = "";
+          if (!done && !r.special) {
+            const adb = activeDb(), env = state.env;
+            cond = tier === 0 ? `<div class="ov-none">手动研究，不需要网络中心、数据库或研究站</div>` : `<ul class="ov-req">` +
+              [["网络中心", env.center ? "Lv." + env.center : "无", !env.center],
+                ["活动数据库阶级 ≥ " + tier, adb ? adb.name + " " + adb.tier : "无", !adb || adb.tier < tier],
+                ["研究站等级 ≥ " + tier, env.station ? "最高 Lv." + env.station : "无", env.station < tier]]
+                .map(([k, v, miss]) => `<li class="${miss ? "miss" : ""}"><span>${esc(k)}</span><span>${esc(v)}</span></li>`).join("") + `</ul>`;
           }
           body = (percent !== null ? `<div class="ov-work"><span>Lv.${t} 研究进度</span><span>${percent}%</span><i class="ov-bar"><u style="width:${percent}%"></u></i></div>` : "") +
             `<div class="ov-h"><span>研究信息</span></div><div class="ov-kv">${info}</div>` +
+            (cond ? `<div class="ov-h"><span>开始条件</span><small>Lv.${t}</small></div>${cond}` : "") +
             `<div class="ov-h"><span>前置研究</span></div>${reqList(r.prereq, ([p, lvl]) => level(p) < lvl, "已完成", "未完成")}` +
             (r.mutex.length ? `<div class="ov-h"><span>互斥研究</span></div>${reqList(r.mutex, ([m, lvl]) => level(m) >= lvl, "未完成", "已完成")}` : "") +
             (done && !r.special ? "" : `<div class="ov-h"><span>材料</span><small>Lv.${t}</small></div>${mats}<div class="ov-h"><span>网络资源</span><small>Lv.${t}</small></div>${resHtml}`) +
@@ -698,7 +801,20 @@
             if (qi === 0) queueButtons = `<button type="button" class="ov-action" id="ov-remove" data-tip="移出后保留已研究的进度">移出队列</button>`;
             else if (qi > 0) queueButtons = `<button type="button" class="ov-action" id="ov-current" data-tip="移到队首，原队首保留进度">设为当前</button><button type="button" class="ov-action" id="ov-remove" data-tip="移出后保留已研究的进度">移出队列</button>`;
             else queueButtons = `<button type="button" class="ov-action${q.ok ? "" : " off"}" id="ov-enqueue" data-tip="${esc(q.text)}">${progressOf(id) > 0 ? "继续研究" : "开始研究"}</button>`;
-            foot = `<div class="ov-buttons">${queueButtons}${dlButton(qi > 0)}</div><div class="ov-msg ${dl.done ? "good" : dl.ok ? "" : "bad"}" data-tip="${esc(dl.text)}">${esc(dl.ok || dl.done ? dl.text : "无法下载：" + dl.text)}</div>`;
+            const fg = forgetCheck(id), forgetButton = r.special || r.policy === "ITEM_ONLY" ? ""
+              : `<button type="button" class="ov-action wide${fg.ok ? "" : " off"}" id="ov-forget" data-tip="${esc(fg.text)}">遗忘个人等级</button>`;
+            foot = `<div class="ov-buttons">${queueButtons}${dlButton(qi > 0)}${forgetButton}</div><div class="ov-msg ${dl.done ? "good" : dl.ok ? "" : "bad"}" data-tip="${esc(dl.text)}">${esc(dl.ok || dl.done ? dl.text : "无法下载：" + dl.text)}</div>`;
+            if (forgetting && forgetting.id === id) {
+              const k = forgetting.k, plan = forgetPlan(id, k - 1), p = personal(id);
+              const lines = [`<span>你的个人等级 Lv.${p} → Lv.${k - 1}，队伍等级 Lv.${plan.now[id]} → Lv.${plan.after[id]}</span>`];
+              if (plan.changed.length) lines.push(`<span class="bad">前置不足，队伍等级回退：${esc(plan.changed.map(x => R[x].name + " Lv." + plan.now[x] + " → " + plan.after[x]).join("、"))}</span>`);
+              if (plan.dropped.length) lines.push(`<span class="bad">研究队列移除：${esc(plan.dropped.map(q => R[q.id].name + " Lv." + q.target).join("、"))}</span>`);
+              lines.push("<span>不退还材料和费用，已有的奖励资格保留，数据库中已下载的内容不变</span>");
+              foot = `<div class="ov-step"><span>遗忘</span><b>Lv.${k} 及以上</b>` +
+                `<button type="button" class="ov-square${k <= 1 ? " off" : ""}" id="ov-forget-minus" aria-label="减少">−</button><button type="button" class="ov-square${k >= p ? " off" : ""}" id="ov-forget-plus" aria-label="增加">+</button></div>` +
+                `<div class="ov-info">${lines.join("")}</div>` +
+                `<div class="ov-buttons"><button type="button" class="ov-action" id="ov-forget-confirm">确认遗忘</button><button type="button" class="ov-action" id="ov-forget-cancel">取消</button></div>`;
+            }
           }
         }
         side.innerHTML = `<div class="ov-shead"><div class="ov-slot"><img src="${A[r.icon]}" alt=""></div><strong data-tip="${esc(r.name + "\n" + id)}">${esc(r.name)}</strong>` +
@@ -742,9 +858,15 @@
         else if (start < LEFT) view.x += LEFT - start + 16;
       }
 
+      // Raises the source this research is stored in (ITEM_ONLY: team direct, otherwise the viewer's personal level) and
+      // creates reward eligibility for each newly completed level, as the completion propagation does.
       function complete(id, lvl) {
-        state.levels[id] = lvl;
-        if (R[id].rewards[lvl]) (state.claims[id] = state.claims[id] || {})[lvl] = "UNCLAIMED";
+        const src = R[id].policy === "ITEM_ONLY" ? state.direct : state.personal;
+        src[id] = Math.max(src[id] || 0, lvl);
+        if (R[id].rewards[lvl]) {
+          const claims = state.claims[id] = state.claims[id] || {};
+          if (!claims[lvl]) claims[lvl] = "UNCLAIMED";
+        }
         state.queue = state.queue.filter(q => !(q.id === id && q.target <= lvl));
       }
 
@@ -756,28 +878,40 @@
           toast("已将 " + r.name + " Lv." + db.stored[id] + " 写入 " + db.name);
           return;
         }
-        const before = {...state.levels};
+        const before = effective(state);
         const fill = (rid, need) => {
           R[rid].prereq.forEach(([p, lvl]) => fill(p, lvl));
           for (let l = level(rid) + 1; l <= need; l++) complete(rid, l);
         };
         r.prereq.forEach(([p, lvl]) => fill(p, lvl));
-        const added = ORDER.filter(k => k !== id && level(k) > (before[k] || 0)).map(k => R[k].name + " Lv." + level(k));
+        const mid = effective(state);
+        const added = ORDER.filter(k => k !== id && mid[k] > before[k]).map(k => R[k].name + " Lv." + mid[k]);
         complete(id, level(id) + 1);
         toast("已完成 " + r.name + " Lv." + level(id) + (added.length ? "，补齐前置：" + added.join("、") : ""));
       }
 
+      function forget() {
+        const f = forgetting, plan = forgetPlan(f.id, f.k - 1);
+        state.personal = plan.src.personal;
+        const dropped = new Set(plan.dropped);
+        state.queue = state.queue.filter(q => !dropped.has(q));
+        forgetting = null;
+        toast("已遗忘 " + R[f.id].name + " Lv." + f.k + " 及以上，队伍等级 Lv." + plan.now[f.id] + " → Lv." + plan.after[f.id]);
+      }
+
+      // Records a free GUI pixel position; the expanded box of the moved research must not overlap another research.
       function place(g) {
         const p = page(), path = R[g.id].path;
         const top = parseFloat(g.node.style.top) + (g.node.classList.contains("expanded") ? (EXP_H - NODE) / 2 : 0);
-        const col = Math.max(0, Math.round(parseFloat(g.node.style.left) / COL)), row = Math.max(0, Math.round(top / ROW));
-        const taken = Object.entries(positions(p)).find(([k, v]) => k !== path && v[0] === col && v[1] === row);
+        const pos = [Math.max(0, Math.round(parseFloat(g.node.style.left) / S)), Math.max(0, Math.round(top / S))];
+        const mine = footprint(pos);
+        const taken = Object.entries(positions(p)).find(([k, v]) => k !== path && overlaps(mine, footprint(v)));
         if (taken) {
-          toast("该位置已有 " + R[p.id + ":" + taken[0]].name + "，位置未改变");
+          toast("与 " + R[p.id + ":" + taken[0]].name + " 距离过近，位置未改变");
         } else {
           if (p.layout !== "manual") { p.positions = autoPositions(p); p.layout = "manual"; }
-          p.positions[path] = [col, row];
-          toast("已记录 " + R[g.id].name + " 的位置 [" + col + ", " + row + "]，导出后写入分页文件");
+          p.positions[path] = pos;
+          toast("已记录 " + R[g.id].name + " 的位置 (" + pos[0] + ", " + pos[1] + ")，导出后写入分页文件");
         }
         render();
       }
@@ -785,6 +919,7 @@
       function activate(id) {
         if (!editing() && (picking() ? !selectable(id).ok : status(id).key === "locked")) return;
         selected = selected === id ? null : id;
+        forgetting = null;
         if (selected) reveal(id);
         render();
       }
@@ -869,7 +1004,7 @@
         const b = event.target.closest("button");
         if (!b || b.classList.contains("ov-node")) return;
         if (b.dataset.scenario) { reset(b.dataset.scenario); return; }
-        if (b.dataset.page) { pageId = b.dataset.page; selected = null; view.x = HOME.x; view.y = HOME.y; render(); return; }
+        if (b.dataset.page) { pageId = b.dataset.page; selected = null; forgetting = null; view.x = HOME.x; view.y = HOME.y; render(); return; }
         if (b.dataset.focus) {
           focus(b.dataset.focus);
           if (editing() || status(b.dataset.focus).key !== "locked") selected = b.dataset.focus;
@@ -887,10 +1022,15 @@
         }
         if (b.classList.contains("off")) return;
         switch (b.id) {
-          case "ov-close": selected = null; render(); break;
+          case "ov-close": selected = null; forgetting = null; render(); break;
           case "ov-back": toast("返回数据库界面"); break;
           case "ov-pick": toast("已选择 " + R[selected].name + "，返回数据库"); break;
           case "ov-instant": instant(selected); render(); break;
+          case "ov-forget": forgetting = {id: selected, k: personal(selected)}; render(); break;
+          case "ov-forget-cancel": forgetting = null; render(); break;
+          case "ov-forget-minus": forgetting.k = Math.max(1, forgetting.k - 1); render(); break;
+          case "ov-forget-plus": forgetting.k = Math.min(personal(selected), forgetting.k + 1); render(); break;
+          case "ov-forget-confirm": forget(); render(); break;
           case "ov-enqueue":
             state.queue.push({id: selected, target: target(selected)});
             if (state.queue.length === 1 && R[selected].tier(target(selected)) === 0) state.manual = {contributor: state.viewer, paused: false};
@@ -936,7 +1076,8 @@
 
       document.addEventListener("keydown", event => {
         if (event.key !== "Escape") return;
-        if (selected) { selected = null; render(); }
+        if (forgetting) { forgetting = null; render(); }
+        else if (selected) { selected = null; render(); }
         else toast(picking() ? "返回数据库界面" : "关闭研究总览");
       });
 
@@ -959,6 +1100,7 @@
         PAGES[1].layout = "manual";
         PAGES[1].positions = JSON.parse(JSON.stringify(DEMO_POSITIONS));
         selected = null;
+        forgetting = null;
         choice = {};
         pageId = "pe_run_tests";
         view.x = HOME.x; view.y = HOME.y; view.z = 1;
