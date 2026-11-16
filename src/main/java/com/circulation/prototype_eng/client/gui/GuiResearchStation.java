@@ -6,15 +6,20 @@ import ae2.client.gui.AEBaseGui;
 import ae2.client.gui.Icon;
 import ae2.client.gui.widgets.AE2Button;
 import ae2.client.gui.widgets.Scrollbar;
-import ae2.client.gui.widgets.SimpleIconButton;
 import com.circulation.prototype_eng.api.research.view.ResearchStationView;
 import com.circulation.prototype_eng.container.ContainerResearchStation;
 import com.circulation.prototype_eng.container.ResearchStationPacket;
 import com.circulation.prototype_eng.localization.ResearchStationGuiText;
-import net.minecraft.client.gui.GuiButton;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.text.ITextComponent;
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 
@@ -24,6 +29,7 @@ import java.util.List;
 
 import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.*;
 
+@SideOnly(Side.CLIENT)
 public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
     private static final ResourceLocation BACKGROUND = GuiAtlas.texture("gui_research_station");
     private static final int HERO_X = 12, HERO_Y = 28, HERO_WIDTH = 360, HERO_HEIGHT = 50;
@@ -31,9 +37,9 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
     private static final int MATERIAL_COLUMNS = 5, MATERIAL_WIDTH = 33, MATERIAL_HEIGHT = 30, RESOURCE_HEIGHT = 32;
     private static final int SECTION_HEIGHT = 12, SECTION_GAP = 8, EMPTY_HEIGHT = 14;
     private static final int QUEUE_X = 212, QUEUE_Y = 104, QUEUE_ROW = 22, QUEUE_CARD = 20, QUEUE_WIDTH = 154, QUEUE_SIZE = 5;
-    private static final int ACTION_Y = 254;
+    private static final int ACTION_Y = 258, ACTION_HEIGHT = 13;
     private static final String[] QUEUE_NUMBERS = {"1", "2", "3", "4", "5"};
-    private final GuiButton[] actions = new GuiButton[4];
+    private final QueueButton[] actions = new QueueButton[4];
     private final Scrollbar scrollbar = new Scrollbar(Scrollbar.SMALL);
     private final DecimalFormat percentFormat = new DecimalFormat("0.#'%'");
     private long selected, knownElapsed = -1;
@@ -49,18 +55,18 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
         super(container, player);
         xSize = 384;
         ySize = 288;
-        actions[0] = new SimpleIconButton(Icon.ARROW_UP, ResearchStationGuiText.Up.text(),
+        actions[0] = new QueueButton(17, Icon.ARROW_UP, ResearchStationGuiText.Up.text(),
             () -> container.manage(selected, ResearchStationView.Action.UP));
-        actions[1] = new SimpleIconButton(Icon.ARROW_DOWN, ResearchStationGuiText.Down.text(),
+        actions[1] = new QueueButton(17, Icon.ARROW_DOWN, ResearchStationGuiText.Down.text(),
             () -> container.manage(selected, ResearchStationView.Action.DOWN));
-        actions[2] = new AE2Button(0, 0, 60, 18, ResearchStationGuiText.SelectCurrent.text(),
+        actions[2] = new QueueButton(56, null, ResearchStationGuiText.SelectCurrent.text(),
             () -> container.manage(selected, ResearchStationView.Action.CURRENT));
-        actions[3] = new AE2Button(0, 0, 60, 18, ResearchStationGuiText.Remove.text(),
+        actions[3] = new QueueButton(55, null, ResearchStationGuiText.Remove.text(),
             () -> container.manage(selected, ResearchStationView.Action.REMOVE));
-        widgets.add("researchUp", actions[0], new Point(QUEUE_X, ACTION_Y + 1));
-        widgets.add("researchDown", actions[1], new Point(QUEUE_X + 18, ACTION_Y + 1));
-        widgets.add("researchCurrent", actions[2], new Point(QUEUE_X + 36, ACTION_Y));
-        widgets.add("researchRemove", actions[3], new Point(QUEUE_X + 98, ACTION_Y));
+        widgets.add("researchUp", actions[0], new Point(QUEUE_X, ACTION_Y));
+        widgets.add("researchDown", actions[1], new Point(QUEUE_X + 20, ACTION_Y));
+        widgets.add("researchCurrent", actions[2], new Point(QUEUE_X + 40, ACTION_Y));
+        widgets.add("researchRemove", actions[3], new Point(QUEUE_X + 99, ACTION_Y));
         scrollbar.setPosition(new Point(LIST_SCROLL_X, LIST_Y));
         scrollbar.setHeight(LIST_HEIGHT);
         scrollbar.setCaptureMouseWheel(false);
@@ -68,7 +74,7 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
     }
 
     @Override
-    @SuppressWarnings("DataFlowIssue")
+    @SuppressWarnings({"DataFlowIssue", "ForLoopReplaceableByForEach"})
     public void initGui() {
         super.initGui();
         container.view.invalidateText();
@@ -89,6 +95,8 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
         noMaterials = ResearchStationGuiText.NoMaterials.getLocal();
         noNetworkResources = ResearchStationGuiText.NoNetworkResources.getLocal();
         completedLabel = ResearchStationGuiText.Completed.getLocal();
+        for (int index = 0; index < actions.length; index++)
+            actions[index].label = actions[index].getMessageComponent().getFormattedText();
         scaleFactor = new ScaledResolution(mc).getScaleFactor();
     }
 
@@ -104,9 +112,6 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
         return container.view.resources.isEmpty() ? EMPTY_HEIGHT : container.view.resources.size() * RESOURCE_HEIGHT;
     }
 
-    /**
-     * Offset from the materials section top to the first network resource row.
-     */
     private int resourcesOffset() {
         return SECTION_HEIGHT + materialHeight() + SECTION_GAP + SECTION_HEIGHT;
     }
@@ -349,6 +354,12 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
     }
 
     private List<String> tooltip(int mouseX, int mouseY) {
+        for (int index = 0; index < actions.length; index++) {
+            var action = actions[index];
+            if (isPointInRegion(action.x - guiLeft, action.y - guiTop, action.width, action.height, mouseX, mouseY)
+                && (index < 2 || fontRenderer.getStringWidth(action.label) * 0.75F > action.width - 6))
+                return List.of(action.label);
+        }
         if (isPointInRegion(18, 11, titleWidth(), LINE_HEIGHT, mouseX, mouseY) && !fits(fontRenderer, title, titleWidth()))
             return List.of(title);
         if (isPointInRegion(teamX(), 11, 366 - teamX(), LINE_HEIGHT, mouseX, mouseY)
@@ -379,5 +390,37 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
         if (resourceY < 0 || resourceY >= container.view.resources.size() * RESOURCE_HEIGHT) return null;
         var resource = container.view.resources.get(resourceY / RESOURCE_HEIGHT);
         return List.of(resource.name(), resource.amounts(), resource.progress());
+    }
+
+    @SideOnly(Side.CLIENT)
+    private static final class QueueButton extends AE2Button {
+        private final @Nullable Icon icon;
+        private String label = "";
+
+        private QueueButton(int width, @Nullable Icon icon, ITextComponent message, Runnable onPress) {
+            super(0, 0, width, ACTION_HEIGHT, message, onPress);
+            this.icon = icon;
+        }
+
+        @Override
+        public void drawButton(Minecraft minecraft, int mouseX, int mouseY, float partialTicks) {
+            if (!visible) return;
+            hovered = enabled && mouseX >= x && mouseY >= y && mouseX < x + width && mouseY < y + height;
+            GlStateManager.enableBlend();
+            GlStateManager.enableDepth();
+            AE2Button.renderButtonBackground(x, y, width, height, true, hovered);
+            renderButtonText(minecraft.fontRenderer, hovered ? 0x517497 : LIGHT, 0);
+            if (!enabled) drawRect(x, y, x + width, y + height, 0x80000000 | PANEL);
+        }
+
+        @Override
+        protected void renderButtonText(FontRenderer font, int color, int yOffset) {
+            if (icon != null) {
+                icon.getBlitter().dest(x + (width - 8) / 2, y + (height - 8) / 2, 8, 8)
+                    .blit();
+            } else {
+                GuiLabel.drawCentered(font, label, x + 3, y + (height - 6) / 2F, width - 6, 6, color, false);
+            }
+        }
     }
 }

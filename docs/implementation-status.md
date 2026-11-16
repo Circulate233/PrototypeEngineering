@@ -1,5 +1,15 @@
 # 实施进度
 
+## 2026-11-16 研究站按钮预览差异修正
+
+用户截图显示研究站正式界面的箭头、按钮和文字明显大于确认预览，禁用文字为深色，按钮上下边缘也不齐。原实现同时使用 `SimpleIconButton` 工具栏背景和 18 像素高的 `AE2Button`，禁用状态采用 AE 的深色文字及额外纵向偏移。
+
+研究站四个按钮统一使用 `AE2Button` 的原生背景、点击处理及原启用条件，尺寸高 13、宽 17/17/56/55、间隔 3，末端与队列卡片右侧对齐。AE 原生上下箭头按 8×8 绘制，标签以 6 像素内容高度居中，启用、悬停和禁用共用相同位置。禁用时以面板颜色按 50% 淡化整个按钮，浅色标签、边框与箭头共同变淡；不使用工具栏按钮的额外高度。箭头悬停继续显示动作名称，长翻译可查看完整文字。研究站及其内部按钮补齐客户端限定。
+
+`compileJava`、`processResources`、Spotless、2 项现有 `ResearchStationDisplayTest` 与 IDEA MCP 定向构建通过。修改的 Java 已经 IDEA MCP 格式化，`get_file_problems(errorsOnly:false)` 错误、警告及弱警告均为 0。没有添加布局常量或像素测试。使用当前 v1.1.1 AE 依赖的实际纹理和当前 Minecraft 字体按 2 倍、3 倍比例核对启用、队首和无权限状态；静态核对图不代表游戏渲染验收。
+
+证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261116/research-station-buttons/`：`gradle.log`、`test-totals.json`、`idea-final.json`、`idea-build.json`、原始反馈截图和六张核对图。下一步由用户复验实际按钮栏、禁用与悬停文字、鼠标点击。未启动 Minecraft，本轮本地英文提交，保留 AGENTS.md 用户修改。
+
 ## 2026-11-16 研究总览预览与客户端内容规则
 
 新增 [研究总览预览](previews/research-overview.html) 和设计说明 [research-overview.md](research-overview.md)。预览为全屏界面，画布铺满屏幕，分页为贴住顶边、带顶部横条的定宽标签，左上角下方为圆形队列槽和当前研究面板，悬浮面板使用 AE 底色、窗口边框、按钮和方形图标按钮贴图，包含研究站研究、手动研究、无活动数据库、数据库选择下载研究和编辑模式五种状态。“运行测试”页的研究、材料、网络资源、互斥、开始条件说明和奖励取自 `run/scripts/30_pe_run_network.zs` 与 `ResearchStationExamples`，名称取自示例语言文件；“示例扩展”页为演示多前置、跨页前置、互斥、多级奖励选择和手动布局的虚构内容。图标为 Minecraft 1.12.2 原版物品贴图及 AE `back`、`clear` 图标。
