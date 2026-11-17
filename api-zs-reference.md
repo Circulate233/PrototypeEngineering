@@ -256,7 +256,7 @@ ParallelController.create("example:parallel_module", "tile.example.parallel_modu
 
 时间和每项网络资源在已支付材料开放的比例内独立累计。网络增量取普通设备结算后余额、各参与站 `min(研究单站 tick 上限, 本站资源速率)` 之和、剩余总量及已支付材料开放的额度中的最小值。网络不足时允许部分推进；时间到达 T 后仍需等待全部材料和网络资源满足。每台实际工作站占 1 并发并支付工作 FE；只有材料付款、尚不足以开放一个完整时间 tick 时，也会由一台站承担这次工作费用。
 
-进度归队伍的 `(研究 ID, 目标等级)` 所有。队列最多 5 项，只推进队首；切换、重排、移出队列和站点卸载均保留已付材料、累计网络资源和时间，重新入队继续。多站可跨维度共同研究，研究站在普通设备工作后使用剩余并发和资源，优先级最低。GUI 显示百分比时间条、当前研究的网络占用和队列；材料为 `当前可用 / 剩余需求`，当前可用汇总本队合格研究站的输入，并限制为不超过剩余需求。
+进度归队伍的 `(研究 ID, 目标等级)` 所有。队列最多 5 项，只推进队首；切换、重排、移出队列和站点卸载均保留已付材料、累计网络资源和时间，重新入队继续。多站可跨维度共同研究，研究站在普通设备工作后使用剩余并发和资源，优先级最低。GUI 显示百分比时间条、当前研究的网络占用和队列；材料为 `剩余可用 / 剩余需消耗`，可用量封顶到剩余需求。普通研究汇总本队合格研究站输入；手动队首只查询实际贡献者的在线背包，无人或暂停时不查其他玩家或机器。普通站进度与手动无付款未完成的时间推进延后到世界保存；手动背包扣料、奖励和下载导入等事务仍同步保存，见[Java 研究 API](api.md#研究与计算网络)。
 
 first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表示研究站阶数。`prerequisite(id, minimumLevel)` 要求前置研究达到指定等级，`mutex(id, minimumLevel)` 则在对应研究达到该等级时阻止这一阶段。奖励方法的 level 是研究的实际等级，必须位于本段范围内。
 
@@ -264,9 +264,9 @@ first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表�
 
 `Research.alwaysAllowed()` 表示资格函数不增加额外条件，实际权限仍会由服务器规则检查。自定义资格函数读取 `targetLevel`、`networkCenterLevel`、`sharedLevel(researchId)` 和 `available(resource)` 等捕获事实，返回 bool；它不能修改资源或把当前数量当作后续工作已经预留的数量。`unlock(effectId, targetId, level)` 声明达到指定等级后的解锁效果，必须在研究定义被注册前完成。
 
-`Research.display(...)` 已移除；脚本只注册研究业务数据，名称、简介、说明、图标、奖励组文字与分页布局由客户端 `config/prototype_eng/research_content/` JSON 提供。基础文件位于 `data/<namespace>/<path>.json`，当前语言同名文件只覆盖其中出现的字段，不使用 `en_us` 回退，语言文件缺失时直接使用基础内容。图标内置 `item`、`fluid` 和 `icon` 三种解析，扩展解析器由 Java addon 在客户端注册；奖励组文字在 `rewards` 对象中按完整组 ID 提供。分页文件为 `data/<namespace>.json`，名称键为 `gui.prototype_eng.research_page.<namespace>`；规则见[研究总览](docs/research-overview.md#客户端研究内容与分页文件)。研究站、数据库与下载 JEI 显示按研究 ID 在客户端读取内容，进度自动同步；材料按总量直接结算。
+`Research.display(...)` 已移除；脚本只注册研究业务数据，名称、简介、说明、图标、奖励组文字与分页布局由客户端 `config/prototype_eng/research_content/` JSON 提供。基础文件位于 `data/<namespace>/<path>.json`，当前语言同名文件只覆盖其中出现的字段，对象递归合并，数组及其他值整体替换；不使用 `en_us` 回退，语言文件缺失时直接使用基础内容。图标内置 `item`、`fluid` 和 `icon` 三种解析，扩展解析器由 Java addon 在客户端注册；奖励组文字在 `rewards` 对象中按完整组 ID 提供。分页文件为 `data/<pageId>.json`，`title` 缺失时使用 `gui.prototype_eng.research_page.<pageId>` 名称键。未提供 `researches` 时按页 ID 对应命名空间默认分组；完整 ID 列表可跨命名空间，空列表保留空页，`positions` 使用完整研究 ID 的自由整数坐标。规则与客户端读写入口见[研究总览](docs/research-overview.md#客户端研究内容与分页文件)及[Java 研究 API](api.md#研究与计算网络)。研究站、数据库与下载 JEI 按研究 ID 在客户端读取内容，内容文件不注册业务研究。
 
-研究总览的打开入口由 Java addon 使用 `ResearchGuiAccess` 封装，脚本不注册默认打开按键或物品，也没有自动打开总览的方法。测试 mod 默认用 R 打开玩家模式；管理员通过 `/pe_research_edit`（命令权限等级 2）打开编辑模式。Java 打开方法见 [API](api.md#研究与计算网络)。
+研究总览的打开入口由 Java addon 使用 `ResearchGuiAccess` 封装，脚本不注册默认打开按键或物品，也没有自动打开总览的方法。测试 mod 默认用 R 打开玩家模式；管理员通过 `/pe_research_edit [在线玩家名]`（命令权限等级 2）打开编辑模式，省略参数开自己，控制台须指定目标。目标玩家无需 OP，授权限于本次准确容器，关闭或换容器以及授权者离线、重连或失权后撤销。编辑模式右键可创建空分页、移入已注册研究及编辑基础/游戏语言 JSON；语言层保存须已有基础文件。总览视角单独保存在客户端，Java 打开、编辑和保存方法见 [API](api.md#研究与计算网络)。
 
 `ResearchServer.permissions(callback)` 设置服务端权限回调。回调的 action 和返回值使用 Java 对应枚举的字符串名称；不添加特例时调用 `context.standardDecision(action)`。在启动阶段注册，否则研究服务可能已完成初始化。
 

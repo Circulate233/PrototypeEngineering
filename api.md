@@ -74,16 +74,16 @@ public final class ExampleRecipeRegistration {
 
 机器类型常用的设置如下：
 
-| 设置                       | 对机器的作用                                           |
-| -------------------------- | ------------------------------------------------------ |
-| `recipePool(poolId)`       | 添加扫描范围，机器只从所选池中寻找配方。               |
-| `recipeGroup(groupId)`     | 在所选池中进一步按配方组筛选。                         |
-| `component(type)`          | 声明每个机器实例都需要的组件。                         |
-| `workSlot(definition)`     | 添加一个逻辑工位，多线程控制器可分别给各工位安排配方。 |
-| `attribute(id, base)`      | 设置并行数、速度等属性的初始值。                       |
-| `executionPolicy(policy)`  | 选择配方扫描和工作回调能否异步执行。                   |
+| 设置                       | 对机器的作用                                             |
+| -------------------------- | -------------------------------------------------------- |
+| `recipePool(poolId)`       | 添加扫描范围，机器只从所选池中寻找配方。                 |
+| `recipeGroup(groupId)`     | 在所选池中进一步按配方组筛选。                           |
+| `component(type)`          | 声明每个机器实例都需要的组件。                           |
+| `workSlot(definition)`     | 添加一个逻辑工位，多线程控制器可分别给各工位安排配方。   |
+| `attribute(id, base)`      | 设置并行数、速度等属性的初始值。                         |
+| `executionPolicy(policy)`  | 选择配方扫描和工作回调能否异步执行。                     |
 | `requiresNetwork(boolean)` | 显式设置普通控制器是否必须接入逻辑队伍网络才能执行配方。 |
-| `controllerModel(modelId)` | 选择控制器使用的模型声明。                             |
+| `controllerModel(modelId)` | 选择控制器使用的模型声明。                               |
 
 默认控制器左下角提供16个物品格。`controllerInventorySlots(int)` 设置开放数量，默认0；`controllerInventorySlots(ToIntFunction<MachineInstance>)` 按当前机器实例计算数量。配置动态函数后优先使用其返回值；没有函数、函数被设为null、机器尚未装配或已注销时使用固定值。返回值必须在0到16之间，越界会抛出 `IllegalArgumentException`，不会自动裁剪。动态函数在服务端工作线程结束后的边界执行，必须只读取状态，禁止在函数内修改机器、库存或世界。
 
@@ -146,7 +146,7 @@ public final class MachineRegistration {
 
 普通控制器的共同基类 `MachineInstance` 负责网络门限，多线程和跨配方控制器继承相同规则。配置文件 `config/prototype_eng/controllers.cfg` 在启动时读取：
 
-```properties
+```text
 network {
     B:defaultRequiresNetwork=false
 }
@@ -177,6 +177,8 @@ var recipe = new MachineRecipe(
 需要每 tick 消耗或产出时，使用完整的 `ResourceRequirement(inputs, inputsPerTick, outputsPerTick, outputs, voidExcessOutputs)`。四个列表依次表示开始消耗、每 tick 消耗、每 tick 产出和完成产出。`EnergyRequirement` 使用相同次序的四个 long 数值；例如 `new EnergyRequirement(0, 8, 0, 0, false)` 表示每个成功工作 tick 消耗 8 FE。
 
 所有数量都按一次配方填写，执行时再乘最终并行数。`voidExcessOutputs` 允许丢弃输出仓装不下的余量，但仍需要有效输出目标。`FuzzyInputGroup` 允许在列出的资源中选料；`DynamicInputGroup` 根据匹配器在库存中找料。两者在开始阶段确定本次具体使用的资源。`ResourceChance` 设置概率，`RandomOutputPool` 则从带权重的候选输出中抽取产物。
+
+`ChanceMath.sampleTimes(random, parallels, chancePercent[, tuning])` 返回 long 成功次数：概率超过 100% 的整数部分保证执行，其余部分对整批并行做二项采样。非有限概率拒绝，非正并行或概率返回 0，计数正溢出饱和到 `Long.MAX_VALUE`；`maxTimes(parallels, chancePercent)` 提供保守容量上界。`BinomialSampler.sample(random, n, probability[, tuning])` 按批量和概率选择直接试验、随机位计数、反演或 BTRD，不使用泊松或高斯近似；旧 `ProbabilityTuning.exactSmallBinomial` 仅影响最多 64 次的直接试验分派，所有路径均使用二项分布。暂停时保留原采样游标，已确认的概率结果在重试中复用，详细规则见[概率与检查点](docs/recipes.md#概率随机输出与检查点)。
 
 阶段列表、输入候选、选择分支及 modifier 列表都是借用的定义数据，发布后必须保持列表和元素不变。修改配方时必须发布新定义，禁止修改已发布列表。`RandomOutputPool` 仅在移除非正权重时建立过滤列表。
 
@@ -251,19 +253,23 @@ Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 
 
 ### 研究与计算网络
 
-`ResearchDefinition.builder(id)` 只创建服务端研究数据；名称、简介、图标、奖励组文字、分页和布局由客户端 `config/prototype_eng/research_content/` 的 JSON 提供，`.displayName(...)` 与 `.icon(...)` 已移除，详见[研究总览规则](docs/research-overview.md#客户端研究内容与分页文件)。客户端 `ClientResearchContents.get(id)` / `name(id)` 读取显示文字，`icon(id)` 返回可绘制的 `ResearchIcon`。`ResearchIcons.register(kind, parser)` 在客户端初始化时注册图标解析器，接收完整图标 JSON；内置 `item` 按物品 ID 和可选 `meta` 解析为 `AEItemKey`，`fluid` 按 Forge 流体名称解析为 `AEFluidKey`，`icon` 按完整 AE 图标 ID 使用 `Icon.byId`。文件加载先读 `data/<namespace>/<path>.json`，再按当前语言同名文件中实际出现的字段覆盖，不使用 `en_us` 回退；不存在语言覆盖文件不记录告警。显示内容返回的集合与 JSON 均为只读借用，调用方不得修改。奖励组使用 `RewardGroup(id, children)` 仅定义业务行为，其标题与说明放在研究内容 `rewards` 对象中按完整组 ID 记录。
+`ResearchDefinition.builder(id)` 只创建服务端研究数据；名称、简介、图标、奖励组文字、分页和布局由客户端 `config/prototype_eng/research_content/` 的 JSON 提供，`.displayName(...)` 与 `.icon(...)` 已移除，详见[研究总览规则](docs/research-overview.md#客户端研究内容与分页文件)。客户端 `com.circulation.prototype_eng.client.research.ClientResearchContents.get(id)` / `name(id)` 读取显示文字，`icon(id)` 返回可空的 `ResearchIcon`。`ResearchIcons.register(kind, parser)` 在客户端初始化时注册图标解析器，接收完整图标 JSON；内置 `item` 按物品 ID 和可选 `meta` 解析为 `AEItemKey`，`fluid` 按 Forge 流体名称解析为 `AEFluidKey`，`icon` 按完整 AE 图标 ID 使用 `Icon.byId`。文件加载先读 `data/<namespace>/<path>.json`，再按当前语言同名文件中实际出现的字段覆盖；对象字段递归合并，数组及其他值整体替换，不使用 `en_us` 回退。语言文件缺失时使用基础内容；基础文件缺失时名称回退研究 ID，并对该研究告警一次。显示内容返回的集合与 JSON 均为只读借用，调用方不得修改。奖励组使用 `RewardGroup(id, children)` 仅定义业务行为，其标题与说明放在研究内容 `rewards` 对象中按完整组 ID 记录。
 
-`ClientResearchContents.page(pageId)` 读取 `ResearchPage(order, manual, title, researches, positions)`；`researches == null` 按研究命名空间默认分组，显式列表使用完整研究 ID 并可跨命名空间，空列表保留空页。`title == null` 使用默认分页本地化键，`positions` 的键为完整研究 ID，坐标采用自由整数作者坐标。`pageIds()` 包含配置的空页，`pageResearches(pageId, allRegistered)` 解析实际成员并从默认页排除已显式归属的研究。`retainPage(pageId, page)` 保留拖动到客户端内存，`exportPage(pageId, page)` 覆盖 `data/<pageId>.json`。手动移动不检查重叠。
+`ClientResearchContents.page(String pageId)` 读取 `ResearchPage(int order, boolean manual, @Nullable String title, @Nullable List<ResourceLocation> researches, Object2ObjectMap<String, Position> positions)`，兼容三参数构造 `ResearchPage(order, manual, positions)`。`researches == null` 按页 ID 对应的研究命名空间默认分组；显式列表使用完整研究 ID 并可跨命名空间，空列表保留空页。`pageName(pageId)` 使用 `title`，缺失时使用 `gui.prototype_eng.research_page.<pageId>` 本地化键。`positions` 使用完整研究 ID 和自由整数作者坐标；旧短键可读取，导出统一使用完整 ID。`ResearchPage.move(String id, int x, int y)` 返回 void，只更新内存坐标，不检查重叠或写盘。
 
-`createPage(id, title)` 创建并立即保存空自动布局页；`addResearch(pageId, id, x, y, allRegistered)` 将已注册研究加入/移动到目标页并保存归属，手动页使用指定坐标，自动页由 GUI 重排。`readContentJson(id, language)` / `saveContentJson(id, language, text)` 操作某一显示层，`language == null` 指基础 `data`；保存前验证 JSON 和有效覆盖内容，失败不替换旧文件，成功清理该研究的显示缓存。总览编辑模式右键菜单调用这些客户端接口；语言下拉来自游戏支持语言，只保存本客户端文件，不注册服务端研究或变更研究业务定义。
+`pageIds()` 枚举并加载配置页，包含空页；独立调用方应先调用它，再用 `pageResearches(pageId, allRegistered)` 解析已注册成员，使默认页正确排除其他已加载页中的显式归属。`retainPage(pageId, page)` 仅保留客户端内存布局，`exportPage(pageId, page)` 覆盖 `data/<pageId>.json`；页 ID 使用小写字母、数字、下划线、点或连字符，不能是 `.` 或 `..`。页面成员和坐标由客户端持有，交付后按对应编辑接口修改。
 
-`com.circulation.prototype_eng.api.gui.ResearchGuiAccess.open(EntityPlayerMP)` 在服务器打开玩家总览，`open(EntityPlayerMP, MachineControllerHost)` 以指定物理数据库打开下载目标选择模式；客户端入口调用 `requestOpen()` 交由服务器打开。库不注册打开按键或物品，入口由 addon 决定，测试 mod 默认使用 R。数据库界面已通过容器接入选择和返回，保留原数据库的操作槽物品。编辑命令为 `/pe_research_edit [玩家名]`，执行者须有权限等级 2；省略参数时打开自己，指定在线玩家则打开对方，控制台必须指定玩家。`openEditor(EntityPlayerMP)` 保留本人管理员入口，`openEditor(ICommandSender authority, EntityPlayerMP target)` 为同服目标绑定本次管理员授权会话。目标不需要成为 OP；关闭/更换容器、授权者离线/重连/失权使会话失效，编辑提交时再次校验。该授权仅用于编辑完成与特殊写库，普通研究投影和操作仍使用目标本人的真实权限。
+`createPage(String id, String title)` 创建并立即保存空自动布局页；`addResearch(String pageId, ResourceLocation id, int x, int y, List<ResourceLocation> allRegistered)` 将已注册研究加入/移动到目标页。手动页使用指定坐标，自动页由 GUI 重排；先保存目标页，再依次移除其他显式页的归属，多文件修改不是原子迁移。`readContentJson(id, language)` / `saveContentJson(id, language, text)` 操作某一显示层，`language == null` 指基础 `data`；保存语言层前必须已有基础文件。JSON 解析或有效覆盖字段检查失败时不写文件；实际写入使用直接覆盖，IO 失败会抛出带路径的异常，不保证原文件完整。成功保存后清理该研究的文字与图标缓存。`revision()` 在清缓存、切换语言、保存内容、创建页和调整研究归属时变化，`retainPage/exportPage` 本身不递增；它不是研究存档版本。总览编辑模式右键菜单调用这些客户端接口；语言下拉来自游戏支持语言，只保存本客户端文件，不注册服务端研究或变更研究业务定义。
 
-`ResearchWorld.saveChanged(time)` 用于世界保存事件：未变化时不写盘，普通研究进度先标记变更；显式 `checkpoint(time)` 和物品事务仍保留同步保存契约。`ManualResearch.Checkpoint.progressed(state)` 默认调用 `persist(state)`，世界适配器仅对无付款、未完成的时间推进延后保存。服务器使用玩家、队伍和单笔操作分片与 redo 日志，只替换变化记录，不增加外部库；文件与迁移规则见[研究增量存档](docs/research-persistence.md)。
+`com.circulation.prototype_eng.api.gui.ResearchGuiAccess.open(EntityPlayerMP)` 在服务器打开玩家总览，`open(EntityPlayerMP, MachineControllerHost)` 以指定物理数据库打开下载目标选择模式；仅限客户端的 `requestOpen()` 请求服务器打开玩家模式。库不注册打开按键或物品，入口由 addon 决定，测试 mod 默认使用 R。数据库界面已通过容器接入选择和返回，保留原数据库的操作槽物品；`returnToDatabase(player, database, @Nullable selected)` 打开原库并提交可选研究 ID。编辑命令为 `/pe_research_edit [在线玩家名]`，执行者须有权限等级 2；省略参数时打开自己，指定在线玩家则打开对方，控制台必须指定玩家。`openEditor(EntityPlayerMP)` 保留本人管理员入口，`openEditor(ICommandSender authority, EntityPlayerMP target)` 为同服目标绑定本次新打开的准确容器会话。目标不需要成为 OP；关闭/更换容器、授权者离线/重连/失权使会话失效，编辑提交时再次校验。该授权仅用于编辑完成与特殊写库，普通研究投影和操作仍使用目标本人的真实权限。
 
-`ResearchLevelStage.builder(first, last)` 必须设置 `.durationTicks(long)`、研究阶数和网络资源公式，多个阶段完整覆盖 `1..maxLevel`。时间为单站基准 tick，多站可加速。阶数 0 使用玩家手动研究且禁止网络资源；正阶由研究站推进。`.material(AEKey, long)` 添加普通资源总量，`.materialRequirement(...)` 只接受固定静态输入。
+`ResearchOverviewViewState.load(Path configRoot)` / `save(Path configRoot, State state)` 保存客户端视角到 `prototype_eng/client/research_overview_view.json`。`State(String page, double panX, double panY, double zoom)` 与研究内容及作者布局分开保存；加载要求非空白分页、有限坐标和 `0.5..2` 的缩放，文件缺失、损坏或无效时返回 null，保存失败记录告警。正式 GUI 在尺寸、分页与玩家数据就绪后恢复一次，缺页回退，resize 不重新覆盖当前视角。
 
-`ResearchResourceFormula.builder().constant(type, total)` / `.affine(type, base, slope)` 定义网络资源总量，`.perTick(type, limit)` / `.affinePerTick(type, base, slope)` 定义单站 tick 上限。等级增长使用 `当前等级 - 阶段首级`，总量与上限按研究时间 T 换算，数量为 double。同一资源重复添加及混用总量/tick 定义会相加，最终总量除以 T 得到单站上限。公式直接借用 builder 完成的 Map，交付后必须停止修改。站点自身速率与研究 tick 上限共同限制本次增量。`DATABASE_AND_ITEM` 允许个人研究写入数据库或下载成物品；`ITEM_ONLY` 普通完成量归队伍并通过物品下载交付。
+`ResearchWorld.saveChanged(long time)` 是所属服务器线程的世界保存入口，时间不能倒退；无变更、无检查点请求且无失败待重试快照时不调用磁盘 writer，忙碌时登记检查点请求。普通研究站的时间、材料与网络累计先标记 dirty；手动无付款且未完成的纯时间推进也延后到世界保存。入队、管理、背包扣料、奖励、下载和导入继续同步保存；显式 `checkpoint(long time)` 请求耐久检查点，活动事务期间保留请求。`ManualResearch.Checkpoint.progressed(state)` 默认调用 `persist(state)`，仅世界适配器覆盖上述纯时间延后规则。服务器按玩家、队伍和单笔操作分片并使用 pending redo，只替换变化记录；仍捕获和编码完整业务快照来识别变化。旧单文件仅首次迁移并保留原字节，迁移后不以旧快照替代损坏的新存档；文件、校验和恢复规则见[研究增量存档](docs/research-persistence.md)。
+
+`ResearchLevelStage.builder(first, last)` 必须设置 `.durationTicks(long)`、研究阶数和网络资源公式，多个阶段完整覆盖 `1..maxLevel`。时间为单站基准 tick，多站可加速。阶数 0 使用玩家手动研究，只允许 `AEItemKey` 材料且禁止网络资源；正阶由研究站推进，可使用其他 `AEKey` 材料。`.material(AEKey, long)` 添加普通资源总量，`.materialRequirement(...)` 只接受固定静态输入。
+
+`ResearchResourceFormula.builder().constant(type, total)` / `.affine(type, base, slope)` 定义网络资源总量，`.perTick(type, limit)` / `.affinePerTick(type, base, slope)` 按单站每 tick 用量定义，并乘研究时间 T 换算为总量。等级增长使用 `目标等级 - 阶段首级`，数量为 double；同一资源重复添加及混用总量/tick 定义会相加。`ResearchLevelStage.resourceDemandForLevel(int level)` 返回合计总量，`resourceLimitsForLevel(int level)` 返回合计总量除以 T 的单站限制，均校验等级属于本阶段。实际网络增量同时受该限制、研究站自身 `rates`、可用网络量及剩余需求约束。公式直接借用 builder 完成的 Map，交付后必须停止修改；总览不显示“单站上限”文案，业务公式与研究站速率接口仍保留。`DATABASE_AND_ITEM` 允许个人研究写入数据库或下载成物品；`ITEM_ONLY` 普通完成量归队伍并通过物品下载交付。
 
 计算网络资源由使用方实现并复用 `NetworkResourceType` 单例，不需要资源注册，库没有默认资源。提供资源的物品实现 `NetworkComputerComponent`；已有显式物品适配仍可用组件注册事件，但登记适配不会使普通物品符合默认运算仓的插入条件。物品接口定义优先于适配表。机器用 `MachineOwnership` 保存所有者，`MachineNetworkDevice` 声明角色，`NetworkRecipeWork` 处理研究和数值需求。
 
@@ -276,15 +282,28 @@ Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 
 Java 分别给类型声明 `MachineOwnership.TYPE` 和 `NetworkCenter.DEVICE` / `ResearchStation.DEVICE`，给装配指定实例工厂并将对应 `DEVICE` 标为 `recreated`。例如研究站装配：
 
 ```java
-MachineAssembly.builder(type, "research-station-v1")
-    .instanceFactory(value -> new ResearchStationController(value, 1,
-        Reference2DoubleMaps.singleton(COMPUTE, 10), 8))
-    .recreated(ResearchStation.DEVICE).build();
+import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.machine.ResearchStationController;
+import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
+import com.circulation.prototype_eng.api.research.station.ResearchStation;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+
+public final class ResearchStationRegistration {
+    public static MachineAssembly assembly(MachineType type, NetworkResourceType compute) {
+        return MachineAssembly.builder(type, "research-station-v1")
+            .instanceFactory(value -> new ResearchStationController(value, 1,
+                Reference2DoubleMaps.singleton(compute, 10), 8))
+            .recreated(ResearchStation.DEVICE).build();
+    }
+}
 ```
 
 `rates` 是 `Reference2DoubleMap<NetworkResourceType>`，未列资源速率为0；定义后按只读要求借用，不复制。速率由开发者定义，等级与非负FE在加载代固定。自定义运行时可直接实现 `NetworkCenter` 或 `ResearchStation`，无业务tick的实现返回 `requiresTick() = false`。
 
 普通资源各自已支付比例等权累计开放进度，例如 A×2、B×10、C×100，支付 A×1 开放 1/6；缺少一种材料可先支付其他种类。时间和各项网络资源在开放比例内独立累计，网络增量同时受普通设备结算后余额、各站有效速率和剩余总量限制。每台实际工作站占 1 并发并支付 FE，材料、FE、网络量、进度共同提交；付款不足以形成 1 tick 时也按工作收费。中心只对生效者收费，同设备同 tick 不重复扣费。详细计算见[研究站](docs/research-stations.md)。
+
+总览和研究站的材料显示使用“剩余可用 / 剩余需消耗”，可用量封顶到剩余需求。普通研究汇总本队合格研究站可供料输入；手动队首只读取实际贡献者的在线背包，无贡献者或暂停时不借用其他玩家或机器。总览无正在进行的研究时隐藏左侧状态面板，右上按数据库阶级显示已存/总容量，并显示网络中心与最高研究站等级。
 
 `ResearchWorld` 的 writer 只保存传入的只读快照，禁止修改研究源或重入研究操作。写入失败会保留 pendingSave，后续状态修改前先重试同一快照，禁止在 writer 内修改快照或重新推进业务。
 
@@ -338,7 +357,7 @@ ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, 
 
 `MachineGuiRegistry.register(typeId, factory)` 在双方初始化时注册公共侧容器；客户端用 `MachineScreenRegistry.register(typeId, containerClass, factory)` 注册匹配屏幕。容器直接继承 `AEBaseContainer`，屏幕直接继承 `AEBaseGui`。默认普通机器、中心、计算机和研究站已经使用对应容器与屏幕，自定义界面只注册需要覆盖的类型。
 
-`MachineRenderRegistrationEvent` 在客户端 postInit 派发，`bindMachine/bindComponent/bindStructure` 分别绑定机器、实际组件和结构；提前声明可用 `ClientRenderDeclarations.register`。返回的 `Registration` 可以关闭绑定，旧句柄不能删除后续替换的新绑定。`view()` 的 Map 只读，使用 `current(view)` 检查实际视图身份。必须把屏幕、原生渲染器、GL 调用和 JEI 类限制在客户端加载。
+`MachineRenderRegistrationEvent` 在客户端 postInit 派发，通过 `event.bindings()` 的 `bindMachine/bindComponent/bindStructure` 分别绑定机器、实际组件和结构；提前声明可用 `ClientRenderDeclarations.register`。返回的 `Registration` 可以关闭绑定，旧句柄不能删除后续替换的新绑定。该 bindings 的 `view()` Map 只读，使用同一 bindings 的 `current(view)` 检查实际视图身份。必须把屏幕、原生渲染器、GL 调用和 JEI 类限制在客户端加载。
 
 `GeckoModelBinding.layers` 和 `MachineAnimationState` 发布的层列表在请求、快照或派生缓存仍被保留期间必须保持不变。未提供 animation 资源时不应用动画层；否则选择顺序为层列表非空的 `MachineAnimationState`、数据多层键、数据单层键、声明 layers、默认动画名，后面的层覆盖冲突骨骼通道。模型 offset 随机器朝向变换，yOffset 沿世界 Y 添加。`MachineRenderSnapshot`、预览模型的 cells/BOM/occurrences 和 occurrence 路径只读交付，禁止在构造器、getter 或每帧重复复制。
 
@@ -346,7 +365,7 @@ ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, 
 
 普通配方池由库提供 JEI 页面，单输入池使用专用单输入布局。配方池的 `withExistingJeiPage(uid)` 返回带外部分类入口的新池，必须保留并注册该返回值。目标分类实际存在时只补充控制器入口，不重复生成本池页面。
 
-`StructurePreviews.client().request(id, settings)` 从服务端已同步的目录请求预览，缺少条目时返回 null。非空请求分次 `advance(maxSteps)`，`READY` 后才能取得完整 `model()`；`STALE` 必须重新请求，`FAILED` 保存实际错误。已完成模型使用 `StructurePreviews.current(model)` 检查当前目录。`StructurePreviewScreens.open(...)` 打开预览，`panel(...)` 为自定义 JEI 页面提供面板，`project(...)` 设置世界投影。
+`StructurePreviews.client().request(id, settings)` 从服务端已同步的目录请求预览，缺少条目时返回 null。非空请求分次 `advance(maxSteps)`，`READY` 后才能取得完整 `model()`；`STALE` 必须重新请求，`FAILED` 保存实际错误。已完成模型使用 `StructurePreviews.client().current(model)` 检查当前目录。`StructurePreviewScreens.open(...)` 打开预览，`StructurePreviewScreens.panel(...)` 为自定义 JEI 页面提供面板，`StructurePreviews.client().project(...)` 设置世界投影；这些入口仅限客户端。
 
 `StructurePreviewSettings` 借用 sliceCounts、displayOptions、cellOptions，改变选择时建立新配置；`explicitOption(cell)` 的 `-1` 表示没有显式选择。`StructureProjectionOptions.layer()` 的 null 表示三维模式，层号为相对 Y 坐标且允许负数。`StructurePreviewModel.Builder.freeze(bounds)` 直接交付完成列表，调用后必须停止使用 builder。
 
@@ -387,6 +406,8 @@ ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, 
 | `requiresOwnerThread()`       | 返回 true 时要求相关工作留在拥有机器的主线程。         |
 | `crossRecipeTickIo(payload)`  | 描述逐 tick IO 是否相同，供跨配方控制器决定能否合批。  |
 
+包装需求通过 `children(payload)` 声明不可变的完整结构子需求，用于能力判断和嵌套存档绑定，该方法不执行子需求。会有序取得后续步骤的系统必须在取得前用 `continuedAcquisition(payload)` 声明；事务的 `continuation()` 返回稳定且无副作用的游标，`acquireNext()` 返回下一事务或以 null 结束。外层执行器拥有每一步的取得、可撤销提交、完成与反序撤销，扩展不能自行结算所返回的资源令牌或后续事务。`reservations()` 必须交付全部已取得令牌，包括拒绝前取得的部分，返回后保持稳定只读。
+
 [ExampleRequirements.java](docs/api-examples/java/ExampleRequirements.java)提供机器等级条件：在机器类型上声明等级属性，在配方中加入最低等级需求，开始时比较属性。它不扣料，因此成功时返回共享成功事务；不足时返回带本地化原因的阻塞结果。若等级需要全程满足，还必须在 `tick` 中继续检查。
 
 `RequirementTransaction` 让一组需求能够共同成功或撤销。取得阶段先准备效果和资源预留，执行器检查全部需求后才提交。`commit` 应用业务效果，`rollback` 撤销已经取得或提交的效果，`complete` 在整组成功后释放补偿信息。必须能撤销部分提交，禁止在 `complete` 中再扣材料或进行可能拒绝业务的操作；否则其他需求失败时无法完整撤回。
@@ -421,7 +442,9 @@ reader 已建立独立数据时可用 identity copier，内置 `TILE_NBT` 直接
 
 `ResourceStorage` 实现需要支持普通读写、数量快照、revision 和预留。`reserveExtract/reserveInsert` 返回 `ReservationResult`，必须在 `status() == ACCEPTED` 后读取 `reservation()`；`INVALID_STORAGE`、`STALE_SNAPSHOT`、`INSUFFICIENT` 表示真实拒绝，令牌为空。令牌负责占用、提交和回滚。
 
-`StorageSnapshot.available()` 是只读规划数量表，修改它不会扣取实际库存；原存储版本或范围失效后必须重新捕获。大批量预留用 `beginReserveExtract/beginReserveInsert`：`advance(budget)` 完成后才能读取 `result()`，成功读取把令牌清理责任交给调用方。未转交且 `hasObligations()` 的捕获必须完成 `cancel(budget)`；返回 false 时必须继续清理。`ResourceReservation` 的状态方法在原 `StorageContext` 锁内执行，完整批次通过 `ResourceBatch` fence 协调。`UNKNOWN` 不允许重放原提交或终态回调，必须保留原事务直到结果明确。
+`StorageSnapshot.available()` 是只读规划数量表，不得修改；实际扣料通过预留和事务完成，原存储版本或范围失效后必须重新捕获。`snapshotFor(AEKey key)` 和 `beginQuantityCapture(AEKey key)` 提供单键规划入口，默认实现可回退完整快照；不带 key 的 `beginQuantityCapture()` 捕获完整数量。保留同一 `QuantityCapture` 并反复 `advance(RecipeWorkBudget budget)`，完成后读取只读 `available()`，使用前通过 `current()` 检查版本。
+
+大批量预留用 `beginReserveExtract/beginReserveInsert`：它们按请求上限取得，`amount()` 返回实际取得量，可能小于请求。`advance(budget)` 完成后才能读取 `result()`，成功读取把令牌清理责任交给调用方。未转交且 `hasObligations()` 的捕获必须完成 `cancel(budget)`；返回 false 时必须继续清理。`ResourceReservation` 的状态方法在原 `StorageContext` 锁内执行，完整批次通过 `ResourceBatch` fence 协调。`UNKNOWN` 不允许重放原提交或终态回调，必须保留原事务直到结果明确。
 
 同一物理余额必须返回同一个 `StorageContext` 和一致的存储 identity，包括资源和 FE 适配器。这样库才能去除重复来源并协调共享仓室。禁止为同一库存创建多个互不关联的 context；否则并行判断会把一份库存计算多次。输入输出确实独立的混合仓应分别提供 context。
 
@@ -435,7 +458,9 @@ reader 已建立独立数据时可用 identity copier，内置 `TILE_NBT` 直接
 
 `ResearchStartCondition` 添加研究资格判断，`RewardEventAction` 执行外部奖励。奖励可能因保存确认失败而重试，必须按 `RewardEventKey` 记录是否已应用；已发放的效果在重试时返回 `ALREADY_APPLIED`，禁止再次发放。
 
-`NetworkRecipeExtension` 在目录发布时为配方追加网络需求，`NetworkParticipant` 为实际网络提供资源。参与者必须由服务器登记并在失效时关闭。`OwnerTeamResolver` 可替换团队来源，返回当前成员的独立快照。
+`NetworkRecipeExtension` 在目录发布时为配方追加网络需求。外部宿主实现 `NetworkParticipant`，通过 `NetworkParticipants.forServer(server).register(participant)` 接入该服务器已有网络，保留 `Registration` 并在失效时关闭；`OwnerTeamResolver` 可替换团队来源，返回当前成员的独立快照。
+
+外部工作先读取登记句柄的可空 `snapshot()`，再调用 `plan(UUID planId, Snapshot snapshot, ResourceLocation workType, @Nullable ResourceLocation materialSource)`；必须使用该句柄返回的当前快照对象，只在 `status() == ACCEPTED` 时读取 `work()`。`Work.commit/cancel` 按结果处理，`CLEANUP_PENDING` 保留原句柄继续确认清理，禁止重放原 commit。已完成工作用显式 `compensate()` 撤销，退款仍归原 tick；关闭旧登记句柄不会解除后来的登记。除不可变值读取外，接口及回调均在网络所属线程调用，捕获快照可交给工作线程计算。
 
 `MachineNetworkDevice.capturedComponent` 的 `current` 必须检查实际读取的后端身份与版本；组件或存储替换后旧捕获必须失效。禁止用组件列表副本或列表对象身份代替后端检查，默认数据库直接绑定其存储组件。
 
@@ -465,6 +490,8 @@ MachineType.create("example:smelter", "example.machine.smelter", "example:smelte
 `create` 的三个参数是机器 ID、显示名称的翻译键、结构 ID。`recipePool` 确定扫描范围。`processing` 安装工作槽、扫描器和配方保存支持，两个数字是候选预算与尝试预算，必须为正数。`register` 提交机器并关闭此 builder，之后继续修改会报错。
 
 `MachineFactory.multithreaded()` 和 `crossRecipe()` 分别选择多线程与跨配方控制器，传给 `.factory(...)`。`.workSlot(...)` 添加指定名称和配方组的逻辑工位。执行策略与 Java 表格相同，脚本参数使用枚举名称字符串。
+
+`controllerInventorySlots(int count)` 设置固定开放格数；函数重载接收 `ControllerContext` 并返回 `0..16`，null 清除动态设置后回到固定值。两种形式使用与 Java 相同的服务器执行边界和槽位检查，回调只读取捕获状态。
 
 ### 声明配方并让机器使用
 
@@ -544,7 +571,7 @@ ParallelController.create("example:parallel_module", "tile.example.parallel_modu
 
 仓室容量由 `ResourceSide.itemEquivalent(slots, capacity)` 和 `EnergySide.create(capacity, transfer)` 定义，再交给 `Configuration.resources/energy(tier, input, output)`。两侧可以只提供一侧，不能都为空。`configureDefaults` 设置启动默认值，运行中调用 `request` 返回更新任务。
 
-研究用 `Research.create(...)` 声明服务端数据，原 `.display(...)` 已移除；客户端名称与图标由研究内容 JSON 提供。`ResearchStage.create(first, last, tier, durationTicks, formula)` 设置等级段和 long 时间；`ResearchFormula.constant/affine` 定义网络资源总量，`perTick/affinePerTick` 定义单站 tick 上限。stage 的 `.material(...)` 只接受静态总量输入，`.prerequisite(...)`、`.mutex(...)` 和 `.reward(...)` 定义前置、互斥及奖励。原 `.materialPersistence(...)` 已删除。
+研究用 `Research.create(...)` 声明服务端数据，原 `.display(...)` 已移除；客户端名称、图标、分页归属与布局由研究内容 JSON 提供。`ResearchStage.create(first, last, tier, durationTicks, formula)` 设置等级段和 long 时间；`ResearchFormula.constant/affine` 定义网络资源总量，`perTick/affinePerTick` 按每 tick 用量乘时间换算，合计总量除以时间与研究站速率共同限制推进。stage 的 `.material(...)` 只接受静态总量输入，阶数 0 仅允许物品且禁止网络资源；`.prerequisite(...)`、`.mutex(...)` 和 `.reward(...)` 定义前置、互斥及奖励。原 `.materialPersistence(...)` 已删除。总览的打开、分页/内容编辑、视角保存和管理员会话入口见[Java 研究 API](#研究与计算网络)，脚本没有对应打开按键注册或自动打开方法。
 
 在 preinit 脚本中，专用控制器使用下面的快捷入口（`compute` 是已经声明的数值计算资源）；它们不调用 `processing` 或添加配方工位：
 
