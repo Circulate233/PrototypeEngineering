@@ -66,7 +66,7 @@ public final class ExamplesCommand extends CommandBase {
 
     @Override
     public String getUsage(ICommandSender sender) {
-        return "/pe_examples kit [boundary|composite|me|network] | build <machine> <x> <y> <z> [orientation:NORTH_UP] [repeats:1-4] | structure-check <x> <y> <z> <repeats> <matched> | charge/drain <x> <y> <z> [FE] | stock <x> <y> <z> <recipe> [runs:1-16] [candidate:1-64]";
+        return "/pe_examples kit [boundary|composite|me|network|research] | build <machine> <x> <y> <z> [orientation:NORTH_UP] [repeats:1-4] | structure-check <x> <y> <z> <repeats> <matched> | charge/drain <x> <y> <z> [FE] | stock <x> <y> <z> <recipe> [runs:1-16] [candidate:1-64]";
     }
 
     @Override
@@ -76,6 +76,24 @@ public final class ExamplesCommand extends CommandBase {
 
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] arguments) throws CommandException {
+        if (arguments.length == 2 && arguments[0].equals("kit") && arguments[1].equals("research")) {
+            var player = getCommandSenderAsPlayer(sender);
+            for (String name : List.of("overview_station_2", "overview_database_2"))
+                give(player, item(new ResourceLocation("pe_run_tests", name + "_controller")), 1);
+            for (String name : List.of("input_hatch_10", "output_hatch_10", "energy_input_hatch_4"))
+                give(player, item(new ResourceLocation("prototype_eng", name)), 1);
+            give(player, Item.getItemFromBlock(Blocks.GOLD_BLOCK), 1);
+            give(player, item(new ResourceLocation("pe_run_tests", "computer_card")), 1);
+            for (var material : List.of(Items.IRON_INGOT, Items.GOLD_INGOT, Items.REDSTONE, Items.QUARTZ, Items.PAPER,
+                Items.BOOK, Items.EMERALD, Items.DIAMOND, Items.GLOWSTONE_DUST, Items.BLAZE_POWDER,
+                Items.ENDER_PEARL, Items.PRISMARINE_CRYSTALS, Items.SLIME_BALL))
+                give(player, material, 64);
+            give(player, Items.WATER_BUCKET, 2);
+            give(player, Items.LAVA_BUCKET, 2);
+            player.inventoryContainer.detectAndSendChanges();
+            player.sendMessage(ExampleText.ResearchKit.text());
+            return;
+        }
         if (arguments.length == 2 && arguments[0].equals("kit") && arguments[1].equals("network")) {
             var player = getCommandSenderAsPlayer(sender);
             for (String name : List.of("center", "computer", "station", "database", "load"))
@@ -146,6 +164,7 @@ public final class ExamplesCommand extends CommandBase {
             var blocks = CompositeStructureExamples.placement(arguments[1], repeats);
             if (blocks == null) blocks = NativeExamples.structure(arguments[1]);
             if (blocks == null) blocks = ExternalHatchExamples.placement(arguments[1]);
+            if (blocks == null) blocks = ResearchOverviewExamples.placement(arguments[1]);
             if (blocks == null && (arguments[1].equals("core_world") || arguments[1].equals("pe_run_tests:core_world")))
                 blocks = CoreCases.worldPlacement();
             if (blocks == null) blocks = RunNetworkRender.placement(arguments[1]);
@@ -304,7 +323,7 @@ public final class ExamplesCommand extends CommandBase {
         if (arguments.length == 1)
             return getListOfStringsMatchingLastWord(arguments, "kit", "build", "stock", "charge", "drain", "structure-check");
         if (arguments.length == 2 && arguments[0].equals("kit"))
-            return getListOfStringsMatchingLastWord(arguments, "boundary", "composite", "me", "network");
+            return getListOfStringsMatchingLastWord(arguments, "boundary", "composite", "me", "network", "research");
         if (arguments.length == 2 && arguments[0].equals("build")) {
             var names = new ObjectArrayList<String>(List.of("press", "mixer", "sorter"));
             names.add(CtmGalleryExamples.TYPE.toString());
@@ -315,6 +334,7 @@ public final class ExamplesCommand extends CommandBase {
             names.add("pe_run_tests:native_data_cross");
             names.add("pe_run_tests:core_world");
             names.add("pe_run_tests:external_filter");
+            names.addAll(List.of("pe_run_tests:overview_station_2", "pe_run_tests:overview_database_2"));
             names.addAll(List.of("pe_run_tests:net_demo_center", "pe_run_tests:net_demo_computer", "pe_run_tests:net_demo_station",
                 "pe_run_tests:net_demo_database", "pe_run_tests:net_demo_load"));
             names.addAll(List.of("pe_run_tests:net_center", "pe_run_tests:net_computer", "pe_run_tests:net_station", "pe_run_tests:net_database", "pe_run_tests:net_device",

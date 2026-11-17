@@ -1,0 +1,16 @@
+{
+  "title": "An intentionally long research title for testing truncation, complete hover names, and multi-line research details",
+  "summary": "Large materials and six independent network requirements.",
+  "description": [
+    "This research contains 32 material kinds. Redstone requires 16,384 items, so the material region must wrap into several rows.",
+    "Six independent resources have unequal totals. Their values, bars and percentages must remain separate when supplies are insufficient.",
+    "Use the research station list scrollbar and the overview detail scrollbar independently. A long number must not overlap the material name.",
+    "The title is deliberately longer than a page tab or node. Hover a truncated label to read the complete name.",
+    "This description is intentionally several paragraphs long to exercise the scroll area without moving the footer actions."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:book",
+    "meta": 0
+  }
+}

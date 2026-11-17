@@ -34,7 +34,7 @@ Events.onDevice(function(event as DeviceEvent) {
     if (event.network.hasDevice("pe_run_tests:net_demo_database"))
         event.values.energyMultiplier = event.values.energyMultiplier * 0.9;
 });
-var limits = ComputingResources.create().add(compute, 800).add(Resources.qubit(), 64)
+var limits = ComputingResources.create().add(Resources.compute(), 1000).add(compute, 800).add(Resources.qubit(), 64)
     .add(Resources.memory(), 128.5).add(Resources.bandwidth(), 256.25)
     .add(Resources.storage(), 64).add(Resources.signal(), 256);
 

@@ -5,7 +5,7 @@
 从项目根目录执行：
 
 ```powershell
-# 编译当前主类和全部27个addon Java，安装开发addon；不启动游戏。
+# 编译当前主类和全部28个addon Java，安装开发addon；不启动游戏。
 .\run\prepare-tests.ps1
 
 # 用真实SDK718编译全部15份脚本，执行既有核心行为检查；不启动游戏。
@@ -17,6 +17,8 @@
 ```
 
 验证报告默认在 `verification/results/script-verifier-result.json`，原始日志也在该目录。`prepare-tests.ps1` 导出当前真实类路径，已不依赖旧 `build/staging`。准备失败或 addon 被占用时先解决错误再启动。
+
+新增[研究总览与场景示例](scripts/README-research-overview.md)：HTML 十四项研究、六项复杂展示场景、二级研究站/库与右键分页/内容编辑。完整 CT 测试入口共三页三十项，具体搭建和验收矩阵见专题。
 
 新增[完整网络演示](scripts/README-network-demo.md)：网络中心、计算机、研究站、数据库和普通负载机，三种组件、三条计算机供给配方与两条普通负载配方。进入游戏后用 `/pe_examples kit network` 领取设备与原料，按专题命令搭建、充电、投料，可直接检查中心GUI的六行资源、滑块与占用变化。
 

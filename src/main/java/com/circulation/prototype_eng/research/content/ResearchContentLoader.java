@@ -12,11 +12,13 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 /**
  * Loads client display JSON from data, then overlays fields supplied by the current language.
@@ -42,24 +44,28 @@ public final class ResearchContentLoader {
         var localized = contentPath(language, id);
         if (Files.exists(localized)) overlay(data, read(localized));
         try {
-            var description = new ObjectArrayList<String>();
-            if (data.has("description")) {
-                var lines = data.getAsJsonArray("description");
-                for (int index = 0; index < lines.size(); index++) description.add(lines.get(index).getAsString());
-            }
-            var rewards = new Object2ObjectOpenHashMap<ResourceLocation, ResearchContent.Reward>();
-            if (data.has("rewards")) {
-                for (var entry : data.getAsJsonObject("rewards").entrySet()) {
-                    var rewardId = new ResourceLocation(entry.getKey());
-                    var reward = entry.getValue().getAsJsonObject();
-                    rewards.put(rewardId, new ResearchContent.Reward(text(reward, "title", rewardId.toString()), text(reward, "description", "")));
-                }
-            }
-            return ResearchContentLoadResult.loaded(id, new ResearchContent(text(data, "title", id.toString()), text(data, "summary", ""),
-                description, data.has("icon") ? data.getAsJsonObject("icon") : null, rewards));
+            return ResearchContentLoadResult.loaded(id, parseContent(id, data));
         } catch (RuntimeException failure) {
             throw failed(Files.exists(localized) ? localized : base, failure);
         }
+    }
+
+    private static ResearchContent parseContent(ResourceLocation id, JsonObject data) {
+        var description = new ObjectArrayList<String>();
+        if (data.has("description")) {
+            var lines = data.getAsJsonArray("description");
+            for (int index = 0; index < lines.size(); index++) description.add(lines.get(index).getAsString());
+        }
+        var rewards = new Object2ObjectOpenHashMap<ResourceLocation, ResearchContent.Reward>();
+        if (data.has("rewards")) {
+            for (var entry : data.getAsJsonObject("rewards").entrySet()) {
+                var rewardId = new ResourceLocation(entry.getKey());
+                var reward = entry.getValue().getAsJsonObject();
+                rewards.put(rewardId, new ResearchContent.Reward(text(reward, "title", rewardId.toString()), text(reward, "description", "")));
+            }
+        }
+        return new ResearchContent(text(data, "title", id.toString()), text(data, "summary", ""),
+            description, data.has("icon") ? data.getAsJsonObject("icon") : null, rewards);
     }
 
     public Path contentPath(String language, ResourceLocation id) {
@@ -86,10 +92,18 @@ public final class ResearchContentLoader {
             if (manual && data.has("positions")) {
                 for (var entry : data.getAsJsonObject("positions").entrySet()) {
                     var position = entry.getValue().getAsJsonArray();
-                    positions.put(entry.getKey(), new ResearchPage.Position(position.get(0).getAsInt(), position.get(1).getAsInt()));
+                    var id = entry.getKey().contains(":") ? new ResourceLocation(entry.getKey()) : new ResourceLocation(namespace, entry.getKey());
+                    positions.put(id.toString(), new ResearchPage.Position(position.get(0).getAsInt(), position.get(1).getAsInt()));
                 }
             }
-            return new ResearchPage(data.has("order") ? data.get("order").getAsInt() : 0, manual, positions);
+            List<ResourceLocation> members = null;
+            if (data.has("researches")) {
+                members = new ObjectArrayList<>();
+                var array = data.getAsJsonArray("researches");
+                for (int i = 0; i < array.size(); i++) members.add(new ResourceLocation(array.get(i).getAsString()));
+            }
+            return new ResearchPage(data.has("order") ? data.get("order").getAsInt() : 0, manual,
+                data.has("title") ? data.get("title").getAsString() : null, members, positions);
         } catch (RuntimeException failure) {
             throw failed(file, failure);
         }
@@ -100,18 +114,84 @@ public final class ResearchContentLoader {
         var data = new JsonObject();
         data.addProperty("order", page.order());
         data.addProperty("layout", page.manual() ? "manual" : "auto");
+        if (page.title() != null) data.addProperty("title", page.title());
+        if (page.researches() != null) {
+            var members = new JsonArray();
+            for (int i = 0; i < page.researches().size(); i++) members.add(page.researches().get(i).toString());
+            data.add("researches", members);
+        }
         var positions = new JsonObject();
         for (var entry : page.positions().object2ObjectEntrySet()) {
             var point = new JsonArray();
             point.add(entry.getValue().x());
             point.add(entry.getValue().y());
-            positions.add(entry.getKey(), point);
+            var id = entry.getKey().contains(":") ? new ResourceLocation(entry.getKey()) : new ResourceLocation(namespace, entry.getKey());
+            positions.add(id.toString(), point);
         }
         data.add("positions", positions);
         try {
             Files.createDirectories(file.getParent());
             Files.writeString(file, GSON.toJson(data) + System.lineSeparator(), StandardCharsets.UTF_8);
         } catch (IOException failure) {
+            throw failed(file, failure);
+        }
+    }
+
+    /**
+     * Discovers configured pages, including empty pages which have no server research namespace.
+     */
+    public List<String> pageIds() {
+        var directory = root.resolve("data");
+        var ids = new ObjectArrayList<String>();
+        if (!Files.isDirectory(directory)) return ids;
+        try (var files = Files.list(directory)) {
+            files.filter(Files::isRegularFile).map(path -> path.getFileName().toString())
+                 .filter(name -> name.endsWith(".json")).sorted()
+                 .forEach(name -> ids.add(name.substring(0, name.length() - 5)));
+            return ids;
+        } catch (IOException failure) {
+            throw failed(directory, failure);
+        }
+    }
+
+    public String readContentJson(ResourceLocation id, @Nullable String language) {
+        var file = contentPath(language == null ? "data" : language, id);
+        if (Files.exists(file)) {
+            try {
+                return Files.readString(file, StandardCharsets.UTF_8);
+            } catch (IOException failure) {
+                throw failed(file, failure);
+            }
+        }
+        var initial = new JsonObject();
+        if (language == null) {
+            initial.addProperty("title", id.toString());
+            initial.addProperty("summary", "");
+            initial.add("description", new JsonArray());
+        }
+        return GSON.toJson(initial);
+    }
+
+    /**
+     * Validates the edited object and its effective overlay before replacing the requested file.
+     */
+    public void saveContentJson(ResourceLocation id, @Nullable String language, String text) {
+        var file = contentPath(language == null ? "data" : language, id);
+        try {
+            var data = GSON.fromJson(text, JsonElement.class).getAsJsonObject();
+            var effective = data;
+            if (language != null) {
+                var base = contentPath("data", id);
+                if (!Files.exists(base))
+                    throw new IllegalStateException("Save the data content before editing a language: " + base);
+                effective = read(base);
+                overlay(effective, data);
+            }
+            parseContent(id, effective);
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, GSON.toJson(data) + System.lineSeparator(), StandardCharsets.UTF_8);
+            missing.remove(id);
+        } catch (IOException | RuntimeException failure) {
             throw failed(file, failure);
         }
     }

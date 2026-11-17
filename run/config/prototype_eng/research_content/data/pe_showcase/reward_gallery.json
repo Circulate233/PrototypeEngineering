@@ -1,0 +1,29 @@
+{
+  "title": "Reward Gallery",
+  "summary": "Three choices, many item slots and named NBT rewards.",
+  "description": [
+    "A short manual research requiring four paper.",
+    "Choose one of three reward groups: bulk supplies, named tools, or gemstones.",
+    "The supply group contains twelve item kinds and wraps over several rows. The tool group preserves item NBT.",
+    "After claiming, reopen the screen to check the claimed state. The other groups must not become claimable."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:chest",
+    "meta": 0
+  },
+  "rewards": {
+    "pe_showcase:gallery_gems": {
+      "title": "Gemstone Collection",
+      "description": "Two diamonds, four emeralds and sixteen quartz."
+    },
+    "pe_showcase:gallery_supplies": {
+      "title": "Field Supplies",
+      "description": "Twelve different item kinds fill several rows. Inspect every slot before choosing this group."
+    },
+    "pe_showcase:gallery_tools": {
+      "title": "Named Field Tools",
+      "description": "A named pickaxe and bow retain their display NBT when the real reward is delivered."
+    }
+  }
+}

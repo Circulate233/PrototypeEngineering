@@ -1,0 +1,19 @@
+{
+  "title": "逻辑门阵列",
+  "summary": "组合多个逻辑门。",
+  "description": [
+    "同时需要数据存储 Lv.1 与信号放大 Lv.1。",
+    "完成后必须从两组奖励中任选一组，未选组不会发放。",
+    "用于检查多前置汇合连线和奖励选择。"
+  ],
+  "rewards": {
+    "pe_demo:circuit_kit": {
+      "title": "电路套件",
+      "description": "8 个中继器与 4 个比较器。"
+    },
+    "pe_demo:research_notes": {
+      "title": "研究资料",
+      "description": "供后续研究使用的纸和书。"
+    }
+  }
+}

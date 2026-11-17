@@ -1,0 +1,13 @@
+{
+  "title": "Data Storage",
+  "summary": "Research how information is stored.",
+  "description": [
+    "Requires Basic Circuits Lv.1.",
+    "Pay paper and quartz, then accumulate computing work. This node branches into Cartography and Logic Arrays."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:paper",
+    "meta": 0
+  }
+}

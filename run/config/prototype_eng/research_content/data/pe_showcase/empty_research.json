@@ -1,0 +1,13 @@
+{
+  "title": "A Quiet Observation",
+  "summary": "A station research with no material or network-resource requirements.",
+  "description": [
+    "Tier 1 research lasting 80 ticks. An eligible station and its normal operating costs are still required.",
+    "The material and resource sections display their empty-state text, and no reward card is created.",
+    "Its icon uses the built-in AE help icon, demonstrating a non-item research icon."
+  ],
+  "icon": {
+    "kind": "icon",
+    "id": "ae2:help"
+  }
+}

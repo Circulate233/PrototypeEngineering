@@ -5,7 +5,7 @@ import com.circulation.prototype_eng.Tags;
 
 public enum ResearchOverviewGuiText implements LocalizationEnum {
     Overview, Picker, PickerTitle, Editor, Databases, HighestStation, DatabaseTierLabel, SelectableCount, PickerRule,
-    Back, Close, Collapse, Export, Automatic, ManualLayout, Exported, ExportFailed, Overlap,
+    Back, Close, Collapse, Export, Automatic, ManualLayout, Exported, ExportFailed,
     Done, Partial, Available, Continue, Researching, Queued, Saved, Locked, Blocked, Special, DeviceShort,
     Materials, MaterialHint, NetworkResources, NetworkHint, Workload, ResearchTime, Stations, Contributor, Nobody,
     ConsumeInventory, ContributeHint, PauseHint, Paused, NoMaterials, NoResources, ManualResources,
@@ -21,7 +21,10 @@ public enum ResearchOverviewGuiText implements LocalizationEnum {
     Selectable, CompletedLevel, DownloadInfo, ThisDatabaseTier, PickerLevelWarning,
     DiskOnly, ManualResearch, ManualNetwork, AutomaticCoordinates,
     Claimable, ClaimLevelHint, ChooseRewardHint, NoRewards, NoNextReward, NodePickedLevel, ForgetLabel,
-    DetailProgress, Incomplete, ResearchTierLevel, ManualTierLevel;
+    DetailProgress, Incomplete, ResearchTierLevel, ManualTierLevel,
+    AddPage, AddResearch, EditResearch, PageId, PageTitle, ResearchSearch, ResearchChoice, NoResearchChoices,
+    ContentData, ContentLanguage, ContentTarget, SaveContent, ContentSaved, ContentSaveFailed, ContentInvalid,
+    EditorHelp, PageCreated, ResearchAdded, UnsavedChanges;
 
     @Override
     public String getTranslationKey() {

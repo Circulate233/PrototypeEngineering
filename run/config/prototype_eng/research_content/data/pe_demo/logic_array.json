@@ -1,0 +1,24 @@
+{
+  "title": "Logic Arrays",
+  "summary": "Combine several logic gates into an array.",
+  "description": [
+    "Both Data Storage Lv.1 and Signal Amplification Lv.1 are required.",
+    "After completion, select exactly one reward group. The unselected group is not awarded.",
+    "This example exercises converging prerequisite lines and reward selection."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:repeater",
+    "meta": 0
+  },
+  "rewards": {
+    "pe_demo:circuit_kit": {
+      "title": "Circuit Kit",
+      "description": "Eight repeaters and four comparators."
+    },
+    "pe_demo:research_notes": {
+      "title": "Research Notes",
+      "description": "Paper and books for later research."
+    }
+  }
+}

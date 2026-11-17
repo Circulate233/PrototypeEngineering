@@ -1,0 +1,24 @@
+{
+  "title": "Alloy Processing",
+  "summary": "Three levels with a tier change at level 2.",
+  "description": [
+    "Requires Refining Lv.1. Lv.1 uses research tier 1; Lv.2 and Lv.3 use tier 2.",
+    "The computing total grows each level. Material totals stay unchanged.",
+    "Only levels 1 and 3 have rewards. A tier 1 database can process the first completed level while a higher level remains out of reach."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:diamond",
+    "meta": 0
+  },
+  "rewards": {
+    "pe_demo:alloy_1": {
+      "title": "Alloy Samples",
+      "description": "Sixteen iron ingots for completing level 1."
+    },
+    "pe_demo:alloy_3": {
+      "title": "Refined Alloy",
+      "description": "Two diamonds for completing level 3."
+    }
+  }
+}

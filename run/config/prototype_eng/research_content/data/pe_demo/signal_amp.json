@@ -1,0 +1,13 @@
+{
+  "title": "Signal Amplification",
+  "summary": "Improve the strength of control signals.",
+  "description": [
+    "Requires Basic Circuits Lv.1.",
+    "Uses fractional signal-processing supply. Compare its independent progress with the material payment."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:comparator",
+    "meta": 0
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "title": "Sticky Sealing",
+  "summary": "Exclusive with Optical Transmission.",
+  "description": [
+    "Requires Refining Lv.1.",
+    "This is the alternative branch of the Optical Transmission mutual-exclusion pair."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:slime_ball",
+    "meta": 0
+  }
+}

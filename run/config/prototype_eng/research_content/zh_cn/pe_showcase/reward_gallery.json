@@ -1,0 +1,24 @@
+{
+  "title": "奖励展示厅",
+  "summary": "三组选一、多行奖励槽与带名称的 NBT 工具。",
+  "description": [
+    "只需 4 张纸的短时间手动研究。",
+    "从批量物资、命名工具、宝石三组奖励中任选一组。",
+    "物资组含 12 种物品并换行显示；工具组应保留物品 NBT。",
+    "领取后关闭重开检查已领取状态，未选组不能再次领取。"
+  ],
+  "rewards": {
+    "pe_showcase:gallery_gems": {
+      "title": "宝石收藏",
+      "description": "2 个钻石、4 个绿宝石和 16 个下界石英。"
+    },
+    "pe_showcase:gallery_supplies": {
+      "title": "野外物资",
+      "description": "十二种不同物品会占据多行。选择前可逐格检查名称和数量。"
+    },
+    "pe_showcase:gallery_tools": {
+      "title": "命名勘探工具",
+      "description": "发放的命名镐和弓应保留展示名称 NBT，不能变成没有标签的新物品。"
+    }
+  }
+}

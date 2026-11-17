@@ -1,0 +1,13 @@
+{
+  "title": "Fluid Analysis",
+  "summary": "Mixed fluid and item materials, with a fluid research icon.",
+  "description": [
+    "Pay 4,000 mB water, 1,000 mB lava and eight paper from research station inputs.",
+    "Fluid quantities are stored as AE fluid amounts and displayed with the registered fluid renderer.",
+    "The research icon uses kind=fluid and inherits its definition from the base data JSON."
+  ],
+  "icon": {
+    "kind": "fluid",
+    "id": "water"
+  }
+}

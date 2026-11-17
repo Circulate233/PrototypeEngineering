@@ -1,0 +1,24 @@
+{
+  "title": "手动研究笔记",
+  "summary": "三级手动研究，逐级更换材料和奖励。",
+  "description": [
+    "三个等级分别需要 100、160、220 tick，均为手动研究阶级 0。",
+    "依次支付 4 个铁锭、4 个金锭和 2 个绿宝石。",
+    "关闭消耗背包可暂停并保留进度，也可以让另一位队友接管投料。",
+    "每一级都有独立奖励，连续完成数级再领取可检查多张奖励卡。"
+  ],
+  "rewards": {
+    "pe_showcase:manual_1": {
+      "title": "第一册笔记",
+      "description": "8 张纸。"
+    },
+    "pe_showcase:manual_2": {
+      "title": "装订笔记",
+      "description": "1 本书。"
+    },
+    "pe_showcase:manual_3": {
+      "title": "完整笔记",
+      "description": "1 个绿宝石。"
+    }
+  }
+}

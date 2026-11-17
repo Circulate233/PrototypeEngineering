@@ -1,0 +1,13 @@
+{
+  "title": "Gemology",
+  "summary": "Study the properties of gemstones.",
+  "description": [
+    "Requires Alloy Processing Lv.1.",
+    "Start, partially progress, then remove it from the queue to inspect retained progress. Re-queue it to resume."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:emerald",
+    "meta": 0
+  }
+}

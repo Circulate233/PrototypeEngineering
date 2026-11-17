@@ -1,0 +1,20 @@
+{
+  "title": "Quantum Entanglement",
+  "summary": "Requires High-speed Connection Lv.1 from the Run Tests page, registered by the Java example mod.",
+  "description": [
+    "Requires Logic Arrays Lv.1 and pe_run_tests:java_research_connection Lv.1.",
+    "The external prerequisite is shown as a short dashed connection and identified by its page in the tooltip.",
+    "This is tier 2 research. Its single reward group can be claimed without a choice step."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:ender_pearl",
+    "meta": 0
+  },
+  "rewards": {
+    "pe_demo:quantum_reward": {
+      "title": "Quantum Sample",
+      "description": "Four ender pearls."
+    }
+  }
+}

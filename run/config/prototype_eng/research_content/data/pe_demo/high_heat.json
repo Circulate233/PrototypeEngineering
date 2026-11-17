@@ -1,0 +1,13 @@
+{
+  "title": "High-energy Smelting",
+  "summary": "A foundation for high-temperature processing.",
+  "description": [
+    "ITEM_ONLY research uses the team-owned level rather than personal levels.",
+    "This station research requires blaze powder but has no network-resource requirement."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:blaze_powder",
+    "meta": 0
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "order": 10,
+  "layout": "manual",
+  "positions": {
+    "basic_circuit": [
+      0,
+      110
+    ],
+    "data_storage": [
+      100,
+      50
+    ],
+    "signal_amp": [
+      100,
+      130
+    ],
+    "high_heat": [
+      100,
+      220
+    ],
+    "cartography": [
+      200,
+      0
+    ],
+    "logic_array": [
+      205,
+      75
+    ],
+    "crystal_resonance": [
+      200,
+      130
+    ],
+    "refining": [
+      200,
+      220
+    ],
+    "quantum_link": [
+      310,
+      75
+    ],
+    "optical_link": [
+      310,
+      130
+    ],
+    "sticky_seal": [
+      310,
+      180
+    ],
+    "alloy": [
+      310,
+      230
+    ],
+    "enchant_theory": [
+      420,
+      40
+    ],
+    "gemology": [
+      420,
+      270
+    ]
+  }
+}

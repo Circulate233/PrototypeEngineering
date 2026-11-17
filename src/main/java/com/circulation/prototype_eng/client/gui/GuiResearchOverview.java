@@ -6,7 +6,6 @@ import ae2.api.stacks.AmountFormat;
 import ae2.api.stacks.GenericStack;
 import ae2.client.gui.AEBaseGui;
 import ae2.client.gui.Icon;
-import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
@@ -22,13 +21,15 @@ import com.circulation.prototype_eng.localization.ResearchOverviewGuiText;
 import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.gui.GuiTextField;
+import net.minecraft.client.resources.Language;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
@@ -46,6 +47,7 @@ import java.io.IOException;
 import java.util.Comparator;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -69,6 +71,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     private static final ResourceLocation SQUARE_HOVER = Icon.SMALL_SQUARE_BUTTON_BACKGROUND_HOVER.texture();
     private final ObjectArrayList<PageView> pages = new ObjectArrayList<>();
     private final Object2ObjectOpenHashMap<String, PageView> pagesById = new Object2ObjectOpenHashMap<>();
+    private final Object2ObjectOpenHashMap<ResourceLocation, PageView> pagesByResearch = new Object2ObjectOpenHashMap<>();
     private final Object2ObjectOpenHashMap<ResourceLocation, Display> displays = new Object2ObjectOpenHashMap<>();
     private final DerivedBaseline derivedBaseline = new DerivedBaseline();
     private final ObjectArrayList<Hit> hits = new ObjectArrayList<>();
@@ -103,6 +106,9 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     private String toast = "";
     private String knownActionResult = "";
     private long contentRevision = -1;
+    private @Nullable ContextMenu contextMenu;
+    private @Nullable EditorDialog editorDialog;
+    private boolean editorRepeatWasEnabled;
 
     public GuiResearchOverview(ContainerResearchOverview container, InventoryPlayer player) {
         super(container, player);
@@ -128,8 +134,18 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
 
     @Override
     public void onGuiClosed() {
+        if (editorDialog != null) closeEditorDialog();
         nodeIcons.delete();
         super.onGuiClosed();
+    }
+
+    @Override
+    public void updateScreen() {
+        super.updateScreen();
+        if (editorDialog != null) {
+            if (editorDialog.first != null) editorDialog.first.updateCursorCounter();
+            if (editorDialog.second != null) editorDialog.second.updateCursorCounter();
+        }
     }
 
     private static String tr(ResearchOverviewGuiText key, Object... args) {
@@ -355,46 +371,53 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         String previous = page == null ? null : page.id;
         pages.clear();
         pagesById.clear();
-        var byNamespace = new Object2ObjectLinkedOpenHashMap<String, ObjectArrayList<ResourceLocation>>();
+        pagesByResearch.clear();
+        var all = new ObjectArrayList<ResourceLocation>();
+        var pageIds = new ObjectLinkedOpenHashSet<String>();
+        pageIds.addAll(ClientResearchContents.pageIds());
         for (int i = 0; i < entries.size(); i++) {
             var id = entries.get(i).id();
-            byNamespace.computeIfAbsent(id.getNamespace(), _ -> new ObjectArrayList<>()).add(id);
+            all.add(id);
+            pageIds.add(id.getNamespace());
         }
-        for (var group : byNamespace.object2ObjectEntrySet()) {
-            var config = ClientResearchContents.page(group.getKey());
+        for (var pageId : pageIds) ClientResearchContents.page(pageId);
+        for (var pageId : pageIds) {
+            var config = ClientResearchContents.page(pageId);
+            var members = ClientResearchContents.pageResearches(pageId, all);
             var positions = new Object2ObjectOpenHashMap<String, ResearchPage.Position>();
             if (config.manual()) {
                 positions.putAll(config.positions());
                 int below = 0, lost = 0;
                 for (var position : positions.values()) below = Math.max(below, position.y() + 80);
-                for (int i = 0; i < group.getValue().size(); i++) {
-                    var path = group.getValue().get(i).getPath();
+                for (int i = 0; i < members.size(); i++) {
+                    var path = members.get(i).toString();
                     if (!positions.containsKey(path)) {
                         positions.put(path, new ResearchPage.Position(lost % 6 * 92, below + lost / 6 * 40));
                         lost++;
                     }
                 }
-            } else autoLayout(group.getValue(), positions);
-            var nameKey = "gui.prototype_eng.research_page." + group.getKey();
-            LocalizationEnum label = () -> nameKey;
-            var view = new PageView(group.getKey(), label.getLocal(), group.getValue(), new ResearchPage(config.order(), config.manual(), positions));
+            } else autoLayout(members, positions);
+            var view = new PageView(pageId, ClientResearchContents.pageName(pageId), members,
+                new ResearchPage(config.order(), config.manual(), config.title(), config.researches(), positions));
             pages.add(view);
             pagesById.put(view.id, view);
+            for (int i = 0; i < members.size(); i++) pagesByResearch.put(members.get(i), view);
         }
         pages.sort(Comparator.comparingInt((PageView p) -> p.layout.order()).thenComparing(p -> p.id));
         page = previous == null ? null : pagesById.get(previous);
         if (page == null && !pages.isEmpty()) page = pages.getFirst();
+        if (selected != null && (page == null || !page.ids.contains(selected))) collapse();
     }
 
-    private int depth(ResourceLocation id, String namespace, Object2IntOpenHashMap<ResourceLocation> depths) {
+    private int depth(ResourceLocation id, List<ResourceLocation> members, Object2IntOpenHashMap<ResourceLocation> depths) {
         if (depths.containsKey(id)) return depths.getInt(id);
         depths.put(id, 0);
         int result = 0;
         var prerequisites = container.view.entry(id).stage(target(container.view.entry(id))).prerequisites();
         for (int i = 0; i < prerequisites.size(); i++) {
             var required = prerequisites.get(i).id();
-            if (required.getNamespace().equals(namespace) && container.view.entry(required) != null)
-                result = Math.max(result, depth(required, namespace, depths) + 1);
+            if (members.contains(required) && container.view.entry(required) != null)
+                result = Math.max(result, depth(required, members, depths) + 1);
         }
         depths.put(id, result);
         return result;
@@ -403,19 +426,18 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     private void autoLayout(List<ResourceLocation> ids, Object2ObjectOpenHashMap<String, ResearchPage.Position> positions) {
         var linked = new ObjectOpenHashSet<ResourceLocation>();
         var depths = new Object2IntOpenHashMap<ResourceLocation>();
-        String namespace = ids.getFirst().getNamespace();
         for (int i = 0; i < ids.size(); i++) {
             var entry = container.view.entry(ids.get(i));
             var requirements = entry.stage(target(entry)).prerequisites();
             for (int j = 0; j < requirements.size(); j++)
-                if (requirements.get(j).id().getNamespace().equals(namespace)) {
+                if (ids.contains(requirements.get(j).id())) {
                     linked.add(entry.id());
                     linked.add(requirements.get(j).id());
                 }
         }
         int maxColumn = 0;
         for (int i = 0; i < ids.size(); i++)
-            if (linked.contains(ids.get(i))) maxColumn = Math.max(maxColumn, depth(ids.get(i), namespace, depths));
+            if (linked.contains(ids.get(i))) maxColumn = Math.max(maxColumn, depth(ids.get(i), ids, depths));
         int maxRow = -2;
         for (int column = 0; column <= maxColumn; column++) {
             var candidates = new ObjectArrayList<ResourceLocation>();
@@ -429,13 +451,13 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
                 while (used.contains(row)) row++;
                 used.add(row);
                 maxRow = Math.max(maxRow, row);
-                positions.put(candidates.get(i).getPath(), new ResearchPage.Position(column * 92, row * 40));
+                positions.put(candidates.get(i).toString(), new ResearchPage.Position(column * 92, row * 40));
             }
         }
         int lone = 0;
         for (int i = 0; i < ids.size(); i++)
             if (!linked.contains(ids.get(i))) {
-                positions.put(ids.get(i).getPath(), new ResearchPage.Position(lone % 6 * 92, (maxRow + 2 + lone / 6) * 40));
+                positions.put(ids.get(i).toString(), new ResearchPage.Position(lone % 6 * 92, (maxRow + 2 + lone / 6) * 40));
                 lone++;
             }
     }
@@ -444,7 +466,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         int result = Integer.MAX_VALUE;
         var required = entry.stage(target(entry)).prerequisites();
         for (int i = 0; i < required.size(); i++) {
-            var position = positions.get(required.get(i).id().getPath());
+            var position = positions.get(required.get(i).id().toString());
             if (position != null) result = Math.min(result, position.y() / 40);
         }
         return result;
@@ -475,6 +497,8 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             box((screenW - w) / 2, screenH - 65, w, 26, BASE, LINE);
             label(toast, (screenW - w) / 2 + 14, screenH - 61, w - 28, 13, TEXT);
         }
+        if (contextMenu != null) drawContextMenu();
+        if (editorDialog != null) drawEditorDialog();
         if (!hoverText.isEmpty()) {
             GlStateManager.pushMatrix();
             GlStateManager.scale(4D / 3, 4D / 3, 1);
@@ -501,7 +525,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         try {
             for (int i = 0; i < page.ids.size(); i++)
                 if (!page.ids.get(i).equals(selected)) drawNode(container.view.entry(page.ids.get(i)), false);
-            if (selected != null && selected.getNamespace().equals(page.id))
+            if (selected != null && page.ids.contains(selected))
                 drawNode(container.view.entry(selected), true);
         } finally {
             nodeIcons.endBatch();
@@ -510,7 +534,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     }
 
     private ResearchPage.Position position(ResourceLocation id) {
-        return pagesById.get(id.getNamespace()).layout.positions().get(id.getPath());
+        return pagesByResearch.get(id).layout.positions().get(id.toString());
     }
 
     private double nodeX(ResourceLocation id) {
@@ -528,7 +552,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             var requirement = required.get(i);
             var source = container.view.entry(requirement.id());
             int color = source != null && source.teamLevel() >= requirement.level() ? DARK : 0xc4c7d3;
-            if (!requirement.id().getNamespace().equals(page.id)) {
+            if (!page.ids.contains(requirement.id())) {
                 for (int k = 0; k < 24; k += 7) fill(tx - 24 + k, cy - 1, 4, 2, color);
                 ring(tx - 28, cy, 4, 2, color, 0, 1);
                 continue;
@@ -981,8 +1005,8 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         var other = container.view.entry(required.id());
         boolean met = other != null && other.teamLevel() >= required.level();
         String name = display(required.id()).content.title() + " Lv." + required.level();
-        if (!required.id().getNamespace().equals(page.id))
-            name += " (" + pagesById.get(required.id().getNamespace()).name + ")";
+        var sourcePage = pagesByResearch.get(required.id());
+        if (sourcePage != null && sourcePage != page) name += " (" + sourcePage.name + ")";
         required(name, tr(met ? Done : Incomplete), mutex == met);
     }
 
@@ -1413,9 +1437,11 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             var item = required.get(i);
             var entry = container.view.entry(item.id());
             boolean met = entry != null && entry.teamLevel() >= item.level();
-            if (prerequisite != met)
+            if (prerequisite != met) {
+                var sourcePage = pagesByResearch.get(item.id());
                 result.add(tr(prerequisite ? Prerequisites : Mutex) + ": " + display(item.id()).content.title() + " Lv." + item.level()
-                    + (!item.id().getNamespace().equals(page.id) ? " (" + pagesById.get(item.id().getNamespace()).name + ")" : ""));
+                    + (sourcePage != null && sourcePage != page ? " (" + sourcePage.name + ")" : ""));
+            }
         }
     }
 
@@ -1484,21 +1510,46 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
 
     private @Nullable ResourceLocation nodeAt(double x, double y) {
         if (page == null || overChrome()) return null;
+        if (selected != null && page.ids.contains(selected) && containsNode(selected, x, y)) return selected;
         for (int i = page.ids.size() - 1; i >= 0; i--) {
             var id = page.ids.get(i);
-            var entry = container.view.entry(id);
-            boolean expanded = id.equals(selected);
-            double nx = panX + nodeX(id) * zoom, ny = panY + (nodeY(id) - (expanded ? 4 : 0)) * zoom;
-            double w = expanded ? EXP_W : showsProgress(entry) ? WIDE : NODE;
-            if (x >= nx && y >= ny && x < nx + w * zoom && y < ny + (expanded ? EXP_H : NODE) * zoom) return id;
+            if (containsNode(id, x, y)) return id;
         }
         return null;
     }
 
+    private boolean containsNode(ResourceLocation id, double x, double y) {
+        var entry = container.view.entry(id);
+        boolean expanded = id.equals(selected);
+        double nx = panX + nodeX(id) * zoom, ny = panY + (nodeY(id) - (expanded ? 4 : 0)) * zoom;
+        double w = expanded ? EXP_W : showsProgress(entry) ? WIDE : NODE;
+        return x >= nx && y >= ny && x < nx + w * zoom && y < ny + (expanded ? EXP_H : NODE) * zoom;
+    }
+
     @Override
     protected void mouseClicked(int x, int y, int button) {
-        if (button != 0) return;
         readMouseEvent();
+        if (editorDialog != null) {
+            if (button == 0) dialogClick();
+            return;
+        }
+        if (contextMenu != null) {
+            var menu = contextMenu;
+            contextMenu = null;
+            if (button == 0 && inside(menu.x, menu.y, 184, menu.research == null ? 52 : 28)) {
+                if (menu.research != null) openContentEditor(menu.research);
+                else if (mouseY < menu.y + 26) openPageEditor();
+                else if (page != null) openResearchPicker(menu.worldX, menu.worldY);
+            }
+            return;
+        }
+        if (button == 1 && container.editorMode() && !overChrome()) {
+            var research = nodeAt(mouseX, mouseY);
+            contextMenu = new ContextMenu(Math.min(mouseX, screenW - 190), Math.min(mouseY, screenH - 58),
+                (mouseX - panX) / zoom / S, (mouseY - panY) / zoom / S, research);
+            return;
+        }
+        if (button != 0) return;
         pressX = lastX = mouseX;
         pressY = lastY = mouseY;
         pressedAt = MinecraftTime();
@@ -1537,6 +1588,10 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     protected void mouseClickMove(int x, int y, int button, long timeSinceLastClick) {
         if (button != 0) return;
         readMouseEvent();
+        if (editorDialog != null) {
+            if (editorDialog.editor != null) editorDialog.editor.drag(fontRenderer, mouseX, mouseY);
+            return;
+        }
         updateDrag();
     }
 
@@ -1565,6 +1620,10 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
 
     @Override
     protected void mouseReleased(int x, int y, int state) {
+        if (editorDialog != null) {
+            if (editorDialog.editor != null) editorDialog.editor.release();
+            return;
+        }
         if (state != 0 || !held) return;
         readMouseEvent();
         updateDrag();
@@ -1580,13 +1639,10 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         } else if (dragging != null) {
             var id = dragging;
             dragging = null;
-            if (!page.layout.move(id.getPath(), (int) Math.round(dragX / S), (int) Math.round(dragY / S)))
-                showToast(tr(Overlap));
-            else {
-                if (!page.layout.manual())
-                    page.layout = new ResearchPage(page.layout.order(), true, page.layout.positions());
-                ClientResearchContents.retainPage(page.id, page.layout);
-            }
+            page.layout.move(id.toString(), (int) Math.round(dragX / S), (int) Math.round(dragY / S));
+            if (!page.layout.manual())
+                page.layout = new ResearchPage(page.layout.order(), true, page.layout.title(), page.layout.researches(), page.layout.positions());
+            ClientResearchContents.retainPage(page.id, page.layout);
             detailDirty = true;
         } else if (!moved && pressedNode != null) {
             var entry = container.view.entry(pressedNode);
@@ -1613,6 +1669,16 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         double y = (mc.displayHeight - Mouse.getEventY() - 1) / pixelScale;
         mouseX = x;
         mouseY = y;
+        if (editorDialog != null) {
+            var dialog = editorDialog;
+            if (dialog.languagesOpen)
+                dialog.languageScroll = Math.clamp(dialog.languageScroll - Integer.signum(delta) * 3L, 0, Math.max(0, dialog.languages.size() + 1 - 9));
+            else if (dialog.mode == EditorMode.RESEARCH)
+                dialog.choiceScroll = Math.clamp(dialog.choiceScroll - Integer.signum(delta) * 3L, 0, Math.max(0, dialog.filtered.size() - 11));
+            else if (dialog.editor != null) dialog.editor.scroll(Integer.signum(delta));
+            return;
+        }
+        if (contextMenu != null) return;
         if (selected != null && x >= screenW - 340 && y >= bodyTop && y <= bodyBottom) {
             detailScroll = Math.clamp(detailScroll - Math.signum(delta) * 32, 0, Math.max(0, detailHeight - (bodyBottom - bodyTop)));
         } else if (!overChrome()) {
@@ -1626,6 +1692,14 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
 
     @Override
     protected void keyTyped(char character, int code) throws IOException {
+        if (editorDialog != null) {
+            dialogKeyTyped(character, code);
+            return;
+        }
+        if (contextMenu != null) {
+            if (code == Keyboard.KEY_ESCAPE) contextMenu = null;
+            return;
+        }
         if (code == Keyboard.KEY_ESCAPE) {
             if (forgetting != null) {
                 forgetting = null;
@@ -1645,13 +1719,317 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         detailDirty = true;
     }
 
+    private void drawContextMenu() {
+        var menu = contextMenu;
+        hoverText.clear();
+        double h = menu.research == null ? 52 : 28;
+        frame(menu.x, menu.y, 184, h);
+        if (menu.research != null) menuRow(tr(EditResearch), menu.x + 4, menu.y + 4, 176, 20, true);
+        else {
+            menuRow(tr(AddPage), menu.x + 4, menu.y + 4, 176, 20, true);
+            menuRow(tr(AddResearch), menu.x + 4, menu.y + 28, 176, 20, page != null);
+        }
+    }
+
+    private void menuRow(String text, double x, double y, double w, double h, boolean enabled) {
+        if (enabled && inside(x, y, w, h)) fill(x, y, w, h, HOVER);
+        label(text, x + 6, y + 3, w - 12, 12, enabled ? TEXT : MUTED);
+    }
+
+    private void openPageEditor() {
+        var dialog = new EditorDialog(EditorMode.PAGE);
+        dialog.first = new GuiTextField(0, fontRenderer, 0, 0, 1, 1);
+        dialog.first.setMaxStringLength(128);
+        dialog.first.setFocused(true);
+        dialog.second = new GuiTextField(1, fontRenderer, 0, 0, 1, 1);
+        dialog.second.setMaxStringLength(256);
+        openEditorDialog(dialog);
+    }
+
+    private void openResearchPicker(double worldX, double worldY) {
+        var dialog = new EditorDialog(EditorMode.RESEARCH);
+        dialog.worldX = (int) Math.round(worldX);
+        dialog.worldY = (int) Math.round(worldY);
+        dialog.first = new GuiTextField(0, fontRenderer, 0, 0, 1, 1);
+        dialog.first.setMaxStringLength(256);
+        dialog.first.setFocused(true);
+        openEditorDialog(dialog);
+        filterResearchChoices();
+    }
+
+    private void openContentEditor(ResourceLocation research) {
+        try {
+            var dialog = new EditorDialog(EditorMode.CONTENT);
+            dialog.research = research;
+            dialog.languages.addAll(mc.getLanguageManager().getLanguages());
+            dialog.editor = new ResearchJsonTextEditor(ClientResearchContents.readContentJson(research, null));
+            dialog.loadedJson = dialog.editor.text();
+            openEditorDialog(dialog);
+        } catch (RuntimeException failure) {
+            PrototypeEngineering.LOGGER.error("Cannot read research content {}", research, failure);
+            showToast(tr(ContentSaveFailed, failure.getMessage()));
+        }
+    }
+
+    private void filterResearchChoices() {
+        var dialog = editorDialog;
+        String query = dialog.first.getText().toLowerCase(Locale.ROOT);
+        dialog.filtered.clear();
+        var entries = container.view.entries();
+        for (int index = 0; index < entries.size(); index++) {
+            var entry = entries.get(index);
+            if (page.ids.contains(entry.id())) continue;
+            if (query.isEmpty() || entry.id().toString().toLowerCase(Locale.ROOT).contains(query)
+                || display(entry.id()).content.title().toLowerCase(Locale.ROOT).contains(query))
+                dialog.filtered.add(entry.id());
+        }
+        dialog.choiceScroll = 0;
+        if (!dialog.filtered.contains(dialog.research)) dialog.research = null;
+    }
+
+    private void drawEditorDialog() {
+        var dialog = editorDialog;
+        hoverText.clear();
+        alphaFill(0, 0, screenW, screenH, DARK, 0.65F);
+        double w = dialog.mode == EditorMode.CONTENT ? 980 : dialog.mode == EditorMode.RESEARCH ? 620 : 480;
+        double h = dialog.mode == EditorMode.CONTENT ? Math.min(690, screenH - 48) : dialog.mode == EditorMode.RESEARCH ? 500 : 236;
+        dialog.x = (screenW - w) / 2;
+        dialog.y = (screenH - h) / 2;
+        dialog.w = w;
+        dialog.h = h;
+        double x = dialog.x, y = dialog.y;
+        frame(x, y, w, h);
+        label(tr(dialog.mode == EditorMode.PAGE ? AddPage : dialog.mode == EditorMode.RESEARCH ? AddResearch : EditResearch), x + 18, y + 14, w - 36, 18, TEXT);
+        fill(x + 12, y + 44, w - 24, 1, LINE);
+        if (dialog.mode == EditorMode.PAGE) {
+            label(tr(PageId), x + 18, y + 58, 130, 13, TEXT);
+            drawEditorField(dialog.first, x + 154, y + 54, w - 174);
+            label(tr(PageTitle), x + 18, y + 94, 130, 13, TEXT);
+            drawEditorField(dialog.second, x + 154, y + 90, w - 174);
+            label(tr(EditorHelp), x + 18, y + 136, w - 36, 12, SOFT);
+        } else if (dialog.mode == EditorMode.RESEARCH) {
+            label(tr(ResearchSearch), x + 18, y + 58, 130, 13, TEXT);
+            drawEditorField(dialog.first, x + 154, y + 54, w - 174);
+            double top = y + 92;
+            box(x + 18, top, w - 36, 330, SLOT, LINE);
+            for (int row = 0; row < Math.min(11, dialog.filtered.size() - dialog.choiceScroll); row++) {
+                var id = dialog.filtered.get(dialog.choiceScroll + row);
+                double rowY = top + 3 + row * 29;
+                if (id.equals(dialog.research)) fill(x + 21, rowY, w - 42, 28, LIGHT);
+                else if (inside(x + 21, rowY, w - 42, 28)) fill(x + 21, rowY, w - 42, 28, HOVER);
+                icon(id, x + 26, rowY + 2, 24);
+                label(display(id).content.title(), x + 59, rowY + 2, w - 86, 12, TEXT);
+                label(id.toString(), x + 59, rowY + 16, w - 86, 10, SOFT);
+            }
+            if (dialog.filtered.isEmpty()) centeredLabel(tr(NoResearchChoices), x + 18, top, w - 36, 330, 13, SOFT);
+        } else {
+            label(dialog.research.toString(), x + 18, y + 57, w - 365, 13, TEXT);
+            String target = dialog.language < 0 ? tr(ContentData) : dialog.languages.get(dialog.language).toString();
+            box(x + w - 340, y + 52, 322, 27, inside(x + w - 340, y + 52, 322, 27) ? HOVER : SLOT, LINE);
+            label(target, x + w - 332, y + 58, 284, 12, TEXT);
+            label("▼", x + w - 42, y + 58, 18, 12, TEXT);
+            dialog.editor.draw(fontRenderer, x + 18, y + 92, w - 36, h - 174);
+            if (Mouse.isButtonDown(0)) dialog.editor.drag(fontRenderer, mouseX, mouseY);
+            label(tr(EditorHelp), x + 18, y + h - 75, w - 36, 11, SOFT);
+            if (dialog.languagesOpen) drawLanguages(dialog);
+        }
+        if (!dialog.message.isEmpty()) {
+            label(dialog.message, x + 18, y + h - 57, w - 36, 11, dialog.failed ? BAD : GOOD);
+            if (inside(x + 18, y + h - 60, w - 36, 18) && textWidth(dialog.message, 11) > w - 36)
+                hoverText.addAll(fontRenderer.listFormattedStringToWidth(dialog.message, 600));
+        }
+        boolean enabled = dialog.mode != EditorMode.RESEARCH || dialog.research != null;
+        editorButton(tr(dialog.mode == EditorMode.PAGE ? AddPage : dialog.mode == EditorMode.RESEARCH ? AddResearch : SaveContent), x + w - 240, y + h - 36, enabled);
+        editorButton(tr(Cancel), x + w - 124, y + h - 36, true);
+    }
+
+    private void drawEditorField(GuiTextField field, double x, double y, double w) {
+        double scale = 4D / 3;
+        field.x = (int) (x / scale);
+        field.y = (int) (y / scale);
+        field.width = (int) (w / scale);
+        field.height = 18;
+        GlStateManager.pushMatrix();
+        GlStateManager.scale(scale, scale, 1);
+        field.drawTextBox();
+        GlStateManager.popMatrix();
+    }
+
+    private void editorButton(String text, double x, double y, boolean enabled) {
+        double w = 106;
+        (enabled && inside(x, y, w, 24) ? BUTTON_HOVER : BUTTON).draw(x, y, w, 24);
+        centeredLabel(text, x + 4, y, w - 8, 24, 12, LIGHT);
+        if (!enabled) alphaFill(x, y, w, 24, BASE, 0.5F);
+    }
+
+    private void drawLanguages(EditorDialog dialog) {
+        double x = dialog.x + dialog.w - 340, y = dialog.y + 82;
+        int count = Math.min(9, dialog.languages.size() + 1 - dialog.languageScroll);
+        frame(x, y, 322, count * 24 + 8);
+        for (int row = 0; row < count; row++) {
+            int index = dialog.languageScroll + row - 1;
+            String label = index < 0 ? tr(ContentData) : dialog.languages.get(index).toString();
+            menuRow(label, x + 4, y + 4 + row * 24, 314, 24, true);
+        }
+    }
+
+    private void dialogClick() {
+        var dialog = editorDialog;
+        double x = dialog.x, y = dialog.y, w = dialog.w, h = dialog.h;
+        if (dialog.languagesOpen) {
+            double listX = x + w - 340, listY = y + 82;
+            int count = Math.min(9, dialog.languages.size() + 1 - dialog.languageScroll);
+            if (inside(listX, listY, 322, count * 24 + 8)) {
+                int selected = dialog.languageScroll + Math.clamp((int) ((mouseY - listY - 4) / 24), 0, count - 1) - 1;
+                if (!dialog.editor.text().equals(dialog.loadedJson)) {
+                    dialog.message = tr(UnsavedChanges);
+                    dialog.failed = true;
+                } else try {
+                    var language = selected < 0 ? null : dialog.languages.get(selected).getLanguageCode();
+                    String text = ClientResearchContents.readContentJson(dialog.research, language);
+                    dialog.language = selected;
+                    dialog.editor.setText(text);
+                    dialog.loadedJson = dialog.editor.text();
+                    dialog.message = "";
+                } catch (RuntimeException failure) {
+                    dialog.message = tr(ContentSaveFailed, failure.getCause() == null ? failure.getMessage() : failure.getCause().getMessage());
+                    dialog.failed = true;
+                }
+            }
+            dialog.languagesOpen = false;
+            return;
+        }
+        if (inside(x + w - 124, y + h - 36, 106, 24)) {
+            closeEditorDialog();
+            return;
+        }
+        if (inside(x + w - 240, y + h - 36, 106, 24)) {
+            saveEditorDialog();
+            return;
+        }
+        if (dialog.mode == EditorMode.CONTENT) {
+            if (inside(x + w - 340, y + 52, 322, 27)) dialog.languagesOpen = true;
+            else dialog.editor.click(fontRenderer, mouseX, mouseY);
+        } else {
+            dialog.first.mouseClicked((int) (mouseX * 0.75), (int) (mouseY * 0.75), 0);
+            if (dialog.second != null) dialog.second.mouseClicked((int) (mouseX * 0.75), (int) (mouseY * 0.75), 0);
+            if (dialog.mode == EditorMode.RESEARCH && inside(x + 21, y + 95, w - 42, 319)) {
+                int index = dialog.choiceScroll + (int) ((mouseY - y - 95) / 29);
+                if (index < dialog.filtered.size()) dialog.research = dialog.filtered.get(index);
+            }
+        }
+    }
+
+    private void saveEditorDialog() {
+        var dialog = editorDialog;
+        try {
+            switch (dialog.mode) {
+                case PAGE -> {
+                    String id = dialog.first.getText().trim();
+                    ClientResearchContents.createPage(id, dialog.second.getText().trim());
+                    rebuildPages(container.view.entries());
+                    switchPage(pagesById.get(id));
+                    closeEditorDialog();
+                    showToast(tr(PageCreated));
+                }
+                case RESEARCH -> {
+                    if (dialog.research == null) return;
+                    var registered = new ObjectArrayList<ResourceLocation>();
+                    var entries = container.view.entries();
+                    for (int index = 0; index < entries.size(); index++) registered.add(entries.get(index).id());
+                    ClientResearchContents.retainPage(page.id, page.layout);
+                    ClientResearchContents.addResearch(page.id, dialog.research, dialog.worldX, dialog.worldY, registered);
+                    rebuildPages(entries);
+                    closeEditorDialog();
+                    detailDirty = true;
+                    showToast(tr(ResearchAdded));
+                }
+                case CONTENT -> {
+                    ClientResearchContents.saveContentJson(dialog.research,
+                        dialog.language < 0 ? null : dialog.languages.get(dialog.language).getLanguageCode(), dialog.editor.text());
+                    dialog.loadedJson = dialog.editor.text();
+                    dialog.message = tr(ContentSaved);
+                    dialog.failed = false;
+                    detailDirty = true;
+                }
+            }
+        } catch (RuntimeException failure) {
+            dialog.message = tr(ContentSaveFailed, failure.getCause() == null ? failure.getMessage() : failure.getCause().getMessage());
+            dialog.failed = true;
+        }
+    }
+
+    private void dialogKeyTyped(char character, int code) {
+        var dialog = editorDialog;
+        if (code == Keyboard.KEY_ESCAPE) {
+            if (dialog.languagesOpen) dialog.languagesOpen = false;
+            else closeEditorDialog();
+            return;
+        }
+        if (dialog.mode == EditorMode.CONTENT) {
+            if (!dialog.languagesOpen) dialog.editor.keyTyped(fontRenderer, character, code);
+        } else {
+            if (code == Keyboard.KEY_TAB && dialog.second != null) {
+                boolean first = dialog.first.isFocused();
+                dialog.first.setFocused(!first);
+                dialog.second.setFocused(first);
+            } else if (code == Keyboard.KEY_RETURN || code == Keyboard.KEY_NUMPADENTER) saveEditorDialog();
+            else {
+                if (dialog.first.textboxKeyTyped(character, code) && dialog.mode == EditorMode.RESEARCH)
+                    filterResearchChoices();
+                if (dialog.second != null) dialog.second.textboxKeyTyped(character, code);
+            }
+        }
+    }
+
+    private void openEditorDialog(EditorDialog dialog) {
+        editorRepeatWasEnabled = Keyboard.areRepeatEventsEnabled();
+        Keyboard.enableRepeatEvents(true);
+        editorDialog = dialog;
+        held = canvasDrag = scrollbarDrag = false;
+        pressedHit = null;
+        pressedNode = dragging = null;
+    }
+
+    private void closeEditorDialog() {
+        Keyboard.enableRepeatEvents(editorRepeatWasEnabled);
+        editorDialog = null;
+        held = canvasDrag = scrollbarDrag = false;
+        pressedHit = null;
+        pressedNode = dragging = null;
+    }
+
+    private record ContextMenu(double x, double y, double worldX, double worldY, @Nullable ResourceLocation research) {
+    }
+
+    private enum EditorMode {PAGE, RESEARCH, CONTENT}
+
+    private static final class EditorDialog {
+        private final EditorMode mode;
+        private @Nullable GuiTextField first, second;
+        private @Nullable ResearchJsonTextEditor editor;
+        private final ObjectArrayList<ResourceLocation> filtered = new ObjectArrayList<>();
+        private final ObjectArrayList<Language> languages = new ObjectArrayList<>();
+        private @Nullable ResourceLocation research;
+        private String loadedJson = "", message = "";
+        private int language = -1, languageScroll, choiceScroll, worldX, worldY;
+        private boolean languagesOpen, failed;
+        private double x, y, w, h;
+
+        private EditorDialog(EditorMode mode) {
+            this.mode = mode;
+        }
+    }
+
     private void scrollThumb(double pointerY) {
         double viewHeight = bodyBottom - bodyTop, thumb = Math.max(18, viewHeight * viewHeight / detailHeight);
         detailScroll = Math.clamp((pointerY - scrollbarGrab - bodyTop) / (viewHeight - thumb), 0, 1) * (detailHeight - viewHeight);
     }
 
     private void focus(ResourceLocation id) {
-        page = pagesById.get(id.getNamespace());
+        var targetPage = pagesByResearch.get(id);
+        if (targetPage == null) return;
+        page = targetPage;
         selected = id;
         forgetting = null;
         detailScroll = 0;

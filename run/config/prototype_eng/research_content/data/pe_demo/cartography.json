@@ -1,0 +1,13 @@
+{
+  "title": "Cartography",
+  "summary": "Record information about the world.",
+  "description": [
+    "Requires Data Storage Lv.1.",
+    "Paper is an ordinary material; storage throughput is an independent accumulated network requirement."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:filled_map",
+    "meta": 0
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "title": "Refining",
+  "summary": "Refine materials into more useful products.",
+  "description": [
+    "Requires High-energy Smelting Lv.1.",
+    "This branch leads to Sticky Sealing and the three levels of Alloy Processing."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:glowstone_dust",
+    "meta": 0
+  }
+}

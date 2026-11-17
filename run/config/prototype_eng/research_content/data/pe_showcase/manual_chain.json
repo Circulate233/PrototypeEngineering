@@ -1,0 +1,29 @@
+{
+  "title": "Manual Research Notebook",
+  "summary": "Three manual stages with separate materials and rewards.",
+  "description": [
+    "Levels 1, 2 and 3 take 100, 160 and 220 ticks. All three are manual tier 0 stages.",
+    "Pay four iron ingots, then four gold ingots, then two emeralds.",
+    "Disable inventory contribution to pause without losing progress, or have another team member take over.",
+    "Each level has a different reward group; complete several levels before claiming to inspect the stacked reward cards."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:writable_book",
+    "meta": 0
+  },
+  "rewards": {
+    "pe_showcase:manual_1": {
+      "title": "First Notebook Pages",
+      "description": "Eight paper."
+    },
+    "pe_showcase:manual_2": {
+      "title": "Bound Notebook",
+      "description": "One book."
+    },
+    "pe_showcase:manual_3": {
+      "title": "Completed Notebook",
+      "description": "One emerald."
+    }
+  }
+}

@@ -242,14 +242,14 @@
     <div class="ov-legend" id="ov-legend"></div>
     <ul class="ov-notes">
       <li>全屏界面，沿用 AE 配色与四角闭合的原生窗口贴图，游戏中隐藏 JEI 覆盖层。滚轮以光标为中心缩放（50%～200%），按住左键在画布任意位置拖动平移；点击空白处或按 ESC 收起右侧详情，再按 ESC 关闭界面。</li>
-      <li>研究平时只显示方块和图标；正在研究或保留部分进度的研究，方块右侧显示百分比。点击后展开为长框，显示名称、状态和进度条，同时在右侧弹出详情；展开的长框不会盖住其他研究。</li>
+      <li>研究平时只显示方块和图标；正在研究或保留部分进度的研究，方块右侧显示百分比。点击后展开为长框，显示名称、状态和进度条，同时在右侧弹出详情；手动布局直接使用保存坐标，连线随坐标变化。</li>
       <li>左上角为分页、研究队列和当前研究；队列为空时不显示研究状态面板。研究站研究沿用正式研究站的标题、右对齐数值和累计条风格，材料每种一行显示“当前可用 / 剩余需求”；手动研究显示投料玩家、材料“已投入 / 需求”和“消耗背包中的物品”。</li>
       <li>右上角按“数据库：”、各阶级“LvN 已存条目 / 总容量”、“网络中心：LvN”、“最高研究站：LvN”分行显示本队设备信息；同阶全部已加载有效物理数据库合并计数。左下角没有缩放比例或操作提示。库不注册打开按键和物品，测试 mod 提供打开按键，实际入口由开发者调用打开方法。</li>
-      <li>“运行测试”页使用仓库示例脚本与 Java 示例的研究、材料、网络资源和奖励（自动布局）；“示例扩展”页为演示多前置、跨页前置、互斥与手动布局的虚构内容。</li>
+      <li>“运行测试”页使用仓库示例脚本与 Java 示例的研究、材料、网络资源和奖励（自动布局）；其中手动、互斥、网络、持续和特殊研究五项需要标准 CT 测试入口，其余五项始终由 Java 注册。“示例扩展”页的 14 项研究也已在示例 mod 注册，展示多前置、跨页前置、互斥与手动布局；连同研究万花筒六项，无 CT 时共有 25 项，标准 CT 入口为 30 项。</li>
       <li>玩家模式：前置未完成的研究点击无反馈，悬停列出还需完成的研究；开始条件正文只显示网络中心与研究站，不重复显示活动数据库需求。操作由服务端判定，不可用按钮悬停说明缺少条件；下载到数据库按实际数据库的阶级和容量判断。下载到数据库不会重复，队伍任一数据库已存等级不低于队伍等级时提示“已下载到 …”。</li><li>遗忘：详情底部的“遗忘个人等级”只移除自己的个人等级（可选择从哪一级起遗忘），队伍等级按全体成员重新计算；前置因此不足的研究会一并回退，并提示受影响的研究与队列条目。仅物品研究和特殊研究不能个人遗忘。</li>
       <li>数据库模式用于选择下载到物品的研究：任意队伍已完成、研究阶级不高于本数据库阶级的研究都可以选择，不要求已存于本数据库；特殊研究、未完成或阶级过高的研究变暗且点击无反馈，悬停说明原因。</li>
-      <li>编辑模式：由命令打开。所有研究都可以点击打开详情，详情中的“开始研究”立即完成下一级，缺少的前置研究同时补齐，特殊研究的按钮为“写入数据库”。长按研究约 0.3 秒后可直接拖动到任意位置，松开后记录像素坐标，该页随之改为手动布局，连线按位置自动计算；“导出”覆盖该页的分页文件。</li>
-      <li>研究名称、简介、图标和奖励组文字来自客户端研究内容 JSON；分页 ID 为研究命名空间，分页名称读取自动生成的本地化键。</li>
+      <li>正式游戏的编辑模式由命令打开。所有研究都可以点击打开详情，详情中的“开始研究”立即完成下一级，缺少的前置研究同时补齐，特殊研究的按钮为“写入数据库”。长按研究约 0.3 秒后可自由拖动，松开后记录像素坐标，该页随之改为手动布局；“导出”覆盖该页的分页文件。右键画布空白处可添加分页或把已注册研究加入当前页，右键研究可编辑基础内容 JSON 和语言覆盖文件。此 HTML 演示研究操作、自由拖动和分页 JSON 生成，右键菜单与内容编辑窗口请在正式游戏中使用。</li>
+      <li>研究名称、简介、图标和奖励组文字来自客户端研究内容 JSON。分页可通过 researches 显式列出完整研究 ID，positions 同样使用完整 ID；未指定 researches 时按分页 ID 对应的研究命名空间归组。分页名称可直接指定 title，未指定时读取自动生成的本地化键。此预览的“导出”生成可复制保存的 JSON。</li>
     </ul>
     <div class="ov-export" id="ov-export" hidden><p id="ov-export-path"></p><pre id="ov-export-json"></pre></div>
   </div>
@@ -327,9 +327,9 @@
         resources: () => [{name: "信号处理", total: 400, tick: 1}], summary: "阶级 2 研究，研究阶级高于阶级 1 的数据库。"});
       def("pe_demo:refining", {name: "精炼工艺", icon: "glowstone_dust", ticks: 400, prereq: [["pe_demo:high_heat", 1]], materials: [["glowstone_dust", 16]],
         resources: () => [{name: "算力", total: 2000, tick: 5}], summary: "提纯矿物。"});
-      def("pe_demo:quantum_link", {name: "量子缠绕", icon: "ender_pearl", ticks: 1200, tier: T(2), prereq: [["pe_demo:logic_array", 1], ["pe_run_tests:research_station", 2]],
+      def("pe_demo:quantum_link", {name: "量子缠绕", icon: "ender_pearl", ticks: 1200, tier: T(2), prereq: [["pe_demo:logic_array", 1], ["pe_run_tests:java_research_connection", 1]],
         materials: [["ender_pearl", 16], ["diamond", 4]], resources: () => [{name: "网络算力", total: 24000, tick: 20}, {name: "带宽", total: 6000}],
-        rewards: {1: [{id: "pe_demo:quantum_reward", title: "量子样本", children: [{item: "ender_pearl", n: 4}]}]}, summary: "跨页前置示例：需要运行测试页的网络研究 Lv.2。"});
+        rewards: {1: [{id: "pe_demo:quantum_reward", title: "量子样本", children: [{item: "ender_pearl", n: 4}]}]}, summary: "跨页前置示例：需要运行测试页由 Java 示例注册的高速连接 Lv.1。"});
       def("pe_demo:optical_link", {name: "光学传输", icon: "prismarine_crystals", ticks: 600, prereq: [["pe_demo:crystal_resonance", 1]], mutex: [["pe_demo:sticky_seal", 1]],
         materials: [["prismarine_crystals", 24]], resources: () => [{name: "带宽", total: 3600, tick: 6}], summary: "与黏性封装互斥。"});
       def("pe_demo:sticky_seal", {name: "黏性封装", icon: "slimeball", ticks: 600, prereq: [["pe_demo:refining", 1]], mutex: [["pe_demo:optical_link", 1]],
@@ -555,10 +555,6 @@
       }
       const at = ([x, y]) => [x * S, y * S];
       const width = id => pct(id) === null ? NODE : WIDE;
-      // Space an expanded research occupies, in GUI pixels; manual positions must keep these apart.
-      const footprint = ([x, y]) => ({l: x, t: y - (EXP_H - NODE) / 2 / S, r: x + EXP_W / S, b: y + (EXP_H + NODE) / 2 / S});
-      const overlaps = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
-
       // Orthogonal link from the right edge of the prerequisite to the left edge of the target, bending BEND before the target.
       function route(sx, sy, sBottom, sTop, tx, ty, tTop, tBottom) {
         const bend = tx - BEND;
@@ -581,7 +577,7 @@
         if (s.key === "locked") lines.push("还需完成：" + missing(id).map(label).join("、"));
         if (s.key === "blocked") lines.push("互斥：已完成 " + mutexHit(id).map(label).join("、"));
         if (editing()) {
-          lines.push("点击打开详情，用研究按钮立即完成", "长按拖动调整位置");
+          lines.push("点击打开详情，用研究按钮立即完成", "长按自由拖动调整位置", "正式游戏：右键研究编辑内容");
           return lines.join("\n");
         }
         if (!r.special) {
@@ -701,7 +697,7 @@
 
         const banner = $("ov-banner");
         banner.className = "ov-banner" + (editing() ? " edit" : "");
-        banner.textContent = editing() ? "编辑模式 · 研究按钮立即完成 · 长按研究拖动" : picking() ? db.name + " · 选择下载到物品的研究" : state.team + " · 研究总览";
+        banner.textContent = editing() ? "编辑模式预览 · 研究按钮立即完成 · 长按研究自由拖动" : picking() ? db.name + " · 选择下载到物品的研究" : state.team + " · 研究总览";
 
         let tr;
         if (picking()) {
@@ -723,7 +719,7 @@
           if (editing()) {
             const manual = page().layout === "manual";
             tr = `<div class="ov-row"><span class="ov-chip ${manual ? "warn" : "plain"}" data-tip="${esc(manual ? "本页使用分页文件中的自由坐标，连线按位置自动计算" : "本页按前置关系自动排列，拖动任一研究后改为手动布局")}">${manual ? "手动布局" : "自动布局"}</span>` +
-              `<button type="button" class="ov-action" id="ov-exportbtn" data-tip="${esc("覆盖 config/prototype_eng/research_content/data/" + pageId + ".json")}">导出</button></div>` + tr;
+              `<button type="button" class="ov-action" id="ov-exportbtn" data-tip="${esc("生成 config/prototype_eng/research_content/data/" + pageId + ".json 的分页 JSON；正式游戏中导出会覆盖该文件")}">导出</button></div>` + tr;
           }
         }
         $("ov-tr").innerHTML = tr;
@@ -920,20 +916,14 @@
         toast("已遗忘 " + R[f.id].name + " Lv." + f.k + " 及以上，队伍等级 Lv." + plan.now[f.id] + " → Lv." + plan.after[f.id]);
       }
 
-      // Records a free GUI pixel position; the expanded box of the moved research must not overlap another research.
+      // Records a free GUI pixel position directly.
       function place(g) {
         const p = page(), path = R[g.id].path;
         const top = parseFloat(g.node.style.top) + (g.node.classList.contains("expanded") ? (EXP_H - NODE) / 2 : 0);
         const pos = [Math.max(0, Math.round(parseFloat(g.node.style.left) / S)), Math.max(0, Math.round(top / S))];
-        const mine = footprint(pos);
-        const taken = Object.entries(positions(p)).find(([k, v]) => k !== path && overlaps(mine, footprint(v)));
-        if (taken) {
-          toast("与 " + R[p.id + ":" + taken[0]].name + " 距离过近，位置未改变");
-        } else {
-          if (p.layout !== "manual") { p.positions = autoPositions(p); p.layout = "manual"; }
-          p.positions[path] = pos;
-          toast("已记录 " + R[g.id].name + " 的位置 (" + pos[0] + ", " + pos[1] + ")，导出后写入分页文件");
-        }
+        if (p.layout !== "manual") { p.positions = autoPositions(p); p.layout = "manual"; }
+        p.positions[path] = pos;
+        toast("已记录 " + R[g.id].name + " 的位置 (" + pos[0] + ", " + pos[1] + ")，导出后可保存到分页文件");
         render();
       }
 
@@ -1083,12 +1073,17 @@
             break;
           }
           case "ov-exportbtn": {
-            const p = page(), json = {order: p.order, layout: p.layout};
-            if (p.layout === "manual") json.positions = Object.fromEntries(ORDER.filter(id => R[id].page === p.id).map(id => [R[id].path, p.positions[R[id].path]]));
-            $("ov-export-path").textContent = "已覆盖 config/prototype_eng/research_content/data/" + p.id + ".json：";
+            const p = page(), ids = ORDER.filter(id => R[id].page === p.id);
+            const json = {order: p.order, layout: p.layout, researches: ids, positions: {}};
+            if (p.title != null) json.title = p.title;
+            if (p.layout === "manual") {
+              const pos = positions(p);
+              json.positions = Object.fromEntries(ids.map(id => [id, pos[R[id].path]]));
+            }
+            $("ov-export-path").textContent = "分页文件示例（复制保存到 config/prototype_eng/research_content/data/" + p.id + ".json）：";
             $("ov-export-json").textContent = JSON.stringify(json, null, 2).replace(/\[\n\s+(\d+),\n\s+(\d+)\n\s+\]/g, "[$1, $2]");
             $("ov-export").hidden = false;
-            toast("已导出到 research_content/data/" + p.id + ".json");
+            toast("已生成分页 JSON，可复制后保存");
             break;
           }
         }

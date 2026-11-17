@@ -1,0 +1,14 @@
+{
+  "title": "Enchantment Theory",
+  "summary": "Requires a specific level of Alloy Processing.",
+  "description": [
+    "Both Cartography Lv.1 and Alloy Processing Lv.2 are required.",
+    "Forgetting an earlier personal level may lower this research effective level and remove newly invalid queued work.",
+    "The enchanted-book icon is a plain item icon; gameplay rewards remain defined by the server catalog."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:enchanted_book",
+    "meta": 0
+  }
+}

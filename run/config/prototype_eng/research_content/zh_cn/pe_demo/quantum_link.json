@@ -1,0 +1,15 @@
+{
+  "title": "量子缠绕",
+  "summary": "跨页前置：需要运行测试页由 Java 示例注册的高速连接 Lv.1。",
+  "description": [
+    "同时需要逻辑门阵列 Lv.1，以及运行测试分页的高速连接（pe_run_tests:java_research_connection）Lv.1。",
+    "跨页前置使用短虚线表示，悬停说明前置所在分页。",
+    "本研究为阶级 2；完成后只有一组奖励，无需先选择。"
+  ],
+  "rewards": {
+    "pe_demo:quantum_reward": {
+      "title": "量子样本",
+      "description": "4 个末影珍珠。"
+    }
+  }
+}

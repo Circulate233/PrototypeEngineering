@@ -1,0 +1,21 @@
+{
+  "title": "From Notebook to Laboratory",
+  "summary": "A single research moves from manual work to tier 1 and tier 2 stations.",
+  "description": [
+    "Level 1: tier 0, 100 ticks, eight paper.",
+    "Level 2: tier 1, 200 ticks, eight iron ingots and 1,000 computing work.",
+    "Level 3: tier 2, 300 ticks, eight gold ingots and 3,000 computing work.",
+    "The current-research panel changes shape as a later level becomes a station task. A low-tier database can only process the levels its tier allows."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:comparator",
+    "meta": 0
+  },
+  "rewards": {
+    "pe_showcase:transition_3": {
+      "title": "Laboratory Graduation",
+      "description": "One diamond after completing the tier 2 stage."
+    }
+  }
+}

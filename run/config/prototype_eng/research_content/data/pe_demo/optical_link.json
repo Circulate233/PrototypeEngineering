@@ -1,0 +1,14 @@
+{
+  "title": "Optical Transmission",
+  "summary": "Exclusive with Sticky Sealing.",
+  "description": [
+    "Requires Crystal Resonance Lv.1.",
+    "Completing either Optical Transmission or Sticky Sealing blocks the other.",
+    "An administrator may complete both to inspect a conflicting state; normal research remains subject to mutual exclusion."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:prismarine_crystals",
+    "meta": 0
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "title": "Basic Circuits",
+  "summary": "Manual research that unlocks the circuit branch.",
+  "description": [
+    "Tier 0: enable inventory contribution in the current research panel to pay 16 redstone.",
+    "This root unlocks data storage, signal amplification and high-energy smelting."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:redstone",
+    "meta": 0
+  }
+}
