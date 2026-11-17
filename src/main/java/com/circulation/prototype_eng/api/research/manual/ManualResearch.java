@@ -46,6 +46,7 @@ public final class ManualResearch {
     private final ObjectOpenHashSet<UUID> unpreparedOperations = new ObjectOpenHashSet<>();
     @Nullable
     private CheckpointState pendingCheckpoint;
+    private boolean pendingProgressCheckpoint;
     private boolean executing;
 
     public ManualResearch(TeamResearchQueue queue, TeamOwnedResearch team,
@@ -355,7 +356,8 @@ public final class ManualResearch {
             session = session.resume(contributor, context.serverTime());
             if (frozen != null) session = session.beginCompletion(frozen);
             put(session);
-            persist(ObjectList.of());
+            if (frozen == null) defer();
+            else persist(ObjectList.of());
             return frozen == null ? Status.ADVANCED : finishCompletion(session, materials);
         }
         var intent = new ManualResearchSession.MaterialIntent(UUID.randomUUID(), contributor, plan.sequence(),
@@ -696,6 +698,14 @@ public final class ManualResearch {
     }
 
     private void persist(Collection<UUID> affectedPlayers) {
+        persist(affectedPlayers, false);
+    }
+
+    private void defer() {
+        persist(ObjectList.of(), true);
+    }
+
+    private void persist(Collection<UUID> affectedPlayers, boolean progressOnly) {
         if (pendingCheckpoint != null) {
             throw new IllegalStateException("A previous world checkpoint still requires recovery");
         }
@@ -704,6 +714,7 @@ public final class ManualResearch {
             snapshots.add(requirePlayer(id).snapshot());
         }
         pendingCheckpoint = new CheckpointState(sessions(), queue.snapshot(), team.snapshot(), snapshots);
+        pendingProgressCheckpoint = progressOnly;
         flushCheckpoint();
     }
 
@@ -712,9 +723,11 @@ public final class ManualResearch {
             return;
         }
         requireCheckpointOwnership(pendingCheckpoint);
-        checkpoint.persist(pendingCheckpoint);
+        if (pendingProgressCheckpoint) checkpoint.progressed(pendingCheckpoint);
+        else checkpoint.persist(pendingCheckpoint);
         requireCheckpointOwnership(pendingCheckpoint);
         pendingCheckpoint = null;
+        pendingProgressCheckpoint = false;
     }
 
     private void requireCheckpointOwnership(CheckpointState expected) {
@@ -763,6 +776,13 @@ public final class ManualResearch {
     @FunctionalInterface
     public interface Checkpoint {
         void persist(CheckpointState state);
+
+        /**
+         * Pure elapsed work can wait for the owning world's normal save. Standalone callers retain durable checkpoints by default.
+         */
+        default void progressed(CheckpointState state) {
+            persist(state);
+        }
     }
 
     /**

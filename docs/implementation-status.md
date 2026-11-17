@@ -1,5 +1,31 @@
 # 实施进度
 
+## 2026-11-18 研究视角、材料口径与分片保存
+
+接续 11 月 17 日的奖励崩溃、HTML 视觉差异及编辑入口反馈，并落实本轮追加的视角恢复、扣料停顿、谨慎增量保存与材料显示要求。保留原作者布局和实际研究规则；未启动 Minecraft 客户端或服务端。
+
+总览关闭时将当前分页、平移与缩放保存到独立客户端 `config/prototype_eng/client/research_overview_view.json`，研究分页与尺寸就绪后只恢复一次；缺页、损坏或无效数据回退，resize 不反复覆盖当前视角。勾选框的旧斜线 helper 实际画包围矩形，现按 HTML 的旋转边线画勾；顶部 135° 斜纹方向、梯形裁切、三角和文字内边距已对齐，未改变整体面板布局。独立 IO 检查 11 项、横幅几何 80,389 点及 HTML 实际函数材料显示 6 项通过，不冒充 OpenGL 验收。
+
+材料全部使用“剩余可用 / 剩余需消耗”，左侧不超过右侧。删除总览手动分支的“已消耗 / 总量”重算，HTML 与文档同步。普通站原来的同队所有可供料研究站汇总和封顶保持；研究站查看手动队首时原先误查机器，现由世界视图查询实际贡献者的在线背包，遵守下载保护槽位，与总览共用剩余进度及材料数据。无人或暂停时不查其他玩家/机器。真实差量包、72/5→5/5、1/3、0/0、文字缓存刷新和 BOB 供料/ALICE 只读查看均有行为回归。
+
+存储改为 `ResearchStateStore`：玩家 UUID、队伍 ID 的 SHA-256、下载/回执/研究盘各 operation UUID 独立 GZIP 分片；meta 只存时间、提交身份和有序校验索引。比较编码记录后仅替换变化片，其他玩家和操作正文的字节及修改时间不变；无变化保存不调用磁盘 writer。普通研究站时间/网络累计和手动无付款未完成的时间推进只 dirty，在主世界 Save/关闭时处理；入队、管理与明确要求耐久的物品事务保留原同步检查点。`Checkpoint.progressed` 默认回退原 persist，兼容独立宿主。仍会捕获/编码完整业务快照来确定变化，未宣称 CPU 已全部增量。
+
+每笔跨分片提交先耐久发布 changed postimage 和删除清单的 pending，再安装分片、最后提交 meta，完成删除后清理 pending。启动及失败重试核对 base/target 提交身份、全部索引校验和与内嵌 ID，未完成恢复前不发布世界；不把缺失/损坏玩家片当空数据。bootstrap 先在 staging 完整写 pending 再原子发布根；旧 `prototype_eng_research.dat` 只首次迁移且保留原字节，独立迁移证据防止新根丢失后复活旧快照。13 项真实文件用例覆盖所有五类、增量/no-op、部分安装和已提交清理失败恢复、同实例重试更新 baseline、删除、损坏和迁移。文件 sync/原子替换没有被宣称为已验证的任意掉电保证，规则见[增量存档](research-persistence.md)。
+
+停顿的两个确定缺陷同时修复：`FilterOutputStream` 未覆盖 bulk write 使压缩块逐字节下写，现直接转发；材料等权比例换算整数 tick 的浮点舍入会卡住已付款进度或在 long 极值提前开放最后一 tick，现只在浮点整数边界用 JDK BigInteger 精确有理数校正，材料比例、网络累计与付款量算法不变。三个真实队列回归对旧类全部失败、新类全部通过。另去除三处新鲜背包图像的编码后重复解码，保留大小检查；单机房主屏障通过原生单玩家 writePlayerData 刷新 hostPlayerData，不再保存所有在线玩家，父类及覆盖方法通过现有 AT 公开，playerdata/level.dat 的证据核验保留。
+
+局部流探针使用同 F: 卷的真实 12,092 字节 NBT，3 对预热、20 对交错样本，下游 Java 写调用 1,495 次单字节→4 次批量；原单文件路径（含 sync/原子替换/force）均值 13.60→4.88 ms，输出逐字节一致。该数据排除世界捕获/codec/NBT CPU，且不是新分片存储或游戏 tick 的端到端性能结果；未用该数字声称实际游戏已无停顿。
+
+领取崩溃来自原生 ItemStack 借用 NBT：validate 清内部交付标签写穿冻结片段，再次 prepare 读到缺标记。背包奖励适配器五个构造边界已 copy；数据库输出的 template/fragment 三处也隔离，避免 release 清理写穿；下载 material 三个原生构造边界一并隔离。没有在 DTO/getter 或全部存储上盲目复制。实际坏存档为“新的世界”唯一 paper×8、PLANNED 奖励片段：确认游戏进程未运行、备份原压缩文件后，仅补回 247 字节内部身份标签，删除此段与原 NBT 逐字节完全一致；状态、数量、槽位和玩家存档未变，未增发或清领取状态。原 SHA-256 `A319E00E22F707576D9664673B6F88BD825713921DB39AE0F22CC8E169D248FB`，恢复后 `E713026C3F4AB0E20A39079EFB126E3F4BD0E204DAC7FBAAD8235E5381635D4D`；备份和完整报告在 11 月 17 日 `reward-crash/` 证据目录。
+
+编辑入口现为 `/pe_research_edit [在线玩家名]`，执行者须权限 2；省略参数开自己，控制台须指定目标，提供在线名补全。目标不必 OP，管理员授权只属于本次准确容器；关闭/换容器、授权者离线/重连/失权撤销。服务端编辑完成与特殊写库在提交回调重验会话，普通研究投影和操作仍使用目标的真实权限。已有示例与右键功能保持：25 Java / 标准 CT 三页 30 研究、手动自由布局与注册研究归属、data/游戏语言展示编辑。
+
+验证：最终完整 `gradlew.bat build --console=plain`、Spotless、1776 tests / 275 suites 全通过，失败/错误/跳过均为 0；新增 23 项真实行为与文件用例。22 个本轮 src Java（含 7 测试）逐文件本机 IDEA `get_file_problems(errorsOnly:false)` 错误/警告/弱警告全为 0，IDEA 定向构建成功。4 份正式/addon 语言最终复检全零，补齐上一轮 MCP 离线的证据缺口。HTML 修改行无诊断，既有 CSS 等 1 error / 161 warnings / 5 weak warnings 保留，不称全篇无警告。首个完整构建仅新 helper/store 的 LF 违反 Spotless，精确改为项目 CRLF 后完整通过。
+
+`run/prepare-tests.ps1` 已正常编译 28 addon Java 并安装，15 ZS 与 97 核心 API 检查通过；未启动 FML/Bootstrap/World。完整构建、测试统计、最终 IDEA、SDK、13 文件场景和只读协议审查在 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261118/research-followup/`；视觉/视角独立证据在同日 `overview-visual-viewstate/`。奖励备份与恢复报告在 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261117/reward-crash/`。
+
+下一步用户完整重启，优先复验手动及研究站材料口径、分页/拖动/缩放重开恢复、扣料流畅性、奖励继续领取，再看勾框/横幅和编辑指令的多人授权；自动迁移新目录后 Save/退出重进的数据一致性仍待真实游戏。不得以单元、SDK、IO 探针或 HTML 几何代替原生渲染、多人和端到端性能。本轮本地英文提交、不推送，存档与备份不纳入 Git。
+
 ## 2026-11-17 研究示例与总览右键编辑
 
 承接用户的示例补全和编辑器需求。示例 mod 新增 `ResearchOverviewExamples`，将 HTML 的十四项 `pe_demo` 研究接入实际注册表，并新增六项 `pe_showcase`：32 材料/六资源/长文、流体、三组可选奖励与十二物品/NBT 工具、多等级手动研究、手动到一阶再到二阶的阶段变化、无材料/网络资源任务。原 Java 五项保留，无 CT 启动共 25 项；标准 `run/start-tests.ps1` 的 CT 脚本另提供五项，合计三页三十项。量子缠绕的跨页前置统一使用始终由 Java 注册的 `java_research_connection` Lv.1，避免用户报告中不含 CT 的启动配置出现缺失前置。没有通过条件跳过校验或复制 ZS 注册来掩盖依赖。

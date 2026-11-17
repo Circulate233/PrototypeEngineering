@@ -1,8 +1,11 @@
 package com.circulation.prototype_eng.api.research;
 
+import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
+import com.circulation.prototype_eng.api.research.manual.ManualResearch;
+import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.research.queue.ResearchProgress;
 import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
@@ -30,6 +33,7 @@ import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.lang.reflect.Proxy;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -198,6 +202,61 @@ class ResearchWorldViewTest {
         assertEquals(6, view.team().numericProgress().getDouble(COMPUTE));
         assertEquals(1, view.team().numericProgress().size());
         assertTrue(view.team().manualRows().isEmpty());
+    }
+
+    @Test
+    void manualStationProjectionReadsOnlyItsContributorAndNeverMutatesOrUsesMachineSupply() {
+        var manualId = id("manual_inventory_view");
+        var registry = new ResearchRegistry();
+        registry.register(ResearchDefinition.builder(manualId).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY)
+                                            .stage(ResearchLevelStage.builder(1, 1).durationTicks(10).researchTier(0)
+                                                                     .resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+        registry.freeze();
+        var writes = new ObjectArrayList<ResearchWorldSnapshot>();
+        var world = new ResearchWorld(registry, ResearchPermissionPolicy.DEFAULT, writes::add);
+        var bobMembership = membership(BOB, "manual_team", ALICE, BOB);
+        var bobPermission = new ResearchPermissionContext(BOB, "manual_team", null, "manual_team", true, false, false);
+        var started = world.start(bobMembership, bobPermission, manualId, 1,
+            new TeamResearchStart.Environment(0, 0, 0, Reference2DoubleMaps.emptyMap()), 0, Set.of(ALICE, BOB), () -> true);
+        assertEquals(TeamResearchStart.Status.STARTED, started.status());
+        var inventory = (ManualResearchInventory) Proxy.newProxyInstance(ManualResearchInventory.class.getClassLoader(),
+            new Class<?>[]{ManualResearchInventory.class}, (_, method, args) -> switch (method.getName()) {
+                case "playerId" -> BOB;
+                case "availableMaterials" -> {
+                    assertTrue(((AEKey2LongMap) args[0]).isEmpty());
+                    yield ImmutableResourceAmounts.empty();
+                }
+                default -> throw new AssertionError("Material projection mutated the contributor: " + method.getName());
+            });
+        try (var identities = new MachineIdentityRegistry(() -> {
+        })) {
+            var stations = new ResearchStations(identities, () -> fail("Manual projection queried station inventories"));
+            var requested = new ObjectArrayList<UUID>();
+            var before = world.snapshot();
+            int beforeWrites = writes.size();
+            var view = world.stationView(permission("manual_team"), stations, 0, player -> {
+                assertEquals(BOB, player);
+                requested.add(player);
+                return inventory;
+            });
+            assertNotNull(view);
+            assertTrue(view.visible());
+            assertEquals(ObjectList.of(BOB), requested);
+            assertEquals(before, world.snapshot());
+            assertEquals(beforeWrites, writes.size());
+
+            long entryId = view.queue().getFirst().key().queueEntryId();
+            assertEquals(ManualResearch.Status.PAUSED, world.pauseManual(bobMembership, BOB, entryId, 1, Set.of(ALICE, BOB), () -> true));
+            var paused = world.snapshot();
+            int pausedWrites = writes.size();
+            var pausedView = world.stationView(permission("manual_team"), stations, 1,
+                _ -> fail("Paused manual research queried a player's inventory"));
+            assertNotNull(pausedView);
+            assertTrue(pausedView.availableMaterials().isEmpty());
+            assertEquals(entryId, pausedView.queue().getFirst().key().queueEntryId());
+            assertEquals(paused, world.snapshot());
+            assertEquals(pausedWrites, writes.size());
+        }
     }
 
     @Test

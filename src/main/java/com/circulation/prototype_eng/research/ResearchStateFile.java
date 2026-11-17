@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.research;
 
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import com.circulation.prototype_eng.api.research.ResearchWorldSnapshot;
@@ -90,6 +91,12 @@ public final class ResearchStateFile {
     private static final class SyncOutputStream extends FilterOutputStream {
         private SyncOutputStream(FileOutputStream output) {
             super(output);
+        }
+
+        @Override
+        public void write(byte @NotNull [] bytes, int offset, int length) throws IOException {
+            // FilterOutputStream otherwise writes each compressed byte to the file separately.
+            out.write(bytes, offset, length);
         }
 
         @Override

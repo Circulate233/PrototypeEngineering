@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.research;
 
 import ae2.api.stacks.AEItemKey;
-import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -45,9 +44,8 @@ import com.circulation.prototype_eng.api.research.manual.ManualResearch;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory;
 import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
 import com.circulation.prototype_eng.api.research.queue.ResearchProgress;
-import com.circulation.prototype_eng.api.research.manual.ManualMaterialKey;
-import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.container.ResearchOverviewPacket;
+import com.circulation.prototype_eng.container.ContainerResearchOverview;
 import com.circulation.prototype_eng.api.research.station.ResearchStations;
 import com.circulation.prototype_eng.api.research.view.DataCenterPlayerView;
 import com.circulation.prototype_eng.api.research.view.ResearchPlayerView;
@@ -108,7 +106,7 @@ import java.util.function.Supplier;
 import java.util.List;
 
 /**
- * Authoritative server research session; its file has one writer and is never registered in MapStorage.
+ * Authoritative server research session; its incremental store has one writer outside MapStorage.
  */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class ServerResearch {
@@ -142,7 +140,7 @@ public final class ServerResearch {
         }
         var overworld = server.getWorld(0);
         var registry = ResearchRegistry.INSTANCE;
-        var file = new ResearchStateFile(overworld.getSaveHandler().getMapFileFromName("prototype_eng_research").toPath(),
+        var file = new ResearchStateStore(overworld.getSaveHandler().getMapFileFromName("prototype_eng_research").toPath(),
             new ResearchWorldNbt(registry, ResourceKeyNbt.INSTANCE));
         var permissions = ResearchServerConfiguration.INSTANCE.permissions();
         var world = new ResearchWorld(registry, permissions, snapshot -> {
@@ -364,7 +362,7 @@ public final class ServerResearch {
                 result.accept(null);
                 return;
             }
-            var stack = new ItemStack(material.material());
+            var stack = new ItemStack(material.material().copy());
             var recipe = ResearchItemDownloadRegistry.INSTANCE.find(AEItemKey.of(stack), id);
             if (definition.specialOnly()) {
                 result.accept(null);
@@ -564,7 +562,7 @@ public final class ServerResearch {
                 return;
             }
             var evaluated = ResearchItemImportRegistry.INSTANCE.evaluate(new ResearchItemImportContext(ResearchRegistry.INSTANCE,
-                new ItemStack(material.material()), actor, databaseId, expectedTeam, material.operationId()));
+                new ItemStack(material.material().copy()), actor, databaseId, expectedTeam, material.operationId()));
             if (evaluated == null || evaluated.amount() < 1) {
                 result.accept(null);
                 return;
@@ -670,7 +668,7 @@ public final class ServerResearch {
         var intent = new ResearchDiskOperation.Intent(actor.getUniqueID(), nonce, databaseId, expectedTeam, slot, machineInventory);
         result.accept(current.world.requestDiskImport(intent, membership, permission, physical.target(), physical.storage(),
             inventory, material -> ResearchItemImportRegistry.INSTANCE.evaluate(new ResearchItemImportContext(ResearchRegistry.INSTANCE,
-                new ItemStack(material.material()), actor, databaseId, expectedTeam, material.operationId())), null, delivery, operationTime(current),
+                new ItemStack(material.material().copy()), actor, databaseId, expectedTeam, material.operationId())), null, delivery, operationTime(current),
             () -> authority.getAsBoolean() && physical.current() && currentActor(current, actor) && ownerCurrent.getAsBoolean()
                 && permission.equals(permission(current, actor, membership)), physical::physicalCurrent, () -> currentActor(current, actor)));
     }
@@ -1356,7 +1354,7 @@ public final class ServerResearch {
                 result.accept(null);
                 return;
             }
-            var station = current.world.stationView(permission, current.stations, operationTime(current));
+            var station = current.world.stationView(permission, current.stations, operationTime(current), id -> inventory(current, id));
             if (station == null) {
                 result.accept(null);
                 return;
@@ -1477,16 +1475,13 @@ public final class ServerResearch {
                     var profile = current.server.getPlayerProfileCache().getProfileByUUID(contributor);
                     contributorName = profile == null ? contributor.toString() : profile.getName();
                 }
-                var materials = progress.materials();
-                if (manual != null)
-                    materials = manualMaterials(definition, head.targetLevel(), manual, contributor == null ? null : online.get(contributor));
                 activeResearch = new ResearchOverviewPacket.Current(head.id(), head.entryId(), head.targetLevel(), progress.elapsed(),
                     definition.stageForLevel(head.targetLevel()).durationTicks(), station.workingStations(), manual != null,
-                    contributorName, contributor, materials, progress.resources());
+                    contributorName, contributor, progress.materials(), progress.resources());
             }
             var environment = new ResearchOverviewPacket.Environment(playerView.team().id(), membership.accepted() ? teamTitle(actor, membership.teamId()) : "",
                 admission.networkCenterLevel(), highestStation, activeId, station.canManage(), playerView.savePending(),
-                editor && permission.serverOperator(), visible, pickerLevel,
+                editor && editorAuthorized(actor), visible, pickerLevel,
                 picker == null ? "" : picker.type().displayName().text().getUnformattedText(), pickerView == null ? 0 : pickerView.contents().storedResearch().size(),
                 pickerView == null ? 0 : pickerView.contents().capacity(), actor.getUniqueID());
             if (!authority.getAsBoolean() || !ownerCurrent.getAsBoolean()) {
@@ -1519,31 +1514,6 @@ public final class ServerResearch {
         return new ResearchOverviewPacket.Progress(saved.target().level(), saved.elapsedTicks(), materials, resources);
     }
 
-    private static List<ResearchOverviewPacket.MaterialProgress> manualMaterials(ResearchDefinition definition,
-                                                                                 int level, ResearchPlayerView.ManualRow manual,
-                                                                                 @Nullable EntityPlayerMP contributor) {
-        var stage = definition.stageForLevel(level);
-        var paid = new AEKey2LongMap.OpenHashMap();
-        for (int index = 0; index < stage.materialRequirements().size(); index++) {
-            var requirement = stage.materialRequirements().get(index);
-            var inputs = ((ResourceRequirement) requirement.payload()).inputs();
-            for (int inputIndex = 0; inputIndex < inputs.size(); inputIndex++)
-                paid.addTo(inputs.get(inputIndex).what(), manual.work().getLong(new ManualMaterialKey(requirement.id(), inputIndex)));
-        }
-        var available = new AEKey2LongMap.OpenHashMap();
-        if (contributor != null)
-            for (int slot = 0; slot < contributor.inventory.mainInventory.size(); slot++) {
-                var stack = contributor.inventory.mainInventory.get(slot);
-                if (!stack.isEmpty()) available.addTo(AEItemKey.of(stack), stack.getCount());
-            }
-        var rows = new ObjectArrayList<ResearchOverviewPacket.MaterialProgress>();
-        for (var entry : stage.materialTotals().object2LongEntrySet()) {
-            long remaining = entry.getLongValue() - paid.getLong(entry.getKey());
-            rows.add(new ResearchOverviewPacket.MaterialProgress(entry.getKey(), Math.min(remaining, available.getLong(entry.getKey())), remaining, entry.getLongValue()));
-        }
-        return rows;
-    }
-
     public static void requestPauseManual(EntityPlayerMP actor, String expectedTeam, long entryId,
                                           BooleanSupplier ownerCurrent, Consumer<ManualResearch.Status> result, Runnable finalized) {
         var current = actorSession(actor);
@@ -1572,15 +1542,15 @@ public final class ServerResearch {
                 result.accept(ResearchLevelResult.STALE_CONTEXT);
                 return;
             }
-            var permission = permission(current, actor, membership);
-            if (permission == null || !permission.serverOperator()) {
+            var permission = editorPermission(current, actor, membership);
+            if (permission == null) {
                 result.accept(ResearchLevelResult.PERMISSION_DENIED);
                 return;
             }
             var authority = proof(current, captures, online);
             result.accept(current.world.completeForEditor(membership, permission, id, target, operationTime(current), online.keySet(),
                 player -> inventory(current, player), () -> authority.getAsBoolean() && ownerCurrent.getAsBoolean()
-                    && permission.equals(permission(current, actor, membership))));
+                    && permission.equals(editorPermission(current, actor, membership))));
         }, finalized);
     }
 
@@ -1594,7 +1564,7 @@ public final class ServerResearch {
             var captures = capture(current, Set.of(actor.getUniqueID()));
             var membership = captures.get(actor.getUniqueID());
             if (databaseId == null || unavailable(captures) || !currentActor(current, actor) || !membership.accepted()
-                || !expectedTeam.equals(membership.teamId()) || !actor.canUseCommand(2, "pe_research_edit")) {
+                || !expectedTeam.equals(membership.teamId()) || !editorAuthorized(actor)) {
                 result.accept(DataCenterStorage.Result.STALE_CONTEXT);
                 return;
             }
@@ -1609,7 +1579,8 @@ public final class ServerResearch {
                 return;
             }
             var authority = proof(current, captures, online);
-            var cloud = current.world.captureCloud(membership, () -> authority.getAsBoolean() && ownerCurrent.getAsBoolean());
+            var cloud = current.world.captureCloud(membership,
+                () -> authority.getAsBoolean() && ownerCurrent.getAsBoolean() && editorAuthorized(actor));
             if (cloud == null) {
                 result.accept(DataCenterStorage.Result.STALE_CONTEXT);
                 return;
@@ -1622,7 +1593,7 @@ public final class ServerResearch {
             var entries = new Object2IntOpenHashMap<ResourceLocation>();
             entries.put(id, previous + 1);
             var written = physical.storage().storeFromDisk(entries, cloud.view(),
-                () -> ownerCurrent.getAsBoolean() && cloud.current().getAsBoolean() && physical.current() && actor.canUseCommand(2, "pe_research_edit"));
+                () -> ownerCurrent.getAsBoolean() && cloud.current().getAsBoolean() && physical.current() && editorAuthorized(actor));
             if (written == DataCenterStorage.Result.UPDATED) ServerNetworkRuntime.forServer(current.server).refresh();
             result.accept(written);
         }, finalized);
@@ -1640,7 +1611,7 @@ public final class ServerResearch {
         if (ownPermission == null) return null;
         var target = new ResearchPermissionContext(actor.getUniqueID(), ownPermission.actorTeamId(), null, expectedTeam,
             ownPermission.teamLeader(), ownPermission.teamModerator(), ownPermission.serverOperator());
-        return current.world.stationView(target, current.stations, operationTime(current));
+        return current.world.stationView(target, current.stations, operationTime(current), id -> inventory(current, id));
     }
 
     /**
@@ -1757,7 +1728,7 @@ public final class ServerResearch {
             return;
         }
         requireThread(current.server);
-        current.world.checkpoint(operationTime(current));
+        current.world.saveChanged(operationTime(current));
     }
 
     @SubscribeEvent
@@ -2032,6 +2003,21 @@ public final class ServerResearch {
 
     private static TeamResearchStart.Result staleStart() {
         return new TeamResearchStart.Result(TeamResearchStart.Status.STALE_CONTEXT, null, null);
+    }
+
+    private static boolean editorAuthorized(EntityPlayerMP actor) {
+        return actor.openContainer instanceof ContainerResearchOverview container && container.getPlayer() == actor && container.editorAuthorized();
+    }
+
+    /**
+     * A server-owned editor grant supplies privilege only to editor completion; ordinary projections retain the actor's actual roles.
+     */
+    private static @Nullable ResearchPermissionContext editorPermission(Session current, EntityPlayerMP actor, OwnerTeamResolution membership) {
+        if (!editorAuthorized(actor)) return null;
+        var permission = permission(current, actor, membership);
+        return permission == null || permission.serverOperator() ? permission
+            : new ResearchPermissionContext(permission.actorId(), permission.actorTeamId(), permission.targetPlayerId(), permission.targetTeamId(),
+            permission.teamLeader(), permission.teamModerator(), true);
     }
 
     private static @Nullable ResearchPermissionContext viewPermission(Session current, EntityPlayerMP actor, OwnerTeamResolution membership) {

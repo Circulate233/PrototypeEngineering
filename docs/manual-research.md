@@ -29,6 +29,8 @@
 
 所有外部 callback/checkpoint 异常原样抛出。世界检查点失败时保留准确 `CheckpointState`，后续操作先重存，不能先推进新业务。重试前后核对会话、队列、队伍与受影响玩家来源；其他 writer 或外部修改使所有权失效时拒绝写入旧快照。已 COMMITTED 的玩家回执只重存/结算，不重扣。最终会话删除的保存失败也保留可取得的完成结果。
 
+纯时间推进且尚未完成时通过 `Checkpoint.progressed` 通知；默认实现仍调用同步 `persist`，世界适配器只标记变更并在世界 Save 保存。材料意图、回执清理和完成传播继续调用 `persist`，不能延后到普通世界保存。两种通知失败均保留准确快照及原通知种类以重试，详见[研究增量存档](research-persistence.md)。
+
 ## 扩展与宿主责任
 
 `ManualResearchInventory` 是外部库存实现接口；`MinecraftManualResearchInventory` 绑定真实在线 `EntityPlayerMP`，通过 AEItemKey 和完整 NBT 比较取料，保存该玩家自己的回执。第三方实现须遵守同步、全量预检、准确回执与异常后保留证据的契约。

@@ -6,11 +6,14 @@ import static com.circulation.prototype_eng.api.research.station.StationFixtures
 import static com.circulation.prototype_eng.api.research.station.StationFixtures.id;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.circulation.prototype_eng.api.research.ResearchPermissionContext;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
 import com.circulation.prototype_eng.api.research.ResearchWorld;
+import com.circulation.prototype_eng.api.research.ResearchWorldSnapshot;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchLevelStage;
@@ -22,6 +25,7 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -29,10 +33,75 @@ import java.util.Map;
 import java.util.Set;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 
 @SuppressWarnings("DataFlowIssue") // Test setup establishes successful admission or capture before reading the result.
 class ResearchWorldStationTest {
+    @Test
+    void stationProgressBatchesUntilChangedWorldSaveAndCloseRetainsLaterProgress() {
+        try (var fixture = new StationFixtures(1, 100, 2, ResearchStationWorkTest.definition(4, 40, 0))) {
+            fixture.poweredStation(0);
+            fixture.refresh();
+            var membership = OwnerTeamResolution.resolved(OWNER, "team", OwnerTeamType.SERVER, ObjectSets.singleton(OWNER), null);
+            var permission = new ResearchPermissionContext(OWNER, "team", null, "team", true, false, false);
+            var writes = new ObjectArrayList<ResearchWorldSnapshot>();
+            var world = new ResearchWorld(fixture.research, ResearchPermissionPolicy.DEFAULT, writes::add);
+            assertEquals(TeamResearchStart.Status.STARTED, world.start(membership, permission, id("research"), 1,
+                fixture.selector.admission("team").environment(), 0, Set.of(OWNER), () -> true).status());
+            int initialWrites = writes.size();
+            var deadline = PlannedDeadline.after(Duration.ofSeconds(5));
+            assertTrue(world.prepareTick(1, Map.of(OWNER, membership), Set.of(OWNER), _ -> null, () -> true,
+                fixture.selector, fixture::refresh, deadline).advance(deadline));
+            assertEquals(1, world.snapshot().teams().getFirst().queue().progress().getFirst().elapsedTicks());
+            assertEquals(initialWrites, writes.size());
+            world.saveChanged(1);
+            assertEquals(initialWrites + 1, writes.size());
+            assertEquals(world.snapshot(), writes.getLast());
+            world.saveChanged(2);
+            assertEquals(initialWrites + 1, writes.size(), "An unchanged save must not invoke the writer");
+            fixture.nextTick();
+            deadline = PlannedDeadline.after(Duration.ofSeconds(5));
+            assertTrue(world.prepareTick(3, Map.of(OWNER, membership), Set.of(OWNER), _ -> null, () -> true,
+                fixture.selector, fixture::refresh, deadline).advance(deadline));
+            assertEquals(initialWrites + 1, writes.size());
+            world.close(4);
+            assertEquals(2, writes.getLast().teams().getFirst().queue().progress().getFirst().elapsedTicks());
+        }
+    }
+
+    @Test
+    void failedChangedWorldSaveRetriesTheExactCheckpointBeforeFurtherWork() {
+        try (var fixture = new StationFixtures(1, 100, 2, ResearchStationWorkTest.definition(4, 40, 0))) {
+            fixture.poweredStation(0);
+            fixture.refresh();
+            var membership = OwnerTeamResolution.resolved(OWNER, "team", OwnerTeamType.SERVER, ObjectSets.singleton(OWNER), null);
+            var permission = new ResearchPermissionContext(OWNER, "team", null, "team", true, false, false);
+            var reject = new AtomicBoolean();
+            var failure = new IllegalStateException("World save failed");
+            var writes = new ObjectArrayList<ResearchWorldSnapshot>();
+            var world = new ResearchWorld(fixture.research, ResearchPermissionPolicy.DEFAULT, snapshot -> {
+                writes.add(snapshot);
+                if (reject.get()) throw failure;
+            });
+            world.start(membership, permission, id("research"), 1, fixture.selector.admission("team").environment(),
+                0, Set.of(OWNER), () -> true);
+            var deadline = PlannedDeadline.after(Duration.ofSeconds(5));
+            assertTrue(world.prepareTick(1, Map.of(OWNER, membership), Set.of(OWNER), _ -> null, () -> true,
+                fixture.selector, fixture::refresh, deadline).advance(deadline));
+            reject.set(true);
+            assertSame(failure, assertThrows(IllegalStateException.class, () -> world.saveChanged(2)));
+            var pending = writes.getLast();
+            assertTrue(world.savePending());
+            assertSame(failure, assertThrows(IllegalStateException.class, () -> world.saveChanged(3)));
+            assertSame(pending, writes.getLast());
+            reject.set(false);
+            world.saveChanged(4);
+            assertFalse(world.savePending());
+            assertSame(pending, writes.getLast());
+        }
+    }
+
     @Test
     void queueActionsReorderExactEntriesAndRejectAnotherTeamsActor() {
         var registry = new ResearchRegistry();

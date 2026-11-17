@@ -243,7 +243,7 @@
     <ul class="ov-notes">
       <li>全屏界面，沿用 AE 配色与四角闭合的原生窗口贴图，游戏中隐藏 JEI 覆盖层。滚轮以光标为中心缩放（50%～200%），按住左键在画布任意位置拖动平移；点击空白处或按 ESC 收起右侧详情，再按 ESC 关闭界面。</li>
       <li>研究平时只显示方块和图标；正在研究或保留部分进度的研究，方块右侧显示百分比。点击后展开为长框，显示名称、状态和进度条，同时在右侧弹出详情；手动布局直接使用保存坐标，连线随坐标变化。</li>
-      <li>左上角为分页、研究队列和当前研究；队列为空时不显示研究状态面板。研究站研究沿用正式研究站的标题、右对齐数值和累计条风格，材料每种一行显示“当前可用 / 剩余需求”；手动研究显示投料玩家、材料“已投入 / 需求”和“消耗背包中的物品”。</li>
+      <li>左上角为分页、研究队列和当前研究；队列为空时不显示研究状态面板。研究站研究沿用正式研究站的标题、右对齐数值和累计条风格，材料每种一行显示“剩余可用 / 剩余需消耗”；手动研究显示投料玩家、材料“剩余可用 / 剩余需消耗”和“消耗背包中的物品”。两种材料的可用数量均以剩余需消耗数量封顶。</li>
       <li>右上角按“数据库：”、各阶级“LvN 已存条目 / 总容量”、“网络中心：LvN”、“最高研究站：LvN”分行显示本队设备信息；同阶全部已加载有效物理数据库合并计数。左下角没有缩放比例或操作提示。库不注册打开按键和物品，测试 mod 提供打开按键，实际入口由开发者调用打开方法。</li>
       <li>“运行测试”页使用仓库示例脚本与 Java 示例的研究、材料、网络资源和奖励（自动布局）；其中手动、互斥、网络、持续和特殊研究五项需要标准 CT 测试入口，其余五项始终由 Java 注册。“示例扩展”页的 14 项研究也已在示例 mod 注册，展示多前置、跨页前置、互斥与手动布局；连同研究万花筒六项，无 CT 时共有 25 项，标准 CT 入口为 30 项。</li>
       <li>玩家模式：前置未完成的研究点击无反馈，悬停列出还需完成的研究；开始条件正文只显示网络中心与研究站，不重复显示活动数据库需求。操作由服务端判定，不可用按钮悬停说明缺少条件；下载到数据库按实际数据库的阶级和容量判断。下载到数据库不会重复，队伍任一数据库已存等级不低于队伍等级时提示“已下载到 …”。</li><li>遗忘：详情底部的“遗忘个人等级”只移除自己的个人等级（可选择从哪一级起遗忘），队伍等级按全体成员重新计算；前置因此不足的研究会一并回退，并提示受影响的研究与队列条目。仅物品研究和特殊研究不能个人遗忘。</li>
@@ -648,8 +648,8 @@
           const m = state.manual, mine = !!m && m.contributor === state.viewer && !m.paused;
           const who = m && m.contributor ? m.contributor : "无人投料";
           const rows = r.materials.map(([icon, n]) => {
-            const paid = Math.floor(n * f), short = paid < n && !(state.inventory[icon] > 0);
-            return `<div class="ov-mrow"><img src="${A[icon]}" alt="" data-tip="${esc(ITEM[icon] + (short ? "\n投料玩家背包中没有此材料" : ""))}"><span>${ITEM[icon]}</span><span class="${short ? "short" : ""}">${paid} / ${n}</span></div>`;
+            const remaining = n - Math.floor(n * f), avail = Math.min(state.inventory[icon] || 0, remaining), short = avail < remaining;
+            return `<div class="ov-mrow"><img src="${A[icon]}" alt="" data-tip="${esc(ITEM[icon] + (short ? "\n投料玩家背包中此材料不足" : ""))}"><span>${ITEM[icon]}</span><span class="${short ? "short" : ""}">${avail} / ${remaining}</span></div>`;
           }).join("");
           return `<div class="ov-card"><header><span>手动研究（${esc(who)}）</span><small>${m && m.paused ? "已暂停" : esc(r.name) + " Lv." + q.target}</small></header>
             <div class="ov-card-body">${work("研究时间")}${rows}
@@ -666,7 +666,7 @@
             `<i class="ov-bar${completed ? " complete" : ""}"><u style="width:${f * 100}%"></u></i><div class="ov-progress"><span>${fmt(done)} / ${fmt(x.total)}</span><span>${Math.round(f * 100)}%</span></div></div>`;
         }).join("");
         return `<div class="ov-card"><header><span>${esc(r.name)} Lv.${q.target}</span><small>研究站 · 参与 ${state.env.working} 台</small></header>
-          <div class="ov-card-body">${work("工作量")}${mats ? `<div class="ov-section"><span>材料</span><small>当前可用 / 剩余需求</small></div>${mats}` : `<span class="ov-none">无材料需求</span>`}
+          <div class="ov-card-body">${work("工作量")}${mats ? `<div class="ov-section"><span>材料</span><small>剩余可用 / 剩余需消耗</small></div>${mats}` : `<span class="ov-none">无材料需求</span>`}
           ${res ? `<div class="ov-section"><span>网络资源</span><small>占用 / 上限（/t）</small></div>${res}` : ""}</div></div>`;
       }
 

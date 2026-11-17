@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-18 研究后续修复与增量保存完成：总览保存分页/平移/缩放，勾框与顶部斜纹对齐 HTML，材料统一剩余可用/剩余需消耗并封顶；研究站手动队首改查实际贡献者背包。普通进度 dirty 到世界 Save，玩家/队伍/单笔操作分别分片，只替换变化记录，pending redo/校验/迁移保留原物品事务屏障，无新增外库。修复逐字节压缩文件写、整数 tick 舍入停滞及奖励/数据库输出 NBT 写穿；旧世界唯一坏奖励片段已备份并精确恢复。编辑指令支持管理员给指定在线玩家开启本次会话。完整 build/Spotless、1776 tests/275 suites、22 Java IDEA 全级零与定向构建、28 addon Java、15 ZS/97 核心检查通过，4 语言末次复检缺口补齐，addon 已正常安装。入口：[增量存档](research-persistence.md)、[总览](research-overview.md)、[实施证据](implementation-status.md#2026-11-18-研究视角材料口径与分片保存)。下一步用户完整重启复验材料、视角、奖励、渲染、多人编辑授权和世界保存重进；未启动游戏，不把 IO 探针当游戏性能验收，本地英文提交不推送。
+
 - 2026-11-17 研究示例与总览右键编辑完成：新增 HTML 的十四项研究、六项复杂场景和二阶站/库，25 项始终由 Java 注册，标准 CT 入口补至三页三十项；42 新 JSON 已精确纳入版本管理。编辑模式右键添加空分页、搜索已注册研究移入当前页、编辑 data/游戏语言覆盖 JSON；手动页按右键位置新增且允许重叠，自动页重排。修复暂未注册成员保存丢失、缺基础文件时语言假保存及隐藏成员跳转。完整 build/Spotless、1753 tests/274 suites、28 addon Java、15 ZS/97 核心检查与 IDEA 定向构建通过；7 src Java 全级零诊断；4 语言曾全级通过，末次两份正式语言提示语复检因 MCP 离线未取得结果，3 run Java 因排除无法检查。addon 已正常安装且 SHA-256 一致。入口：[编辑规则](research-overview.md#编辑模式)、[研究示例](../run/scripts/README-research-overview.md)、[实施证据](implementation-status.md#2026-11-17-研究示例与总览右键编辑)。下一步用户完整重启，复验右键菜单/分页保存/手动落点/自动排列/语言编辑、示例推进和既有研究站队列边界；本地英文提交，不启动游戏或推送。
 
 - 2026-11-17 研究站悬停崩溃修复：报告鼠标恰在三项队列下边界，原生槽位命中外扩 1 像素使索引误为 3。队列和材料列表改精确半开命中，队列高亮/点击/提示共用索引；未改名称缓存或布局。完整 build/Spotless、1751 tests/274 suites、修改 Java IDEA 全级零诊断和定向构建通过。客户端关闭后 27 Java addon 已正常编译安装，目标与产物 SHA-256 一致，上一轮占用问题已解除。入口：[实施证据](implementation-status.md#2026-11-17-研究站队列下边界悬停崩溃)、[研究站 GUI](../src/main/java/com/circulation/prototype_eng/client/gui/GuiResearchStation.java)。下一步用户完整启动复验空/三项/满队列边界和间隙，再继续研究总览复验；本地英文提交，不启动游戏或推送。
@@ -269,7 +271,7 @@
 | 研究站/网络中心/计算机界面改版要求 | [device-gui-redesign.md](device-gui-redesign.md) |
 | 研究定义/资格/入队/队列/完成传播/奖励与服务器缺口 | [research-features.md](research-features.md)、[pn-research-execution-audit.md](pn-research-execution-audit.md) |
 | 研究站时间/逐项材料支付/网络累计/共同提交 | [research-stations.md](research-stations.md) |
-| 服务器研究 owner/单一存档/FTB/玩家事件/手动入口 | [server-research.md](server-research.md) |
+| 服务器研究 owner/分片增量存档/FTB/玩家事件/手动入口 | [server-research.md](server-research.md)、[research-persistence.md](research-persistence.md) |
 | 服务器奖励领取/准确会话/物品确认与证据清理 | [research-rewards.md](research-rewards.md) |
 | 手动研究逐项投料/玩家回执/九状态恢复/暂停接管 | [manual-research.md](manual-research.md) |
 | 配方/组件/事务/扫描 | [recipes.md](recipes.md) |

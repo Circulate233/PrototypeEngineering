@@ -8,6 +8,7 @@ import com.circulation.prototype_eng.api.research.view.ResearchStationView;
 import com.circulation.prototype_eng.api.gui.ResearchGuiAccess;
 import com.circulation.prototype_eng.research.ServerResearch;
 import it.unimi.dsi.fastutil.shorts.ShortSet;
+import net.minecraft.command.ICommandSender;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.player.InventoryPlayer;
@@ -22,6 +23,7 @@ public final class ContainerResearchOverview extends AEBaseContainer {
     private final @Nullable MachineControllerHost database;
     private final ResearchOverviewDisplay display;
     private final boolean editor;
+    private @Nullable ICommandSender editorAuthority;
     private boolean captureQueued;
     private boolean actionPending;
     private @Nullable ServerResearch.Overview captured;
@@ -47,6 +49,7 @@ public final class ContainerResearchOverview extends AEBaseContainer {
         super(player, database == null ? null : database.blockEntity());
         this.database = database;
         this.editor = editor;
+        editorAuthority = editor ? player.player : null;
         display = isClientSide() ? null : new ResearchOverviewDisplay(ResearchRegistry.INSTANCE);
         registerClientAction("overview", Operation.class, 1024, this::operate);
     }
@@ -59,6 +62,23 @@ public final class ContainerResearchOverview extends AEBaseContainer {
         return editor;
     }
 
+    /**
+     * Binds a live administrator to this exact server-side editing session, without changing the player's roles.
+     */
+    public void authorizeEditor(ICommandSender authority) {
+        var server = getPlayer().getServer();
+        if (isServerSide() && editor && getPlayer().openContainer == this && server != null
+            && authority.getServer() == server && authority.canUseCommand(2, "pe_research_edit"))
+            editorAuthority = authority;
+    }
+
+    public boolean editorAuthorized() {
+        if (!editor || isClientSide() || editorAuthority == null || getPlayer().openContainer != this) return false;
+        var server = getPlayer().getServer();
+        return server != null && editorAuthority.getServer() == server && editorAuthority.canUseCommand(2, "pe_research_edit")
+            && (!(editorAuthority instanceof EntityPlayerMP player) || server.getPlayerList().getPlayerByUUID(player.getUniqueID()) == player);
+    }
+
     public @Nullable MachineControllerHost database() {
         return database;
     }
@@ -69,7 +89,7 @@ public final class ContainerResearchOverview extends AEBaseContainer {
 
     @Override
     public boolean canInteractWith(EntityPlayer player) {
-        return super.canInteractWith(player) && (!editor || isClientSide() || player.canUseCommand(2, "pe_research_edit"));
+        return super.canInteractWith(player) && (!editor || isClientSide() || player == getPlayer() && editorAuthorized());
     }
 
     @Override

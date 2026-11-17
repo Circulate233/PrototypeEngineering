@@ -327,6 +327,11 @@ public final class ResearchWorld {
     }
 
     public @Nullable ResearchStationView stationView(ResearchPermissionContext permission, ResearchStations stations, long time) {
+        return stationView(permission, stations, time, _ -> null);
+    }
+
+    public @Nullable ResearchStationView stationView(ResearchPermissionContext permission, ResearchStations stations, long time,
+                                                     Function<UUID, ManualResearchInventory> inventories) {
         requireOwner();
         requireHealthy();
         if (busy()) return null;
@@ -350,10 +355,24 @@ public final class ResearchWorld {
         var result = team == null ? null : team.station.result();
         boolean advanced = work != null && result != null && result.time() == time && result.key() != null
             && result.key().target().equals(work.target());
+        var available = ImmutableResourceAmounts.empty();
+        if (work != null) {
+            if (work.stage().researchTier() == 0) {
+                var head = team.queue.activeHead();
+                var manual = head == null ? null : team.manual.session(head.key().queueEntryId());
+                var inventory = manual == null ? null : inventoryFor(manual, inventories);
+                if (inventory != null) {
+                    var contributor = manual.materialIntent() == null ? manual.contributor() : manual.materialIntent().contributor();
+                    if (!inventory.playerId().equals(contributor))
+                        throw new IllegalStateException("Research material view captured a different contributor");
+                    available = inventory.availableMaterials(current.remainingMaterials());
+                }
+            } else
+                available = stations.availableMaterials(id, work.stage().researchTier(), current.remainingMaterials());
+        }
         return new ResearchStationView(id == null ? "" : id, visible, canManage,
             visible && team != null ? team.queue.queueSnapshot() : List.of(), current,
-            work == null ? 0 : work.stage().durationTicks(), work == null ? ImmutableResourceAmounts.empty()
-            : stations.availableMaterials(id, work.stage().researchTier(), current.remainingMaterials()),
+            work == null ? 0 : work.stage().durationTicks(), available,
             work == null ? Reference2DoubleMaps.emptyMap() : work.totals(),
             advanced ? result.grants() : Reference2DoubleMaps.emptyMap(), advanced ? result.capacity() : Reference2DoubleMaps.emptyMap(),
             advanced ? result.stations().size() : 0);
@@ -1917,9 +1936,7 @@ public final class ResearchWorld {
                 }
                 team.manual.advance(head.key().queueEntryId(), context, inventoryFor(session, inventories));
             }
-            if (dirty) {
-                persist();
-            }
+            if (checkpointRequested) persist();
             return null;
         });
     }
@@ -2067,7 +2084,7 @@ public final class ResearchWorld {
         return true;
     }
 
-    private void manualCheckpoint(TeamProgress team, ManualResearch.CheckpointState state) {
+    private void manualCheckpoint(TeamProgress team, ManualResearch.CheckpointState state, boolean durable) {
         if (!executing || teams.get(team.id) != team || !state.queue().equals(team.queue.snapshot())
             || !state.team().equals(team.research.snapshot()) || !state.sessions().equals(team.manual.sessions())
             || !sourcesCurrent(state.players())) {
@@ -2075,7 +2092,25 @@ public final class ResearchWorld {
         }
         // Sources are shared authoritative objects. Preserve every other player; never replace the global table.
         dirty = true;
-        persist();
+        if (durable) persist();
+    }
+
+    /**
+     * World-save hook: unchanged research does no disk work; passive progress waits for this boundary.
+     * Material and delivery checkpoints continue to use the synchronous writer directly.
+     */
+    public void saveChanged(long time) {
+        requireOwner();
+        requireHealthy();
+        if (time < serverTime) throw new IllegalArgumentException("Research save time moved backwards");
+        if (executing || activeTick != null || activeReward != null || activeDownload != null) {
+            checkpointRequested = true;
+            return;
+        }
+        operate(time, true, () -> {
+            if (dirty || checkpointRequested) persist();
+            return null;
+        });
     }
 
     public void checkpoint(long time) {
@@ -2242,7 +2277,17 @@ public final class ResearchWorld {
             this.id = id;
             this.queue = queue;
             research = new TeamOwnedResearch(id, registry);
-            manual = new ManualResearch(queue, research, sources, state -> manualCheckpoint(this, state));
+            manual = new ManualResearch(queue, research, sources, new ManualResearch.Checkpoint() {
+                @Override
+                public void persist(ManualResearch.CheckpointState state) {
+                    manualCheckpoint(TeamProgress.this, state, true);
+                }
+
+                @Override
+                public void progressed(ManualResearch.CheckpointState state) {
+                    manualCheckpoint(TeamProgress.this, state, false);
+                }
+            });
             station = new ResearchStationWork(queue, research, sources);
         }
 
@@ -2329,7 +2374,7 @@ public final class ResearchWorld {
                         }
                     }
                 }
-                if (dirty || checkpointRequested) persist();
+                if (checkpointRequested) persist();
                 finished = true;
                 activeTick = null;
                 return true;

@@ -6,6 +6,7 @@ import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy
 import com.circulation.prototype_eng.api.research.ResearchLevelStage;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchResourceFormula;
+import com.circulation.prototype_eng.testsupport.TestResources;
 import io.netty.buffer.Unpooled;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.util.ResourceLocation;
@@ -81,6 +82,41 @@ class ResearchOverviewDisplayTest {
         } finally {
             fullBytes.release();
             deltaBytes.release();
+        }
+    }
+
+    @Test
+    void manualMaterialDeltasPreserveAvailableAndRemainingIndependentlyOfOriginalTotal() {
+        var display = new ResearchOverviewDisplay(registry());
+        var client = new ResearchOverviewClientView();
+        var key = new TestResources.Key(new TestResources.KeyType("overview_manual_material"), "material");
+        var queue = List.of(new ResearchOverviewPacket.Queue(1, ID, 1));
+        var before = new ResearchOverviewPacket.Current(ID, 1, 1, 10, 100, 0, true, "Contributor", PLAYER,
+            List.of(new ResearchOverviewPacket.MaterialProgress(key, 3, 8, 32)), List.of());
+        client.receive(display.capture(List.of(state(10, 0)), queue, List.of(), before, environment("team")));
+        var after = new ResearchOverviewPacket.Current(ID, 1, 1, 20, 100, 0, true, "Contributor", PLAYER,
+            List.of(new ResearchOverviewPacket.MaterialProgress(key, 4, 4, 32)), List.of());
+        var packet = display.capture(List.of(state(20, 0)), queue, List.of(), after, environment("team"));
+        assertNotNull(packet);
+        assertFalse(packet.reset());
+        assertNull(packet.definitions());
+        var buffer = Unpooled.buffer();
+        try {
+            client.receive(roundTrip(packet, buffer));
+            assertTrue(client.current().manual());
+            var material = client.current().materials().getFirst();
+            assertSame(key, material.key());
+            assertEquals(4, material.available());
+            assertEquals(4, material.remaining());
+            assertEquals(32, material.total());
+            assertEquals(material, client.entry(ID).progress().materials().getFirst());
+            var depleted = new ResearchOverviewPacket.Current(ID, 1, 1, 20, 100, 0, true, "Contributor", PLAYER,
+                List.of(new ResearchOverviewPacket.MaterialProgress(key, 0, 4, 32)), List.of());
+            client.receive(roundTrip(display.capture(List.of(state(20, 0)), queue, List.of(), depleted, environment("team")), buffer));
+            assertEquals(0, client.current().materials().getFirst().available());
+            assertEquals(4, client.current().materials().getFirst().remaining());
+        } finally {
+            buffer.release();
         }
     }
 

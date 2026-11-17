@@ -14,6 +14,7 @@ import com.circulation.prototype_eng.api.research.content.ResearchContent;
 import com.circulation.prototype_eng.api.research.reward.RewardClaim;
 import com.circulation.prototype_eng.api.research.view.ResearchStationView;
 import com.circulation.prototype_eng.client.research.ClientResearchContents;
+import com.circulation.prototype_eng.client.research.ResearchOverviewViewState;
 import com.circulation.prototype_eng.container.ContainerResearchOverview;
 import com.circulation.prototype_eng.container.ResearchOverviewPacket;
 import com.circulation.prototype_eng.container.ResearchOverviewPacket.*;
@@ -80,6 +81,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     private final Object2IntOpenHashMap<ResourceLocation> forgetLevels = new Object2IntOpenHashMap<>();
     private final GuiClip clip = new GuiClip();
     private final ResearchNodeIconRenderer nodeIcons = new ResearchNodeIconRenderer();
+    private final double[] bannerClipA = new double[12], bannerClipB = new double[12];
     private List<Entry> knownEntries;
     private List<Database> knownDatabases;
     private @Nullable Entry knownSelected;
@@ -109,6 +111,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     private @Nullable ContextMenu contextMenu;
     private @Nullable EditorDialog editorDialog;
     private boolean editorRepeatWasEnabled;
+    private boolean restoreView = true;
 
     public GuiResearchOverview(ContainerResearchOverview container, InventoryPlayer player) {
         super(container, player);
@@ -135,6 +138,9 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     @Override
     public void onGuiClosed() {
         if (editorDialog != null) closeEditorDialog();
+        if (!restoreView && page != null)
+            ResearchOverviewViewState.save(mc.gameDir.toPath().resolve("config"),
+                new ResearchOverviewViewState.State(page.id, panX, panY, zoom));
         nodeIcons.delete();
         super.onGuiClosed();
     }
@@ -319,6 +325,16 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             knownEntries = entries;
             if (definitionsChanged) rebuildPages(entries);
             detailDirty = true;
+        }
+        if (restoreView && page != null && container.view.playerId() != null && screenW > 0 && screenH > 0) {
+            restoreView = false;
+            var saved = ResearchOverviewViewState.load(mc.gameDir.toPath().resolve("config"));
+            if (saved != null && pagesById.containsKey(saved.page())) {
+                page = pagesById.get(saved.page());
+                panX = saved.panX();
+                panY = saved.panY();
+                zoom = saved.zoom();
+            }
         }
         var databases = container.view.databases();
         if (knownDatabases != databases) {
@@ -745,15 +761,15 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             }
             for (int i = 0; i < current.materials().size(); i++) {
                 var material = current.materials().get(i);
-                long left = current.manual() ? material.total() - material.remaining() : material.available();
-                long right = current.manual() ? material.total() : material.remaining();
+                long left = material.available();
+                long right = material.remaining();
                 box(x, y + 3, 24, 24, SLOT, LIGHT);
                 keyIcon(material.key(), x, y + 3, 24);
                 String amounts = amount(material.key(), left) + " / " + amount(material.key(), right);
                 double amountWidth = Math.min(w - 75, textWidth(amounts, 14));
                 double nameWidth = Math.min(w - 130, w - 44 - amountWidth);
                 label(material.key().getDisplayName().getFormattedText(), x + 36, y + 8, nameWidth, 12, SOFT);
-                aligned(amounts, x + w, y + 6, amountWidth, 14, current.manual() ? material.available() < material.remaining() ? BAD : TEXT : left < right ? BAD : TEXT);
+                aligned(amounts, x + w, y + 6, amountWidth, 14, left < right ? BAD : TEXT);
                 truncatedTooltip(material.key().getDisplayName().getFormattedText(), x + 36, y + 8, nameWidth, 12);
                 y += 34;
             }
@@ -778,11 +794,17 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         if (current.manual()) {
             boolean mine = current.contributor() != null && current.contributor().equals(container.view.playerId());
             double rowY = y + 4;
-            fill(x, rowY, w, 28, mine ? LINE : MUTED);
-            box(x + 8, rowY + 6, 16, 16, mine ? LINE : MUTED, LIGHT, 2);
+            int background = mine ? inside(x, rowY, w, 28) ? DARK : LINE : MUTED;
+            fill(x, rowY, w, 28, background);
+            box(x + 8, rowY + 6, 16, 16, background, LIGHT, 2);
             if (mine) {
-                line(x + 12, rowY + 13, x + 16, rowY + 18, LIGHT);
-                line(x + 16, rowY + 18, x + 22, rowY + 8, LIGHT);
+                // Match the HTML's rotated right and bottom borders without a texture or a diagonal bounding box.
+                GlStateManager.pushMatrix();
+                GlStateManager.translate(x + 16.5, rowY + 13, 0);
+                GlStateManager.rotate(45, 0, 0, 1);
+                fill(1.5, -6, 2, 12, LIGHT);
+                fill(-3.5, 4, 7, 2, LIGHT);
+                GlStateManager.popMatrix();
             }
             label(tr(ConsumeInventory), x + 32, rowY + 4, w - 40, 13, LIGHT);
             hit(x, rowY, w, 28, container.view.canManage(), () -> container.manual(current.entryId(), !mine), List.of(tr(mine ? PauseHint : ContributeHint)));
@@ -791,14 +813,41 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
 
     private void drawBanner() {
         String banner = container.editorMode() ? tr(Editor) : container.databaseMode() ? tr(Picker, container.view.databaseName()) : tr(Overview, container.view.teamName());
-        double w = textWidth(banner, 13) + 80, left = (screenW - w) / 2;
-        polygon(new double[]{left, 0, left + w, 0, left + w - 14, 30, left + 14, 30}, container.editorMode() ? 0xddd2b6 : BASE);
-        clip.draw((float) left, 0, (float) w, 30, () -> {
-            for (double x = left - 30; x < left + w; x += 20)
-                polygon(new double[]{x, 0, x + 10, 0, x + 40, 30, x + 30, 30}, container.editorMode() ? 0xd4c6a3 : HOVER);
-        });
-        polygon(new double[]{left + 18, 10, left + 25, 15, left + 18, 20}, container.editorMode() ? WAIT : DARK);
-        centeredLabel(banner, left + 35, 0, w - 70, 30, 13, container.editorMode() ? WAIT : TEXT);
+        double text = textWidth(banner, 13), w = text + 95, left = (screenW - w) / 2;
+        var trapezoid = new double[]{left, 0, left + w, 0, left + w - 14, 30, left + 14, 30};
+        polygon(trapezoid, container.editorMode() ? 0xddd2b6 : BASE);
+        double stripe = 10 * Math.sqrt(2);
+        for (double offset = stripe; offset < w + 30; offset += stripe * 2) {
+            int count = clipBannerStripe(trapezoid, trapezoid.length, left + offset, true, bannerClipA);
+            count = clipBannerStripe(bannerClipA, count, left + offset + stripe, false, bannerClipB);
+            polygon(bannerClipB, count, container.editorMode() ? 0xd4c6a3 : HOVER);
+        }
+        polygon(new double[]{left + 40, 10, left + 47, 15, left + 40, 20}, container.editorMode() ? WAIT : DARK);
+        centeredLabel(banner, left + 55, 0, text, 30, 13, container.editorMode() ? WAIT : TEXT);
+    }
+
+    private static int clipBannerStripe(double[] points, int count, double edge, boolean after, double[] output) {
+        if (count == 0) return 0;
+        int written = 0;
+        double previousX = points[count - 2], previousY = points[count - 1];
+        double previous = previousX + previousY - edge;
+        for (int i = 0; i < count; i += 2) {
+            double x = points[i], y = points[i + 1], distance = x + y - edge;
+            boolean inside = after ? distance >= 0 : distance <= 0;
+            if (inside != (after ? previous >= 0 : previous <= 0)) {
+                double fraction = previous / (previous - distance);
+                output[written++] = previousX + (x - previousX) * fraction;
+                output[written++] = previousY + (y - previousY) * fraction;
+            }
+            if (inside) {
+                output[written++] = x;
+                output[written++] = y;
+            }
+            previousX = x;
+            previousY = y;
+            previous = distance;
+        }
+        return written;
     }
 
     private void drawTopRight() {
@@ -2235,10 +2284,15 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     }
 
     private static void polygon(double[] points, int color) {
+        polygon(points, points.length, color);
+    }
+
+    private static void polygon(double[] points, int count, int color) {
+        if (count < 6) return;
         GlStateManager.disableTexture2D();
         var buffer = Tessellator.getInstance().getBuffer();
         buffer.begin(GL11.GL_POLYGON, DefaultVertexFormats.POSITION_COLOR);
-        for (int i = points.length - 2; i >= 0; i -= 2) vertex(buffer, points[i], points[i + 1], color, 1);
+        for (int i = count - 2; i >= 0; i -= 2) vertex(buffer, points[i], points[i + 1], color, 1);
         Tessellator.getInstance().draw();
         GlStateManager.enableTexture2D();
     }

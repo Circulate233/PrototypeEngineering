@@ -31,7 +31,7 @@ public final class PlayerDataPersistence {
         boolean host = server.isSinglePlayer() && player.getName().equals(server.getServerOwner());
         var playerId = player.getUniqueID();
         var directory = handler.getWorldDirectory().toPath();
-        if (host) server.getPlayerList().saveAllPlayerData();
+        if (host) server.getPlayerList().writePlayerData(player);
         else handler.getPlayerNBTManager().writePlayerData(player);
         ownerCheck.run();
         try {

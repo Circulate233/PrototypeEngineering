@@ -6,7 +6,7 @@
 
 `ResearchWorld` 在创建线程持有玩家研究、队伍研究、黑名单、队列、目标进度和手动材料会话。世界、队列和手动会话保存 long 时间、普通资源剩余量与 double 网络累计量，不保存物理研究站材料进程。编解码直接读取业务字段，不写入或检查固定格式版本号，禁止自动删除研究文件。
 
-主类把 FML 生命周期委托给 `CommonProxy`。`serverStarting` 在主世界加载后建立准确的 server/overworld 会话；`serverStopping` 保存并关闭；`serverStopped` 在调度器关闭后提供研究关闭重试，再关闭网络和身份登记。主世界 Save 同步检查点，Unload 提供关闭兜底；其他维度不建立第二份研究存档。
+主类把 FML 生命周期委托给 `CommonProxy`。`serverStarting` 在主世界加载后建立准确的 server/overworld 会话；`serverStopping` 保存并关闭；`serverStopped` 在调度器关闭后提供研究关闭重试，再关闭网络和身份登记。主世界 Save 检查变更后保存，Unload 提供关闭兜底；其他维度不建立第二份研究存档。普通时间/资源进度不再每 tick 强制落盘，物品支付与交付保留事务检查点，见[增量存档](research-persistence.md)。
 
 研究 tick 由 `ServerTaskSchedulers` 的 END 流程通过 `afterOrdinary` 运行。先处理旧 pending，再执行普通及 planned 机器工作，最后研究取得剩余并发和资源。研究站本次扣料同步提交，不保留跨 tick 的物理材料进程。登录退出仍经同一边界核对实际会话，时间使用持久研究时间与主世界时间的单调推进。
 
@@ -32,7 +32,7 @@ World仍使用单writer/operate/pendingSave：仅自身准确receipt允许原sna
 
 ## 同步存档与失败恢复
 
-`ResearchStateFile` 独占主世界 `data/prototype_eng_research.dat`，不注册进 MapStorage。沿用 PN 的压缩 `{data: …}`、同目录临时文件、文件描述符 sync、原子替换和最终 force；不支持原子替换就失败，损坏或不可读存档不当作空世界。
+`ResearchStateStore` 独占主世界 `data/prototype_eng_research/`，不注册进 MapStorage。玩家、队伍、下载/回执/导入各自分片，只替换变化记录；meta 保留身份与校验索引，pending 协调跨分片提交与恢复。`ResearchStateFile` 保留旧单文件 codec 与读取入口，首次迁移后旧文件不再作为活动 writer。压缩、同目录临时文件、批量写、文件描述符 sync、原子替换和最终 force 保留；不支持原子替换、损坏或不可读存档均报错，不当作空世界。具体文件、迁移和平台保证边界见[增量存档](research-persistence.md)。
 
 世界检查点失败保留准确快照。研究站 pending 时 Save 只登记延后检查点，全部来源与业务终态确认后才保存；UNKNOWN 保留原 execution，关闭必须等待真实结算。已结清的研究站材料事件异常保留原错误和材料现场，世界进入显式 faulted 状态，释放调度所有权但禁止新工作与保存。下一次业务开始前先重写该快照，再恢复各手动执行器的私有检查点，之后才允许改变时间、成员和队列。写入前后校验世界仍对应同一快照；外部回调和 IO 异常保留原原因，不转为正常业务结果。关闭失败保留 closing 会话与数据，后续 Save/Unload/Stopped 可重试。手动研究的玩家回执/适配器失败仍沿原意图和回执恢复，不被研究站的致命状态分支拦截。
 

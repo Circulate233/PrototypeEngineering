@@ -257,7 +257,9 @@ Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 
 
 `createPage(id, title)` 创建并立即保存空自动布局页；`addResearch(pageId, id, x, y, allRegistered)` 将已注册研究加入/移动到目标页并保存归属，手动页使用指定坐标，自动页由 GUI 重排。`readContentJson(id, language)` / `saveContentJson(id, language, text)` 操作某一显示层，`language == null` 指基础 `data`；保存前验证 JSON 和有效覆盖内容，失败不替换旧文件，成功清理该研究的显示缓存。总览编辑模式右键菜单调用这些客户端接口；语言下拉来自游戏支持语言，只保存本客户端文件，不注册服务端研究或变更研究业务定义。
 
-`com.circulation.prototype_eng.api.gui.ResearchGuiAccess.open(EntityPlayerMP)` 在服务器打开玩家总览，`open(EntityPlayerMP, MachineControllerHost)` 以指定物理数据库打开下载目标选择模式；客户端入口调用 `requestOpen()` 交由服务器打开。库不注册打开按键或物品，入口由 addon 决定，测试 mod 默认使用 R。数据库界面已通过容器接入选择和返回，保留原数据库的操作槽物品。`openEditor(EntityPlayerMP)` 与 `/pe_research_edit` 均要求命令权限等级 2，编辑请求仍由服务器重新校验授权。
+`com.circulation.prototype_eng.api.gui.ResearchGuiAccess.open(EntityPlayerMP)` 在服务器打开玩家总览，`open(EntityPlayerMP, MachineControllerHost)` 以指定物理数据库打开下载目标选择模式；客户端入口调用 `requestOpen()` 交由服务器打开。库不注册打开按键或物品，入口由 addon 决定，测试 mod 默认使用 R。数据库界面已通过容器接入选择和返回，保留原数据库的操作槽物品。编辑命令为 `/pe_research_edit [玩家名]`，执行者须有权限等级 2；省略参数时打开自己，指定在线玩家则打开对方，控制台必须指定玩家。`openEditor(EntityPlayerMP)` 保留本人管理员入口，`openEditor(ICommandSender authority, EntityPlayerMP target)` 为同服目标绑定本次管理员授权会话。目标不需要成为 OP；关闭/更换容器、授权者离线/重连/失权使会话失效，编辑提交时再次校验。该授权仅用于编辑完成与特殊写库，普通研究投影和操作仍使用目标本人的真实权限。
+
+`ResearchWorld.saveChanged(time)` 用于世界保存事件：未变化时不写盘，普通研究进度先标记变更；显式 `checkpoint(time)` 和物品事务仍保留同步保存契约。`ManualResearch.Checkpoint.progressed(state)` 默认调用 `persist(state)`，世界适配器仅对无付款、未完成的时间推进延后保存。服务器使用玩家、队伍和单笔操作分片与 redo 日志，只替换变化记录，不增加外部库；文件与迁移规则见[研究增量存档](docs/research-persistence.md)。
 
 `ResearchLevelStage.builder(first, last)` 必须设置 `.durationTicks(long)`、研究阶数和网络资源公式，多个阶段完整覆盖 `1..maxLevel`。时间为单站基准 tick，多站可加速。阶数 0 使用玩家手动研究且禁止网络资源；正阶由研究站推进。`.material(AEKey, long)` 添加普通资源总量，`.materialRequirement(...)` 只接受固定静态输入。
 

@@ -11,6 +11,7 @@ import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
+import java.math.BigInteger;
 import java.util.List;
 import java.util.UUID;
 
@@ -126,7 +127,7 @@ public final class ResearchProgress {
             allPaid &= remaining == payment;
         }
         if (allPaid) materialFraction = 1;
-        long allowedTime = materialFraction >= 1 ? stage.durationTicks() : (long) Math.floor(stage.durationTicks() * materialFraction);
+        long allowedTime = allPaid ? stage.durationTicks() : allowedTime(remainingMaterials, materialFraction);
         long timeGrant = Math.clamp(allowedTime - state.elapsedTicks(), 0, stations.size());
         for (var iterator = grants.reference2DoubleEntrySet().iterator(); iterator.hasNext(); ) {
             var entry = iterator.next();
@@ -176,6 +177,27 @@ public final class ResearchProgress {
         for (var entry : totals.reference2DoubleEntrySet())
             complete &= accumulated.getDouble(entry.getKey()) >= entry.getDoubleValue();
         return new Step(state, new Snapshot(target, elapsed, remainingMaterials, accumulated), payments, grants, capacity, used, complete);
+    }
+
+    private long allowedTime(AEKey2LongMap remainingMaterials, double materialFraction) {
+        if (materialFraction == 0) return 0;
+        double scaled = stage.durationTicks() * materialFraction;
+        // Only integer boundaries need exact arithmetic; rounding must neither stall paid work nor unlock unpaid time.
+        double uncertainty = Math.ulp(scaled) * (2D * stage.materialTotals().size() + 4);
+        if (Math.abs(scaled - Math.rint(scaled)) > uncertainty) return (long) Math.floor(scaled);
+        var numerator = BigInteger.ZERO;
+        var denominator = BigInteger.ONE;
+        for (var entry : stage.materialTotals().object2LongEntrySet()) {
+            long paid = entry.getLongValue() - remainingMaterials.getLong(entry.getKey());
+            if (paid == 0) continue;
+            var total = BigInteger.valueOf(entry.getLongValue());
+            var common = denominator.gcd(total);
+            var multiplier = total.divide(common);
+            numerator = numerator.multiply(multiplier).add(BigInteger.valueOf(paid).multiply(denominator.divide(common)));
+            denominator = denominator.multiply(multiplier);
+        }
+        return numerator.multiply(BigInteger.valueOf(stage.durationTicks()))
+                        .divide(denominator.multiply(BigInteger.valueOf(stage.materialTotals().size()))).longValueExact();
     }
 
     public record Target(ResourceLocation researchId, int level) {

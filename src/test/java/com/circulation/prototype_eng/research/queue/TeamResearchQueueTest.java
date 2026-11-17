@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.research.queue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
@@ -113,6 +114,54 @@ class TeamResearchQueueTest {
         assertNull(queue.planSegment(head.key(), stations, resources(100, 0), ImmutableResourceAmounts.empty(), 1));
         var second = queue.planSegment(head.key(), stations, resources(100, 0), ImmutableResourceAmounts.empty(), 2);
         assertTrue(second.completesResearch());
+    }
+
+    @Test
+    void fullySuppliedMaterialResearchAdvancesOnEveryTickThroughFractionalBoundaries() {
+        var registry = registry(ResearchLevelStage.builder(1, 1).durationTicks(22).researchTier(1).material(A, 22)
+                                                  .resourceFormula(ResearchResourceFormula.builder().build()));
+        var queue = new TeamResearchQueue(registry, "team");
+        var head = queue.enqueue(ID, 1, PLAYER, 0);
+        var stations = List.of(new ResearchProgress.StationRate(STATION, resources(0, 0)));
+        long paid = 0;
+        for (int tick = 1; tick <= 22; tick++) {
+            var plan = queue.planSegment(head.key(), stations, resources(0, 0), ImmutableResourceAmounts.single(A, 22), tick);
+            assertNotNull(plan, "Fully supplied research stalled at tick " + tick);
+            paid += plan.payments().getLong(A);
+            assertEquals(tick == 22, plan.completesResearch());
+            commit(queue, plan);
+            if (tick < 22) assertEquals(tick, queue.activeProgress().snapshot().elapsedTicks());
+        }
+        assertEquals(22, paid);
+        assertEquals(0, queue.size());
+    }
+
+    @Test
+    void weightedPaidMaterialsUnlockTheirExactTimeWithoutConsumingAgain() {
+        var registry = registry(ResearchLevelStage.builder(1, 1).durationTicks(22).researchTier(1).material(A, 22).material(B, 44)
+                                                  .resourceFormula(ResearchResourceFormula.builder().build()));
+        var progress = new ResearchProgress(registry, new ResearchProgress.Target(ID, 1));
+        var remaining = new AEKey2LongMap.OpenHashMap();
+        remaining.put(A, 7);
+        remaining.put(B, 14);
+        progress.restore(new ResearchProgress.Snapshot(progress.target(), 14, remaining, resources(0, 0)));
+        var plan = progress.plan(List.of(new ResearchProgress.StationRate(STATION, resources(0, 0))), resources(0, 0), ImmutableResourceAmounts.empty());
+        assertNotNull(plan);
+        assertEquals(15, plan.after().elapsedTicks());
+        assertTrue(plan.payments().isEmpty());
+        assertEquals(7, plan.after().remainingMaterials().getLong(A));
+        assertEquals(14, plan.after().remainingMaterials().getLong(B));
+        progress.restore(plan.after());
+        assertNull(progress.plan(List.of(new ResearchProgress.StationRate(STATION, resources(0, 0))), resources(0, 0), ImmutableResourceAmounts.empty()));
+    }
+
+    @Test
+    void roundingAlmostPaidMaterialsToOneDoesNotUnlockUnpaidFinalTick() {
+        var registry = registry(ResearchLevelStage.builder(1, 1).durationTicks(Long.MAX_VALUE).researchTier(1).material(A, Long.MAX_VALUE)
+                                                  .resourceFormula(ResearchResourceFormula.builder().build()));
+        var progress = new ResearchProgress(registry, new ResearchProgress.Target(ID, 1));
+        progress.restore(new ResearchProgress.Snapshot(progress.target(), Long.MAX_VALUE - 1, ImmutableResourceAmounts.single(A, 1), resources(0, 0)));
+        assertNull(progress.plan(List.of(new ResearchProgress.StationRate(STATION, resources(0, 0))), resources(0, 0), ImmutableResourceAmounts.empty()));
     }
 
     @Test

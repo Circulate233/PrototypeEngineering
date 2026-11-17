@@ -114,8 +114,15 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
     @Override
     public boolean matches(byte[] image) {
         requireOwner();
-        return ManualResearchMaterialReceiptNbt.decodeInventory(image)
-                                               .equals(ManualResearchMaterialReceiptNbt.decodeInventory(snapshotInventory()));
+        return ManualResearchMaterialReceiptNbt.decodeInventory(image).equals(checkedInventoryImage());
+    }
+
+    private NBTTagCompound checkedInventoryImage() {
+        requireOwner();
+        var image = PlayerInventoryNbt.capture(inventory);
+        // Keep the existing serialized size limit; comparing the native image needs no second parse.
+        ManualResearchMaterialReceiptNbt.encodeInventory(image);
+        return image;
     }
 
     @Override
@@ -420,11 +427,11 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
         entity.setTag(EntityPlayer.PERSISTED_NBT_TAG, persisted);
         requireOwner();
         inventory.markDirty();
-        var expectedInventory = ManualResearchMaterialReceiptNbt.decodeInventory(snapshotInventory());
+        var expectedInventory = checkedInventoryImage();
         var expectedReceipts = receipts.isEmpty() ? new NBTTagCompound() : store;
         PlayerDataPersistence.persist(player, this::requireOwner,
             saved -> MaterialInventoryEvidence.verify(saved, expectedInventory, STORE, expectedReceipts));
-        if (!expectedInventory.equals(ManualResearchMaterialReceiptNbt.decodeInventory(snapshotInventory()))
+        if (!expectedInventory.equals(checkedInventoryImage())
             || !receipts.equals(readReceipts())) {
             throw new IllegalStateException("Material evidence changed during its player persistence barrier");
         }

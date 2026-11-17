@@ -11,6 +11,7 @@ import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.research.view.ResearchStationView;
 import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
 import com.circulation.prototype_eng.testsupport.TestResources;
+import ae2.api.stacks.AEKey;
 import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import net.minecraft.util.ResourceLocation;
@@ -80,5 +81,40 @@ class ResearchStationDisplayTest {
         assertSame(key, row.key);
         assertEquals(2, row.available);
         assertEquals(3, row.remaining);
+    }
+
+    @Test
+    void remainingMaterialSupplyIsCappedAndShrinksWithTheUnpaidDemand() {
+        var key = new TestResources.Key(new TestResources.KeyType("remaining_display_material"), "material");
+        var registry = new ResearchRegistry();
+        registry.register(ResearchDefinition.builder(ID).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY)
+                                            .stage(ResearchLevelStage.builder(1, 1).durationTicks(100).researchTier(1).material(key, 32)
+                                                                     .resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+        registry.freeze();
+        var queue = new TeamResearchQueue(registry, "team");
+        queue.enqueue(ID, 1, new UUID(0, 1), 0);
+        var display = new ResearchStationDisplay(registry);
+        var client = new ResearchStationClientView();
+        client.receive(display.capture(materialView(queue, key, 72, 5)));
+        var material = client.materials.getFirst();
+        assertEquals(5, material.available);
+        assertEquals(5, material.remaining);
+        assertEquals("5 / 5", material.amounts());
+        client.receive(display.capture(materialView(queue, key, 1, 3)));
+        assertSame(material, client.materials.getFirst());
+        assertEquals(1, material.available);
+        assertEquals(3, material.remaining);
+        assertEquals("1 / 3", material.amounts());
+        client.receive(display.capture(materialView(queue, key, 72, 0)));
+        assertEquals(0, material.available);
+        assertEquals(0, material.remaining);
+        assertEquals("0 / 0", material.amounts());
+    }
+
+    private static ResearchStationView materialView(TeamResearchQueue queue, AEKey key, long available, long remaining) {
+        var work = queue.activeProgress();
+        var progress = new ResearchProgress.Snapshot(work.target(), 1, ImmutableResourceAmounts.single(key, remaining), Reference2DoubleMaps.emptyMap());
+        return new ResearchStationView("team", true, true, queue.queueSnapshot(), progress, work.stage().durationTicks(),
+            ImmutableResourceAmounts.single(key, available), Reference2DoubleMaps.emptyMap(), Reference2DoubleMaps.emptyMap(), Reference2DoubleMaps.emptyMap(), 0);
     }
 }

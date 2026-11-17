@@ -32,7 +32,8 @@ class ManualResearchTest {
                 assertTrue(((AEKey2LongMap) args[0]).isEmpty());
                 yield ImmutableResourceAmounts.empty();
             }
-            default -> throw new AssertionError("Time-only research must not mutate player inventory: " + method.getName());
+            default ->
+                throw new AssertionError("Time-only research must not mutate player inventory: " + method.getName());
         });
 
     private static ManualResearch.Context context(long time) {
@@ -74,6 +75,35 @@ class ManualResearchTest {
         assertEquals(1, fixture.team.completedLevel(ID));
     }
 
+    @Test
+    void ordinaryElapsedWorkCanDeferSavingButCompletionStillRequiresDurability() {
+        var fixture = new Fixture(3, true);
+        int initialSaves = fixture.durableSaves;
+        assertEquals(ManualResearch.Status.ADVANCED, fixture.advance(1));
+        assertEquals(ManualResearch.Status.ADVANCED, fixture.advance(2));
+        assertEquals(initialSaves, fixture.durableSaves);
+        assertEquals(2, fixture.progressedSaves);
+        assertEquals(0, fixture.saved.queue().progress().getFirst().elapsedTicks());
+        assertEquals(ManualResearch.Status.COMPLETED, fixture.advance(3));
+        assertTrue(fixture.durableSaves > initialSaves);
+        assertEquals(2, fixture.progressedSaves);
+        assertEquals(1, fixture.team.completedLevel(ID));
+        assertEquals(0, fixture.saved.queue().entries().size());
+    }
+
+    @Test
+    void failedDeferredNotificationRetriesItsExactProgressWithoutRepeatingTheTick() {
+        var fixture = new Fixture(4, true);
+        fixture.failProgress = true;
+        assertThrows(IllegalStateException.class, () -> fixture.advance(1));
+        assertTrue(fixture.runtime.checkpointPending());
+        fixture.runtime.retryCheckpoint();
+        assertFalse(fixture.runtime.checkpointPending());
+        assertEquals(2, fixture.progressedSaves);
+        assertEquals(ManualResearch.Status.WAITING_FOR_TURN, fixture.advance(1));
+        assertEquals(1, fixture.queue.activeProgress().snapshot().elapsedTicks());
+    }
+
     private static final class Fixture {
         final ResearchRegistry registry = new ResearchRegistry();
         final Map<UUID, PlayerResearchState> players = Map.of(PLAYER, new PlayerResearchState(PLAYER));
@@ -82,15 +112,22 @@ class ManualResearchTest {
         TeamResearchQueue.Entry entry;
         ManualResearch runtime;
         ManualResearch.CheckpointState saved;
-        boolean failSave;
+        boolean failSave, failProgress;
+        final boolean deferProgress;
+        int durableSaves, progressedSaves;
 
         Fixture(long duration) {
+            this(duration, false);
+        }
+
+        Fixture(long duration, boolean deferProgress) {
+            this.deferProgress = deferProgress;
             var stage = ResearchLevelStage.builder(1, 1).durationTicks(duration).researchTier(0).resourceFormula(ResearchResourceFormula.builder().build());
             registry.register(ResearchDefinition.builder(ID).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(stage.build()).build());
             registry.freeze();
             queue = new TeamResearchQueue(registry, "team");
             team = new TeamOwnedResearch("team", registry);
-            runtime = new ManualResearch(queue, team, players, this::save);
+            runtime = new ManualResearch(queue, team, players, checkpoint());
             entry = queue.enqueue(ID, 1, PLAYER, 0);
             runtime.begin(entry, PLAYER, context(0));
         }
@@ -100,7 +137,31 @@ class ManualResearchTest {
                 failSave = false;
                 throw new IllegalStateException("Research checkpoint write failed");
             }
+            durableSaves++;
             saved = state;
+        }
+
+        @SuppressWarnings("ReturnOfInnerClass")
+            // The retained callback deliberately observes the owning fixture.
+        ManualResearch.Checkpoint checkpoint() {
+            if (!deferProgress) return this::save;
+            return new ManualResearch.Checkpoint() {
+                @Override
+                public void persist(ManualResearch.CheckpointState state) {
+                    save(state);
+                }
+
+                @Override
+                public void progressed(ManualResearch.CheckpointState state) {
+                    progressedSaves++;
+                    if (failProgress) {
+                        failProgress = false;
+                        throw new IllegalStateException("Deferred progress notification failed");
+                    }
+                    assertEquals(queue.snapshot(), state.queue());
+                    assertEquals(runtime.sessions(), state.sessions());
+                }
+            };
         }
 
         ManualResearch.Status advance(long time) {
@@ -112,7 +173,7 @@ class ManualResearchTest {
             team = new TeamOwnedResearch("team", registry);
             team.restore(saved.team());
             var sessions = saved.sessions();
-            runtime = new ManualResearch(queue, team, players, this::save);
+            runtime = new ManualResearch(queue, team, players, checkpoint());
             runtime.restore(sessions);
         }
     }

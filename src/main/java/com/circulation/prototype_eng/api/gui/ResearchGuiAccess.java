@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.container.ContainerDataCenter;
 import com.circulation.prototype_eng.container.ContainerResearchOverview;
 import com.circulation.prototype_eng.network.InitNetwork;
+import net.minecraft.command.ICommandSender;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.ResourceLocation;
@@ -36,8 +37,21 @@ public final class ResearchGuiAccess {
     }
 
     public static void openEditor(EntityPlayerMP player) {
-        if (player.canUseCommand(2, "pe_research_edit"))
-            player.openGui(PrototypeEngineering.instance, EDITOR_GUI, player.world, 0, 0, 0);
+        openEditor(player, player);
+    }
+
+    /**
+     * An authorized sender grants the selected player access only through the newly opened editor container.
+     */
+    public static void openEditor(ICommandSender authority, EntityPlayerMP target) {
+        var server = target.getServer();
+        if (server == null || authority.getServer() != server || !authority.canUseCommand(2, "pe_research_edit"))
+            return;
+        var previous = target.openContainer;
+        target.openGui(PrototypeEngineering.instance, EDITOR_GUI, target.world, 0, 0, 0);
+        if (target.openContainer != previous && target.openContainer instanceof ContainerResearchOverview container
+            && container.editorMode() && container.getPlayer() == target)
+            container.authorizeEditor(authority);
     }
 
     /**
@@ -60,8 +74,7 @@ public final class ResearchGuiAccess {
     public static @Nullable Object serverElement(int id, EntityPlayer player,
                                                  World world, int x, int y, int z) {
         if (id == PLAYER_GUI) return new ContainerResearchOverview(player.inventory);
-        if (id == EDITOR_GUI)
-            return world.isRemote || player.canUseCommand(2, "pe_research_edit") ? new ContainerResearchOverview(player.inventory, true) : null;
+        if (id == EDITOR_GUI) return new ContainerResearchOverview(player.inventory, true);
         if (id != DATABASE_GUI) return null;
         var pos = new BlockPos(x, y, z);
         if (!world.isBlockLoaded(pos)) return null;

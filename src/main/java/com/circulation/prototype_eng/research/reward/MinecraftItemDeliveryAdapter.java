@@ -81,7 +81,7 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         var fragment = expected.get(fragmentId);
         // Validate all tagged identities before accepting or ignoring a different pending claim.
         if (fragment == null) return;
-        if (!parent.equals(fragment.parent()) || !exact(actual, new ItemStack(fragment.taggedStackNbt())) || !observed.add(fragmentId)) {
+        if (!parent.equals(fragment.parent()) || !exact(actual, new ItemStack(fragment.taggedStackNbt().copy())) || !observed.add(fragmentId)) {
             throw new IllegalStateException("Reward fragment payload conflict or duplicate: " + fragmentId);
         }
         if (entity != null) {
@@ -260,7 +260,7 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         // Publish first so every intervening vanilla save carries ISSUING, including on failure.
         journal.writeTo(player.getEntityData());
         persistPlayer(null);
-        var stack = new ItemStack(fragment.taggedStackNbt());
+        var stack = new ItemStack(fragment.taggedStackNbt().copy());
         return switch (fragment.target()) {
             case ItemDeliveryFragment.Inventory inventory -> {
                 requirePlayerSaveHandler();
@@ -300,7 +300,7 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         if (readJournal().contains(fragment, RewardDeliveryJournal.State.PREPARED)) {
             throw new IllegalStateException("Observed reward effect contradicts its prepared journal");
         }
-        var expected = new ItemStack(fragment.taggedStackNbt());
+        var expected = new ItemStack(fragment.taggedStackNbt().copy());
         if (fragment.target() instanceof ItemDeliveryFragment.Inventory) {
             if ((delivery.entityUuid() != null))
                 throw new IllegalArgumentException("Inventory reward cannot have entity identity");
@@ -392,7 +392,7 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
             throw new IllegalArgumentException("Only durably confirmed reward fragments can be released");
         // Validate even when the already released item is gone; a reused receipt ID is not ours.
         readJournal().contains(fragment, RewardDeliveryJournal.State.ISSUING);
-        var expected = new ItemStack(fragment.taggedStackNbt());
+        var expected = new ItemStack(fragment.taggedStackNbt().copy());
         var slots = new IntArrayList();
         var drops = new ObjectArrayList<EntityItem>();
         boolean cursor = releaseCandidate(player.inventory.getItemStack(), fragment, expected);
@@ -444,7 +444,8 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
     private void validate(ItemDeliveryFragment fragment) {
         if (!fragment.parent().playerUuid().equals(player.getUniqueID()) || !(fragment.resource() instanceof AEItemKey key))
             throw new IllegalArgumentException("Invalid reward actor/resource");
-        var stack = new ItemStack(fragment.taggedStackNbt());
+        // Native ItemStack decoding borrows its nested tag and may invoke item/capability hooks.
+        var stack = new ItemStack(fragment.taggedStackNbt().copy());
         var root = stack.getTagCompound();
         if (stack.isEmpty() || stack.getCount() != fragment.count() || !root.getCompoundTag(DELIVERY_TAG).equals(ItemDeliveryKeyNbt.identity(fragment.parent(), fragment.id()))) {
             throw new IllegalArgumentException("Reward save differs from tagged payload");

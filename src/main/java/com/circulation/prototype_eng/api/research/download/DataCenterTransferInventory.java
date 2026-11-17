@@ -201,7 +201,7 @@ public final class DataCenterTransferInventory implements InternalInventory {
         @Override
         public boolean canOutput(NBTTagCompound nativeTemplate, long amount) {
             ownerCheck.run();
-            var stack = new ItemStack(nativeTemplate);
+            var stack = new ItemStack(nativeTemplate.copy());
             return !locked() && output.isEmpty() && !stack.isEmpty()
                 && amount > 0 && amount <= Math.min(stack.getMaxStackSize(), getSlotLimit(OUTPUT));
         }
@@ -290,7 +290,7 @@ public final class DataCenterTransferInventory implements InternalInventory {
         @Override
         public ObjectList<ItemDeliveryFragment> plan(ItemDeliveryKey parent, NBTTagCompound nativeTemplate, long amount) {
             ownerCheck.run();
-            var stack = new ItemStack(nativeTemplate);
+            var stack = new ItemStack(nativeTemplate.copy());
             if (!player.equals(parent.playerUuid()) || amount < 1 || amount > Math.min(stack.getMaxStackSize(), getSlotLimit(OUTPUT)))
                 throw new IllegalArgumentException("Database output must fit one physical output slot");
             var id = ItemDeliveryKeyNbt.fragmentId(parent, 0);
@@ -339,7 +339,7 @@ public final class DataCenterTransferInventory implements InternalInventory {
             if (delivery == null || !delivery.id().equals(fragment.id()))
                 throw new IllegalStateException("Database output has no prepared delivery evidence");
             if (!output.isEmpty()) return new Delivery(0, null);
-            output = new ItemStack(fragment.taggedStackNbt());
+            output = new ItemStack(fragment.taggedStackNbt().copy());
             delivery = fragment;
             delivered = true;
             return new Delivery(fragment.count(), null);
