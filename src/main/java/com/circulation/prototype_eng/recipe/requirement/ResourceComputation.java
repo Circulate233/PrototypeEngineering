@@ -406,6 +406,9 @@ class ResourceComputation implements RecipePureComputation {
             times = parallelism;
         } else if (chance <= 0 || parallelism <= 0) {
             times = 0;
+        } else if (parallelism == 1) {
+            if (!budget.take()) return false;
+            times = ChanceMath.sampleTimes(new Random(seed ^ salt.hashCode()), 1, chance, tuning);
         } else {
             if (chanceDraw == null) {
                 double ratio = chance / 100;

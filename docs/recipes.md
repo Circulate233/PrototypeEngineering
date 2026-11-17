@@ -99,7 +99,13 @@ var energy = RecipeRequirements.ENERGY.requirement(energyRequirementId,
 
 `api.recipe.probability` 迁入 PM 的 ChanceMath、BinomialSampler、WeightedSampling 和可调 ProbabilityTuning。ResourceChance 默认 100%，可选属性乘数从进程属性读取，缺失为 1、负乘数按 0 处理；定义拒绝非有限或负百分比，乘数结果溢出也显式失败。ChanceMath 的执行次数为 `floor(C/100) * parallelism + Binomial(parallelism, fractional(C/100))`，支持超过 100%，正数量乘法和执行次数的正溢出饱和到 Long.MAX_VALUE。
 
-BinomialSampler 保留 PM 的 gameplay 近似策略：概率大于 0.5 先用对称性；默认关闭小 n 精确 Bernoulli，均值小于 16 时用 Poisson 近似，其余用固定 seed 生成的 2048 项 Gaussian 表，再裁剪到 [0,n]。这不是所有范围的精确二项分布。ProbabilityTuning 提供不可变策略，默认 exactSmallBinomial=false、阈值 1024，可显式启用和调整阈值；默认发布入口不依赖 Forge 配置。RecipeProcess 在构造时捕获一份策略，资源系统显式传入，运行中变更全局策略不会使已有进程的阻塞重试重新抽样。RecipeProcessNbt 保存 seed、调参和进程状态，已通过此前严格进程阶段验证；这些字段不代替宿主兼容性与完整组件恢复校验。
+2026-11-17 概率采样改为在 double 精度范围内符合二项分布的整批采样，删除 Poisson 近似和 2048 项 Gaussian 表。1 并行在任何调参与并行算法初始化之前直接执行一次 `nextDouble() < p`；资源纯准备的 1 并行入口也直接调用 ChanceMath，不创建并行采样 Cursor。零概率、必然概率及整数倍概率无需随机调用。
+
+自动策略先按并行次数选择：2–4 并行直接累加 Bernoulli；5–6 并行且 p 在 [0.125,0.875] 内也直接累加。50% 概率的 2–384 并行优先对随机位做 `bitCount`，每个完整 long 同时代表 64 次独立试验，最后不足一字时按实际位数截取，余量不超过 32 位用 int。其余情况把 p>0.5 转为抽失败次数，再取补数；`n×min(p,1-p)<10` 使用单个均匀随机数的二项分布反演，否则使用 Hörmann BTRD 拒绝采样。BTRD 中心区域单次均匀数即可快速接受，其他候选检查概率比；均值不低于 10 时平均工作量不随并行数线性增长。算法选择、参数计算位于循环之外，保留热路径，局部符号选择使用 copySign。
+
+反演使用 `exp(n×log1p(-p))` 保留极低但非零概率，下降尾部低于 double 精度时停止，避免 CDF 舍入残差触发长尾循环；BTRD 的 n+1、Stirling 校正和候选转换保留必要的宽化，越界候选在转 int 前拒绝。同步与预算 Cursor 共用采样内核；参数初始化、每个随机字、逐次试验、反演递推、BTRD 候选和短概率比乘法分别计费，切片暂停保留 RNG、候选及递推进度。这里的一次抽样指每个需求阶段只产生一个整批成功次数，BTRD 内部允许多个均匀随机数；同阶段固定输出复用该次数。不得因预算不足、拒绝或重试改用近似结果。
+
+ProbabilityTuning 保留不可变策略与已有存档字段，默认 exactSmallBinomial=false、阈值 1024；false 现在选择上述自动精确策略，true 请求阈值以内的直接 Bernoulli，但上限固定为 64，防止巨大阈值把百万并行降为线性逐次试验。RecipeProcess 在构造时捕获策略，资源系统显式传入；运行中修改全局策略不会改变已有进程抽样，RecipeProcessNbt 继续保存 seed、调参和进程状态。新旧算法同 seed 的数值不保证相同，同版本同条件的重试、同步/切片与恢复仍保持确定。BTRD/反演参考 Boost.Random，署名与 Boost 1.0 许可证保存在源码和产物 `META-INF/licenses/Boost-Random-LICENSE`。
 
 资源系统按完整需求路径、阶段和成功刻数隔离随机盐。同一阶段的固定输入/输出共用执行次数；固定容量保留 PM 的 `max(parallelism, ceil(C/100) * parallelism)` 检查。检查量大于实际量时，用真实临时令牌做 preflight，覆盖同 key 与共享槽位的总需求；检查完释放全部临时令牌，再为实际数量重新取得阶段令牌。0% 仍保留完整并行量的固定容量检查，但不实际消耗/产出；不同需求可重复使用已释放的检查容量，实际执行量之间仍受前面真实预留约束。没有所需的有效来源/目标仍阻塞，preflight 不是永久占用或允许实际透支的证明。
 

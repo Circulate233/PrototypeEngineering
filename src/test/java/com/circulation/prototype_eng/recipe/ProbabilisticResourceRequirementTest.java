@@ -155,6 +155,33 @@ class ProbabilisticResourceRequirementTest {
     }
 
     @Test
+    void millionParallelFixedOutputsShareOneDrawAndRetryKeepsTheSameCounts() {
+        var payload = new ResourceRequirement(List.of(), List.of(), List.of(),
+            List.of(new GenericStack(PRODUCT, 3), new GenericStack(ALTERNATE, 2)),
+            false, new ResourceChance(25, null), null);
+        var requirement = RecipeRequirements.RESOURCES.requirement(id("million_output"), payload);
+        var baselineOutput = hatch(HatchMode.OUTPUT, 2, 3_000_000);
+        var baseline = process(List.of(baselineOutput), 0, 1_000_000, requirement);
+        assertSame(ProcessResult.SUCCESS, baseline.tick());
+        var expected = Objects.requireNonNull(baselineOutput.output());
+        long successes = expected.amount(PRODUCT) / 3;
+        assertTrue(successes > 200_000 && successes < 300_000);
+        assertEquals(successes * 2, expected.amount(ALTERNATE));
+
+        var restricted = hatch(HatchMode.OUTPUT, 1, 3_000_000);
+        var retry = process(List.of(restricted), 0, 1_000_000, requirement);
+        assertInstanceOf(ProcessResult.Blocked.class, retry.tick());
+        assertEquals(0, Objects.requireNonNull(restricted.output()).amount(PRODUCT));
+        assertEquals(0, Objects.requireNonNull(restricted.output()).amount(ALTERNATE));
+        var expanded = hatch(HatchMode.OUTPUT, 2, 3_000_000);
+        retry.owner().components().put(MachineHatches.TYPE, new MachineHatches(List.of(expanded), List.of(), List.of()));
+        assertSame(ProcessResult.SUCCESS, retry.tick());
+        var actual = Objects.requireNonNull(expanded.output());
+        assertEquals(expected.amount(PRODUCT), actual.amount(PRODUCT));
+        assertEquals(expected.amount(ALTERNATE), actual.amount(ALTERNATE));
+    }
+
+    @Test
     void weightedOutputChecksTheSelectedKeyAndRollsBackFixedOutputsUntilRetryFits() {
         var restricted = hatch(HatchMode.OUTPUT, 1, 100);
         var blockedProducts = Objects.requireNonNull(restricted.output());

@@ -1,5 +1,19 @@
 # 实施进度
 
+## 2026-11-17 自适应二项概率采样
+
+用户要求百万并行的概率产出尽量符合真实逐次抽取的总次数，同时每个需求阶段仍只形成一次整批抽样结果；1 并行只调用一次随机数，按并行规模选择算法并减少循环中的数据分支。旧默认算法在小并行甚至 1 并行上使用泊松近似，在大均值上使用 2048 项高斯表，小样本概率和罕见尾部都会偏离二项分布。
+
+BinomialSampler 改为有限 double 精度内的自适应二项采样。1 并行在策略选择前直接 nextDouble；2–4 并行及概率居中的 5–6 并行直接累加，50% 的 2–384 并行优先对随机字做 bitCount。其余情况先按概率对称，再由小于 10 的均值选择单均匀数反演，或选择 Hörmann BTRD 拒绝采样。策略和参数计算移出循环；随机位计数、copySign 以及 BTRD 中心快速接受减少热路径的工作。反演用 log1p 保留极低概率，下降尾部低于 double 精度后停止；BTRD 的 int 边界、n+1 和 Stirling 校正先宽化，候选先检查范围再转 int。没有逐并行的临时对象或逐拒绝的分配。Boost.Random 的参考算法署名与 Boost 1.0 许可证随源码和 JAR 保留。
+
+同步与预算 Cursor 复用内核，参数初始化、随机字、直接试验、反演递推、BTRD 候选及短概率比的每一步都扣预算；暂停保存随机序列及当前递进。ResourceComputation 的 1 并行直接调用 ChanceMath，不创建并行抽样 Cursor。固定输出继续共享同阶段的一个成功次数，容量预检与事务规则沿原实现；加权随机输出池的逐轮抽签未改。ProbabilityTuning 的既有字段、存档及构造入口保留，true 的直接试验请求最多执行 64 次，巨大阈值仍走整批算法。跨版本的同 seed 数值不保证相同，本版本重试和同步/切片保持一致。
+
+验证：在 HEAD `2971dcf` 上仅复制本轮 5 Java 和许可证的隔离候选执行完整 `gradlew.bat build --console=plain`，Spotless、1747 tests/272 suites 全部通过，失败、错误、跳过均为 0。随后补充四倍标准差尾部验证，最终 41 tests/5 suites 专项通过。专项覆盖小并行组合概率 CDF、百万及 Integer.MAX_VALUE 的均值/方差、百万并行四倍标准差尾部、单次 RNG、拒绝越界、逐单位预算后续 RNG 状态、64 位边界、巨大调参和真实百万并行双输出阻塞重试。5 Java 已 IDEA MCP 格式化，逐文件 get_file_problems(errorsOnly:false) 错误、警告及弱警告均为 0，主项目 IDEA 定向构建成功。主工作区两次 Gradle 尝试分别受进行中的研究包测试构造器和 ResearchGuiAccess 符号改动影响，未修改该工作的文件；完整构建证据仅对应上述隔离候选。
+
+AMD Ryzen 7 7735H、Zulu Java 25+36 的独立 JVM 微基准，用五次计时的中位数比较共享/每次新建 Random。交叉点测量显示极小批量直接累加较快，50% 位计数在 384 并行仍优于 BTRD，512 已较慢，故上限取 384；均值从 10 起 BTRD 优于反演。手工浮点符号位转换未取得稳定收益，保留易被 JIT 优化的条件累加。最终每次新建 Random 的百万并行（1%、10%、50%、90%）约 50.9–54.0ns；25% 整批约 50.3ns，实际逐次抽取一百万次约 13.9ms。旧高斯表同条件约 12–13ns，新算法增加几十纳秒以取得完整分布和尾部；这些是采样器微基准，不代表整机 tick 耗时或固定最坏延迟。BTRD 拒绝次数由预算限制单片工作，保持抽样进度。
+
+证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261117/binomial-sampler/`：`candidate-build.log`、`candidate-full-totals.json`/`candidate-full-test-results/`、`candidate-targeted-final.log`/`candidate-targeted-totals.json`、`idea-final.json`、`idea-build.json`、`benchmark-final.csv`、`benchmark-crossover.csv`、环境、参考源码与复现脚本。本轮本地英文提交，保留主仓其它修改及暂存，不启动 Minecraft、不推送；隔离验证工作树在证据保存后归档。下一步用户按既有启动流程观察 1 并行、百万并行和输出容量的真实配方运行。
+
 ## 2026-11-16 研究站按钮预览差异修正
 
 用户截图显示研究站正式界面的箭头、按钮和文字明显大于确认预览，禁用文字为深色，按钮上下边缘也不齐。原实现同时使用 `SimpleIconButton` 工具栏背景和 18 像素高的 `AE2Button`，禁用状态采用 AE 的深色文字及额外纵向偏移。
