@@ -156,3 +156,6 @@ pe_run_tests.research.compression=数据压缩
 pe_run_tests.research.coordination=自动化协调
 pe_run_tests.research.sampling=精密采样
 pe_run_tests.research.connection=高速连接
+gui.prototype_eng.research_page.pe_run_tests=运行测试
+key.pe_run_tests.research_overview=研究总览
+key.categories.pe_run_tests=PE 示例

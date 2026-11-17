@@ -264,7 +264,9 @@ first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表�
 
 `Research.alwaysAllowed()` 表示资格函数不增加额外条件，实际权限仍会由服务器规则检查。自定义资格函数读取 `targetLevel`、`networkCenterLevel`、`sharedLevel(researchId)` 和 `available(resource)` 等捕获事实，返回 bool；它不能修改资源或把当前数量当作后续工作已经预留的数量。`unlock(effectId, targetId, level)` 声明达到指定等级后的解锁效果，必须在研究定义被注册前完成。
 
-`Research.display(translationKey, icon)` 必须在 `register()` 前设置，icon 为 IItemStack。研究总览实现时，名称与图标改由客户端 `config/prototype_eng/research_content/` 下的 JSON 提供，脚本只注册研究数据，此方法随之移除，规则见 [研究总览](docs/research-overview.md#客户端研究内容与分页文件)。研究站显示内容与目标进度自动同步；材料按总量直接结算。
+`Research.display(...)` 已移除；脚本只注册研究业务数据，名称、简介、说明、图标、奖励组文字与分页布局由客户端 `config/prototype_eng/research_content/` JSON 提供。基础文件位于 `data/<namespace>/<path>.json`，当前语言同名文件只覆盖其中出现的字段，不使用 `en_us` 回退，语言文件缺失时直接使用基础内容。图标内置 `item`、`fluid` 和 `icon` 三种解析，扩展解析器由 Java addon 在客户端注册；奖励组文字在 `rewards` 对象中按完整组 ID 提供。分页文件为 `data/<namespace>.json`，名称键为 `gui.prototype_eng.research_page.<namespace>`；规则见[研究总览](docs/research-overview.md#客户端研究内容与分页文件)。研究站、数据库与下载 JEI 显示按研究 ID 在客户端读取内容，进度自动同步；材料按总量直接结算。
+
+研究总览的打开入口由 Java addon 使用 `ResearchGuiAccess` 封装，脚本不注册默认打开按键或物品，也没有自动打开总览的方法。测试 mod 默认用 R 打开玩家模式；管理员通过 `/pe_research_edit`（命令权限等级 2）打开编辑模式。Java 打开方法见 [API](api.md#研究与计算网络)。
 
 `ResearchServer.permissions(callback)` 设置服务端权限回调。回调的 action 和返回值使用 Java 对应枚举的字符串名称；不添加特例时调用 `context.standardDecision(action)`。在启动阶段注册，否则研究服务可能已完成初始化。
 
@@ -309,7 +311,7 @@ Java 自定义资源实现 `NetworkResourceType`，包含 `id()`、`internal()`�
 
 默认计算机只从运算仓采集组件。四级运算仓分别为 1/2/3/4 槽，物品每槽 1 件，非物品每槽容量为 1000/4000/16000/64000。物品的 `Item` 必须实现 Java `NetworkComputerComponent`；非物品接受已注册的任意 AEKey 类型。允许外部插入和抽取，没有自动输入或输出。组件缓存由运算仓组成变化事件更新。
 
-网络中心、计算机和研究站正式 GUI 已实现；计算机保留概览和组件两页，配方由 JEI 展示。数据库 GUI 仍延缓。数据库完成队伍研究后不会自动加入新条目，首次需要下载或导入；自动同步只升级库内已有的合格多等级研究，配方查询当前活动物理库，多个库的内容不合并。
+网络中心、计算机、研究站和数据库正式 GUI 已实现；计算机保留概览和组件两页，配方由 JEI 展示。数据库“选择研究”已接入研究总览，选定后返回原物理数据库操作区。数据库完成队伍研究后不会自动加入新条目，首次需要下载或导入；自动同步只升级库内已有的合格多等级研究，配方查询当前活动物理库，多个库的内容不合并。
 
 普通控制器使用 `.requiresNetwork(true/false)` 覆盖 `config/prototype_eng/controllers.cfg` 的 `network.defaultRequiresNetwork`，默认 false。未显式覆盖时，配置默认值和已声明网络角色决定共同工作门限。显式 false 只取消共同联网门限，保留配方自身的网络资源和研究要求；四种默认专用控制器始终保留其网络角色。
 

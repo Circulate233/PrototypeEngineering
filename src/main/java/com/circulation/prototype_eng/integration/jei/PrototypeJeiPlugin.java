@@ -21,6 +21,7 @@ import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
 import com.circulation.prototype_eng.block.MachineControllerBlocks;
+import com.circulation.prototype_eng.client.gui.GuiResearchOverview;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
@@ -535,6 +536,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
     @Override
     public void register(IModRegistry registration) {
         requireClientOwner();
+        registration.addGuiScreenHandler(GuiResearchOverview.class, gui -> null);
         ingredients = registration.getIngredientRegistry();
         registerStructures(registration);
         researchDownloads.registerRecipes(registration);

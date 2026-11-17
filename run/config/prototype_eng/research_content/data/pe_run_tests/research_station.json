@@ -1,0 +1,18 @@
+{
+  "title": "Network Research",
+  "summary": "Research station example using network computing resources.",
+  "description": [
+    "Start condition: a network center of level 1 or higher and at least 10 available network computing resources."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:gold_ingot",
+    "meta": 0
+  },
+  "rewards": {
+    "pe_run_tests:research_reward": {
+      "title": "Basic reward",
+      "description": "Emeralds and the configured research reward event."
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "title": "Parallel Processing",
+  "summary": "Java research example: parallel processing.",
+  "description": [
+    "Java research example: parallel processing."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:book",
+    "meta": 0
+  }
+}

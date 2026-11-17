@@ -21,6 +21,7 @@ import com.circulation.prototype_eng.api.research.manual.ManualResearch;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
+import com.circulation.prototype_eng.api.research.queue.ResearchProgress;
 import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
 import com.circulation.prototype_eng.api.research.reward.RewardClaim;
 import com.circulation.prototype_eng.api.research.station.ResearchStationWork;
@@ -210,6 +211,119 @@ public final class ResearchWorld {
     public boolean faulted() {
         requireOwner();
         return fatalFailure != null;
+    }
+
+    /**
+     * Owner-bound read model for an open research overview. Returned values are borrowed read-only.
+     */
+    public List<ResearchProgress.Snapshot> retainedProgress(String teamId) {
+        requireOwner();
+        var team = teams.get(teamId);
+        return team == null ? List.of() : team.queue.snapshot().progress();
+    }
+
+    public int otherMemberLevel(Set<UUID> members, UUID actor, ResourceLocation id) {
+        requireOwner();
+        int level = 0;
+        for (var member : members) {
+            if (member.equals(actor)) continue;
+            var source = players.get(member);
+            if (source != null) level = Math.max(level, source.completedLevel(id));
+        }
+        return level;
+    }
+
+    public boolean canForget(UUID actor, ResourceLocation id) {
+        requireOwner();
+        var source = players.get(actor);
+        return source != null && source.canWriteResearch(id);
+    }
+
+    /**
+     * Explicit administrator completion uses the ordinary propagation path and creates reward eligibility.
+     */
+    public ResearchLevelResult completeForEditor(OwnerTeamResolution membership, ResearchPermissionContext permission,
+                                                 ResourceLocation id, int targetLevel, long time,
+                                                 Set<UUID> online, Function<UUID, ManualResearchInventory> inventories,
+                                                 BooleanSupplier current) {
+        return operate(time, false, () -> {
+            if (!permission.serverOperator() || permissions.can(ResearchPermissionPolicy.Action.MODIFY_ANY_RESEARCH_LEVEL, permission)
+                != ResearchPermissionPolicy.Decision.ALLOWED) return ResearchLevelResult.PERMISSION_DENIED;
+            if (!membership.accepted() || !membership.teamId().equals(permission.targetTeamId()) || !current.getAsBoolean())
+                return ResearchLevelResult.STALE_CONTEXT;
+            var definition = registry.require(id);
+            if (definition.specialOnly() || targetLevel < 1 || targetLevel > definition.maxLevel())
+                return ResearchLevelResult.OUT_OF_RANGE;
+            var team = captureTeam(membership.teamId(), membership.members());
+            if (levelWritersBusy()) return ResearchLevelResult.BUSY;
+            var targets = new Object2IntOpenHashMap<ResourceLocation>();
+            var pending = new ObjectArrayList<ResourceLocation>();
+            targets.put(id, targetLevel);
+            pending.add(id);
+            for (int cursor = 0; cursor < pending.size(); cursor++) {
+                var researchId = pending.get(cursor);
+                var research = registry.require(researchId);
+                int required = targets.getInt(researchId);
+                for (int stageIndex = 0; stageIndex < research.stages().size(); stageIndex++) {
+                    var stage = research.stages().get(stageIndex);
+                    if (stage.firstLevel() > required) break;
+                    for (var entry : stage.prerequisites().object2IntEntrySet()) {
+                        int previous = targets.getInt(entry.getKey());
+                        if (previous < entry.getIntValue()) {
+                            targets.put(entry.getKey(), entry.getIntValue());
+                            pending.add(entry.getKey());
+                        }
+                    }
+                }
+            }
+            for (var entry : targets.object2IntEntrySet()) {
+                var researchId = entry.getKey();
+                var research = registry.require(researchId);
+                if (research.specialOnly()) return ResearchLevelResult.OUT_OF_RANGE;
+                if (research.deliveryPolicy() == ResearchDownloadDeliveryPolicy.ITEM_ONLY && !team.research.canWriteResearch(researchId))
+                    return ResearchLevelResult.SOURCE_RESERVED;
+                for (var member : membership.members())
+                    if (!players.get(member).canWriteResearch(researchId)) return ResearchLevelResult.SOURCE_RESERVED;
+            }
+            if (!current.getAsBoolean()) return ResearchLevelResult.STALE_CONTEXT;
+            var completion = new TeamResearchCompletion(registry);
+            for (var entry : targets.object2IntEntrySet()) {
+                var prepared = completion.prepare(entry.getKey(), entry.getIntValue(), membership.members(), players, team.research, time);
+                if (prepared == null) return ResearchLevelResult.BUSY;
+                try {
+                    prepared.commit();
+                    prepared.complete();
+                } catch (RuntimeException | Error failure) {
+                    if (prepared.resolution() == ReversibleTransaction.Resolution.REVERSIBLE) prepared.rollback();
+                    throw failure;
+                }
+            }
+            var rows = team.queue.queueSnapshot();
+            for (int index = rows.size() - 1; index >= 0; index--) {
+                var row = rows.get(index);
+                if (targets.getInt(row.key().researchId()) < row.key().targetLevel()) continue;
+                var manual = team.manual.session(row.key().queueEntryId());
+                if (manual == null) team.queue.remove(row.key(), time);
+                else team.manual.cancelInvalidated(row.key().queueEntryId(),
+                    new ManualResearch.Context(time, membership.members(), online, current), inventoryFor(manual, inventories));
+            }
+            dirty = true;
+            persist();
+            return ResearchLevelResult.APPLIED;
+        });
+    }
+
+    public ManualResearch.Status pauseManual(OwnerTeamResolution membership, UUID actor, long entryId,
+                                             long time, Set<UUID> online, BooleanSupplier current) {
+        return operate(time, false, () -> {
+            if (!membership.accepted() || !membership.members().contains(actor) || !current.getAsBoolean())
+                return ManualResearch.Status.STALE_CONTEXT;
+            var team = teams.get(membership.teamId());
+            var session = team == null ? null : team.manual.session(entryId);
+            if (session == null || !actor.equals(session.contributor()))
+                return ManualResearch.Status.CONTRIBUTOR_UNAVAILABLE;
+            return team.manual.pause(entryId, new ManualResearch.Context(time, membership.members(), online, current));
+        });
     }
 
     public @Nullable ResearchStationView stationView(ResearchPermissionContext permission, ResearchStations stations, long time) {

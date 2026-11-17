@@ -6,7 +6,7 @@ import net.minecraft.util.ResourceLocation;
 
 
 /**
- * Missing language content is explicit; a malformed existing file is reported by the loader.
+ * Missing base content is explicit; an absent language overlay uses the base file normally.
  */
 public record ResearchContentLoadResult(ResourceLocation researchId, Status status, @Nullable ResearchContent content) {
     public static ResearchContentLoadResult loaded(ResourceLocation id, ResearchContent content) {

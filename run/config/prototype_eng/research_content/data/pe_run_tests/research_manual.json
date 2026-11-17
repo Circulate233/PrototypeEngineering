@@ -1,0 +1,18 @@
+{
+  "title": "Basic Research",
+  "summary": "Manual research example.",
+  "description": [
+    "Manual research example."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:iron_ingot",
+    "meta": 0
+  },
+  "rewards": {
+    "pe_run_tests:research_reward": {
+      "title": "Basic reward",
+      "description": "Emeralds and the configured research reward event."
+    }
+  }
+}

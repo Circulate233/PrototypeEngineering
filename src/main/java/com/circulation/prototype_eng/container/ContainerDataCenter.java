@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.container;
 
 import ae2.api.inventories.InternalInventory;
+import com.circulation.prototype_eng.api.gui.ResearchGuiAccess;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.GenericStack;
 import ae2.container.AEBaseContainer;
@@ -133,6 +134,10 @@ public final class ContainerDataCenter extends AEBaseContainer {
         });
         registerClientAction("remove", ResourceLocation.class, 256, this::remove);
         registerClientAction("transfer", this::transfer);
+        registerClientAction("overview", () -> {
+            if (current() && !actionPending)
+                ResearchGuiAccess.open((EntityPlayerMP) getPlayer(), host);
+        });
     }
 
     public void changeMode() {
@@ -145,6 +150,16 @@ public final class ContainerDataCenter extends AEBaseContainer {
     @SuppressWarnings("unused")
     public void selectResearch(ResourceLocation id) {
         sendClientAction("select", id);
+    }
+
+    public void openResearchOverview() {
+        sendClientAction("overview");
+    }
+
+    public void selectFromOverview(ResourceLocation id) {
+        selectedResearch = id;
+        invalidatePreview();
+        updateTarget();
     }
 
     public void removeResearch(ResourceLocation id) {

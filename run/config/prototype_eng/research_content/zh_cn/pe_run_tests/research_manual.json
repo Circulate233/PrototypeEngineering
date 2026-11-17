@@ -1,0 +1,13 @@
+{
+  "title": "基础研究",
+  "summary": "手动研究示例。",
+  "description": [
+    "手动研究示例。"
+  ],
+  "rewards": {
+    "pe_run_tests:research_reward": {
+      "title": "基础奖励",
+      "description": "绿宝石与示例研究奖励事件。"
+    }
+  }
+}

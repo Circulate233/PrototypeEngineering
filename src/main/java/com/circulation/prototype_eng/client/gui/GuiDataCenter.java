@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.client.gui;
 
-import ae2.api.client.AEKeyRendering;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.GenericStack;
 import ae2.client.Point;
@@ -10,6 +9,7 @@ import ae2.client.gui.widgets.Scrollbar;
 import com.circulation.prototype_eng.api.network.NetworkWorkState;
 import com.circulation.prototype_eng.container.ContainerDataCenter;
 import com.circulation.prototype_eng.container.DataCenterResearchPacket;
+import com.circulation.prototype_eng.client.research.ClientResearchContents;
 import com.circulation.prototype_eng.localization.DataCenterGuiText;
 import com.circulation.prototype_eng.localization.NetworkCenterGuiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -57,9 +57,7 @@ public class GuiDataCenter extends AEBaseGui<ContainerDataCenter> {
         xSize = 384;
         ySize = 290;
         mode = new AE2Button(0, 0, 58, 14, DataCenterGuiText.ImportMode.text(), container::changeMode);
-        choose = new AE2Button(0, 0, 46, 14, DataCenterGuiText.SelectResearch.text(), () -> {
-            // TODO: Open the research picker when its UI is approved for implementation.
-        });
+        choose = new AE2Button(0, 0, 46, 14, DataCenterGuiText.SelectResearch.text(), container::openResearchOverview);
         remove = new AE2Button(0, 0, 166, 14, DataCenterGuiText.Remove.text(), () -> removing = true);
         confirm = new AE2Button(0, 0, 81, 14, DataCenterGuiText.ConfirmRemove.text(), () -> {
             container.removeResearch(selected);
@@ -109,7 +107,7 @@ public class GuiDataCenter extends AEBaseGui<ContainerDataCenter> {
             selectedIndex = -1;
             for (int index = 0; index < knownStored.entries().size(); index++) {
                 var entry = knownStored.entries().get(index);
-                String name = I18n.format(entry.name());
+                String name = ClientResearchContents.name(entry.id());
                 entries.add(new DisplayEntry(entry, name, "Lv." + entry.level(),
                     List.of(name, DataCenterGuiText.StoredLevel.getLocal(entry.level(), entry.maxLevel()))));
                 if (entry.id().equals(selected)) selectedIndex = index;
@@ -149,10 +147,10 @@ public class GuiDataCenter extends AEBaseGui<ContainerDataCenter> {
                 int tier = 0;
                 for (int index = 0; index < targets.size(); index++) {
                     var entry = targets.get(index);
-                    tooltip.add(I18n.format(entry.name()) + " Lv." + entry.level());
+                    tooltip.add(ClientResearchContents.name(entry.id()) + " Lv." + entry.level());
                     tier = Math.max(tier, entry.tier());
                 }
-                targetName = targets.size() == 1 ? I18n.format(targets.getFirst().name())
+                targetName = targets.size() == 1 ? ClientResearchContents.name(targets.getFirst().id())
                     : DataCenterGuiText.MultipleResearch.getLocal(targets.size());
                 targetTier = Integer.toString(tier);
                 targetTooltip = tooltip;
@@ -257,8 +255,9 @@ public class GuiDataCenter extends AEBaseGui<ContainerDataCenter> {
         text(fontRenderer, operationTitle, 202, 35, 52, TEXT);
         var targets = container.target.entries();
         int nameX = 202;
-        if (!targets.isEmpty() && targets.getFirst().icon() != null) {
-            AEKeyRendering.drawInGui(mc, 202, 51, targets.getFirst().icon());
+        if (!targets.isEmpty()) {
+            var icon = ClientResearchContents.icon(targets.getFirst().id());
+            if (icon != null) icon.draw(mc, 202, 51);
             nameX = 222;
         }
         text(fontRenderer, container.visible ? targetName : deniedText, nameX, 54, 366 - nameX, TEXT);
@@ -290,7 +289,8 @@ public class GuiDataCenter extends AEBaseGui<ContainerDataCenter> {
             else if (isPointInRegion(LIST_X, top, width, ROW_HEIGHT, mouseX, mouseY))
                 rect(LIST_X, top, width, ROW_HEIGHT, HOVER);
             if (index > first) rect(LIST_X, top, width, 1, LINE);
-            if (entry.entry.icon() != null) AEKeyRendering.drawInGui(mc, LIST_X + 3, top + 2, entry.entry.icon());
+            var icon = ClientResearchContents.icon(entry.entry.id());
+            if (icon != null) icon.draw(mc, LIST_X + 3, top + 2);
             int levelWidth = Math.min(48, fontRenderer.getStringWidth(entry.level));
             text(fontRenderer, entry.name, LIST_X + 23, top + 5, width - 29 - levelWidth, TEXT);
             right(fontRenderer, entry.level, LIST_X + width - 3, top + 5, levelWidth, TEXT);
@@ -377,7 +377,8 @@ public class GuiDataCenter extends AEBaseGui<ContainerDataCenter> {
         if (isPointInRegion(202, 51, 164, 16, mouseX, mouseY) && !targetTooltip.isEmpty()) return targetTooltip;
         if (isPointInRegion(202, 82, 164, LINE_HEIGHT, mouseX, mouseY) && !fits(fontRenderer, cost, 98))
             return List.of(cost);
-        if (isPointInRegion(202, 124, 164, 20, mouseX, mouseY) && !fits(fontRenderer, reason, 164)) return List.of(reason);
+        if (isPointInRegion(202, 124, 164, 20, mouseX, mouseY) && !fits(fontRenderer, reason, 164))
+            return List.of(reason);
         if (isPointInRegion(OUTPUT_X, TRANSFER_Y, 16, 16, mouseX, mouseY)
             && container.preview != null && !container.getSlot(1).getHasStack()) {
             var lines = getItemToolTip(previewItem);

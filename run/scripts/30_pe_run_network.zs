@@ -46,7 +46,7 @@ var manual = ResearchStage.create(1, 2, 0, 40, ResearchFormula.create())
     .reward(1, manualReward);
 Research.create("pe_run_tests:research_manual", 2, false, "ITEM_ONLY", [manual], function(context) {
     return context.playerId != "" && context.teamId != "";
-}).display("pe_run_tests.research.manual", <minecraft:iron_ingot>).unlock("pe_run_tests:research_unlock", "pe_run_tests:net_device", 1).register();
+}).unlock("pe_run_tests:research_unlock", "pe_run_tests:net_device", 1).register();
 
 var station = ResearchStage.create(1, 2, 1, 120, ResearchFormula.create().affine(compute, 1200, 100))
     .prerequisite("pe_run_tests:research_manual", 1)
@@ -55,16 +55,16 @@ var station = ResearchStage.create(1, 2, 1, 120, ResearchFormula.create().affine
     .reward(1, manualReward);
 Research.create("pe_run_tests:research_station", 2, false, "DATABASE_AND_ITEM", [station], function(context) {
     return context.teamHasNetworkCenter && context.networkCenterLevel >= 1 && context.available(compute) >= 10;
-}).display("pe_run_tests.research.station", <minecraft:gold_ingot>).register();
+}).register();
 Research.create("pe_run_tests:research_mutex", 2, false, "ITEM_ONLY",
     [ResearchStage.create(1, 2, 0, 40, ResearchFormula.create()).mutex("pe_run_tests:research_manual", 1)],
-    Research.alwaysAllowed()).display("pe_run_tests.research.mutex", <minecraft:book>).register();
+    Research.alwaysAllowed()).register();
 Research.create("pe_run_tests:research_loop", 2147483647, false, "DATABASE_AND_ITEM",
     [ResearchStage.create(1, 2147483647, 1, 100, ResearchFormula.create().perTick(compute, 0.1))],
-    Research.alwaysAllowed()).display("pe_run_tests.research.loop", <minecraft:redstone>).register();
+    Research.alwaysAllowed()).register();
 Research.create("pe_run_tests:research_special", 1, true, "DATABASE_AND_ITEM",
     [ResearchStage.create(1, 1, 1, 100, ResearchFormula.create().constant(compute, 10))],
-    Research.alwaysAllowed()).display("pe_run_tests.research.special", <minecraft:nether_star>).register();
+    Research.alwaysAllowed()).register();
 ResearchServer.permissions(function(action, context) { return context.standardDecision(action); });
 ResearchDownloads.register("pe_run_tests:paper_research_download", <minecraft:paper>, "pe_run_tests:research_station", 1, 1, <minecraft:book>, function(context) {
     NativeChecks.check("research_download_actual_context", context.teamId != "" && context.dataCenterId != "" && context.operationId != "");

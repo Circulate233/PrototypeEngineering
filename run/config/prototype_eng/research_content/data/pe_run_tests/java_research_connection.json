@@ -1,0 +1,12 @@
+{
+  "title": "High-speed Connection",
+  "summary": "Java research example: high-speed connection.",
+  "description": [
+    "Java research example: high-speed connection."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:book",
+    "meta": 0
+  }
+}

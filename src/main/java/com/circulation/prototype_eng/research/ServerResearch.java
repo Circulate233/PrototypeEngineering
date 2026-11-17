@@ -1,8 +1,10 @@
 package com.circulation.prototype_eng.research;
 
 import ae2.api.stacks.AEItemKey;
+import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.network.MachineDataCenterStorage;
 import com.circulation.prototype_eng.api.network.DataCenter;
 import com.circulation.prototype_eng.api.network.NetworkWorkState;
@@ -16,6 +18,7 @@ import com.circulation.prototype_eng.api.research.ResearchLevelResult;
 import com.circulation.prototype_eng.api.research.ResearchPermissionContext;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
+import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchServerConfiguration;
 import com.circulation.prototype_eng.api.research.ResearchWorld;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
@@ -41,6 +44,10 @@ import com.circulation.prototype_eng.api.research.disk.ResearchDiskImport;
 import com.circulation.prototype_eng.api.research.manual.ManualResearch;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory;
 import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
+import com.circulation.prototype_eng.api.research.queue.ResearchProgress;
+import com.circulation.prototype_eng.api.research.manual.ManualMaterialKey;
+import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.container.ResearchOverviewPacket;
 import com.circulation.prototype_eng.api.research.station.ResearchStations;
 import com.circulation.prototype_eng.api.research.view.DataCenterPlayerView;
 import com.circulation.prototype_eng.api.research.view.ResearchPlayerView;
@@ -63,6 +70,7 @@ import com.feed_the_beast.ftblib.lib.data.ForgeTeam;
 import com.feed_the_beast.ftblib.lib.data.TeamType;
 import com.feed_the_beast.ftblib.lib.data.Universe;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
@@ -97,6 +105,7 @@ import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.List;
 
 /**
  * Authoritative server research session; its file has one writer and is never registered in MapStorage.
@@ -1314,6 +1323,309 @@ public final class ServerResearch {
                     && permission.equals(viewPermission(current, actor, team)));
             result.accept(view);
         }, ExecutionMode.MAIN_THREAD);
+    }
+
+    /**
+     * Capture the overview at a scheduler boundary; definitions and permissions remain server authoritative.
+     */
+    @SuppressWarnings({"resource", "DataFlowIssue"})
+    public static void requestOverview(EntityPlayerMP actor, @Nullable MachineControllerHost picker,
+                                       boolean editor, BooleanSupplier ownerCurrent, Consumer<Overview> result) {
+        var current = actorSession(actor);
+        ServerTaskSchedulers.forServer(current.server).submit(() -> {
+            if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
+                result.accept(null);
+                return;
+            }
+            var online = onlinePlayers(current);
+            var captures = capture(current, Set.of(actor.getUniqueID()));
+            if (unavailable(captures)) {
+                result.accept(null);
+                return;
+            }
+            var membership = captures.get(actor.getUniqueID());
+            var permission = viewPermission(current, actor, membership);
+            if (permission == null) {
+                result.accept(null);
+                return;
+            }
+            var authority = proof(current, captures, online);
+            var playerView = current.world.project(actor.getUniqueID(), membership, permission,
+                () -> authority.getAsBoolean() && ownerCurrent.getAsBoolean());
+            if (playerView == null) {
+                result.accept(null);
+                return;
+            }
+            var station = current.world.stationView(permission, current.stations, operationTime(current));
+            if (station == null) {
+                result.accept(null);
+                return;
+            }
+            boolean visible = playerView.team().viewPermission() == ResearchPermissionPolicy.Decision.ALLOWED;
+            var databases = new ObjectArrayList<ResearchOverviewPacket.Database>();
+            var admission = current.stations.admission(playerView.team().id()).environment();
+            int highestStation = admission.highestResearchStationLevel();
+            var identities = ServerMachineIdentities.forServer(current.server).uniqueRegistrations();
+            for (int index = 0; index < identities.size(); index++) {
+                var identity = identities.get(index);
+                if (!membership.accepted() || !membership.members().contains(identity.identity().ownerId())
+                    || !(identity.runtimeIdentity() instanceof MachineInstance machine) || !machine.lifecycle().formed())
+                    continue;
+                if (visible && machine instanceof DataCenter database) {
+                    var snapshot = database.dataCenterStorage().snapshot();
+                    var stored = new ObjectArrayList<ResearchOverviewPacket.Stored>();
+                    for (var entry : snapshot.storedResearch().object2IntEntrySet())
+                        stored.add(new ResearchOverviewPacket.Stored(entry.getKey(), entry.getIntValue()));
+                    databases.add(new ResearchOverviewPacket.Database(snapshot.dataCenterId(), machine.type().displayName().text().getUnformattedText(),
+                        snapshot.level(), snapshot.capacity(), stored));
+                }
+            }
+            var plan = ServerNetworkRuntime.forServer(current.server).plan();
+            var team = plan == null ? null : plan.teams().get(playerView.team().id());
+            UUID activeId = team == null ? null : team.dataCenterId();
+            ResearchOverviewPacket.Database active = null;
+            for (int index = 0; index < databases.size(); index++)
+                if (databases.get(index).id().equals(activeId)) active = databases.get(index);
+            DataCenterView pickerView = picker == null ? null : dataCenterView(actor, picker);
+            int pickerLevel = pickerView == null ? 0 : pickerView.contents().level();
+            var queue = new ObjectArrayList<ResearchOverviewPacket.Queue>();
+            for (int index = 0; index < playerView.team().queueRows().size(); index++) {
+                var row = playerView.team().queueRows().get(index);
+                queue.add(new ResearchOverviewPacket.Queue(row.entryId(), row.researchId(), row.targetLevel()));
+            }
+            var retained = current.world.retainedProgress(playerView.team().id());
+            var progressByResearch = new Object2ObjectOpenHashMap<ResourceLocation, ResearchProgress.Snapshot>();
+            for (int index = 0; index < retained.size(); index++)
+                progressByResearch.put(retained.get(index).target().researchId(), retained.get(index));
+            var states = new ObjectArrayList<ResearchOverviewPacket.State>();
+            var definitions = ResearchRegistry.INSTANCE.sortedById();
+            for (int index = 0; index < definitions.size(); index++) {
+                var definition = definitions.get(index);
+                var id = definition.id();
+                int completed = playerView.team().sharedLevels().getInt(id), personal = playerView.personalLevels().getInt(id);
+                int target = completed == definition.maxLevel() ? completed : completed + 1;
+                var stage = definition.stageForLevel(target);
+                int downloaded = 0;
+                String downloadedTo = "";
+                for (int databaseIndex = 0; databaseIndex < databases.size(); databaseIndex++) {
+                    var database = databases.get(databaseIndex);
+                    int level = database.level(id);
+                    if (level > downloaded) {
+                        downloaded = level;
+                        downloadedTo = database.name();
+                    }
+                }
+                int processable = 0;
+                if (!definition.specialOnly() && completed > 0) {
+                    for (int stageIndex = 0; stageIndex < definition.stages().size(); stageIndex++) {
+                        var candidate = definition.stages().get(stageIndex);
+                        if (candidate.firstLevel() > completed || candidate.researchTier() > pickerLevel) break;
+                        processable = Math.min(completed, candidate.lastLevel());
+                    }
+                }
+                boolean devices = stage.researchTier() == 0 || admission.networkCenterLevel() > 0 && active != null
+                    && active.tier() >= stage.researchTier() && highestStation >= stage.researchTier();
+                boolean canStart = visible && !playerView.savePending() && completed < definition.maxLevel() && !definition.specialOnly()
+                    && playerView.team().startPermission() == ResearchPermissionPolicy.Decision.ALLOWED
+                    && playerView.team().structuralTargets().containsKey(id) && queue.size() < 5 && devices;
+                boolean canDownload = visible && !playerView.savePending() && active != null && completed > downloaded
+                    && definition.deliveryPolicy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM && !definition.specialOnly()
+                    && definition.researchTierForLevel(completed) <= active.tier()
+                    && (active.level(id) > 0 || active.remaining() > 0)
+                    && current.permissions.can(ResearchPermissionPolicy.Action.DOWNLOAD_RESEARCH_TO_DATA_CENTER, permission) == ResearchPermissionPolicy.Decision.ALLOWED;
+                if (canDownload)
+                    for (int ruleIndex = 0; ruleIndex < definition.mutexRulesForLevel(completed).size(); ruleIndex++) {
+                        var rule = definition.mutexRulesForLevel(completed).get(ruleIndex);
+                        if (Math.max(active.level(rule.researchId()), playerView.team().sharedLevels().getInt(rule.researchId())) >= rule.minLevel()) {
+                            canDownload = false;
+                            break;
+                        }
+                    }
+                var claims = new ObjectArrayList<ResearchOverviewPacket.Claim>();
+                for (int claimIndex = 0; claimIndex < playerView.claims().size(); claimIndex++) {
+                    var claim = playerView.claims().get(claimIndex);
+                    if (claim.researchId().equals(id))
+                        claims.add(new ResearchOverviewPacket.Claim(claim.level(), claim.status(), claim.selectedGroupId()));
+                }
+                var saved = visible ? progressByResearch.get(id) : null;
+                var progress = saved == null ? null : overviewProgress(definition, saved,
+                    station.progress() != null && station.progress().target().equals(saved.target()) ? station : null);
+                states.add(new ResearchOverviewPacket.State(id, personal, completed, playerView.team().structuralTargets().getInt(id),
+                    downloaded, downloadedTo, canStart, canDownload,
+                    !playerView.savePending() && personal > 0 && definition.deliveryPolicy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM
+                        && !definition.specialOnly() && playerView.forgetPermission() == ResearchPermissionPolicy.Decision.ALLOWED && current.world.canForget(actor.getUniqueID(), id),
+                    pickerView != null && pickerView.visible() && !definition.specialOnly() && processable > 0, processable,
+                    progress, claims, membership.accepted() ? current.world.otherMemberLevel(membership.members(), actor.getUniqueID(), id) : 0,
+                    new ResearchOverviewPacket.Availability(playerView.team().startPermission(),
+                        current.permissions.can(ResearchPermissionPolicy.Action.DOWNLOAD_RESEARCH_TO_DATA_CENTER, permission),
+                        playerView.forgetPermission(), current.permissions.can(ResearchPermissionPolicy.Action.MANAGE_RESEARCH_QUEUE, permission))));
+            }
+            ResearchOverviewPacket.Current activeResearch = null;
+            if (!queue.isEmpty() && station.progress() != null) {
+                var head = queue.getFirst();
+                var definition = ResearchRegistry.INSTANCE.require(head.id());
+                var progress = overviewProgress(definition, station.progress(), station);
+                ResearchPlayerView.ManualRow manual = null;
+                for (int index = 0; index < playerView.team().manualRows().size(); index++)
+                    if (playerView.team().manualRows().get(index).entryId() == head.entryId()) {
+                        manual = playerView.team().manualRows().get(index);
+                        break;
+                    }
+                UUID contributor = manual == null ? null : manual.contributor();
+                String contributorName = "";
+                if (contributor != null) {
+                    var profile = current.server.getPlayerProfileCache().getProfileByUUID(contributor);
+                    contributorName = profile == null ? contributor.toString() : profile.getName();
+                }
+                var materials = progress.materials();
+                if (manual != null)
+                    materials = manualMaterials(definition, head.targetLevel(), manual, contributor == null ? null : online.get(contributor));
+                activeResearch = new ResearchOverviewPacket.Current(head.id(), head.entryId(), head.targetLevel(), progress.elapsed(),
+                    definition.stageForLevel(head.targetLevel()).durationTicks(), station.workingStations(), manual != null,
+                    contributorName, contributor, materials, progress.resources());
+            }
+            var environment = new ResearchOverviewPacket.Environment(playerView.team().id(), membership.accepted() ? teamTitle(actor, membership.teamId()) : "",
+                admission.networkCenterLevel(), highestStation, activeId, station.canManage(), playerView.savePending(),
+                editor && permission.serverOperator(), visible, pickerLevel,
+                picker == null ? "" : picker.type().displayName().text().getUnformattedText(), pickerView == null ? 0 : pickerView.contents().storedResearch().size(),
+                pickerView == null ? 0 : pickerView.contents().capacity(), actor.getUniqueID());
+            if (!authority.getAsBoolean() || !ownerCurrent.getAsBoolean()) {
+                result.accept(null);
+                return;
+            }
+            result.accept(new Overview(states, queue, databases, activeResearch, environment));
+        }, ExecutionMode.MAIN_THREAD);
+    }
+
+    public record Overview(List<ResearchOverviewPacket.State> states, List<ResearchOverviewPacket.Queue> queue,
+                           List<ResearchOverviewPacket.Database> databases,
+                           @Nullable ResearchOverviewPacket.Current current,
+                           ResearchOverviewPacket.Environment environment) {
+    }
+
+    private static ResearchOverviewPacket.Progress overviewProgress(ResearchDefinition definition,
+                                                                    ResearchProgress.Snapshot saved, @Nullable ResearchStationView station) {
+        var stage = definition.stageForLevel(saved.target().level());
+        var materials = new ObjectArrayList<ResearchOverviewPacket.MaterialProgress>();
+        for (var entry : stage.materialTotals().object2LongEntrySet()) {
+            long remaining = saved.remainingMaterials().getLong(entry.getKey());
+            materials.add(new ResearchOverviewPacket.MaterialProgress(entry.getKey(), station == null ? 0
+                : Math.min(remaining, station.availableMaterials().getLong(entry.getKey())), remaining, entry.getLongValue()));
+        }
+        var resources = new ObjectArrayList<ResearchOverviewPacket.ResourceProgress>();
+        for (var entry : stage.resourceDemandForLevel(saved.target().level()).reference2DoubleEntrySet())
+            resources.add(new ResearchOverviewPacket.ResourceProgress(entry.getKey(), station == null ? 0 : station.occupiedResources().getDouble(entry.getKey()),
+                station == null ? 0 : station.capacity().getDouble(entry.getKey()), saved.resources().getDouble(entry.getKey()), entry.getDoubleValue()));
+        return new ResearchOverviewPacket.Progress(saved.target().level(), saved.elapsedTicks(), materials, resources);
+    }
+
+    private static List<ResearchOverviewPacket.MaterialProgress> manualMaterials(ResearchDefinition definition,
+                                                                                 int level, ResearchPlayerView.ManualRow manual,
+                                                                                 @Nullable EntityPlayerMP contributor) {
+        var stage = definition.stageForLevel(level);
+        var paid = new AEKey2LongMap.OpenHashMap();
+        for (int index = 0; index < stage.materialRequirements().size(); index++) {
+            var requirement = stage.materialRequirements().get(index);
+            var inputs = ((ResourceRequirement) requirement.payload()).inputs();
+            for (int inputIndex = 0; inputIndex < inputs.size(); inputIndex++)
+                paid.addTo(inputs.get(inputIndex).what(), manual.work().getLong(new ManualMaterialKey(requirement.id(), inputIndex)));
+        }
+        var available = new AEKey2LongMap.OpenHashMap();
+        if (contributor != null)
+            for (int slot = 0; slot < contributor.inventory.mainInventory.size(); slot++) {
+                var stack = contributor.inventory.mainInventory.get(slot);
+                if (!stack.isEmpty()) available.addTo(AEItemKey.of(stack), stack.getCount());
+            }
+        var rows = new ObjectArrayList<ResearchOverviewPacket.MaterialProgress>();
+        for (var entry : stage.materialTotals().object2LongEntrySet()) {
+            long remaining = entry.getLongValue() - paid.getLong(entry.getKey());
+            rows.add(new ResearchOverviewPacket.MaterialProgress(entry.getKey(), Math.min(remaining, available.getLong(entry.getKey())), remaining, entry.getLongValue()));
+        }
+        return rows;
+    }
+
+    public static void requestPauseManual(EntityPlayerMP actor, String expectedTeam, long entryId,
+                                          BooleanSupplier ownerCurrent, Consumer<ManualResearch.Status> result, Runnable finalized) {
+        var current = actorSession(actor);
+        submitAction(current, () -> {
+            var online = onlinePlayers(current);
+            var captures = capture(current, Set.of(actor.getUniqueID()));
+            var membership = captures.get(actor.getUniqueID());
+            if (unavailable(captures) || !currentActor(current, actor) || !membership.accepted() || !expectedTeam.equals(membership.teamId())) {
+                result.accept(ManualResearch.Status.STALE_CONTEXT);
+                return;
+            }
+            var authority = proof(current, captures, online);
+            result.accept(current.world.pauseManual(membership, actor.getUniqueID(), entryId, operationTime(current), online.keySet(),
+                () -> authority.getAsBoolean() && ownerCurrent.getAsBoolean()));
+        }, finalized);
+    }
+
+    public static void requestEditorCompletion(EntityPlayerMP actor, String expectedTeam, ResourceLocation id, int target,
+                                               BooleanSupplier ownerCurrent, Consumer<ResearchLevelResult> result, Runnable finalized) {
+        var current = actorSession(actor);
+        submitAction(current, () -> {
+            var online = onlinePlayers(current);
+            var captures = capture(current, Set.of(actor.getUniqueID()));
+            var membership = captures.get(actor.getUniqueID());
+            if (unavailable(captures) || !currentActor(current, actor) || !membership.accepted() || !expectedTeam.equals(membership.teamId())) {
+                result.accept(ResearchLevelResult.STALE_CONTEXT);
+                return;
+            }
+            var permission = permission(current, actor, membership);
+            if (permission == null || !permission.serverOperator()) {
+                result.accept(ResearchLevelResult.PERMISSION_DENIED);
+                return;
+            }
+            var authority = proof(current, captures, online);
+            result.accept(current.world.completeForEditor(membership, permission, id, target, operationTime(current), online.keySet(),
+                player -> inventory(current, player), () -> authority.getAsBoolean() && ownerCurrent.getAsBoolean()
+                    && permission.equals(permission(current, actor, membership))));
+        }, finalized);
+    }
+
+    @SuppressWarnings("resource")
+    public static void requestEditorSpecial(EntityPlayerMP actor, String expectedTeam, @Nullable UUID databaseId,
+                                            ResourceLocation id, BooleanSupplier ownerCurrent,
+                                            Consumer<DataCenterStorage.Result> result, Runnable finalized) {
+        var current = actorSession(actor);
+        submitAction(current, () -> {
+            var online = onlinePlayers(current);
+            var captures = capture(current, Set.of(actor.getUniqueID()));
+            var membership = captures.get(actor.getUniqueID());
+            if (databaseId == null || unavailable(captures) || !currentActor(current, actor) || !membership.accepted()
+                || !expectedTeam.equals(membership.teamId()) || !actor.canUseCommand(2, "pe_research_edit")) {
+                result.accept(DataCenterStorage.Result.STALE_CONTEXT);
+                return;
+            }
+            var definition = ResearchRegistry.INSTANCE.require(id);
+            if (!definition.specialOnly()) {
+                result.accept(DataCenterStorage.Result.SPECIAL_ONLY_REJECTED);
+                return;
+            }
+            var physical = current.dataCenters.capture(expectedTeam, databaseId);
+            if (physical == null) {
+                result.accept(DataCenterStorage.Result.STALE_CONTEXT);
+                return;
+            }
+            var authority = proof(current, captures, online);
+            var cloud = current.world.captureCloud(membership, () -> authority.getAsBoolean() && ownerCurrent.getAsBoolean());
+            if (cloud == null) {
+                result.accept(DataCenterStorage.Result.STALE_CONTEXT);
+                return;
+            }
+            int previous = physical.snapshot().storedResearch().getInt(id);
+            if (previous == definition.maxLevel()) {
+                result.accept(DataCenterStorage.Result.MAX_LEVEL_REACHED);
+                return;
+            }
+            var entries = new Object2IntOpenHashMap<ResourceLocation>();
+            entries.put(id, previous + 1);
+            var written = physical.storage().storeFromDisk(entries, cloud.view(),
+                () -> ownerCurrent.getAsBoolean() && cloud.current().getAsBoolean() && physical.current() && actor.canUseCommand(2, "pe_research_edit"));
+            if (written == DataCenterStorage.Result.UPDATED) ServerNetworkRuntime.forServer(current.server).refresh();
+            result.accept(written);
+        }, finalized);
     }
 
     /**

@@ -7,6 +7,7 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import io.netty.buffer.ByteBuf;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.network.PacketBuffer;
+import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -61,10 +62,9 @@ public final class ResearchStationPacket implements PacketWritable {
         Definition definition = null;
         if (reset && data.readBoolean()) {
             long entryId = data.readVarLong();
-            String name = data.readString(32767);
+            var id = data.readResourceLocation();
             int level = data.readVarInt();
             long duration = data.readVarLong();
-            var icon = data.readBoolean() ? AEKey.readKey(data) : null;
             int count = data.readVarInt();
             var materials = new ObjectArrayList<AEKey>(count);
             for (int index = 0; index < count; index++) materials.add(AEKey.readKey(data));
@@ -72,14 +72,14 @@ public final class ResearchStationPacket implements PacketWritable {
             var resources = new ObjectArrayList<Resource>(count);
             for (int index = 0; index < count; index++)
                 resources.add(new Resource(NetworkResourcePackets.read(data), data.readDouble()));
-            definition = new Definition(entryId, name, level, duration, icon, materials, resources);
+            definition = new Definition(entryId, id, level, duration, materials, resources);
         }
         List<QueueEntry> queue = null;
         if (data.readBoolean()) {
             int count = data.readVarInt();
             queue = new ObjectArrayList<>(count);
             for (int index = 0; index < count; index++)
-                queue.add(new QueueEntry(data.readVarLong(), data.readString(32767), data.readVarInt()));
+                queue.add(new QueueEntry(data.readVarLong(), data.readResourceLocation(), data.readVarInt()));
         }
         int count = data.readVarInt();
         var materials = new ObjectArrayList<MaterialChange>(count);
@@ -109,11 +109,9 @@ public final class ResearchStationPacket implements PacketWritable {
             data.writeBoolean(definition != null);
             if (definition != null) {
                 data.writeVarLong(definition.entryId);
-                data.writeString(definition.name);
+                data.writeResourceLocation(definition.id);
                 data.writeVarInt(definition.level);
                 data.writeVarLong(definition.duration);
-                data.writeBoolean(definition.icon != null);
-                if (definition.icon != null) AEKey.writeKey(data, definition.icon);
                 data.writeVarInt(definition.materials.size());
                 for (int index1 = 0; index1 < definition.materials.size(); index1++) {
                     var key = definition.materials.get(index1);
@@ -133,7 +131,7 @@ public final class ResearchStationPacket implements PacketWritable {
             for (int index2 = 0; index2 < queue.size(); index2++) {
                 var entry = queue.get(index2);
                 data.writeVarLong(entry.entryId);
-                data.writeString(entry.name);
+                data.writeResourceLocation(entry.id);
                 data.writeVarInt(entry.level);
             }
         }
@@ -156,14 +154,14 @@ public final class ResearchStationPacket implements PacketWritable {
         }
     }
 
-    public record Definition(long entryId, String name, int level, long duration, @Nullable AEKey icon,
+    public record Definition(long entryId, ResourceLocation id, int level, long duration,
                              List<AEKey> materials, List<Resource> resources) {
     }
 
     public record Resource(NetworkResourceType type, double total) {
     }
 
-    public record QueueEntry(long entryId, String name, int level) {
+    public record QueueEntry(long entryId, ResourceLocation id, int level) {
     }
 
     public record MaterialChange(int index, int fields, long available, long remaining) {

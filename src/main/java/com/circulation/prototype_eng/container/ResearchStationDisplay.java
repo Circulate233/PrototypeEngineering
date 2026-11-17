@@ -47,8 +47,8 @@ public final class ResearchStationDisplay {
                 for (var entry : view.resourceTotals().reference2DoubleEntrySet())
                     if (entry.getDoubleValue() > 0)
                         resources.add(new ResearchStationPacket.Resource(entry.getKey(), entry.getDoubleValue()));
-                definition = new ResearchStationPacket.Definition(entryId, research.displayName().getTranslationKey(), head.targetLevel(),
-                    view.durationTicks(), research.icon(), keys, resources);
+                definition = new ResearchStationPacket.Definition(entryId, research.id(), head.targetLevel(),
+                    view.durationTicks(), keys, resources);
             }
             int materialCount = definition == null ? 0 : definition.materials().size();
             int resourceCount = definition == null ? 0 : definition.resources().size();
@@ -66,7 +66,7 @@ public final class ResearchStationDisplay {
             for (int index1 = 0; index1 < elements.size(); index1++) {
                 var entry = elements.get(index1);
                 rows.add(new ResearchStationPacket.QueueEntry(entry.key().queueEntryId(),
-                    registry.require(entry.key().researchId()).displayName().getTranslationKey(), entry.key().targetLevel()));
+                    entry.key().researchId(), entry.key().targetLevel()));
             }
             queue = rows;
         }

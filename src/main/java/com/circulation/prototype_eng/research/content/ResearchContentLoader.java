@@ -2,11 +2,15 @@ package com.circulation.prototype_eng.research.content;
 
 import com.circulation.prototype_eng.api.research.content.ResearchContent;
 import com.circulation.prototype_eng.api.research.content.ResearchContentLoadResult;
+import com.circulation.prototype_eng.api.research.content.ResearchPage;
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonPrimitive;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 
 import java.io.IOException;
@@ -15,116 +19,133 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Strict PN direct-display JSON schema at the new library's client configuration path.
+ * Loads client display JSON from data, then overlays fields supplied by the current language.
+ * No Minecraft item registry or client renderer is required by the file loader.
  */
 public final class ResearchContentLoader {
     private static final System.Logger LOGGER = System.getLogger("prototype_eng/research_content");
-    private static final Gson GSON = new Gson();
-    private final Path configRoot;
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private final Path root;
+    private final ObjectOpenHashSet<ResourceLocation> missing = new ObjectOpenHashSet<>();
 
     public ResearchContentLoader(Path configRoot) {
-        this.configRoot = configRoot.toAbsolutePath().normalize();
+        root = configRoot.toAbsolutePath().normalize().resolve("prototype_eng/research_content");
     }
 
-    private static ObjectArrayList<String> description(JsonObject root) {
-        var value = required(root, "description");
-        if (!value.isJsonArray()) throw new IllegalArgumentException("Research description must be a string array");
-        var entries = value.getAsJsonArray();
-        if (entries.isEmpty()) throw new IllegalArgumentException("Research content requires description lines");
-        var lines = new ObjectArrayList<String>(entries.size());
-        for (int index = 0; index < entries.size(); index++)
-            lines.add(requiredText(string(entries.get(index), "description entry")));
-        return lines;
-    }
-
-    private static ResearchContent.Icon icon(JsonObject root) {
-        var value = required(root, "icon");
-        if (!value.isJsonObject()) throw new IllegalArgumentException("Research icon must be an object");
-        var icon = value.getAsJsonObject();
-        var kind = switch (string(icon, "kind").trim()) {
-            case "item" -> ResearchContent.Kind.ITEM;
-            case "icon" -> ResearchContent.Kind.ICON;
-            default -> throw new IllegalArgumentException("Unknown research content icon kind");
-        };
-        var id = checkedId(new ResourceLocation(string(icon, "id").trim()));
-        int meta = kind == ResearchContent.Kind.ITEM && icon.has("meta") ? meta(required(icon, "meta")) : 0;
-        return new ResearchContent.Icon(kind, id, meta);
-    }
-
-    private static int meta(JsonElement value) {
-        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber())
-            throw new IllegalArgumentException("Item icon metadata must be an integer");
-        int meta = value.getAsBigDecimal().intValueExact();
-        if (meta < 0) throw new IllegalArgumentException("Item icon metadata must be nonnegative");
-        return meta;
-    }
-
-    private static String string(JsonObject object, String key) {
-        return string(required(object, key), key);
-    }
-
-    private static String string(JsonElement value, String label) {
-        if (!(value instanceof JsonPrimitive primitive) || !primitive.isString())
-            throw new IllegalArgumentException("Research content " + label + " must be a string");
-        return primitive.getAsString();
-    }
-
-    private static JsonElement required(JsonObject object, String key) {
-        var value = object.get(key);
-        if (value == null || value.isJsonNull())
-            throw new IllegalArgumentException("Missing research content field: " + key);
-        return value;
-    }
-
-    private static String requiredText(String text) {
-        var trimmed = text.trim();
-        if (trimmed.isEmpty()) throw new IllegalArgumentException("Research content text must not be blank");
-        return trimmed;
-    }
-
-    private static ResourceLocation checkedId(ResourceLocation id) {
-        var namespace = id.getNamespace();
-        var path = id.getPath();
-        if (!namespace.matches("[a-z0-9_.-]+") || namespace.equals(".") || namespace.equals("..") || !path.matches("[a-z0-9_./-]+")) {
-            throw new IllegalArgumentException("Invalid research content resource ID: " + id);
+    public ResearchContentLoadResult load(ResourceLocation id, String language) {
+        var base = contentPath("data", id);
+        if (!Files.exists(base)) {
+            if (missing.add(id)) LOGGER.log(System.Logger.Level.WARNING, "Research content is missing at " + base);
+            return ResearchContentLoadResult.missing(id);
         }
-        for (var segment : path.split("/", -1)) {
-            if (segment.isEmpty() || segment.equals(".") || segment.equals(".."))
-                throw new IllegalArgumentException("Invalid research content path segment: " + id);
+        var data = read(base);
+        var localized = contentPath(language, id);
+        if (Files.exists(localized)) overlay(data, read(localized));
+        try {
+            var description = new ObjectArrayList<String>();
+            if (data.has("description")) {
+                var lines = data.getAsJsonArray("description");
+                for (int index = 0; index < lines.size(); index++) description.add(lines.get(index).getAsString());
+            }
+            var rewards = new Object2ObjectOpenHashMap<ResourceLocation, ResearchContent.Reward>();
+            if (data.has("rewards")) {
+                for (var entry : data.getAsJsonObject("rewards").entrySet()) {
+                    var rewardId = new ResourceLocation(entry.getKey());
+                    var reward = entry.getValue().getAsJsonObject();
+                    rewards.put(rewardId, new ResearchContent.Reward(text(reward, "title", rewardId.toString()), text(reward, "description", "")));
+                }
+            }
+            return ResearchContentLoadResult.loaded(id, new ResearchContent(text(data, "title", id.toString()), text(data, "summary", ""),
+                description, data.has("icon") ? data.getAsJsonObject("icon") : null, rewards));
+        } catch (RuntimeException failure) {
+            throw failed(Files.exists(localized) ? localized : base, failure);
         }
-        return id;
     }
 
-    public ResearchContentLoadResult load(ResourceLocation researchId, String language) {
-        var id = checkedId(researchId);
-        var locale = language.trim();
-        if (!locale.matches("[a-z0-9_]+"))
-            throw new IllegalArgumentException("Invalid research content language: " + language);
-        var requested = contentPath(locale, id);
-        if (Files.exists(requested)) return ResearchContentLoadResult.loaded(id, loadFile(requested));
-        var fallback = contentPath("en_us", id);
-        if (!"en_us".equals(locale) && Files.exists(fallback))
-            return ResearchContentLoadResult.loaded(id, loadFile(fallback));
-        LOGGER.log(System.Logger.Level.WARNING, "Research content is missing for " + id + " in " + locale + " and en_us");
-        return ResearchContentLoadResult.missing(id);
+    public Path contentPath(String language, ResourceLocation id) {
+        var directory = root.resolve(language).resolve(id.getNamespace());
+        var path = directory.resolve(id.getPath() + ".json").normalize();
+        if (!path.startsWith(directory) || !language.matches("[a-z0-9_]+")
+            || !id.getNamespace().matches("[a-z0-9_.-]+") || id.getNamespace().equals(".") || id.getNamespace().equals(".."))
+            throw new IllegalArgumentException("Research content path is outside its configured directory: " + id);
+        return path;
     }
 
-    private Path contentPath(String language, ResourceLocation id) {
-        var languageRoot = configRoot.resolve("prototype_eng").resolve("research_content").resolve(language).normalize();
-        return languageRoot.resolve(id.getNamespace()).resolve(id.getPath() + ".json");
+    public Path sourcePath(String language, ResourceLocation id) {
+        var localized = contentPath(language, id);
+        return Files.exists(localized) ? localized : contentPath("data", id);
     }
 
-    private ResearchContent loadFile(Path path) {
+    public ResearchPage loadPage(String namespace) {
+        var file = pagePath(namespace);
+        var positions = new Object2ObjectOpenHashMap<String, ResearchPage.Position>();
+        if (!Files.exists(file)) return new ResearchPage(0, false, positions);
+        var data = read(file);
+        try {
+            boolean manual = "manual".equals(text(data, "layout", "auto"));
+            if (manual && data.has("positions")) {
+                for (var entry : data.getAsJsonObject("positions").entrySet()) {
+                    var position = entry.getValue().getAsJsonArray();
+                    positions.put(entry.getKey(), new ResearchPage.Position(position.get(0).getAsInt(), position.get(1).getAsInt()));
+                }
+            }
+            return new ResearchPage(data.has("order") ? data.get("order").getAsInt() : 0, manual, positions);
+        } catch (RuntimeException failure) {
+            throw failed(file, failure);
+        }
+    }
+
+    public void exportPage(String namespace, ResearchPage page) {
+        var file = pagePath(namespace);
+        var data = new JsonObject();
+        data.addProperty("order", page.order());
+        data.addProperty("layout", page.manual() ? "manual" : "auto");
+        var positions = new JsonObject();
+        for (var entry : page.positions().object2ObjectEntrySet()) {
+            var point = new JsonArray();
+            point.add(entry.getValue().x());
+            point.add(entry.getValue().y());
+            positions.add(entry.getKey(), point);
+        }
+        data.add("positions", positions);
+        try {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, GSON.toJson(data) + System.lineSeparator(), StandardCharsets.UTF_8);
+        } catch (IOException failure) {
+            throw failed(file, failure);
+        }
+    }
+
+    private Path pagePath(String namespace) {
+        if (!namespace.matches("[a-z0-9_.-]+") || namespace.equals(".") || namespace.equals(".."))
+            throw new IllegalArgumentException("Invalid research page namespace: " + namespace);
+        return root.resolve("data").resolve(namespace + ".json");
+    }
+
+    private static String text(JsonObject data, String name, String fallback) {
+        return data.has(name) ? data.get(name).getAsString() : fallback;
+    }
+
+    private static void overlay(JsonObject target, JsonObject source) {
+        for (var entry : source.entrySet()) {
+            var existing = target.get(entry.getKey());
+            if (existing instanceof JsonObject object && entry.getValue() instanceof JsonObject replacement)
+                overlay(object, replacement);
+            else target.add(entry.getKey(), entry.getValue());
+        }
+    }
+
+    private static JsonObject read(Path path) {
         try (var reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-            var element = GSON.fromJson(reader, JsonElement.class);
-            if (element == null || !element.isJsonObject())
-                throw new IllegalArgumentException("Research content root must be an object");
-            var root = element.getAsJsonObject();
-            return new ResearchContent(requiredText(string(root, "title")), root.has("summary") ? string(root, "summary") : "", description(root), icon(root));
+            return GSON.fromJson(reader, JsonElement.class).getAsJsonObject();
         } catch (IOException | RuntimeException failure) {
-            var message = "Research content load failed at " + path;
-            LOGGER.log(System.Logger.Level.ERROR, message, failure);
-            throw new IllegalStateException(message, failure);
+            throw failed(path, failure);
         }
+    }
+
+    private static IllegalStateException failed(Path path, Throwable failure) {
+        var message = "Research content operation failed at " + path;
+        LOGGER.log(System.Logger.Level.ERROR, message, failure);
+        return new IllegalStateException(message, failure);
     }
 }

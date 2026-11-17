@@ -13,8 +13,8 @@ class DataCenterResearchPacketTest {
     @Test
     void roundTripPreservesResearchIdentityAndDisplayMetadata() {
         var packet = new DataCenterResearchPacket(List.of(
-            new DataCenterResearchPacket.Entry(new ResourceLocation("test", "parallel"), "research.test.parallel", 2, 16, 3, null),
-            new DataCenterResearchPacket.Entry(new ResourceLocation("test", "storage"), "research.test.storage", 300, 1000, 4, null)));
+            new DataCenterResearchPacket.Entry(new ResourceLocation("test", "parallel"), 2, 16, 3),
+            new DataCenterResearchPacket.Entry(new ResourceLocation("test", "storage"), 300, 1000, 4)));
         var buffer = Unpooled.buffer();
         try {
             packet.writeToPacket(buffer);

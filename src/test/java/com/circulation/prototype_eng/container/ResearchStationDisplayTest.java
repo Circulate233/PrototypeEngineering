@@ -72,7 +72,7 @@ class ResearchStationDisplayTest {
     void materialDeltasChangeQuantitiesWithoutReplacingResourceIdentity() {
         var key = new TestResources.Key(new TestResources.KeyType("display_material"), "material");
         var client = new ResearchStationClientView();
-        client.receive(new ResearchStationPacket(true, new ResearchStationPacket.Definition(1, "test", 1, 10, null, List.of(key), List.of()),
+        client.receive(new ResearchStationPacket(true, new ResearchStationPacket.Definition(1, ID, 1, 10, List.of(key), List.of()),
             List.of(), List.of(new ResearchStationPacket.MaterialChange(0, 3, 5, 5)), List.of()));
         var row = client.materials.getFirst();
         client.receive(new ResearchStationPacket(false, null, null, List.of(new ResearchStationPacket.MaterialChange(0, 3, 2, 3)), List.of()));

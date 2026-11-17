@@ -23,6 +23,8 @@ import com.circulation.prototype_eng.client.gui.GuiMEResourceHatch;
 import com.circulation.prototype_eng.client.gui.GuiParallelController;
 import com.circulation.prototype_eng.client.gui.GuiResourceHatch;
 import com.circulation.prototype_eng.client.gui.GuiScannerInstrument;
+import com.circulation.prototype_eng.client.gui.GuiResearchOverview;
+import com.circulation.prototype_eng.client.research.ClientResearchContents;
 import com.circulation.prototype_eng.client.preview.PreviewClientOpenQueue;
 import com.circulation.prototype_eng.client.preview.PreviewEmbeddedInput;
 import com.circulation.prototype_eng.client.preview.PreviewGuiResources;
@@ -51,6 +53,7 @@ import com.circulation.prototype_eng.container.ContainerParallelController;
 import com.circulation.prototype_eng.container.ContainerResourceHatch;
 import com.circulation.prototype_eng.container.ContainerStructureTool;
 import com.circulation.prototype_eng.container.ContainerBuilderUpgrades;
+import com.circulation.prototype_eng.container.ContainerResearchOverview;
 import com.circulation.prototype_eng.integration.jei.PrototypeJeiPlugin;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
@@ -447,6 +450,7 @@ public class ClientProxy extends CommonProxy {
     @Override
     public void preInit(FMLPreInitializationEvent event) {
         super.preInit(event);
+        ClientResearchContents.configure(event.getModConfigurationDirectory().toPath());
         if (Loader.isModLoaded("ctm")) HatchBloomMetadata.register();
         RenderingRegistry.registerEntityRenderingHandler(RewardItemEntity.class,
             manager -> new RenderEntityItem(manager, Minecraft.getMinecraft().getRenderItem()));
@@ -466,6 +470,7 @@ public class ClientProxy extends CommonProxy {
             previewResources.registerReloadListener(PreviewGuiResources.INSTANCE);
         if (Minecraft.getMinecraft().getResourceManager() instanceof IReloadableResourceManager resources)
             resources.registerReloadListener(_ -> {
+                ClientResearchContents.clear();
                 retireModelBuilds();
                 if (renderSnapshots != null) renderSnapshots.invalidateResources();
                 if (projectionManager != null) projectionManager.invalidateResources();
@@ -495,6 +500,7 @@ public class ClientProxy extends CommonProxy {
     @Override
     public Object getClientGuiElement(int id, EntityPlayer player, World world, int x, int y, int z) {
         return switch (getServerGuiElement(id, player, world, x, y, z)) {
+            case ContainerResearchOverview overview -> new GuiResearchOverview(overview, player.inventory);
             case ContainerBuilderUpgrades upgrades -> new GuiBuilderUpgrades(upgrades, player.inventory);
             case ContainerStructureTool tool -> tool.builder()
                 ? new GuiBuilderInstrument(tool, player.inventory)

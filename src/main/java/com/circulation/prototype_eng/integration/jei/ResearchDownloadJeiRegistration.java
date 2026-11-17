@@ -9,6 +9,7 @@ import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadR
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistry;
 import com.circulation.prototype_eng.api.research.download.ResearchItemImportRegistry;
 import com.circulation.prototype_eng.block.MachineControllerBlocks;
+import com.circulation.prototype_eng.client.research.ClientResearchContents;
 import com.circulation.prototype_eng.localization.JeiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import mezz.jei.api.IModRegistry;
@@ -88,12 +89,12 @@ final class ResearchDownloadJeiRegistration {
     }
 
     static List<JeiRecipeDisplay.Text> downloadInformation(ResearchDefinition definition, int level, int cost) {
-        return List.of(of(JeiText.ResearchDownloadRequirement, definition.displayName().getLocal(), level),
+        return List.of(of(JeiText.ResearchDownloadRequirement, ClientResearchContents.name(definition.id()), level),
             cost == 0 ? of(JeiText.ResearchNoConsumption) : of(JeiText.ResearchLevelConsumption, cost));
     }
 
     static List<JeiRecipeDisplay.Text> importInformation(ResearchDefinition definition, int level) {
-        return List.of(of(JeiText.ResearchImportIncrement, definition.displayName().getLocal(), level));
+        return List.of(of(JeiText.ResearchImportIncrement, ClientResearchContents.name(definition.id()), level));
     }
 
     private static ResourceLocation wrapperId(ResourceLocation recipe, ResourceLocation research) {

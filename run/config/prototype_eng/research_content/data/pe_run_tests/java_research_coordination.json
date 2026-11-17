@@ -1,0 +1,12 @@
+{
+  "title": "Automation Coordination",
+  "summary": "Java research example: automation coordination.",
+  "description": [
+    "Java research example: automation coordination."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:book",
+    "meta": 0
+  }
+}

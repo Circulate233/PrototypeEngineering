@@ -1,0 +1,12 @@
+{
+  "title": "Special Research",
+  "summary": "A special research entry written directly to a database.",
+  "description": [
+    "A special research entry written directly to a database."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:nether_star",
+    "meta": 0
+  }
+}

@@ -2,8 +2,8 @@ package com.circulation.prototype_eng.container;
 
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AmountFormat;
-import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
+import com.circulation.prototype_eng.client.research.ClientResearchContents;
 import com.circulation.prototype_eng.localization.ResearchStationGuiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraftforge.fml.relauncher.Side;
@@ -101,8 +101,7 @@ public final class ResearchStationClientView {
     @SideOnly(Side.CLIENT)
     public String name() {
         if (name == null) {
-            LocalizationEnum localized = () -> definition.name();
-            name = localized.getLocal();
+            name = ClientResearchContents.name(definition.id());
         }
         return name;
     }
@@ -111,8 +110,7 @@ public final class ResearchStationClientView {
     public String queueName(int index) {
         if (queueNames.isEmpty()) for (int index3 = 0; index3 < queue.size(); index3++) {
             var entry = queue.get(index3);
-            LocalizationEnum localized = entry::name;
-            queueNames.add(localized.getLocal());
+            queueNames.add(ClientResearchContents.name(entry.id()));
             queueLevels.add((index3 == 0 ? ResearchStationGuiText.InProgress.getLocal() + " · " : "") + "Lv." + entry.level());
         }
         return queueNames.get(index);

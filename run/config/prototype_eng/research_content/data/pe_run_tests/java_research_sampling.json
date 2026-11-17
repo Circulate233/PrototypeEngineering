@@ -1,0 +1,12 @@
+{
+  "title": "Precision Sampling",
+  "summary": "Java research example: precision sampling.",
+  "description": [
+    "Java research example: precision sampling."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:book",
+    "meta": 0
+  }
+}

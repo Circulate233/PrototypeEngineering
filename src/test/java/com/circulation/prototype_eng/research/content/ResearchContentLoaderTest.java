@@ -1,8 +1,9 @@
 package com.circulation.prototype_eng.research.content;
 
-import com.circulation.prototype_eng.api.research.content.ResearchContent;
 import com.circulation.prototype_eng.api.research.content.ResearchContentLoadResult;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import com.circulation.prototype_eng.api.research.content.ResearchPage;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectList;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -11,66 +12,69 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Real client configuration files and immutable values, without a Minecraft client or registry.
+ * Real configuration IO and language overlays, without a Minecraft client or registry bootstrap.
  */
 class ResearchContentLoaderTest {
     private static final ResourceLocation RESEARCH = new ResourceLocation("addon", "network/basic");
+    private static final ResourceLocation GROUP = new ResourceLocation("addon", "reward");
     @TempDir
     Path configRoot;
 
-    private static String valid(String title) {
-        return "{\"title\":\"" + title + "\",\"description\":[\"D\"],\"icon\":{\"kind\":\"item\",\"id\":\"minecraft:paper\"}}";
-    }
-
     @Test
-    void requestedLanguageWinsAtTheExactNamespaceAndNestedPath() throws IOException {
-        write("en_us", valid("Fallback"));
-        write("zh_cn", """
-            {"title":"  基础研究  ","summary":"  保留摘要空格  ","description":["  第一行  ","第二行"],
-             "icon":{"kind":"item","id":"unregistered_addon:paper","meta":3}}
+    void languageOverlaysOnlyPresentFieldsIncludingRewardTextAndCustomIconFields() throws IOException {
+        write("data", """
+            {"title":"Base","summary":"Summary","description":["Base line"],
+             "icon":{"kind":"custom","id":"addon:map","color":3},
+             "rewards":{"addon:reward":{"title":"Base reward","description":"Kept description"}}}
             """);
-        var result = loader().load(RESEARCH, " zh_cn ");
+        write("zh_cn", """
+            {"title":"基础研究","description":["第一行","第二行"],
+             "icon":{"color":5},"rewards":{"addon:reward":{"title":"奖励"}}}
+            """);
+        var result = loader().load(RESEARCH, "zh_cn");
         assertEquals(ResearchContentLoadResult.Status.LOADED, result.status());
-        assertEquals(RESEARCH, result.researchId());
         var content = result.content();
         assertNotNull(content);
         assertEquals("基础研究", content.title());
-        assertEquals("  保留摘要空格  ", content.summary());
-        assertEquals(ObjectArrayList.of("第一行", "第二行"), content.description());
-        assertEquals(new ResearchContent.Icon(ResearchContent.Kind.ITEM, new ResourceLocation("unregistered_addon", "paper"), 3), content.icon());
+        assertEquals("Summary", content.summary());
+        assertEquals(ObjectList.of("第一行", "第二行"), content.description());
+        var icon = content.icon();
+        assertNotNull(icon);
+        assertEquals("custom", icon.get("kind").getAsString());
+        assertEquals(5, icon.get("color").getAsInt());
+        assertEquals("奖励", content.reward(GROUP).title());
+        assertEquals("Kept description", content.reward(GROUP).description());
+        assertEquals("addon:other", content.reward(new ResourceLocation("addon", "other")).title());
     }
 
     @Test
-    void missingLocaleFallsBackToEnglishAndOptionalFieldsDefault() throws IOException {
-        write("en_us", """
-            {"title":"Fallback","description":["Text"],"icon":{"kind":"icon","id":"addon:network_basic"}}
-            """);
+    void absentLanguageUsesDataAndDoesNotReadEnglishAsFallback() throws IOException {
+        write("data", "{\"title\":\"Base\"}");
+        write("en_us", "{\"title\":\"English override\"}");
         var content = loader().load(RESEARCH, "zh_cn").content();
         assertNotNull(content);
-        assertEquals("Fallback", content.title());
-        assertEquals("", content.summary());
-        assertEquals(new ResearchContent.Icon(ResearchContent.Kind.ICON, new ResourceLocation("addon", "network_basic"), 0), content.icon());
+        assertEquals("Base", content.title());
+        assertTrue(content.description().isEmpty());
+        assertNull(content.icon());
+        var english = loader().load(RESEARCH, "en_us").content();
+        assertNotNull(english);
+        assertEquals("English override", english.title());
     }
 
     @Test
-    void missingContentIsExplicitAndDoesNotCreateFilesOrPlaceholderIcons() {
-        var result = loader().load(RESEARCH, "zh_cn");
-        assertEquals(ResearchContentLoadResult.Status.MISSING, result.status());
-        assertNull(result.content());
+    void missingBaseIsExplicitEvenWithLanguageFileAndCreatesNoFiles() throws IOException {
+        assertEquals(ResearchContentLoadResult.Status.MISSING, loader().load(RESEARCH, "zh_cn").status());
         assertFalse(Files.exists(configRoot.resolve("prototype_eng")));
+        write("zh_cn", "{\"title\":\"Only locale\"}");
+        assertNull(loader().load(RESEARCH, "zh_cn").content());
     }
 
     @Test
-    void malformedRequestedFileCannotSilentlyUseTheEnglishFallback() throws IOException {
-        write("en_us", valid("Fallback"));
+    void malformedExistingLanguageIsReportedAtItsFile() throws IOException {
+        write("data", "{\"title\":\"Base\"}");
         write("zh_cn", "{\"title\":");
         var failure = assertThrows(IllegalStateException.class, () -> loader().load(RESEARCH, "zh_cn"));
         assertTrue(failure.getMessage().contains(file("zh_cn").toString()));
@@ -78,69 +82,45 @@ class ResearchContentLoaderTest {
     }
 
     @Test
-    void malformedFallbackAndExistingDirectoryAreErrorsRatherThanMissing() throws IOException {
-        write("en_us", "null");
-        assertThrows(IllegalStateException.class, () -> loader().load(RESEARCH, "zh_cn"));
-        Files.createDirectories(file("zh_cn"));
-        assertThrows(IllegalStateException.class, () -> loader().load(RESEARCH, "zh_cn"));
+    void pageExportOverwritesThePageAndRoundTripsFreeCoordinates() throws IOException {
+        var loader = loader();
+        var positions = new Object2ObjectOpenHashMap<String, ResearchPage.Position>();
+        positions.put("network/basic", new ResearchPage.Position(17, 29));
+        var page = new ResearchPage(4, true, positions);
+        loader.exportPage("addon", page);
+        var file = configRoot.resolve("prototype_eng/research_content/data/addon.json");
+        var exported = Files.readString(file);
+        assertTrue(exported.contains("network/basic"));
+        var loaded = loader.loadPage("addon");
+        assertEquals(4, loaded.order());
+        assertTrue(loaded.manual());
+        assertEquals(new ResearchPage.Position(17, 29), loaded.positions().get("network/basic"));
+        positions.put("network/basic", new ResearchPage.Position(-13, 72));
+        loader.exportPage("addon", page);
+        assertEquals(new ResearchPage.Position(-13, 72), loader.loadPage("addon").positions().get("network/basic"));
+        assertNotEquals(exported, Files.readString(file));
     }
 
     @Test
-    void textFieldsMustHaveTheirDeclaredTypesAndNonemptyRequiredText() throws IOException {
-        for (var fields : new String[]{
-            "\"title\":\" \",\"description\":[\"D\"]", "\"title\":42,\"description\":[\"D\"]",
-            "\"description\":[\"D\"]", "\"title\":\"T\",\"summary\":null,\"description\":[\"D\"]",
-            "\"title\":\"T\",\"summary\":false,\"description\":[\"D\"]", "\"title\":\"T\",\"description\":[]",
-            "\"title\":\"T\",\"description\":[\" \"]", "\"title\":\"T\",\"description\":[null]",
-            "\"title\":\"T\",\"description\":[3]", "\"title\":\"T\",\"description\":\"D\""
-        }) {
-            write("zh_cn", "{" + fields + ",\"icon\":{\"kind\":\"item\",\"id\":\"minecraft:paper\"}}");
-            assertThrows(IllegalStateException.class, () -> loader().load(RESEARCH, "zh_cn"));
-        }
+    void pageMovesRejectExpandedOverlapWithoutChangingThePreviousPosition() {
+        var positions = new Object2ObjectOpenHashMap<String, ResearchPage.Position>();
+        positions.put("a", new ResearchPage.Position(0, 0));
+        positions.put("b", new ResearchPage.Position(92, 0));
+        var page = new ResearchPage(0, true, positions);
+        assertFalse(page.move("a", 30, 0));
+        assertEquals(new ResearchPage.Position(0, 0), positions.get("a"));
+        assertTrue(page.move("a", 17, 43));
+        assertEquals(new ResearchPage.Position(17, 43), positions.get("a"));
     }
 
     @Test
-    void itemMetadataMustBeAnExactNonnegativeInt() throws IOException {
-        for (var meta : new String[]{"-1", "1.5", "2147483648", "true", "null", "\"1\""}) {
-            writeIcon("{\"kind\":\"item\",\"id\":\"minecraft:paper\",\"meta\":" + meta + "}");
-            assertThrows(IllegalStateException.class, () -> loader().load(RESEARCH, "zh_cn"));
-        }
-        writeIcon("{\"kind\":\"item\",\"id\":\"minecraft:paper\"}");
-        var content = loader().load(RESEARCH, "zh_cn").content();
-        assertNotNull(content);
-        assertEquals(0, content.icon().meta());
-    }
-
-    @Test
-    void invalidIconKindsAndShapesAreRejected() throws IOException {
-        for (var icon : new String[]{
-            "{\"kind\":\"unknown\",\"id\":\"minecraft:paper\"}",
-            "{\"kind\":\"item\",\"id\":null}", "null", "[]"
-        }) {
-            writeIcon(icon);
-            assertThrows(IllegalStateException.class, () -> loader().load(RESEARCH, "zh_cn"));
-        }
-    }
-
-    @Test
-    void localeAndResearchPathCannotEscapeOrCrossLanguageDirectories() {
-        for (var language : new String[]{"", "..", "../en_us", "en/us", "en\\us", "EN_US", "en-us", "file:c"}) {
-            assertThrows(IllegalArgumentException.class, () -> loader().load(RESEARCH, language));
-        }
-        for (var path : new String[]{"../outside", "a/../outside", "a/./b", "a//b", "/absolute", "back\\slash", "with space"}) {
-            assertThrows(IllegalArgumentException.class, () -> loader().load(new ResourceLocation("addon", path), "zh_cn"));
-        }
-        assertThrows(IllegalArgumentException.class, () -> loader().load(new ResourceLocation("..", "outside"), "zh_cn"));
-        assertFalse(Files.exists(configRoot.resolve("prototype_eng")));
-    }
-
-    @Test
-    void relativeConfigurationSegmentsNormalizeToTheSameSafeRoot() throws IOException {
-        write("zh_cn", valid("T"));
-        var normalized = new ResearchContentLoader(configRoot.resolve("unused").resolve(".."));
-        var content = normalized.load(RESEARCH, "zh_cn").content();
-        assertNotNull(content);
-        assertEquals("T", content.title());
+    void configuredFileOperationsCannotEscapeTheirDirectories() throws IOException {
+        write("data", "{\"title\":\"Base\"}");
+        var loader = loader();
+        assertThrows(IllegalArgumentException.class, () -> loader.load(new ResourceLocation("addon", "../outside"), "zh_cn"));
+        assertThrows(IllegalArgumentException.class, () -> loader.load(RESEARCH, "../outside"));
+        assertThrows(IllegalArgumentException.class, () -> loader.exportPage("../outside", loader.loadPage("addon")));
+        assertFalse(Files.exists(configRoot.resolve("outside.json")));
     }
 
     private ResearchContentLoader loader() {
@@ -148,16 +128,12 @@ class ResearchContentLoaderTest {
     }
 
     private Path file(String language) {
-        return configRoot.resolve("prototype_eng").resolve("research_content").resolve(language).resolve("addon").resolve("network/basic.json");
+        return configRoot.resolve("prototype_eng/research_content").resolve(language).resolve("addon/network/basic.json");
     }
 
     private void write(String language, String json) throws IOException {
         var file = file(language);
         Files.createDirectories(file.getParent());
         Files.writeString(file, json);
-    }
-
-    private void writeIcon(String icon) throws IOException {
-        write("zh_cn", "{\"title\":\"T\",\"description\":[\"D\"],\"icon\":" + icon + "}");
     }
 }

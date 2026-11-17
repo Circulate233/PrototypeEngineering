@@ -92,7 +92,6 @@ public final class ResearchStationExamples {
                                           .material(AEItemKey.of(Items.GOLD_NUGGET), 100).build();
             event.registry().register(ResearchDefinition.builder(new ResourceLocation("pe_run_tests", "java_research_" + name))
                                                         .maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                                        .displayName(() -> "pe_run_tests.research." + name).icon(AEItemKey.of(Items.BOOK))
                                                         .stage(stage).build());
         }
     }

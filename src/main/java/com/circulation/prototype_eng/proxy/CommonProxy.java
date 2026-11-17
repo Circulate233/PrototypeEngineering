@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.proxy;
 
+import com.circulation.prototype_eng.api.gui.ResearchGuiAccess;
+import com.circulation.prototype_eng.research.ResearchEditCommand;
+
 import com.circulation.prototype_eng.BuilderConfig;
 import com.circulation.prototype_eng.ControllerConfig;
 import com.circulation.prototype_eng.HatchConfig;
@@ -171,6 +174,7 @@ public class CommonProxy implements IGuiHandler {
         ServerResearch.start(event.getServer());
         event.registerServerCommand(new StructureReloadCommand());
         event.registerServerCommand(new SchedulerCommand());
+        event.registerServerCommand(new ResearchEditCommand());
     }
 
     public final void serverStopping() {
@@ -239,6 +243,8 @@ public class CommonProxy implements IGuiHandler {
 
     @Override
     public Object getServerGuiElement(int id, EntityPlayer player, World world, int x, int y, int z) {
+        if (id == ResearchGuiAccess.PLAYER_GUI || id == ResearchGuiAccess.DATABASE_GUI || id == ResearchGuiAccess.EDITOR_GUI)
+            return ResearchGuiAccess.serverElement(id, player, world, x, y, z);
         if (id == ContainerBuilderUpgrades.GUI_ID) return ContainerBuilderUpgrades.open(player.inventory, x);
         if (id == ContainerStructureTool.GUI_ID) {
             return ContainerStructureTool.open(player.inventory, x);

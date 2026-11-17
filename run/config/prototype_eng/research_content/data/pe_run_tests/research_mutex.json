@@ -1,0 +1,12 @@
+{
+  "title": "Mutually Exclusive Research",
+  "summary": "Mutually exclusive with Basic Research.",
+  "description": [
+    "Mutually exclusive with Basic Research."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:book",
+    "meta": 0
+  }
+}

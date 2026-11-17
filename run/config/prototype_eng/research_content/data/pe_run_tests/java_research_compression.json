@@ -1,0 +1,12 @@
+{
+  "title": "Data Compression",
+  "summary": "Java research example: data compression.",
+  "description": [
+    "Java research example: data compression."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:book",
+    "meta": 0
+  }
+}

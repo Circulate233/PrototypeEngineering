@@ -10,6 +10,7 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraftforge.fml.common.network.NetworkRegistry;
 import net.minecraftforge.fml.common.network.simpleimpl.SimpleNetworkWrapper;
 import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
 
 import java.util.UUID;
 
@@ -29,7 +30,13 @@ public final class InitNetwork {
         registerClientbound(StructureCatalogPacket.class);
         registerClientbound(HatchConfigurationPacket.class);
         registerClientbound(RecipeDefinitionManifestPacket.class);
+        CHANNEL.registerMessage(ResearchOverviewOpenPacket.Handler.class, ResearchOverviewOpenPacket.class, nextPacketId++, Side.SERVER);
         registered = true;
+    }
+
+    @SideOnly(Side.CLIENT)
+    public static void requestResearchOverview() {
+        CHANNEL.sendToServer(new ResearchOverviewOpenPacket());
     }
 
     private static <T extends ConnectionClientboundPacket> void registerClientbound(Class<T> packetClass) {

@@ -251,7 +251,11 @@ Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 
 
 ### 研究与计算网络
 
-`ResearchDefinition.builder(id)` 创建研究，`.displayName(LocalizationEnum)` 与 `.icon(AEKey)` 指定显示内容。按 2026-11-16 确认的[研究总览规则](docs/research-overview.md#客户端研究内容与分页文件)，名称、图标、简介和分页后续改由客户端 `research_content` JSON 提供，这两个方法将在研究总览实现时移除。`ResearchLevelStage.builder(first, last)` 必须设置 `.durationTicks(long)`、研究阶数和网络资源公式，多个阶段完整覆盖 `1..maxLevel`。时间为单站基准 tick，多站可加速。阶数 0 使用玩家手动研究且禁止网络资源；正阶由研究站推进。`.material(AEKey, long)` 添加普通资源总量，`.materialRequirement(...)` 只接受固定静态输入。
+`ResearchDefinition.builder(id)` 只创建服务端研究数据；名称、简介、图标、奖励组文字、分页和布局由客户端 `config/prototype_eng/research_content/` 的 JSON 提供，`.displayName(...)` 与 `.icon(...)` 已移除，详见[研究总览规则](docs/research-overview.md#客户端研究内容与分页文件)。客户端 `ClientResearchContents.get(id)` / `name(id)` 读取显示文字，`icon(id)` 返回可绘制的 `ResearchIcon`。`ResearchIcons.register(kind, parser)` 在客户端初始化时注册图标解析器，接收完整图标 JSON；内置 `item` 按物品 ID 和可选 `meta` 解析为 `AEItemKey`，`fluid` 按 Forge 流体名称解析为 `AEFluidKey`，`icon` 按完整 AE 图标 ID 使用 `Icon.byId`。`page(namespace)` 读取分页的 `order`、布局方式与自由像素坐标，`retainPage(namespace, page)` 只保存在客户端内存，`exportPage(namespace, page)` 才覆盖对应的 `data/<namespace>.json`。文件加载先读 `data/<namespace>/<path>.json`，再按当前语言同名文件中实际出现的字段覆盖，不使用 `en_us` 回退；不存在语言覆盖文件不记录告警。返回的集合与 JSON 均为只读借用，调用方不得修改。奖励组使用 `RewardGroup(id, children)` 仅定义业务行为，其标题与说明放在研究内容 `rewards` 对象中按完整组 ID 记录。
+
+`com.circulation.prototype_eng.api.gui.ResearchGuiAccess.open(EntityPlayerMP)` 在服务器打开玩家总览，`open(EntityPlayerMP, MachineControllerHost)` 以指定物理数据库打开下载目标选择模式；客户端入口调用 `requestOpen()` 交由服务器打开。库不注册打开按键或物品，入口由 addon 决定，测试 mod 默认使用 R。数据库界面已通过容器接入选择和返回，保留原数据库的操作槽物品。`openEditor(EntityPlayerMP)` 与 `/pe_research_edit` 均要求命令权限等级 2，编辑请求仍由服务器重新校验授权。
+
+`ResearchLevelStage.builder(first, last)` 必须设置 `.durationTicks(long)`、研究阶数和网络资源公式，多个阶段完整覆盖 `1..maxLevel`。时间为单站基准 tick，多站可加速。阶数 0 使用玩家手动研究且禁止网络资源；正阶由研究站推进。`.material(AEKey, long)` 添加普通资源总量，`.materialRequirement(...)` 只接受固定静态输入。
 
 `ResearchResourceFormula.builder().constant(type, total)` / `.affine(type, base, slope)` 定义网络资源总量，`.perTick(type, limit)` / `.affinePerTick(type, base, slope)` 定义单站 tick 上限。等级增长使用 `当前等级 - 阶段首级`，总量与上限按研究时间 T 换算，数量为 double。同一资源重复添加及混用总量/tick 定义会相加，最终总量除以 T 得到单站上限。公式直接借用 builder 完成的 Map，交付后必须停止修改。站点自身速率与研究 tick 上限共同限制本次增量。`DATABASE_AND_ITEM` 允许个人研究写入数据库或下载成物品；`ITEM_ONLY` 普通完成量归队伍并通过物品下载交付。
 
@@ -322,7 +326,7 @@ ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, 
 
 所有接网控制器支持 `MachineType.Builder.networkEvent(callback)`，Java全局事件用 `NetworkDeviceEvents.register(callback)`，ZS全局事件用 `Events.onDevice(callback)`。全局事件先于类型事件。事件公开同队全部已加载设备快照，允许修改本设备资源、并发、研究站速率和 FE 输入倍率；资源表通过 `get/set/add/remove` 修改，`add` 使用 `addTo`。ZS 的 `DeviceEvent` 暴露 `network/values/machineType`，`ComputerRecipeEvent` 另提供 `stage/progress/duration`；`network` 提供 `teamId/tick/devices/hasDevice(typeId)`，`values` 提供 `resources/required/researchRates/concurrency/energyMultiplier`。完整调用顺序、设备字段及禁止外部副作用的说明见[网络设备事件](docs/network-events.md)。
 
-默认数据库使用 `DataCenterController(type, storageComponent)`，`storageComponent` 是已声明的 `DataCenterStorage` 组件类型。等级、容量、研究和操作库存由存储组件保存，控制器组合使用持久化、下载及自动升级，无配方工位或独立业务 tick，并可继承。类型声明 `MachineOwnership.TYPE`、存储组件和 `DataCenter.DEVICE`；装配为存储配置 codec，将网络角色标为 recreated。自定义控制器也可直接实现 `DataCenter`，通过 `dataCenterStorage()` 提供实际存储组件。活动数据库占 1 份优先并发。默认 GUI 已接入 384×290 的已存列表、二次确认移出、下载/导入操作区及完整玩家背包，选择研究按钮暂不执行操作。专用容器使用 `MachineDataCenterStorage.transfers()`；采用其他 `DataCenterStorage` 实现的控制器必须通过 `MachineGuiRegistry` 和 `MachineScreenRegistry` 绑定对应容器与界面。Java/ZS 入口见[默认数据库控制器](docs/data-centers.md#默认控制器2026-11-13)。
+默认数据库使用 `DataCenterController(type, storageComponent)`，`storageComponent` 是已声明的 `DataCenterStorage` 组件类型。等级、容量、研究和操作库存由存储组件保存，控制器组合使用持久化、下载及自动升级，无配方工位或独立业务 tick，并可继承。类型声明 `MachineOwnership.TYPE`、存储组件和 `DataCenter.DEVICE`；装配为存储配置 codec，将网络角色标为 recreated。自定义控制器也可直接实现 `DataCenter`，通过 `dataCenterStorage()` 提供实际存储组件。活动数据库占 1 份优先并发。默认 GUI 已接入 384×290 的已存列表、二次确认移出、下载/导入操作区及完整玩家背包，选择研究按钮通过专用容器打开总览并返回原数据库。专用容器使用 `MachineDataCenterStorage.transfers()`；采用其他 `DataCenterStorage` 实现的控制器必须通过 `MachineGuiRegistry` 和 `MachineScreenRegistry` 绑定对应容器与界面。Java/ZS 入口见[默认数据库控制器](docs/data-centers.md#默认控制器2026-11-13)。
 
 ### GUI、模型与 JEI
 
@@ -534,7 +538,7 @@ ParallelController.create("example:parallel_module", "tile.example.parallel_modu
 
 仓室容量由 `ResourceSide.itemEquivalent(slots, capacity)` 和 `EnergySide.create(capacity, transfer)` 定义，再交给 `Configuration.resources/energy(tier, input, output)`。两侧可以只提供一侧，不能都为空。`configureDefaults` 设置启动默认值，运行中调用 `request` 返回更新任务。
 
-研究用 `Research.create(...)` 声明，`.display(translationKey, icon)` 设置名称和图标；该方法与 Java 显示方法一样，将在研究总览实现时由客户端研究内容 JSON 取代。`ResearchStage.create(first, last, tier, durationTicks, formula)` 设置等级段和 long 时间；`ResearchFormula.constant/affine` 定义网络资源总量，`perTick/affinePerTick` 定义单站 tick 上限。stage 的 `.material(...)` 只接受静态总量输入，`.prerequisite(...)`、`.mutex(...)` 和 `.reward(...)` 定义前置、互斥及奖励。原 `.materialPersistence(...)` 已删除。
+研究用 `Research.create(...)` 声明服务端数据，原 `.display(...)` 已移除；客户端名称与图标由研究内容 JSON 提供。`ResearchStage.create(first, last, tier, durationTicks, formula)` 设置等级段和 long 时间；`ResearchFormula.constant/affine` 定义网络资源总量，`perTick/affinePerTick` 定义单站 tick 上限。stage 的 `.material(...)` 只接受静态总量输入，`.prerequisite(...)`、`.mutex(...)` 和 `.reward(...)` 定义前置、互斥及奖励。原 `.materialPersistence(...)` 已删除。
 
 在 preinit 脚本中，专用控制器使用下面的快捷入口（`compute` 是已经声明的数值计算资源）；它们不调用 `processing` 或添加配方工位：
 

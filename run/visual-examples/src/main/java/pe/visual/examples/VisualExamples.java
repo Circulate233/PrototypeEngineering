@@ -55,6 +55,9 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
+import net.minecraftforge.fml.common.event.FMLInitializationEvent;
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
 
@@ -233,6 +236,12 @@ public final class VisualExamples {
 
     static Block block(String name) {
         return Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation(name)), name);
+    }
+
+    @Mod.EventHandler
+    @SideOnly(Side.CLIENT)
+    public void clientInit(FMLInitializationEvent event) {
+        ExamplesClient.init();
     }
 
     @Mod.EventHandler

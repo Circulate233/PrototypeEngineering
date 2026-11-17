@@ -8,6 +8,7 @@ import ae2.client.gui.widgets.AE2Button;
 import ae2.client.gui.widgets.Scrollbar;
 import com.circulation.prototype_eng.api.research.view.ResearchStationView;
 import com.circulation.prototype_eng.container.ContainerResearchStation;
+import com.circulation.prototype_eng.client.research.ClientResearchContents;
 import com.circulation.prototype_eng.container.ResearchStationPacket;
 import com.circulation.prototype_eng.localization.ResearchStationGuiText;
 import net.minecraft.client.Minecraft;
@@ -236,7 +237,8 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
             return;
         }
         slot(18, 34);
-        if (definition.icon() != null) AEKeyRendering.drawInGui(mc, 19, 35, definition.icon());
+        var icon = ClientResearchContents.icon(definition.id());
+        if (icon != null) icon.draw(mc, 19, 35);
         String name = container.view.name();
         int nameWidth = Math.min(researchNameWidth(), fontRenderer.getStringWidth(name));
         text(fontRenderer, name, 42, 35, nameWidth, TEXT);

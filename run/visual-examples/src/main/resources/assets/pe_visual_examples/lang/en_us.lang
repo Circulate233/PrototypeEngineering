@@ -156,3 +156,6 @@ pe_run_tests.research.compression=Data Compression
 pe_run_tests.research.coordination=Automation Coordination
 pe_run_tests.research.sampling=Precision Sampling
 pe_run_tests.research.connection=High Speed Connection
+gui.prototype_eng.research_page.pe_run_tests=Run Tests
+key.pe_run_tests.research_overview=Research Overview
+key.categories.pe_run_tests=PE Examples

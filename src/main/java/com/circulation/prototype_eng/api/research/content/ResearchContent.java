@@ -1,19 +1,23 @@
 package com.circulation.prototype_eng.api.research.content;
 
+import com.google.gson.JsonObject;
+import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 
 /**
  * Immutable direct-display client text; executable research and reward definitions stay separate.
- * Title and description lines are normalized nonblank text; descriptions remain borrowed read-only.
+ * Loaded collections and icon JSON are borrowed read-only. Text is direct display content, not translation keys.
  */
-public record ResearchContent(String title, String summary, ObjectList<String> description, Icon icon) {
-    public enum Kind {ITEM, ICON}
+public record ResearchContent(String title, String summary, ObjectList<String> description,
+                              @Nullable JsonObject icon, Object2ObjectMap<ResourceLocation, Reward> rewards) {
+    public Reward reward(ResourceLocation groupId) {
+        var reward = rewards.get(groupId);
+        return reward == null ? new Reward(groupId.toString(), "") : reward;
+    }
 
-    /**
-     * A named icon-map entry or an item variant; no item registry lookup occurs while loading text.
-     */
-    public record Icon(Kind kind, ResourceLocation id, int meta) {
+    public record Reward(String title, String description) {
     }
 }

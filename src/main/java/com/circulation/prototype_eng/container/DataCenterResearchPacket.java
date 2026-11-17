@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.container;
 
-import ae2.api.stacks.AEKey;
 import ae2.container.guisync.PacketWritable;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import io.netty.buffer.ByteBuf;
@@ -8,7 +7,6 @@ import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.ResourceLocation;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
 import java.util.List;
@@ -28,8 +26,7 @@ public record DataCenterResearchPacket(List<Entry> entries) implements PacketWri
         int count = buffer.readVarInt();
         var entries = new ObjectArrayList<Entry>(count);
         for (int index = 0; index < count; index++) {
-            entries.add(new Entry(buffer.readResourceLocation(), buffer.readString(32767), buffer.readVarInt(),
-                buffer.readVarInt(), buffer.readVarInt(), buffer.readBoolean() ? AEKey.readKey(buffer) : null));
+            entries.add(new Entry(buffer.readResourceLocation(), buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt()));
         }
         return entries;
     }
@@ -44,8 +41,7 @@ public record DataCenterResearchPacket(List<Entry> entries) implements PacketWri
 
     public static Entry entry(ResourceLocation id, int level) {
         var definition = ResearchRegistry.INSTANCE.require(id);
-        return new Entry(id, definition.displayName().getTranslationKey(), level, definition.maxLevel(),
-            definition.researchTierForLevel(level), definition.icon());
+        return new Entry(id, level, definition.maxLevel(), definition.researchTierForLevel(level));
     }
 
     @Override
@@ -55,15 +51,12 @@ public record DataCenterResearchPacket(List<Entry> entries) implements PacketWri
         for (int index = 0; index < entries.size(); index++) {
             var entry = entries.get(index);
             data.writeResourceLocation(entry.id);
-            data.writeString(entry.name);
             data.writeVarInt(entry.level);
             data.writeVarInt(entry.maxLevel);
             data.writeVarInt(entry.tier);
-            data.writeBoolean(entry.icon != null);
-            if (entry.icon != null) AEKey.writeKey(data, entry.icon);
         }
     }
 
-    public record Entry(ResourceLocation id, String name, int level, int maxLevel, int tier, @Nullable AEKey icon) {
+    public record Entry(ResourceLocation id, int level, int maxLevel, int tier) {
     }
 }

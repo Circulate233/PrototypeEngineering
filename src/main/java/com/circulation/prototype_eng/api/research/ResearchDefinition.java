@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.api.research;
 
-import ae2.api.stacks.AEKey;
-import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.research.reward.RewardGroup;
@@ -11,7 +9,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import net.minecraft.util.ResourceLocation;
-import org.jetbrains.annotations.Nullable;
 
 
 /**
@@ -21,8 +18,6 @@ import org.jetbrains.annotations.Nullable;
 @SuppressWarnings("unused")
 public final class ResearchDefinition {
     private final ResourceLocation id;
-    private final LocalizationEnum displayName;
-    private final @Nullable AEKey icon;
     private final int maxLevel;
     private final boolean specialOnly;
     private final ResearchDownloadDeliveryPolicy deliveryPolicy;
@@ -32,8 +27,6 @@ public final class ResearchDefinition {
 
     private ResearchDefinition(Builder builder) {
         id = builder.id;
-        displayName = builder.displayName == null ? id::toString : builder.displayName;
-        icon = builder.icon;
         if (builder.maxLevel < 1) {
             throw new IllegalArgumentException("Research must explicitly declare positive maxLevel: " + id);
         }
@@ -70,14 +63,6 @@ public final class ResearchDefinition {
 
     public ResourceLocation id() {
         return id;
-    }
-
-    public LocalizationEnum displayName() {
-        return displayName;
-    }
-
-    public @Nullable AEKey icon() {
-        return icon;
     }
 
     public int maxLevel() {
@@ -157,8 +142,6 @@ public final class ResearchDefinition {
      */
     public static final class Builder {
         private final ResourceLocation id;
-        private @Nullable LocalizationEnum displayName;
-        private @Nullable AEKey icon;
         private final ObjectArrayList<ResearchLevelStage> stages = new ObjectArrayList<>();
         private final Object2IntOpenHashMap<UnlockKey> unlockLevels = new Object2IntOpenHashMap<>();
         private int maxLevel;
@@ -168,16 +151,6 @@ public final class ResearchDefinition {
 
         private Builder(ResourceLocation id) {
             this.id = id;
-        }
-
-        public Builder displayName(LocalizationEnum name) {
-            displayName = name;
-            return this;
-        }
-
-        public Builder icon(AEKey resource) {
-            icon = resource;
-            return this;
         }
 
         public Builder maxLevel(int level) {

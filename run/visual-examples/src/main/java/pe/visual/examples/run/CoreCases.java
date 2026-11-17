@@ -16,6 +16,8 @@ import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.scanning.*;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
+import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.energy.ForgeEnergyPort;
 import com.circulation.prototype_eng.integration.crafttweaker.ZenMachineFactory;
 import com.circulation.prototype_eng.integration.crafttweaker.ZenComponentData;
 import com.circulation.prototype_eng.integration.crafttweaker.hatch.ZenHatchConfiguration;
@@ -366,10 +368,12 @@ public final class CoreCases {
         });
         var out = new com.circulation.prototype_eng.energy.EnergyBuffer(energy.output().capacity(), energy.output().transfer(), energy.output().transfer(), () -> {
         });
-        NativeChecks.check("core_hatch_fe_transfer", in.receiveEnergy(1500, ae2.api.config.Actionable.MODULATE) == 100 && out.receiveEnergy(2500, ae2.api.config.Actionable.MODULATE) == 200);
+        var inPort = new ForgeEnergyPort(in, HatchMode.MIXED);
+        var outPort = new ForgeEnergyPort(out, HatchMode.MIXED);
+        NativeChecks.check("core_hatch_fe_transfer", inPort.receiveEnergy(1500, false) == 100 && outPort.receiveEnergy(2500, false) == 200);
         for (int i = 0; i < 9; i++) {
-            in.receiveEnergy(1500, ae2.api.config.Actionable.MODULATE);
-            out.receiveEnergy(2500, ae2.api.config.Actionable.MODULATE);
+            inPort.receiveEnergy(1500, false);
+            outPort.receiveEnergy(2500, false);
         }
         NativeChecks.check("core_hatch_fe_capacities", in.storedEnergy() == 1000 && out.storedEnergy() == 2000
             && in.receiveEnergy(1, ae2.api.config.Actionable.MODULATE) == 0 && out.receiveEnergy(1, ae2.api.config.Actionable.MODULATE) == 0);

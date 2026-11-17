@@ -1,0 +1,12 @@
+{
+  "title": "Continuous Research",
+  "summary": "A repeating research example.",
+  "description": [
+    "A repeating research example."
+  ],
+  "icon": {
+    "kind": "item",
+    "id": "minecraft:redstone",
+    "meta": 0
+  }
+}

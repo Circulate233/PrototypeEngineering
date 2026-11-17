@@ -23,6 +23,10 @@ import mezz.jei.api.gui.IDrawable;
 import mezz.jei.api.gui.IRecipeLayout;
 import mezz.jei.api.ingredients.IIngredients;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.settings.KeyBinding;
+import net.minecraftforge.fml.client.registry.ClientRegistry;
+import org.lwjgl.input.Keyboard;
+import com.circulation.prototype_eng.api.gui.ResearchGuiAccess;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.relauncher.Side;
@@ -49,17 +53,31 @@ import net.minecraft.server.MinecraftServer;
 @SideOnly(Side.CLIENT)
 @Mod.EventBusSubscriber(modid = VisualExamples.MOD_ID, value = Side.CLIENT)
 public final class ExamplesClient {
+    private static final KeyBinding RESEARCH_OVERVIEW = new KeyBinding(
+        "key.pe_run_tests.research_overview", Keyboard.KEY_R, "key.categories.pe_run_tests");
+
     private ExamplesClient() {
+    }
+
+    public static void init() {
+        ClientRegistry.registerKeyBinding(RESEARCH_OVERVIEW);
+        ClientCommandHandler.instance.registerCommand(new CompositePreviewCommand());
     }
 
     @SubscribeEvent
     public static void registerPage(RecipePoolJeiRegistrationEvent event) {
-        ClientCommandHandler.instance.registerCommand(new CompositePreviewCommand());
         var pools = event.pools();
         for (int index = 0; index < pools.size(); index++) {
             var pool = pools.get(index);
             if (pool.id().equals(VisualExamples.SORTER_POOL)) event.pages().register(pool.id(), new SorterPage(pool));
         }
+    }
+
+    @SubscribeEvent
+    public static void openResearch(net.minecraftforge.fml.common.gameevent.InputEvent.KeyInputEvent event) {
+        var minecraft = Minecraft.getMinecraft();
+        if (RESEARCH_OVERVIEW.isPressed() && minecraft.currentScreen == null && minecraft.player != null)
+            ResearchGuiAccess.requestOpen();
     }
 
     /**

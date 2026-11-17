@@ -1,0 +1,13 @@
+{
+  "title": "网络研究",
+  "summary": "研究站示例，需要网络中心和网络算力。",
+  "description": [
+    "开始条件：队伍拥有 1 级以上网络中心，且可用网络算力不少于 10。"
+  ],
+  "rewards": {
+    "pe_run_tests:research_reward": {
+      "title": "基础奖励",
+      "description": "绿宝石与示例研究奖励事件。"
+    }
+  }
+}
