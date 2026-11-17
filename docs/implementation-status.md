@@ -1,5 +1,15 @@
 # 实施进度
 
+## 2026-11-17 研究站队列下边界悬停崩溃
+
+用户提供 `GuiResearchStation.tooltip → ResearchStationClientView.queueName(3)` 越界报告，队列实际长度为 3。报告缩放尺寸 640×351、鼠标 (438,201)，结合现有 384×288 界面得到 guiLeft=128、guiTop=31，队列局部坐标恰为 (98,66)。三项队列每行 22 像素，下边界是 66；原生 `GuiContainer.isPointInRegion` 会把四边各扩 1 像素，AEBaseGui 直接转调，原代码接受下边界后计算出索引 3。空队列的边界也可能被误算成索引 0。名称缓存的队列更新与失效逻辑正常，不是此次根因。
+
+只修改 `GuiResearchStation` 的命中入口：队列先按本地坐标检查精确半开矩形，再按原有 20 像素卡片和 2 像素间隙计算索引；绘制悬停、点击和 tooltip 共用同一结果。材料/资源列表同时改为精确半开矩形，移除左侧与底部 1 像素提示越框。没有在 queueName 中捕获异常、钳制索引或添加默认名称，也没有改队列同步、大小、布局和操作规则。报告中的位置现在在除法前就被拒绝，0～5 项队列的下边界、外侧和卡片间隙由同一范围规则排除；这是源码和报告坐标核对，未额外增加静态公式镜像测试。
+
+最终完整 Gradle build、Spotless、1751 tests / 274 suites 全部通过，失败、错误及跳过均为 0。修改 Java 已本机 IDEA MCP 格式化，逐文件 `get_file_problems(errorsOnly:false)` 的错误、警告和弱警告均为 0，IDEA 定向构建成功。用户关闭客户端后，正常执行 `run/prepare-tests.ps1`，27 份 addon Java 编译并成功安装到 `run/mods/pe_visual_examples-1.0.0-dev.jar`，安装文件与产物 SHA-256 一致；上一检查点的 addon 占用阻挡已解除。
+
+证据在 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261117/research-station-hover-crash/`，含 `coordinate-review.md`、IDEA 检查、最终构建、测试统计及安装/哈希记录。下一步用户按现有流程完整启动，复验研究站空队列、三项及满队列底边/间隙悬停和点击，再继续研究总览画面与操作复验。本轮本地英文提交，未启动 Minecraft 或服务端、未推送，原有两份 JVM 崩溃日志保留。
+
 ## 2026-11-17 研究总览正式实现与截图返工
 
 接续对话《读取上一个对话的内容》的未提交实现及最后十张截图反馈。研究总览、客户端研究内容、数据库选择返回、编辑命令和测试 mod 按键完成接入。正式库不注册按键或打开物品；`ResearchGuiAccess` 提供玩家、物理数据库及管理员入口，测试 mod 默认 R 打开玩家总览，权限等级 2 可执行 `/pe_research_edit`。研究名称、说明、奖励文字、图标和分页布局改由客户端 `research_content` JSON 提供，Java/ZS 展示注册入口移除；基础 data 文件与当前语言字段覆盖、图标 kind 注册、资源重载和分页导出已接入。21 份演示 JSON 已明确加入版本管理，避免被 run 忽略规则遗漏。

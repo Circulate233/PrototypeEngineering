@@ -256,10 +256,11 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
         text(fontRenderer, queueLabel, QUEUE_X, 89, 110, TEXT);
         right(fontRenderer, queueCount, 366, 89, 40, SOFT);
         var queue = container.view.queue;
+        int hovered = queueIndex(mouseX, mouseY);
         for (int index = 0; index < queue.size(); index++) {
             int top = QUEUE_Y + index * QUEUE_ROW;
             card(QUEUE_X, top, QUEUE_WIDTH, QUEUE_CARD, queue.get(index).entryId() == selected,
-                isPointInRegion(QUEUE_X, top, QUEUE_WIDTH, QUEUE_CARD, mouseX, mouseY));
+                hovered == index);
             if (index == 0) rect(QUEUE_X, top, 2, QUEUE_CARD, GOOD);
             fontRenderer.drawString(QUEUE_NUMBERS[index], QUEUE_X + 6, top + 6, SOFT);
             text(fontRenderer, container.view.queueName(index), QUEUE_X + 18, top + 5, queueNameWidth(index), TEXT);
@@ -318,13 +319,15 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
     }
 
     private boolean inList(int mouseX, int mouseY) {
-        return isPointInRegion(LIST_X, LIST_Y, listWidth(), LIST_HEIGHT, mouseX, mouseY);
+        int x = mouseX - guiLeft - LIST_X, y = mouseY - guiTop - LIST_Y;
+        return x >= 0 && x < listWidth() && y >= 0 && y < LIST_HEIGHT;
     }
 
     private int queueIndex(int mouseX, int mouseY) {
-        if (!isPointInRegion(QUEUE_X, QUEUE_Y, QUEUE_WIDTH, container.view.queue.size() * QUEUE_ROW, mouseX, mouseY))
-            return -1;
+        int rowX = mouseX - guiLeft - QUEUE_X;
         int rowY = mouseY - guiTop - QUEUE_Y;
+        if (rowX < 0 || rowX >= QUEUE_WIDTH || rowY < 0 || rowY >= container.view.queue.size() * QUEUE_ROW)
+            return -1;
         return rowY % QUEUE_ROW < QUEUE_CARD ? rowY / QUEUE_ROW : -1;
     }
 
