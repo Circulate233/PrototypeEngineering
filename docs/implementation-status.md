@@ -12,7 +12,7 @@ BinomialSampler 改为有限 double 精度内的自适应二项采样。1 并行
 
 AMD Ryzen 7 7735H、Zulu Java 25+36 的独立 JVM 微基准，用五次计时的中位数比较共享/每次新建 Random。交叉点测量显示极小批量直接累加较快，50% 位计数在 384 并行仍优于 BTRD，512 已较慢，故上限取 384；均值从 10 起 BTRD 优于反演。手工浮点符号位转换未取得稳定收益，保留易被 JIT 优化的条件累加。最终每次新建 Random 的百万并行（1%、10%、50%、90%）约 50.9–54.0ns；25% 整批约 50.3ns，实际逐次抽取一百万次约 13.9ms。旧高斯表同条件约 12–13ns，新算法增加几十纳秒以取得完整分布和尾部；这些是采样器微基准，不代表整机 tick 耗时或固定最坏延迟。BTRD 拒绝次数由预算限制单片工作，保持抽样进度。
 
-证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261117/binomial-sampler/`：`candidate-build.log`、`candidate-full-totals.json`/`candidate-full-test-results/`、`candidate-targeted-final.log`/`candidate-targeted-totals.json`、`idea-final.json`、`idea-build.json`、`benchmark-final.csv`、`benchmark-crossover.csv`、环境、参考源码与复现脚本。本轮本地英文提交，保留主仓其它修改及暂存，不启动 Minecraft、不推送；隔离验证工作树在证据保存后归档。下一步用户按既有启动流程观察 1 并行、百万并行和输出容量的真实配方运行。
+证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261117/binomial-sampler/`：`candidate-build.log`、`candidate-full-totals.json`/`candidate-full-test-results/`、`candidate-targeted-final.log`/`candidate-targeted-totals.json`、`idea-final.json`、`idea-build.json`、`benchmark-final.csv`、`benchmark-crossover.csv`、环境、参考源码与复现脚本。本轮实现本地提交为 `9b9996d`，保留主仓其它修改及暂存，不启动 Minecraft、不推送。应用将隔离验证目录标记为当前 chat 的主检出，archive_worktree 因主检出保护拒绝归档；attach_worktree 也不接受原项目的主检出。因此验证目录保留并同步到已提交状态，后续开发显式使用原项目 `F:/new/PrototypeEngineering`。下一步用户按既有启动流程观察 1 并行、百万并行和输出容量的真实配方运行。
 
 ## 2026-11-16 研究站按钮预览差异修正
 
