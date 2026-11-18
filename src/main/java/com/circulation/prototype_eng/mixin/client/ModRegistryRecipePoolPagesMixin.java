@@ -1,9 +1,9 @@
 package com.circulation.prototype_eng.mixin.client;
 
 import com.circulation.prototype_eng.integration.jei.ExternalRecipePoolPages;
+import mezz.jei.startup.ModRegistry;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -14,8 +14,7 @@ import java.util.Set;
 /**
  * Resolve category IDs after both modern and legacy plugin registration, before native freezing.
  */
-@Pseudo
-@Mixin(targets = "mezz.jei.startup.ModRegistry", remap = false)
+@Mixin(value = ModRegistry.class, remap = false)
 public abstract class ModRegistryRecipePoolPagesMixin {
     @Shadow
     @Final
