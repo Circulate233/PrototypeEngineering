@@ -248,8 +248,8 @@
       <li>“运行测试”页使用仓库示例脚本与 Java 示例的研究、材料、网络资源和奖励（自动布局）；其中手动、互斥、网络、持续和特殊研究五项需要标准 CT 测试入口，其余五项始终由 Java 注册。“示例扩展”页的 14 项研究也已在示例 mod 注册，展示多前置、跨页前置、互斥与手动布局；连同研究万花筒六项，无 CT 时共有 25 项，标准 CT 入口为 30 项。</li>
       <li>玩家模式：前置未完成的研究点击无反馈，悬停列出还需完成的研究；开始条件正文只显示网络中心与研究站，不重复显示活动数据库需求。操作由服务端判定，不可用按钮悬停说明缺少条件；下载到数据库按实际数据库的阶级和容量判断。下载到数据库不会重复，队伍任一数据库已存等级不低于队伍等级时提示“已下载到 …”。</li><li>遗忘：详情底部的“遗忘个人等级”只移除自己的个人等级（可选择从哪一级起遗忘），队伍等级按全体成员重新计算；前置因此不足的研究会一并回退，并提示受影响的研究与队列条目。仅物品研究和特殊研究不能个人遗忘。</li>
       <li>数据库模式用于选择下载到物品的研究：任意队伍已完成、研究阶级不高于本数据库阶级的研究都可以选择，不要求已存于本数据库；特殊研究、未完成或阶级过高的研究变暗且点击无反馈，悬停说明原因。</li>
-      <li>正式游戏的编辑模式由命令打开。所有研究都可以点击打开详情，详情中的“开始研究”立即完成下一级，缺少的前置研究同时补齐，特殊研究的按钮为“写入数据库”。长按研究约 0.3 秒后可自由拖动，松开后记录像素坐标，该页随之改为手动布局；“导出”覆盖该页的分页文件。右键画布空白处可添加分页或把已注册研究加入当前页，右键研究可编辑基础内容 JSON 和语言覆盖文件。此 HTML 演示研究操作、自由拖动和分页 JSON 生成，右键菜单与内容编辑窗口请在正式游戏中使用。</li>
-      <li>正式游戏由服务端同步可见分页、节点名称、图标和布局，查看研究时再获取详情。客户端语言文件覆盖文字。无可见研究的分页只在编辑模式显示。分页通过 researches 指定完整研究 ID，positions 使用相同的 ID；未指定成员时按分页 ID 对应的研究命名空间分组。priority 数值越小越靠前；未提供 title 时读取分页本地化键。此预览的“导出”生成可保存到服务端的分页 JSON。</li>
+      <li>正式游戏的编辑模式由命令打开。所有研究都可以点击打开详情，详情中的“开始研究”立即完成下一级，缺少的前置研究同时补齐，特殊研究的按钮为“写入数据库”。右上角按钮切换自动/手动布局，仅手动布局允许长按研究约 0.3 秒后自由拖动；切回自动布局会重新排列。“全部导出”保存所有分页。调试按钮对当前队伍全部普通研究执行一键遗忘或全部完成，保留奖励记录。右键画布空白处可添加分页或把已注册研究加入当前页，右键研究可编辑基础内容 JSON 和语言覆盖文件。此 HTML 演示研究操作、自由拖动和分页 JSON 生成，右键菜单与内容编辑窗口请在正式游戏中使用。</li>
+      <li>正式游戏由服务端同步可见分页、节点名称、图标和布局，查看研究时再获取详情。客户端语言文件覆盖文字。无可见研究的分页只在编辑模式显示。分页通过 researches 指定完整研究 ID，positions 使用相同的 ID；未指定成员时按分页 ID 对应的研究命名空间分组。priority 数值越小越靠前；未提供 title 时读取分页本地化键。此预览的“全部导出”生成所有分页的 JSON，每个键对应一份服务端分页文件。</li>
     </ul>
     <div class="ov-export" id="ov-export" hidden><p id="ov-export-path"></p><pre id="ov-export-json"></pre></div>
   </div>
@@ -577,7 +577,7 @@
         if (s.key === "locked") lines.push("还需完成：" + missing(id).map(label).join("、"));
         if (s.key === "blocked") lines.push("互斥：已完成 " + mutexHit(id).map(label).join("、"));
         if (editing()) {
-          lines.push("点击打开详情，用研究按钮立即完成", "长按自由拖动调整位置", "正式游戏：右键研究编辑内容");
+          lines.push("点击打开详情，用研究按钮立即完成", page().layout === "manual" ? "长按研究以拖动" : "切换到手动布局后，长按研究以拖动", "正式游戏：右键研究编辑内容");
           return lines.join("\n");
         }
         if (!r.special) {
@@ -697,7 +697,7 @@
 
         const banner = $("ov-banner");
         banner.className = "ov-banner" + (editing() ? " edit" : "");
-        banner.textContent = editing() ? "编辑模式预览 · 研究按钮立即完成 · 长按研究自由拖动" : picking() ? db.name + " · 选择下载到物品的研究" : state.team + " · 研究总览";
+        banner.textContent = editing() ? "编辑模式预览 · 研究按钮立即完成" : picking() ? db.name + " · 选择下载到物品的研究" : state.team + " · 研究总览";
 
         let tr;
         if (picking()) {
@@ -718,8 +718,11 @@
             `<span>最高研究站：</span><span class="ov-value">Lv${state.env.station}</span></div>`;
           if (editing()) {
             const manual = page().layout === "manual";
-            tr = `<div class="ov-row"><span class="ov-chip ${manual ? "warn" : "plain"}" data-tip="${esc(manual ? "本页使用分页文件中的自由坐标，连线按位置自动计算" : "本页按前置关系自动排列，拖动任一研究后改为手动布局")}">${manual ? "手动布局" : "自动布局"}</span>` +
-              `<button type="button" class="ov-action" id="ov-exportbtn" data-tip="${esc("生成 config/prototype_eng/research_content/data/" + pageId + ".json 的分页 JSON；正式游戏中导出会覆盖该文件")}">导出</button></div>` + tr;
+            tr = `<div class="ov-row"><button type="button" class="ov-action" id="ov-layout" data-tip="${manual ? "切换为自动布局并重新排列本页研究" : "切换为手动布局，保留当前位置并允许拖动"}">${manual ? "手动布局" : "自动布局"}</button>` +
+              `<button type="button" class="ov-action" id="ov-exportbtn" data-tip="保存所有分页的布局模式与手动坐标">全部导出</button></div>` +
+              `<div>${manual ? "长按研究以拖动，完成后点击全部导出" : "切换到手动布局后，长按研究以拖动"}</div>` +
+              `<div class="ov-row"><button type="button" class="ov-action" id="ov-forget-all" data-tip="清除本队全部普通研究等级，保留奖励记录">一键遗忘</button>` +
+              `<button type="button" class="ov-action" id="ov-complete-all" data-tip="将本队全部普通研究完成到最高等级">全部完成</button></div>` + tr;
           }
         }
         $("ov-tr").innerHTML = tr;
@@ -941,7 +944,7 @@
         const node = event.target.closest(".ov-node");
         const g = gesture = {node, id: node && node.dataset.id, x: event.clientX, y: event.clientY, px: event.clientX, py: event.clientY,
           vx: view.x, vy: view.y, moved: false, drag: false, dragged: false, hold: 0};
-        if (node && editing()) {
+        if (node && editing() && page().layout === "manual") {
           g.hold = setTimeout(() => {
             if (gesture !== g || g.moved) return;
             g.drag = true;
@@ -1072,18 +1075,42 @@
             render();
             break;
           }
-          case "ov-exportbtn": {
-            const p = page(), ids = ORDER.filter(id => R[id].page === p.id);
-            const json = {priority: p.priority, layout: p.layout, researches: ids, positions: {}};
-            if (p.title != null) json.title = p.title;
-            if (p.layout === "manual") {
-              const pos = positions(p);
-              json.positions = Object.fromEntries(ids.map(id => [id, pos[R[id].path]]));
+          case "ov-layout": {
+            const p = page();
+            if (p.layout === "manual") { p.layout = "auto"; p.positions = {}; }
+            else { p.positions = positions(p); p.layout = "manual"; }
+            toast(p.layout === "manual" ? "长按研究以拖动，完成后点击全部导出" : "已重新计算自动布局");
+            render();
+            break;
+          }
+          case "ov-forget-all":
+          case "ov-complete-all": {
+            const completed = b.id === "ov-complete-all";
+            for (const id of ORDER) if (!R[id].special) {
+              if (completed) for (let l = 1; l <= R[id].max; l++) complete(id, l);
+              else { delete state.direct[id]; delete state.personal[id]; delete state.others[id]; }
             }
-            $("ov-export-path").textContent = "分页文件示例（复制到服务端 config/prototype_eng/research_content/data/" + p.id + ".json）：";
+            state.queue = []; state.manual = null; forgetting = null;
+            toast(completed ? "当前队伍的全部普通研究已完成" : "当前队伍的全部普通研究已遗忘");
+            render();
+            break;
+          }
+          case "ov-exportbtn": {
+            const json = {};
+            for (const p of PAGES) {
+              const ids = ORDER.filter(id => R[id].page === p.id);
+              const data = {priority: p.priority, layout: p.layout, researches: ids, positions: {}};
+              if (p.title != null) data.title = p.title;
+              if (p.layout === "manual") {
+                const pos = positions(p);
+                data.positions = Object.fromEntries(ids.map(id => [id, pos[R[id].path]]));
+              }
+              json[p.id + ".json"] = data;
+            }
+            $("ov-export-path").textContent = "所有分页文件示例（每个键对应服务端 config/prototype_eng/research_content/data/ 下的独立文件）：";
             $("ov-export-json").textContent = JSON.stringify(json, null, 2).replace(/\[\n\s+(-?\d+),\n\s+(-?\d+)\n\s+]/g, "[$1, $2]");
             $("ov-export").hidden = false;
-            toast("已生成分页 JSON，可复制后保存");
+            toast("已生成所有分页 JSON，可分别保存到对应文件");
             break;
           }
         }

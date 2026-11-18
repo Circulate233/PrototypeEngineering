@@ -5,56 +5,47 @@ import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
-import com.circulation.prototype_eng.api.network.MachineDataCenterStorage;
 import com.circulation.prototype_eng.api.network.DataCenter;
+import com.circulation.prototype_eng.api.network.MachineDataCenterStorage;
 import com.circulation.prototype_eng.api.network.NetworkWorkState;
-import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.research.DataCenterResearchAccess;
+import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
 import com.circulation.prototype_eng.api.research.DataCenterStorage;
 import com.circulation.prototype_eng.api.research.ResearchDataCenters;
+import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.ResearchLevelResult;
 import com.circulation.prototype_eng.api.research.ResearchPermissionContext;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
-import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchServerConfiguration;
 import com.circulation.prototype_eng.api.research.ResearchWorld;
 import com.circulation.prototype_eng.api.research.ResearchWorldSnapshot;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
-import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryAdapter;
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKeyNbt;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskImport;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskImportResult;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskInteractions;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskOperation;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskRecovery;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskStorage;
-import com.circulation.prototype_eng.api.research.download.ResearchDownloadOperation;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadInventory;
+import com.circulation.prototype_eng.api.research.download.ResearchDownloadOperation;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadResult;
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadContext;
+import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadEvaluation;
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadPreview;
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistry;
-import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadEvaluation;
 import com.circulation.prototype_eng.api.research.download.ResearchItemImportContext;
-import com.circulation.prototype_eng.api.research.download.ResearchItemImportRegistry;
 import com.circulation.prototype_eng.api.research.download.ResearchItemImportPreview;
-import com.circulation.prototype_eng.api.research.disk.ResearchDiskImport;
+import com.circulation.prototype_eng.api.research.download.ResearchItemImportRegistry;
 import com.circulation.prototype_eng.api.research.manual.ManualResearch;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory;
-import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
 import com.circulation.prototype_eng.api.research.queue.ResearchProgress;
-import com.circulation.prototype_eng.container.ResearchOverviewPacket;
-import com.circulation.prototype_eng.container.ContainerResearchOverview;
-import com.circulation.prototype_eng.container.ResearchOverviewDetail;
-import com.circulation.prototype_eng.container.ResearchOverviewDisplay;
-import com.circulation.prototype_eng.network.InitNetwork;
-import com.circulation.prototype_eng.network.clientbound.ResearchViewPacket;
-import com.circulation.prototype_eng.research.content.ResearchOverviewLayout;
-import com.circulation.prototype_eng.research.content.ResearchViewCodec;
-import com.circulation.prototype_eng.research.content.ServerResearchCatalog;
+import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
 import com.circulation.prototype_eng.api.research.station.ResearchStations;
 import com.circulation.prototype_eng.api.research.view.DataCenterPlayerView;
 import com.circulation.prototype_eng.api.research.view.ResearchPlayerView;
@@ -64,9 +55,18 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedExecution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
+import com.circulation.prototype_eng.container.ContainerResearchOverview;
+import com.circulation.prototype_eng.container.ResearchOverviewDetail;
+import com.circulation.prototype_eng.container.ResearchOverviewDisplay;
+import com.circulation.prototype_eng.container.ResearchOverviewPacket;
 import com.circulation.prototype_eng.integration.ftb.FtbOwnerTeamResolver;
 import com.circulation.prototype_eng.machine.ServerMachineIdentities;
 import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
+import com.circulation.prototype_eng.network.InitNetwork;
+import com.circulation.prototype_eng.network.clientbound.ResearchViewPacket;
+import com.circulation.prototype_eng.research.content.ResearchOverviewLayout;
+import com.circulation.prototype_eng.research.content.ResearchViewCodec;
+import com.circulation.prototype_eng.research.content.ServerResearchCatalog;
 import com.circulation.prototype_eng.research.download.MinecraftResearchDownloadInventory;
 import com.circulation.prototype_eng.research.manual.MinecraftManualResearchInventory;
 import com.circulation.prototype_eng.research.reward.MinecraftItemDeliveryAdapter;
@@ -76,19 +76,19 @@ import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.feed_the_beast.ftblib.lib.data.ForgeTeam;
 import com.feed_the_beast.ftblib.lib.data.TeamType;
 import com.feed_the_beast.ftblib.lib.data.Universe;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.network.PacketBuffer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.CompressedStreamTools;
+import net.minecraft.network.PacketBuffer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.EnumActionResult;
 import net.minecraft.util.EnumFacing;
@@ -111,15 +111,15 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.HexFormat;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-import java.util.List;
 
 /**
  * Authoritative server research session; its incremental store has one writer outside MapStorage.
@@ -229,7 +229,8 @@ public final class ServerResearch {
     }
 
     private static void invalidatePreviousCatalog(Session current, EntityPlayerMP actor, OwnerTeamResolution membership) {
-        if (membership.status() == OwnerTeamResolutionStatus.UNIVERSE_UNAVAILABLE || !currentActor(current, actor)) return;
+        if (membership.status() == OwnerTeamResolutionStatus.UNIVERSE_UNAVAILABLE || !currentActor(current, actor))
+            return;
         var published = current.publishedCatalogs.get(actor.getUniqueID());
         String teamId = catalogTeamId(membership);
         if (published != null && !published.teamId().equals(teamId)) publishCatalog(current, actor, teamId, Set.of());
@@ -253,7 +254,7 @@ public final class ServerResearch {
 
     @SuppressWarnings("resource") // The server owns the borrowed network runtime.
     private static Object2IntMap<ResourceLocation> visibilityLevels(Session current, OwnerTeamResolution membership,
-                                                                  Object2IntMap<ResourceLocation> shared, boolean canSeeTeam) {
+                                                                    Object2IntMap<ResourceLocation> shared, boolean canSeeTeam) {
         if (!canSeeTeam) return shared;
         var plan = ServerNetworkRuntime.forServer(current.server).plan();
         var team = plan == null ? null : plan.teams().get(membership.teamId());
@@ -1348,7 +1349,8 @@ public final class ServerResearch {
             teamId = membership.teamId();
         } else if (personalOwner != null) {
             membership = captures.get(personalOwner.getId());
-            if (!membership.accepted() || !targetTeam.equals(membership.teamId())) return ResearchLevelResult.STALE_CONTEXT;
+            if (!membership.accepted() || !targetTeam.equals(membership.teamId()))
+                return ResearchLevelResult.STALE_CONTEXT;
             targetMembers.add(personalOwner.getId());
         } else if (liveTeam != null) {
             var elements10 = liveTeam.getMembers();
@@ -1533,7 +1535,8 @@ public final class ServerResearch {
                     storage.put(snapshot.dataCenterId(), snapshot.storedResearch());
                     var stored = new ObjectArrayList<ResearchOverviewPacket.Stored>();
                     for (var entry : snapshot.storedResearch().object2IntEntrySet()) {
-                        if (shown.contains(entry.getKey())) stored.add(new ResearchOverviewPacket.Stored(entry.getKey(), entry.getIntValue()));
+                        if (shown.contains(entry.getKey()))
+                            stored.add(new ResearchOverviewPacket.Stored(entry.getKey(), entry.getIntValue()));
                     }
                     databases.add(new ResearchOverviewPacket.Database(snapshot.dataCenterId(), machine.type().displayName().text().getUnformattedText(),
                         snapshot.level(), snapshot.capacity(), snapshot.storedResearch().size(), stored));
@@ -1551,7 +1554,8 @@ public final class ServerResearch {
             var queueRows = playerView.team().queueRows();
             for (int index = 0; index < queueRows.size(); index++) {
                 var row = queueRows.get(index);
-                if (shown.contains(row.researchId())) queue.add(new ResearchOverviewPacket.Queue(row.entryId(), row.researchId(), row.targetLevel(), index));
+                if (shown.contains(row.researchId()))
+                    queue.add(new ResearchOverviewPacket.Queue(row.entryId(), row.researchId(), row.targetLevel(), index));
             }
             var retained = current.world.retainedProgress(playerView.team().id());
             var progressByResearch = new Object2ObjectOpenHashMap<ResourceLocation, ResearchProgress.Snapshot>();
@@ -1673,7 +1677,8 @@ public final class ServerResearch {
     public record Overview(List<ResearchOverviewPacket.State> states, List<ResearchOverviewPacket.Queue> queue,
                            List<ResearchOverviewPacket.Database> databases,
                            @Nullable ResearchOverviewPacket.Current current,
-                           ResearchOverviewPacket.Environment environment, long catalogRevision, Set<ResourceLocation> visible) {
+                           ResearchOverviewPacket.Environment environment, long catalogRevision,
+                           Set<ResourceLocation> visible) {
     }
 
     public static ResearchOverviewLayout editorLayout(EntityPlayerMP actor) {
@@ -1740,6 +1745,29 @@ public final class ServerResearch {
             }
             var authority = proof(current, captures, online);
             result.accept(current.world.completeForEditor(membership, permission, id, target, operationTime(current), online.keySet(),
+                player -> inventory(current, player), () -> authority.getAsBoolean() && ownerCurrent.getAsBoolean()
+                    && permission.equals(editorPermission(current, actor, membership))));
+        }, finalized);
+    }
+
+    public static void requestEditorAll(EntityPlayerMP actor, String expectedTeam, boolean complete,
+                                        BooleanSupplier ownerCurrent, Consumer<ResearchLevelResult> result, Runnable finalized) {
+        var current = actorSession(actor);
+        submitAction(current, () -> {
+            var online = onlinePlayers(current);
+            var captures = capture(current, Set.of(actor.getUniqueID()));
+            var membership = captures.get(actor.getUniqueID());
+            if (unavailable(captures) || !currentActor(current, actor) || !membership.accepted() || !expectedTeam.equals(membership.teamId())) {
+                result.accept(ResearchLevelResult.STALE_CONTEXT);
+                return;
+            }
+            var permission = editorPermission(current, actor, membership);
+            if (permission == null) {
+                result.accept(ResearchLevelResult.PERMISSION_DENIED);
+                return;
+            }
+            var authority = proof(current, captures, online);
+            result.accept(current.world.setAllForEditor(membership, permission, complete, operationTime(current), online.keySet(),
                 player -> inventory(current, player), () -> authority.getAsBoolean() && ownerCurrent.getAsBoolean()
                     && permission.equals(editorPermission(current, actor, membership))));
         }, finalized);

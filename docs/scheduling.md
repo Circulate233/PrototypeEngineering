@@ -46,7 +46,7 @@ tick 开始只冻结本次主任务候选和一次性任务批次。主阶段尚
 
 Settings 的 workerStrategy 默认为 PLATFORM_POOL，旧两参/六参构造器保留默认与 Duration 精度。显式 VIRTUAL_PER_TASK 使用 Java 25 虚拟线程每任务执行器，workers 显示和保存但不限制其任务并发数；affinity/source 的有限 lane 仍使用单 worker 串行执行器，同一 key 的旧/新派发不会重叠。CPU 密集模型烘焙继续使用当前模型 FJP/fixed 管线。
 
-`pe_scheduler strategy PLATFORM_POOL|VIRTUAL_PER_TASK` 只创建原 requestSettings 请求，大小写不敏感；设置消息分别显示 effective 和 pending 各自策略，虚拟模式明确提示 workers 不是并发上限。metrics 与 strategy 的 Settings 派生保留其余值和精确 Duration；成功安装才更新当前真实 policyLabel 为 JAVA 或 JAVA/VIRTUAL_PER_TASK。workers/lane/strategy 任一改变均在原安全边界退休池，旧 pending/source/structure 必须先实际退出并完成 finished 与 FIFO；不改变登记、一次性队列、deadline 或会话身份。
+`/pe scheduler strategy PLATFORM_POOL|VIRTUAL_PER_TASK` 只创建原 requestSettings 请求，大小写不敏感；设置消息分别显示 effective 和 pending 各自策略，虚拟模式明确提示 workers 不是并发上限。metrics 与 strategy 的 Settings 派生保留其余值和精确 Duration；成功安装才更新当前真实 policyLabel 为 JAVA 或 JAVA/VIRTUAL_PER_TASK。workers/lane/strategy 任一改变均在原安全边界退休池，旧 pending/source/structure 必须先实际退出并完成 finished 与 FIFO；不改变登记、一次性队列、deadline 或会话身份。
 
 旧 PM ModernBackendPlatform 的 scheduler factory 确实由 Java/Coroutine backend 调用，scheduler 使用 per-task virtual、lane 使用 single virtual worker。renderBuildExecutor 仅暴露，无主源码调用；实际 RenderTaskExecutor 使用独立 CPU ForkJoinPool，coroutine render 选择也是 fixed platform pool 执行原任务。此真实调用链支持保留本工程 CPU render 策略，审计入口 `build/staging/modern-inline-integration/thread-path-readonly-review.md`。
 
@@ -60,7 +60,7 @@ TaskScheduler 的 effectiveSettings 与 pendingSettings 明确区分已生效与
 
 wall 耗时表示 owner 观测的真实耗时：concurrentStage 包含 metadata/group/dispatch 和 join 等待；join 是实际接受 Future 的等待。planned 是 capture 与 retained drive，cleanup 是 cancel/awaitExit/结构 batch awaitQuiescence，结构项仅本 tick runStructureWorker 的实际 worker 段和退出等待。这些嵌套项会重叠，不能相加，也不表示 worker CPU；普通 main 内 owner boundary 的结构耗时同时在 main 内。计数主阶段按已调用 action，并发按实际成功派发的任务/组，不把拒绝派发算作已接受。tick 外同步边界执行不冒充某个 tick 的成本。
 
-实际 FMLServerStarting 注册 `/pe_scheduler status|report|reload|metrics <on|off>`，权限等级 2。status 展示实际 policy、登记数量、pending execution/boundaryReady/closing/faulted/closed 和 effective/pending，而非尚未生效的磁盘值；report 在日志关闭时仍可读取窗口。reload 重新读取原配置路径并完整替换待应用请求；命令操作忽略大小写，metrics 保留 PM 的 on/true/1/enable/enabled 与 off/false/0/disable/disabled 别名，基于 pending 优先、否则 effective 只改日志 flag，不覆盖已排队的 workers/lane/timeout，属于运行时请求。当前策略标签 JAVA 描述现有单一 Java 管线，不提供伪 COROUTINES 或另一个后端。
+实际 FMLServerStarting 注册 `/pe scheduler status|report|reload|metrics <on|off>`，权限等级 2。status 展示实际 policy、登记数量、pending execution/boundaryReady/closing/faulted/closed 和 effective/pending，而非尚未生效的磁盘值；report 在日志关闭时仍可读取窗口。reload 重新读取原配置路径并完整替换待应用请求；命令操作忽略大小写，metrics 保留 PM 的 on/true/1/enable/enabled 与 off/false/0/disable/disabled 别名，基于 pending 优先、否则 effective 只改日志 flag，不覆盖已排队的 workers/lane/timeout，属于运行时请求。当前策略标签 JAVA 描述现有单一 Java 管线，不提供伪 COROUTINES 或另一个后端。
 
 D04 已由用户确认直接完全并入：后续 Modern 的有效算法与线程策略继续整合到 Java 25 主工程当前调度/渲染管线，独立模组、双 Jar 或另一套独立后端不保留。
 

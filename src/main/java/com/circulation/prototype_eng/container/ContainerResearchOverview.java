@@ -3,21 +3,24 @@ package com.circulation.prototype_eng.container;
 import ae2.container.AEBaseContainer;
 import ae2.container.guisync.GuiSync;
 import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.command.PECommand;
+import com.circulation.prototype_eng.api.gui.ResearchGuiAccess;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.api.research.ResearchLevelResult;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.content.ResearchPage;
 import com.circulation.prototype_eng.api.research.view.ResearchStationView;
-import com.circulation.prototype_eng.api.gui.ResearchGuiAccess;
-import com.circulation.prototype_eng.research.ServerResearch;
 import com.circulation.prototype_eng.network.InitNetwork;
 import com.circulation.prototype_eng.network.ResearchPayload;
 import com.circulation.prototype_eng.network.clientbound.ResearchViewPacket;
+import com.circulation.prototype_eng.research.ServerResearch;
 import com.circulation.prototype_eng.research.content.ResearchViewCodec;
-import net.minecraft.network.PacketBuffer;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.command.ICommandSender;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.player.InventoryPlayer;
+import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -82,14 +85,14 @@ public final class ContainerResearchOverview extends AEBaseContainer {
     public void authorizeEditor(ICommandSender authority) {
         var server = getPlayer().getServer();
         if (isServerSide() && editor && getPlayer().openContainer == this && server != null
-            && authority.getServer() == server && authority.canUseCommand(2, "pe_research_edit"))
+            && authority.getServer() == server && PECommand.canAdminister(authority))
             editorAuthority = authority;
     }
 
     public boolean editorAuthorized() {
         if (!editor || isClientSide() || editorAuthority == null || getPlayer().openContainer != this) return false;
         var server = getPlayer().getServer();
-        return server != null && editorAuthority.getServer() == server && editorAuthority.canUseCommand(2, "pe_research_edit")
+        return server != null && editorAuthority.getServer() == server && PECommand.canAdminister(editorAuthority)
             && (!(editorAuthority instanceof EntityPlayerMP player) || server.getPlayerList().getPlayerByUUID(player.getUniqueID()) == player);
     }
 
@@ -134,7 +137,8 @@ public final class ContainerResearchOverview extends AEBaseContainer {
                     });
                     sentLayoutRevision = next.catalogRevision();
                 }
-                if (token == detailRequest && requested != null && (!detailSent || contextChanged || catalogChanged)) sendDetail(actor, requested, token, next);
+                if (token == detailRequest && requested != null && (!detailSent || contextChanged || catalogChanged))
+                    sendDetail(actor, requested, token, next);
                 super.broadcastChanges();
             });
         }
@@ -205,7 +209,8 @@ public final class ContainerResearchOverview extends AEBaseContainer {
                     try {
                         detail = data.readBoolean() ? ResearchOverviewDetail.read(data) : null;
                         requireEnd(data);
-                        if (detail != null && !id.equals(detail.definition().id())) throw new IllegalArgumentException("Research detail identity mismatch");
+                        if (detail != null && !id.equals(detail.definition().id()))
+                            throw new IllegalArgumentException("Research detail identity mismatch");
                     } catch (RuntimeException failure) {
                         view.receiveDetail(sequence, id, token, revision, null);
                         throw failure;
@@ -217,7 +222,8 @@ public final class ContainerResearchOverview extends AEBaseContainer {
                     long token = data.readVarLong(), revision = data.readVarLong();
                     var status = ResearchOverviewClientView.EditStatus.values()[data.readUnsignedByte()];
                     requireEnd(data);
-                    if (token == editRequest) view.receiveEditResult(new ResearchOverviewClientView.EditResult(token, revision, status));
+                    if (token == editRequest)
+                        view.receiveEditResult(new ResearchOverviewClientView.EditResult(token, revision, status));
                 }
                 default -> throw new IllegalArgumentException("Invalid overview message kind: " + packet.kind());
             }
@@ -257,11 +263,14 @@ public final class ContainerResearchOverview extends AEBaseContainer {
         });
     }
 
-    public long savePage(String id, ResearchPage page) {
+    public long savePages(Map<String, ResearchPage> pages) {
         return sendEdit(2, data -> {
-            data.writeString(id);
-            data.writeBoolean(page.manual());
-            ResearchViewCodec.writePositions(data, page.positions());
+            data.writeVarInt(pages.size());
+            for (var entry : pages.entrySet()) {
+                data.writeString(entry.getKey());
+                data.writeBoolean(entry.getValue().manual());
+                ResearchViewCodec.writePositions(data, entry.getValue().manual() ? entry.getValue().positions() : Map.of());
+            }
         });
     }
 
@@ -341,11 +350,17 @@ public final class ContainerResearchOverview extends AEBaseContainer {
                 yield ServerResearch.editCatalog(actor, revision, catalog -> catalog.addResearch(page, id, x, y, manual, automaticPositions));
             }
             case 2 -> {
-                var id = data.readString(128);
-                boolean manual = data.readBoolean();
-                var positions = ResearchViewCodec.readPositions(data);
+                int count = data.readVarInt();
+                if (count < 0 || count > data.readableBytes())
+                    throw new IllegalArgumentException("Invalid research page count");
+                var pages = new Object2ObjectOpenHashMap<String, ResearchPage>(count);
+                for (int i = 0; i < count; i++) {
+                    var id = data.readString(128);
+                    boolean manual = data.readBoolean();
+                    pages.put(id, new ResearchPage(0, manual, ResearchViewCodec.readPositions(data)));
+                }
                 requireEnd(data);
-                yield ServerResearch.editCatalog(actor, revision, catalog -> catalog.savePage(id, manual, positions));
+                yield ServerResearch.editCatalog(actor, revision, catalog -> catalog.savePages(pages));
             }
             case 3 -> {
                 var id = data.readResourceLocation();
@@ -387,6 +402,10 @@ public final class ContainerResearchOverview extends AEBaseContainer {
 
     public void complete(ResourceLocation id, int target) {
         send("complete", id, target, null, 0, 0, false);
+    }
+
+    public void debugAll(boolean complete) {
+        send("debug_all", null, 0, null, 0, 0, complete);
     }
 
     public void choose(ResourceLocation id) {
@@ -480,6 +499,15 @@ public final class ContainerResearchOverview extends AEBaseContainer {
                         finalized.run();
                     });
             }
+            case "debug_all" -> {
+                if (!editor || !captured.environment().editable() || !editorAuthorized()) {
+                    finalized.run();
+                    return;
+                }
+                ServerResearch.requestEditorAll(actor, expectedTeam, action.enabled(), this::current,
+                    result -> actionResult = result == ResearchLevelResult.APPLIED
+                        ? action.enabled() ? "ALL_COMPLETED" : "ALL_FORGOTTEN" : result.name(), finalized);
+            }
             case "complete" -> {
                 if (!editor || !captured.environment().editable() || action.id() == null) {
                     finalized.run();
@@ -507,7 +535,8 @@ public final class ContainerResearchOverview extends AEBaseContainer {
     private @Nullable ResearchOverviewPacket.Queue queued(long entryId) {
         if (captured == null) return null;
         var queue = captured.queue();
-        for (int index = 0; index < queue.size(); index++) if (queue.get(index).entryId() == entryId) return queue.get(index);
+        for (int index = 0; index < queue.size(); index++)
+            if (queue.get(index).entryId() == entryId) return queue.get(index);
         return null;
     }
 

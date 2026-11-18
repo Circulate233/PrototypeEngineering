@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.gui;
 
 import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.command.PECommand;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.container.ContainerDataCenter;
 import com.circulation.prototype_eng.container.ContainerResearchOverview;
@@ -45,7 +46,7 @@ public final class ResearchGuiAccess {
      */
     public static void openEditor(ICommandSender authority, EntityPlayerMP target) {
         var server = target.getServer();
-        if (server == null || authority.getServer() != server || !authority.canUseCommand(2, "pe_research_edit"))
+        if (server == null || authority.getServer() != server || !PECommand.canAdminister(authority))
             return;
         var previous = target.openContainer;
         target.openGui(PrototypeEngineering.instance, EDITOR_GUI, target.world, 0, 0, 0);

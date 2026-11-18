@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.proxy;
 
 import com.circulation.prototype_eng.api.gui.ResearchGuiAccess;
+import com.circulation.prototype_eng.command.PECommand;
 import com.circulation.prototype_eng.BuilderConfig;
 import com.circulation.prototype_eng.ControllerConfig;
 import com.circulation.prototype_eng.HatchConfig;
@@ -58,10 +59,7 @@ import com.circulation.prototype_eng.network.clientbound.ResearchViewPacket;
 import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
 import com.circulation.prototype_eng.recipe.ServerRecipeDefinitions;
 import com.circulation.prototype_eng.recipe.ServerRecipeManifests;
-import com.circulation.prototype_eng.research.ResearchEditCommand;
-import com.circulation.prototype_eng.research.ResearchReloadCommand;
 import com.circulation.prototype_eng.research.ServerResearch;
-import com.circulation.prototype_eng.scheduler.SchedulerCommand;
 import com.circulation.prototype_eng.scheduler.SchedulerConfig;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.circulation.prototype_eng.storage.HatchCapabilityRegistration;
@@ -72,7 +70,6 @@ import com.circulation.prototype_eng.structure.json.BuiltinStructurePredicates;
 import com.circulation.prototype_eng.structure.json.ForgeStructureBlocks;
 import com.circulation.prototype_eng.structure.json.StructureJsonLoader;
 import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
-import com.circulation.prototype_eng.structure.reload.StructureReloadCommand;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.util.math.AxisAlignedBB;
@@ -179,10 +176,7 @@ public class CommonProxy implements IGuiHandler {
 
     public final void serverStarting(FMLServerStartingEvent event) {
         ServerResearch.start(event.getServer(), configRoot);
-        event.registerServerCommand(new StructureReloadCommand());
-        event.registerServerCommand(new SchedulerCommand());
-        event.registerServerCommand(new ResearchEditCommand());
-        event.registerServerCommand(new ResearchReloadCommand());
+        event.registerServerCommand(new PECommand());
     }
 
     public final void serverStopping() {

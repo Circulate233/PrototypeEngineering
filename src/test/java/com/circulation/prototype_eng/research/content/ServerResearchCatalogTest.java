@@ -151,6 +151,55 @@ class ServerResearchCatalogTest {
         assertEquals(Map.of(original.toString(), originalPosition, incoming.toString(), addedPosition), page.positions());
     }
 
+    @Test
+    void completeExportSavesEveryPageAndRetainsTitlesPrioritiesAndUnavailableMembers() {
+        var first = id("alpha", "first");
+        var second = id("beta", "second");
+        var unavailable = id("alpha", "unavailable");
+        var loader = new ResearchContentLoader(config);
+        loader.exportPage("alpha", new ResearchPage(-3, true, "First page", List.of(first, unavailable),
+            new Object2ObjectOpenHashMap<>(Map.of(first.toString(), new ResearchPage.Position(51, 73)))));
+        loader.exportPage("empty", new ResearchPage(8, false, "Empty", List.of(), new Object2ObjectOpenHashMap<>()));
+        var registry = registry(definition(first, ResearchVisibility.ALWAYS, stage(1)), definition(second, ResearchVisibility.ALWAYS, stage(1)));
+        var catalog = new ServerResearchCatalog(config, registry);
+        var layouts = new Object2ObjectOpenHashMap<String, ResearchPage>();
+        for (var page : catalog.layout(Set.of(first, second), true).pages()) layouts.put(page.id(), page.page());
+        layouts.put("alpha", new ResearchPage(0, false, new Object2ObjectOpenHashMap<>()));
+        var manualPosition = new ResearchPage.Position(-140, 235);
+        layouts.put("beta", new ResearchPage(0, true, new Object2ObjectOpenHashMap<>(Map.of(second.toString(), manualPosition))));
+        catalog.savePages(layouts);
+        var reloaded = new ServerResearchCatalog(config, registry);
+        var firstPage = loader.loadPage("alpha");
+        assertFalse(firstPage.manual());
+        assertTrue(firstPage.positions().isEmpty());
+        assertEquals(-3, firstPage.priority());
+        assertEquals("First page", firstPage.title());
+        assertEquals(List.of(first, unavailable), firstPage.researches());
+        assertTrue(loader.loadPage("beta").manual());
+        assertEquals(manualPosition, loader.loadPage("beta").positions().get(second.toString()));
+        assertEquals(List.of("alpha", "beta", "empty"), pageIds(reloaded.layout(Set.of(first, second), true)));
+        assertEquals("Empty", loader.loadPage("empty").title());
+        reloaded.addResearch("beta", first, 0, 0, false, Map.of());
+        assertFalse(loader.loadPage("beta").manual());
+        assertTrue(loader.loadPage("beta").positions().isEmpty());
+    }
+
+    @Test
+    void incompleteOrInvalidCompleteExportLeavesAllFilesAndTheCatalogUnchanged() {
+        var first = id("alpha", "first");
+        var second = id("beta", "second");
+        var registry = registry(definition(first, ResearchVisibility.ALWAYS, stage(1)), definition(second, ResearchVisibility.ALWAYS, stage(1)));
+        var catalog = new ServerResearchCatalog(config, registry);
+        var before = catalog.layout(Set.of(first, second), true);
+        var revision = catalog.revision();
+        assertThrows(IllegalArgumentException.class, () -> catalog.savePages(Map.of("alpha", before.pages().getFirst().page())));
+        var bad = new ResearchPage(0, true, new Object2ObjectOpenHashMap<>(Map.of(second.toString(), new ResearchPage.Position(0, 0))));
+        assertThrows(IllegalArgumentException.class, () -> catalog.savePages(Map.of("alpha", bad, "beta", before.pages().getLast().page())));
+        assertEquals(revision, catalog.revision());
+        assertEquals(before, catalog.layout(Set.of(first, second), true));
+        assertTrue(new ResearchContentLoader(config).pageIds().isEmpty());
+    }
+
     private static List<String> pageIds(ResearchOverviewLayout layout) {
         return layout.pages().stream().map(ResearchOverviewLayout.Page::id).toList();
     }
@@ -161,7 +210,7 @@ class ServerResearchCatalogTest {
 
     private static ResearchLevelStage.Builder stage(int max) {
         return ResearchLevelStage.builder(1, max).durationTicks(10).researchTier(0)
-            .resourceFormula(ResearchResourceFormula.builder().build());
+                                 .resourceFormula(ResearchResourceFormula.builder().build());
     }
 
     private static ResearchDefinition definition(ResourceLocation id, ResearchVisibility visibility, ResearchLevelStage.Builder stage) {

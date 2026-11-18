@@ -268,7 +268,7 @@ first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表�
 
 `Research.display(...)` 已移除。服务端 `config/prototype_eng/research_content/` 的 `data/<namespace>/<path>.json` 提供基础展示，`data/<pageId>.json` 定义分页成员、布局和 `priority`（越小越靠前）。客户端按当前语言叠加名称、简介、说明与奖励组文字。图标内置 `item`、`fluid` 和 `icon` 三种类型，扩展解析器由 Java addon 在客户端注册；奖励组文字在 `rewards` 对象中按完整组 ID 提供。具体文件格式与编辑方式见[研究总览](docs/research-overview.md)及[Java 研究 API](api.md#研究与计算网络)。内容文件不注册业务研究。
 
-研究总览的打开入口由 Java addon 使用 `ResearchGuiAccess` 封装，脚本不注册默认打开按键或物品，也没有自动打开总览的方法。测试 mod 默认用 R 打开玩家模式；管理员通过 `/pe_research_edit [在线玩家名]`（命令权限等级 2）打开编辑模式，省略参数开自己，控制台须指定目标。目标玩家无需 OP，授权限于本次容器，关闭或换容器以及授权者离线、重连或失权后撤销。编辑模式右键可创建空分页、移入已注册研究及编辑 JSON；基础展示保存到服务端，语言文字用收到的基础展示校验后保存到当前客户端。总览视角单独保存在客户端，Java 打开、编辑和保存方法见 [API](api.md#研究与计算网络)。
+研究总览的打开入口由 Java addon 使用 `ResearchGuiAccess` 封装，脚本不注册默认打开按键或物品，也没有自动打开总览的方法。测试 mod 默认用 R 打开玩家模式；管理员通过 `/pe research edit [在线玩家名]`（命令权限等级 2）打开编辑模式，省略参数开自己，控制台须指定目标。目标玩家无需 OP，授权限于本次容器，关闭或换容器以及授权者离线、重连或失权后撤销。编辑模式右键可创建空分页、移入已注册研究及编辑 JSON；基础展示保存到服务端，语言文字用收到的基础展示校验后保存到当前客户端。总览视角单独保存在客户端，Java 打开、编辑和保存方法见 [API](api.md#研究与计算网络)。
 
 `ResearchServer.permissions(callback)` 设置服务端权限回调。回调的 action 和返回值使用 Java 对应枚举的字符串名称；不添加特例时调用 `context.standardDecision(action)`。在启动阶段注册，否则研究服务可能已完成初始化。
 

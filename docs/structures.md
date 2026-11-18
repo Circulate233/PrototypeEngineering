@@ -106,7 +106,7 @@ A 新增 21 项行为测试，受影响正常 Gradle 测试 112 tests / 14 suite
 
 ## B：运行中重载与权威客户端目录
 
-实际 permission-2 `/pe_structures reload` 在原 TaskScheduler 的 joined owner boundary 中重新读取同一目录，沿 A 严格 DTO/完整 JSON+冻结 Java resolver 构造候选。所有机器引用、精确 loaded host、展示图与有界传输数据均通过预检后，才 callback-free 撤销整批旧 StructureConfiguration，再逐宿主暂停原绑定、原子发布 registry、安装新的 canonical 配置并立即重匹配。canonical 装配对象保持；同朝向仍更换配置代并重建仓室/结构组件。旧 worker 成功与失败均无权改变新配置；原 scheduler pending 的实际 source 退出/未完成确认义务会继续阻止 reload 边界，不能强制解约或恢复旧授权。
+实际 permission-2 `/pe structures reload` 在原 TaskScheduler 的 joined owner boundary 中重新读取同一目录，沿 A 严格 DTO/完整 JSON+冻结 Java resolver 构造候选。所有机器引用、精确 loaded host、展示图与有界传输数据均通过预检后，才 callback-free 撤销整批旧 StructureConfiguration，再逐宿主暂停原绑定、原子发布 registry、安装新的 canonical 配置并立即重匹配。canonical 装配对象保持；同朝向仍更换配置代并重建仓室/结构组件。旧 worker 成功与失败均无权改变新配置；原 scheduler pending 的实际 source 退出/未完成确认义务会继续阻止 reload 边界，不能强制解约或恢复旧授权。
 
 GLOBAL 实际 Loaded 只记录 machine/host/lifecycle 身份，离开 load gate 后才自动登记独立宿主；显式更新器不重复构造或被 service 代 tick。ReloadableStructureHost 负责只赋值的 installStructureConfiguration 与永久精确 structureLifecycleCurrent；外部宿主无须继承 TE，自定义 lifecycle registry 可交付实际 Loaded。live server session 参与重载/自动管理必须使用该会话原 scheduler；公开构造器显式拒绝 foreign scheduler，拒绝在任何登记/配置改变前完成。无 Session 的独立逻辑 owner 保持原能力。
 
@@ -150,7 +150,7 @@ C 新增 26 项纯行为（2 suites），focused 26 tests / 2 suites、扩大受
 
 D1真实quad/atlas/VBO在GUI Scene复用，代表block/meta状态按完整邻接BlockAccess增量准备。owned TileEntity独立create，附client world/模型相对position但不插入World、不tick、不发包；SNBT每实体深拷贝覆盖x/y/z，再唯一调用一次handleUpdateTag(ownTag.copy())，应用后重设准确world/position。实际AE有#upd时handleUpdateTag仅读stream并返回、readFromNBT之后还loadTag，二者不等价，禁止异常后readFromNBT兼容回退。PE controller不伪造isAttached/authoritative Display更新，D3typed成型视觉另接。create/draw异常立即传播；取得实体后的失败invalidate，clear/close继续全部清理并聚合抛出，GL/lightmap/matrix恢复在finally。
 
-原PM界面40 PNG（gui_structure_preview目录38、根a/b两张）及NOTICE按原relative路径保留，按钮/菜单/材料/替代列表沿原生GuiTextField与LocalizationEnum文案。命令/pe_preview gui <id>、<id>投影及stop/off，机器预览按钮与HEI独立结构页/内嵌页均为实际入口；世界朝向lock/follow、正/逆旋和HUD已接，GUI/chat输入不排队到世界控制。
+原PM界面40 PNG（gui_structure_preview目录38、根a/b两张）及NOTICE按原relative路径保留，按钮/菜单/材料/替代列表沿原生GuiTextField与LocalizationEnum文案。命令/pe preview gui <id>、<id>投影及stop/off，机器预览按钮与HEI独立结构页/内嵌页均为实际入口；世界朝向lock/follow、正/逆旋和HUD已接，GUI/chat输入不排队到世界控制。
 
 focused47 tests /3 suites、受影响82 tests /8 suites及最终正常完整build1486 tests /183 suites全过，零失败/错误/跳过。41 Java本机MCP errorsOnly:false全级零、完整项目文件读回/磁盘41/41一致，MCP build成功，85源码资源raw SHA构建及MCP后稳定。原编译/首转/Spotless行尾失败、MCP诊断、固定推广/8路径窄修/准确before/89路径final交接与日志/XML见build/staging/structure-preview-gui；独立静态增量审计闭环。未启动Minecraft/服务端/Bootstrap/FML，不把fake-control/TE fixture当真实GL/TESR/HEI输入或网络包游戏验收。D2本阶段实现与验证已完成，D3成型模型/动画/Bloom/隐藏和其他未取消功能继续。
 

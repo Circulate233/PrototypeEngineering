@@ -7,7 +7,6 @@ import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryAdapter;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskImport;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskImportResult;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskOperation;
-import com.circulation.prototype_eng.api.research.download.ResearchItemImportEvaluation;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskRecovery;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskStorage;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadInventory;
@@ -17,11 +16,12 @@ import com.circulation.prototype_eng.api.research.download.ResearchDownloadRecei
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadResult;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadSources;
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadEvaluation;
+import com.circulation.prototype_eng.api.research.download.ResearchItemImportEvaluation;
 import com.circulation.prototype_eng.api.research.manual.ManualResearch;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
-import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.research.queue.ResearchProgress;
+import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
 import com.circulation.prototype_eng.api.research.reward.RewardClaim;
 import com.circulation.prototype_eng.api.research.station.ResearchStationWork;
@@ -46,8 +46,8 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
-import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -310,6 +310,79 @@ public final class ResearchWorld {
                     new ManualResearch.Context(time, membership.members(), online, current), inventoryFor(manual, inventories));
             }
             dirty = true;
+            persist();
+            return ResearchLevelResult.APPLIED;
+        });
+    }
+
+    private static void commitEditorChange(ReversibleTransaction prepared) {
+        try {
+            prepared.commit();
+            prepared.complete();
+        } catch (RuntimeException | Error failure) {
+            if (prepared.resolution() == ReversibleTransaction.Resolution.REVERSIBLE) prepared.rollback();
+            throw failure;
+        }
+    }
+
+    public ResearchLevelResult setAllForEditor(OwnerTeamResolution membership, ResearchPermissionContext permission,
+                                               boolean complete, long time, Set<UUID> online,
+                                               Function<UUID, ManualResearchInventory> inventories, BooleanSupplier current) {
+        return operate(time, false, () -> {
+            if (!permission.serverOperator() || permissions.can(ResearchPermissionPolicy.Action.MODIFY_ANY_RESEARCH_LEVEL, permission)
+                != ResearchPermissionPolicy.Decision.ALLOWED) return ResearchLevelResult.PERMISSION_DENIED;
+            if (!membership.accepted() || !membership.teamId().equals(permission.targetTeamId()) || !current.getAsBoolean())
+                return ResearchLevelResult.STALE_CONTEXT;
+            var team = captureTeam(membership.teamId(), membership.members());
+            if (levelWritersBusy()) return ResearchLevelResult.BUSY;
+            var definitions = registry.sortedById();
+            for (var definition : definitions) {
+                if (definition.specialOnly()) continue;
+                var id = definition.id();
+                if (!team.research.canWriteResearch(id)) return ResearchLevelResult.SOURCE_RESERVED;
+                if (pendingLevelCompletion(id, null, membership.teamId())) return ResearchLevelResult.BUSY;
+                for (var member : membership.members()) {
+                    if (!players.get(member).canWriteResearch(id)) return ResearchLevelResult.SOURCE_RESERVED;
+                    if (pendingLevelCompletion(id, member, null)) return ResearchLevelResult.BUSY;
+                }
+            }
+            if (!current.getAsBoolean()) return ResearchLevelResult.STALE_CONTEXT;
+            dirty = true;
+            var completion = new TeamResearchCompletion(registry);
+            for (var definition : definitions) {
+                if (definition.specialOnly()) continue;
+                var id = definition.id();
+                if (complete) {
+                    var prepared = completion.prepare(id, definition.maxLevel(), membership.members(), players, team.research, time);
+                    if (prepared == null)
+                        throw new IllegalStateException("Prechecked editor completion lost its source: " + id);
+                    commitEditorChange(prepared);
+                } else {
+                    for (var member : membership.members()) {
+                        var source = players.get(member);
+                        if (source.completedLevel(id) == 0) continue;
+                        var prepared = source.tryPrepareForgetResearch(id, 1);
+                        if (prepared == null)
+                            throw new IllegalStateException("Prechecked editor forget lost its source: " + id);
+                        commitEditorChange(prepared);
+                    }
+                    int legacy = team.research.completedLevel(id);
+                    if (legacy > 0) {
+                        var prepared = team.research.tryPrepareSourceMutation(id, legacy, 0, null);
+                        if (prepared == null)
+                            throw new IllegalStateException("Prechecked editor forget lost its team source: " + id);
+                        commitEditorChange(prepared);
+                    }
+                }
+            }
+            var rows = team.queue.queueSnapshot();
+            for (int index = rows.size() - 1; index >= 0; index--) {
+                var row = rows.get(index);
+                var manual = team.manual.session(row.key().queueEntryId());
+                if (manual == null) team.queue.remove(row.key(), time);
+                else team.manual.cancelInvalidated(row.key().queueEntryId(),
+                    new ManualResearch.Context(time, membership.members(), online, current), inventoryFor(manual, inventories));
+            }
             persist();
             return ResearchLevelResult.APPLIED;
         });
@@ -1777,9 +1850,11 @@ public final class ResearchWorld {
             if (definition.specialOnly()) return ResearchLevelResult.SOURCE_MISMATCH;
             if (level < 0 || level > definition.maxLevel()) return ResearchLevelResult.OUT_OF_RANGE;
             var previous = teams.get(target);
-            if (!capturedMembers.isEmpty()) return setMemberLevels(target, capturedMembers, previous, id, level, time, current);
+            if (!capturedMembers.isEmpty())
+                return setMemberLevels(target, capturedMembers, previous, id, level, time, current);
             // The explicit historical-source repair API remains available for old worlds with no live membership.
-            if (definition.deliveryPolicy() != ResearchDownloadDeliveryPolicy.ITEM_ONLY) return ResearchLevelResult.SOURCE_MISMATCH;
+            if (definition.deliveryPolicy() != ResearchDownloadDeliveryPolicy.ITEM_ONLY)
+                return ResearchLevelResult.SOURCE_MISMATCH;
             int before = previous == null ? 0 : previous.research.completedLevel(id);
             if (level == before) return ResearchLevelResult.UNCHANGED;
             if (levelWritersBusy()) return ResearchLevelResult.BUSY;
@@ -1812,7 +1887,7 @@ public final class ResearchWorld {
     }
 
     private ResearchLevelResult setMemberLevels(String target, ObjectSet<UUID> members, @Nullable TeamProgress previous,
-                                                 ResourceLocation id, int level, long time, BooleanSupplier current) {
+                                                ResourceLocation id, int level, long time, BooleanSupplier current) {
         if (levelWritersBusy()) return ResearchLevelResult.BUSY;
         int legacyLevel = previous == null ? 0 : previous.research.completedLevel(id);
         if (legacyLevel > 0) {

@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.research;
 
 import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.command.PECommand;
 import mcp.MethodsReturnNonnullByDefault;
 import net.minecraft.command.CommandBase;
 import net.minecraft.command.CommandException;
@@ -16,17 +17,22 @@ import javax.annotation.ParametersAreNonnullByDefault;
 public final class ResearchReloadCommand extends CommandBase {
     @Override
     public String getName() {
-        return "pe_research_reload";
+        return "reload";
     }
 
     @Override
     public String getUsage(ICommandSender sender) {
-        return "/pe_research_reload";
+        return "/pe research reload";
     }
 
     @Override
     public int getRequiredPermissionLevel() {
         return 2;
+    }
+
+    @Override
+    public boolean checkPermission(MinecraftServer server, ICommandSender sender) {
+        return PECommand.canAdminister(sender);
     }
 
     @Override

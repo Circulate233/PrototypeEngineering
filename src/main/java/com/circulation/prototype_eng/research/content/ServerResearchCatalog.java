@@ -20,7 +20,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** Read and edited on the server thread. */
+/**
+ * Read and edited on the server thread.
+ */
 public final class ServerResearchCatalog {
     private final ResearchContentLoader loader;
     private final ResearchRegistry registry;
@@ -143,26 +145,26 @@ public final class ServerResearchCatalog {
         var sourceMembers = configuredMembers == null ? Objects.requireNonNull(target.researches()) : configuredMembers;
         var members = new ObjectArrayList<>(sourceMembers);
         if (!members.contains(id)) members.add(id);
-        var positions = new Object2ObjectOpenHashMap<>(target.positions());
-        boolean useManual = manual || target.manual();
-        if (useManual && !target.manual()) {
+        var positions = manual ? new Object2ObjectOpenHashMap<>(target.positions()) : new Object2ObjectOpenHashMap<String, ResearchPage.Position>();
+        if (manual && !target.manual()) {
             var existing = Objects.requireNonNull(target.researches());
             if (automaticPositions.size() != existing.size())
                 throw new IllegalArgumentException("Automatic layout must include every research on page " + pageId);
             for (var member : existing) {
                 var key = member.toString();
                 var position = automaticPositions.get(key);
-                if (position == null) throw new IllegalArgumentException("Missing automatic layout position for " + member);
+                if (position == null)
+                    throw new IllegalArgumentException("Missing automatic layout position for " + member);
                 positions.put(key, position);
             }
         } else if (!automaticPositions.isEmpty()) {
             throw new IllegalArgumentException("Automatic layout positions are only accepted when changing to manual layout");
         }
-        if (useManual) positions.put(id.toString(), new ResearchPage.Position(x, y));
+        if (manual) positions.put(id.toString(), new ResearchPage.Position(x, y));
 
         var updated = new Object2ObjectLinkedOpenHashMap<>(configuredPages);
         var changed = new ObjectArrayList<String>();
-        updated.put(pageId, new ResearchPage(target.order(), useManual, target.title(), members, positions));
+        updated.put(pageId, new ResearchPage(target.order(), manual, target.title(), members, positions));
         changed.add(pageId);
         for (var entry : configuredPages.object2ObjectEntrySet()) {
             var otherId = entry.getKey();
@@ -178,7 +180,22 @@ public final class ServerResearchCatalog {
         updatePages(updated, changed);
     }
 
-    public void savePage(String pageId, boolean manual, Map<String, ResearchPage.Position> positions) {
+    public void savePages(Map<String, ResearchPage> layouts) {
+        var expected = new ObjectOpenHashSet<String>();
+        for (var page : pages)
+            if (!Objects.requireNonNull(page.page().researches()).isEmpty() || configuredPages.containsKey(page.id()))
+                expected.add(page.id());
+        if (!expected.equals(layouts.keySet()))
+            throw new IllegalArgumentException("Export must include every research page");
+        var updated = new Object2ObjectLinkedOpenHashMap<>(configuredPages);
+        for (var entry : layouts.entrySet())
+            updated.put(entry.getKey(), pageWithLayout(entry.getKey(), entry.getValue().manual(), entry.getValue().positions()));
+        var changed = new ObjectArrayList<>(expected);
+        changed.sort(String::compareTo);
+        updatePages(updated, changed);
+    }
+
+    private ResearchPage pageWithLayout(String pageId, boolean manual, Map<String, ResearchPage.Position> positions) {
         var previous = requirePage(pageId);
         var configured = configuredPages.get(pageId);
         var members = configured == null ? null : configured.researches();
@@ -192,9 +209,7 @@ public final class ServerResearchCatalog {
                 updatedPositions.put(entry.getKey(), entry.getValue());
             }
         }
-        var updated = new Object2ObjectLinkedOpenHashMap<>(configuredPages);
-        updated.put(pageId, new ResearchPage(previous.order(), manual, previous.title(), members, updatedPositions));
-        updatePages(updated, List.of(pageId));
+        return new ResearchPage(previous.order(), manual, previous.title(), members, updatedPositions);
     }
 
     private void updatePages(Object2ObjectLinkedOpenHashMap<String, ResearchPage> updated, List<String> changed) {
@@ -260,7 +275,8 @@ public final class ServerResearchCatalog {
             for (var id : explicit) {
                 if (registeredIds.contains(id)) {
                     var previous = assigned.putIfAbsent(id, entry.getKey());
-                    if (previous != null) throw new IllegalArgumentException("Research " + id + " occurs on pages " + previous + " and " + entry.getKey());
+                    if (previous != null)
+                        throw new IllegalArgumentException("Research " + id + " occurs on pages " + previous + " and " + entry.getKey());
                 }
             }
         }
@@ -300,7 +316,8 @@ public final class ServerResearchCatalog {
                 if (pending.addTo(dependant.id(), -1) == 1) ordered.add(dependant);
             }
         }
-        if (ordered.size() != definitions.size()) throw new IllegalStateException("Research visibility prerequisite graph contains a cycle");
+        if (ordered.size() != definitions.size())
+            throw new IllegalStateException("Research visibility prerequisite graph contains a cycle");
         return List.copyOf(ordered);
     }
 

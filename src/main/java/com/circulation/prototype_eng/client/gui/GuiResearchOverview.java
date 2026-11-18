@@ -10,8 +10,8 @@ import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.client.research.ResearchIcon;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
-import com.circulation.prototype_eng.api.research.content.ResearchPage;
 import com.circulation.prototype_eng.api.research.content.ResearchContent;
+import com.circulation.prototype_eng.api.research.content.ResearchPage;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.research.reward.RewardClaim;
 import com.circulation.prototype_eng.api.research.reward.RewardPresentation;
@@ -22,7 +22,12 @@ import com.circulation.prototype_eng.client.research.ClientResearchContents;
 import com.circulation.prototype_eng.client.research.ResearchOverviewViewState;
 import com.circulation.prototype_eng.container.ContainerResearchOverview;
 import com.circulation.prototype_eng.container.ResearchOverviewPacket;
-import com.circulation.prototype_eng.container.ResearchOverviewPacket.*;
+import com.circulation.prototype_eng.container.ResearchOverviewPacket.Claim;
+import com.circulation.prototype_eng.container.ResearchOverviewPacket.Current;
+import com.circulation.prototype_eng.container.ResearchOverviewPacket.Database;
+import com.circulation.prototype_eng.container.ResearchOverviewPacket.Entry;
+import com.circulation.prototype_eng.container.ResearchOverviewPacket.Queue;
+import com.circulation.prototype_eng.container.ResearchOverviewPacket.Required;
 import com.circulation.prototype_eng.localization.ResearchOverviewGuiText;
 import com.circulation.prototype_eng.research.content.ResearchOverviewLayout;
 import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
@@ -31,14 +36,14 @@ import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.gui.GuiTextField;
-import net.minecraft.client.resources.Language;
+import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import net.minecraft.client.resources.Language;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.fml.client.config.GuiUtils;
@@ -58,8 +63,184 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
-import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.*;
-import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.*;
+import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.BAD;
+import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.CARD;
+import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.CARD_BORDER;
+import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.DARK;
+import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.GOOD;
+import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.HOVER;
+import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.LIGHT;
+import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.LINE;
+import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.MUTED;
+import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.PANEL;
+import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.SLOT;
+import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.SOFT;
+import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.TEXT;
+import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.Tone;
+import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.WAIT;
+import static com.circulation.prototype_eng.client.gui.DeviceGuiDraw.rect;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ActionFailed;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.AddPage;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.AddResearch;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.AllCompleted;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.AllForgotten;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.AlreadyQueued;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Automatic;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.AutomaticCoordinates;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.AutomaticRecalculated;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Available;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Back;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Blocked;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Cancel;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.CapacityFull;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.CatalogChanged;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Center;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ChooseOne;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ChooseRewardHint;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ClaimLater;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ClaimLevelHint;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ClaimReward;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Claimable;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Claimed;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Close;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Collapse;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.CompleteAll;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.CompleteAllHint;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.CompletedCount;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.CompletedLevel;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ConfirmForget;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ConsumeInventory;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ContentChanged;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ContentData;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ContentSaveFailed;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ContentSaved;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Continue;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ContributeHint;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Contributor;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Coordinates;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Current;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.CurrentHint;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.DatabaseAndItem;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.DatabaseLow;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.DatabaseTierLabel;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Databases;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Delivery;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Denied;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.DetailLoading;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.DetailProgress;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.DetailUnavailable;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.DeviceShort;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.DiskOnly;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Done;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Download;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.DownloadInfo;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.DownloadMutex;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.DownloadReady;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Downloaded;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.DragResearchHint;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Duration;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.EditResearch;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Editor;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.EditorHelp;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.EditorHint;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.EditorSaving;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.EditorSpecialHint;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.EditorTimedOut;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Export;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ExportAllHint;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ExportFailed;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Exported;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Forget;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ForgetAll;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ForgetAllHint;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ForgetDependent;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ForgetFrom;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ForgetKeep;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ForgetLabel;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ForgetLevels;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ForgetQueue;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.HighestStation;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Incomplete;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ItemDownload;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ItemOnly;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Locked;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ManualLayout;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ManualNetwork;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ManualResources;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ManualTierLevel;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.MaterialHint;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Materials;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.MaxLevel;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Mutex;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.NetworkHint;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.NetworkResources;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.NoCenter;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.NoDatabase;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.NoMaterials;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.NoNextReward;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.NoResearchChoices;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.NoResources;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.NoRewards;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Nobody;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.NodePickedLevel;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.None;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.NotCompleted;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Overview;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.PageCreated;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.PageId;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.PageTitle;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.PauseHint;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Paused;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.PersonalLevel;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.PersonalMissing;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Pick;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Picker;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.PickerFooter;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.PickerHigh;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.PickerLevelWarning;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.PickerPartial;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.PickerRule;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.PickerTitle;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Prerequisites;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Progress;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.QueueFull;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Queued;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Remove;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.RemoveHint;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ResearchAdded;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ResearchId;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ResearchInfo;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ResearchSearch;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ResearchTierLevel;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ResearchTime;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Researching;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Reserved;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.RewardDisplayUnavailable;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Rewards;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.SaveContent;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.SavePending;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Saved;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Selectable;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.SelectableCount;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.SelectablePageCount;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Special;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.SpecialDownload;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.SpecialStart;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Start;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.StartConditions;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Station;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.StationLow;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Stations;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.SwitchAutomatic;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.SwitchManual;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.SwitchManualHint;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.TargetLevel;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.TeamLevel;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.ThisDatabaseTier;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Tier;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.UnsavedChanges;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Workload;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.WriteDatabase;
 
 /**
  * Full-screen AE research canvas. Geometry uses the approved HTML CSS pixels in a 1536 by 864 reference viewport.
@@ -321,10 +502,13 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         }
         if (!container.actionResult.equals(knownActionResult)) {
             knownActionResult = container.actionResult;
+            if (knownActionResult.equals("ALL_COMPLETED")) showToast(tr(AllCompleted));
+            if (knownActionResult.equals("ALL_FORGOTTEN")) showToast(tr(AllForgotten));
             var reason = switch (knownActionResult) {
                 case "", "STARTED", "ALREADY_PRESENT", "RESUMED", "ADVANCED", "COMPLETED", "CANCELLED", "PAUSED",
                      "WAITING_FOR_TURN",
-                     "NO_MATERIALS", "CLAIMED", "ALREADY_CLAIMED", "APPLIED", "UPDATED", "UNCHANGED" -> null;
+                     "NO_MATERIALS", "CLAIMED", "ALREADY_CLAIMED", "APPLIED", "UPDATED", "UNCHANGED", "ALL_COMPLETED",
+                     "ALL_FORGOTTEN" -> null;
                 case "PERMISSION_DENIED" -> Denied;
                 case "SOURCE_RESERVED" -> Reserved;
                 case "BUSY", "QUEUE_BUSY", "RETRY_LATER", "SAVE_PENDING", "RECOVERY_PENDING", "COMPLETION_PENDING" ->
@@ -363,7 +547,8 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             detailDirty = true;
         }
         if (editorOperation != null && editorOperation.confirmed) applyEditorResult();
-        if (editorOperation != null && MinecraftTime() >= editorOperation.deadline) failEditorOperation(tr(EditorTimedOut));
+        if (editorOperation != null && MinecraftTime() >= editorOperation.deadline)
+            failEditorOperation(tr(EditorTimedOut));
         if (restoreView && page != null && container.view.playerId() != null && screenW > 0 && screenH > 0) {
             restoreView = false;
             var saved = ResearchOverviewViewState.load(mc.gameDir.toPath().resolve("config"));
@@ -408,7 +593,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             detailDirty = false;
         }
         updateContentEditor();
-        if (held && Mouse.isButtonDown(0) && !moved && pressedNode != null && container.editorMode()
+        if (held && Mouse.isButtonDown(0) && !moved && pressedNode != null && container.editorMode() && page != null && page.layout.manual()
             && editorOperation == null && MinecraftTime() - pressedAt >= 300) {
             dragging = pressedNode;
             dragX = nodeStartX;
@@ -455,11 +640,11 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             if (members.isEmpty() && !container.editorMode()) continue;
             var positions = new Object2ObjectOpenHashMap<String, ResearchPage.Position>();
             var previousPage = previousPages.get(pageId);
-            boolean savedPage = editorOperation != null && editorOperation.confirmed && editorOperation.type == EditorOperationType.EXPORT
-                && pageId.equals(editorOperation.page);
+            boolean savedPage = editorOperation != null && editorOperation.confirmed && editorOperation.type == EditorOperationType.EXPORT;
             boolean preserveEdits = previousPage != null && previousPage.edited && !savedPage
                 && (layout == previousLayout || unchangedPage(previousLayout, configured) || addingResearchTo(pageId));
-            if (config.manual() || preserveEdits) {
+            boolean manual = preserveEdits ? previousPage.layout.manual() : config.manual();
+            if (manual) {
                 positions.putAll(config.positions());
                 if (preserveEdits && config.researches() != null) for (var id : config.researches()) {
                     var position = previousPage.layout.positions().get(id.toString());
@@ -477,7 +662,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
                 }
             } else autoLayout(members, positions);
             var view = new PageView(pageId, ClientResearchContents.pageName(pageId, config.title()), members,
-                new ResearchPage(config.priority(), config.manual() || preserveEdits, config.title(), members, positions));
+                new ResearchPage(config.priority(), manual, config.title(), members, positions));
             view.edited = preserveEdits;
             if (preserveEdits && !config.manual()) view.automaticPositions = previousPage.automaticPositions;
             pages.add(view);
@@ -497,7 +682,8 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
 
     private static boolean unchangedPage(@Nullable ResearchOverviewLayout layout, ResearchOverviewLayout.Page next) {
         if (layout == null) return false;
-        for (var previous : layout.pages()) if (previous.id().equals(next.id())) return previous.page().equals(next.page());
+        for (var previous : layout.pages())
+            if (previous.id().equals(next.id())) return previous.page().equals(next.page());
         return false;
     }
 
@@ -937,9 +1123,20 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         if (container.editorMode() && page != null) {
             String label = tr(page.layout.manual() ? ManualLayout : Automatic);
             double buttonWidth = textWidth(tr(Export), 12) + 28, labelWidth = textWidth(label, 12) + 16;
-            box(right - buttonWidth - 6 - labelWidth, y + 2, labelWidth, 20, 0xb9bccb, LINE);
-            centeredLabel(label, right - buttonWidth - 6 - labelWidth, y + 2, labelWidth, 20, 12, TEXT);
-            action(right - buttonWidth, y, buttonWidth, tr(Export), true, this::export, List.of("config/prototype_eng/research_content/data/" + page.id + ".json"));
+            action(right - buttonWidth - 6 - labelWidth, y, labelWidth, label, editorOperation == null, this::toggleLayout,
+                List.of(tr(page.layout.manual() ? SwitchAutomatic : SwitchManual)));
+            action(right - buttonWidth, y, buttonWidth, tr(Export), editorOperation == null, this::export, List.of(tr(ExportAllHint)));
+            y += 30;
+            String hint = tr(page.layout.manual() ? DragResearchHint : SwitchManualHint);
+            double hintWidth = textWidth(hint, 11);
+            label(hint, right - hintWidth, y, hintWidth, 11, SOFT);
+            y += 22;
+            double forgetWidth = textWidth(tr(ForgetAll), 12) + 28, completeWidth = textWidth(tr(CompleteAll), 12) + 28;
+            boolean enabled = editorOperation == null && !container.view.savePending() && container.view.editable();
+            action(right - completeWidth - 6 - forgetWidth, y, forgetWidth, tr(ForgetAll), enabled,
+                () -> container.debugAll(false), List.of(tr(ForgetAllHint)));
+            action(right - completeWidth, y, completeWidth, tr(CompleteAll), enabled,
+                () -> container.debugAll(true), List.of(tr(CompleteAllHint)));
             y += 30;
         }
         double first = Math.max(textWidth(tr(Center) + ":", 12), textWidth(tr(HighestStation) + ":", 12));
@@ -1805,11 +2002,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         } else if (dragging != null) {
             var id = dragging;
             dragging = null;
-            if (page != null && page.ids.contains(id) && container.view.entry(id) != null) {
-                if (!page.layout.manual()) {
-                    page.automaticPositions = Map.copyOf(page.layout.positions());
-                    page.layout = new ResearchPage(page.layout.priority(), true, page.layout.title(), page.layout.researches(), page.layout.positions());
-                }
+            if (page != null && page.layout.manual() && page.ids.contains(id) && container.view.entry(id) != null) {
                 page.layout.move(id.toString(), (int) Math.round(dragX / S), (int) Math.round(dragY / S));
                 page.edited = true;
                 detailDirty = true;
@@ -2022,7 +2215,8 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             box(x + w - 340, y + 52, 322, 27, inside(x + w - 340, y + 52, 322, 27) ? HOVER : SLOT, LINE);
             label(target, x + w - 332, y + 58, 284, 12, TEXT);
             label("▼", x + w - 42, y + 58, 18, 12, TEXT);
-            if (dialog.editor == null) centeredLabel(tr(dialog.failed ? DetailUnavailable : DetailLoading), x + 18, y + 92, w - 36, h - 174, 13, SOFT);
+            if (dialog.editor == null)
+                centeredLabel(tr(dialog.failed ? DetailUnavailable : DetailLoading), x + 18, y + 92, w - 36, h - 174, 13, SOFT);
             else {
                 dialog.editor.draw(fontRenderer, x + 18, y + 92, w - 36, h - 174);
                 if (editorOperation == null && Mouse.isButtonDown(0)) dialog.editor.drag(fontRenderer, mouseX, mouseY);
@@ -2224,8 +2418,10 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
                 detailDirty = true;
             }
             case EXPORT -> {
-                var updated = pagesById.get(pending.page);
-                if (updated != null) updated.edited = false;
+                for (var updated : pages) {
+                    updated.edited = false;
+                    updated.automaticPositions = Map.of();
+                }
                 showToast(tr(Exported));
             }
         }
@@ -2282,7 +2478,8 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     }
 
     private void closeEditorDialog() {
-        if (editorOperation != null && !editorOperation.confirmed && editorOperation.dialog == editorDialog) editorOperation = null;
+        if (editorOperation != null && !editorOperation.confirmed && editorOperation.dialog == editorDialog)
+            editorOperation = null;
         Keyboard.enableRepeatEvents(editorRepeatWasEnabled);
         editorDialog = null;
         held = canvasDrag = scrollbarDrag = false;
@@ -2360,13 +2557,35 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         if (panY + (y + EXP_H) * zoom > screenH - 34) panY = screenH - 42 - (y + EXP_H) * zoom;
     }
 
-    private void export() {
+    private void toggleLayout() {
         if (page == null || editorOperation != null) return;
+        boolean manual = !page.layout.manual();
+        var positions = new Object2ObjectOpenHashMap<>(page.layout.positions());
+        if (manual) {
+            boolean savedManual = false;
+            for (var saved : knownLayout.pages()) if (saved.id().equals(page.id)) savedManual = saved.page().manual();
+            page.automaticPositions = savedManual ? Map.of() : Map.copyOf(positions);
+        } else {
+            positions.clear();
+            autoLayout(page.ids, positions);
+            page.automaticPositions = Map.of();
+        }
+        page.layout = new ResearchPage(page.layout.priority(), manual, page.layout.title(), page.layout.researches(), positions);
+        page.edited = true;
+        detailDirty = true;
+        pressedNode = dragging = null;
+        showToast(tr(manual ? DragResearchHint : AutomaticRecalculated));
+    }
+
+    private void export() {
+        if (editorOperation != null) return;
         try {
-            beginEditorOperation(EditorOperationType.EXPORT, page.id, null).token = container.savePage(page.id, page.layout);
+            var layouts = new Object2ObjectOpenHashMap<String, ResearchPage>();
+            for (var item : pages) layouts.put(item.id, item.layout);
+            beginEditorOperation(EditorOperationType.EXPORT, null, null).token = container.savePages(layouts);
         } catch (RuntimeException failure) {
             editorOperation = null;
-            PrototypeEngineering.LOGGER.error("Cannot save research page {}", page.id, failure);
+            PrototypeEngineering.LOGGER.error("Cannot export research pages", failure);
             showToast(tr(ExportFailed));
         }
     }

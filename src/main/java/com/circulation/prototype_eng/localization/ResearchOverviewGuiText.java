@@ -6,6 +6,8 @@ import com.circulation.prototype_eng.Tags;
 public enum ResearchOverviewGuiText implements LocalizationEnum {
     Overview, Picker, PickerTitle, Editor, Databases, HighestStation, DatabaseTierLabel, SelectableCount, PickerRule,
     Back, Close, Collapse, Export, Automatic, ManualLayout, Exported, ExportFailed,
+    SwitchAutomatic, SwitchManual, DragResearchHint, SwitchManualHint, AutomaticRecalculated, ExportAllHint,
+    ForgetAll, CompleteAll, ForgetAllHint, CompleteAllHint, AllCompleted, AllForgotten,
     Done, Partial, Available, Continue, Researching, Queued, Saved, Locked, Blocked, Special, DeviceShort,
     Materials, MaterialHint, NetworkResources, NetworkHint, Workload, ResearchTime, Stations, Contributor, Nobody,
     ConsumeInventory, ContributeHint, PauseHint, Paused, NoMaterials, NoResources, ManualResources,

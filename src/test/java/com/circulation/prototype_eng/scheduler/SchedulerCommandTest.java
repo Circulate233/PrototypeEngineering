@@ -62,7 +62,7 @@ class SchedulerCommandTest {
             throw new AssertionError("Invalid syntax must not reload disk settings");
         });
         var sender = new Sender();
-        assertEquals("pe_scheduler", command.getName());
+        assertEquals("scheduler", command.getName());
         assertEquals(SchedulerText.Usage.getTranslationKey(), command.getUsage(sender));
         assertEquals(2, command.getRequiredPermissionLevel());
         sender.permission = 1;
@@ -70,7 +70,7 @@ class SchedulerCommandTest {
         sender.permission = 2;
         assertTrue(permitted(command, sender));
         assertEquals(2, sender.requestedPermission);
-        assertEquals("pe_scheduler", sender.requestedCommand);
+        assertEquals("pe", sender.requestedCommand);
         for (String[] arguments : new String[][]{
             {}, {"switch", "COROUTINES"}, {"status", "extra"}, {"report", "extra"}, {"reload", "extra"},
             {"metrics"}, {"metrics", "maybe"}, {"metrics", "on", "extra"}

@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.research;
 
 import com.circulation.prototype_eng.api.gui.ResearchGuiAccess;
+import com.circulation.prototype_eng.command.PECommand;
 import net.minecraft.command.CommandBase;
 import net.minecraft.command.CommandException;
 import net.minecraft.command.ICommandSender;
@@ -13,25 +14,27 @@ import org.jetbrains.annotations.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
 
-/**
- * Administrator editing remains an explicit command; regular opening is supplied by addons.
- */
 @MethodsReturnNonnullByDefault
 @ParametersAreNonnullByDefault
 public final class ResearchEditCommand extends CommandBase {
     @Override
     public String getName() {
-        return "pe_research_edit";
+        return "edit";
     }
 
     @Override
     public String getUsage(ICommandSender sender) {
-        return "/pe_research_edit [player]";
+        return "/pe research edit [player]";
     }
 
     @Override
     public int getRequiredPermissionLevel() {
         return 2;
+    }
+
+    @Override
+    public boolean checkPermission(MinecraftServer server, ICommandSender sender) {
+        return PECommand.canAdminister(sender);
     }
 
     @Override

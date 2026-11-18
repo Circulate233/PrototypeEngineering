@@ -13,6 +13,7 @@ import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
 import com.circulation.prototype_eng.block.HatchBlocks;
 import com.circulation.prototype_eng.client.MachineControllerModels;
+import com.circulation.prototype_eng.client.PEClientCommand;
 import com.circulation.prototype_eng.client.OrientationToolModels;
 import com.circulation.prototype_eng.client.gui.ClientHatchConfigurations;
 import com.circulation.prototype_eng.client.gui.GuiBuilderInstrument;
@@ -30,7 +31,6 @@ import com.circulation.prototype_eng.client.preview.PreviewClientOpenQueue;
 import com.circulation.prototype_eng.client.preview.PreviewEmbeddedInput;
 import com.circulation.prototype_eng.client.preview.PreviewGuiResources;
 import com.circulation.prototype_eng.client.preview.ProjectionInteractions;
-import com.circulation.prototype_eng.client.preview.StructurePreviewCommand;
 import com.circulation.prototype_eng.client.preview.WorldProjectionManager;
 import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
 import com.circulation.prototype_eng.client.render.BasicMachineControllerRenderer;
@@ -431,8 +431,10 @@ public class ClientProxy extends CommonProxy {
         var minecraft = packetOwner();
         if (!(connection instanceof NetHandlerPlayClient handler) || minecraft.getConnection() != handler) return;
         try {
-            if (packet.kind() == ResearchViewPacket.CATALOG) ClientResearchCatalog.receive(handler.getNetworkManager(), packet.part());
-            else if (minecraft.player != null && minecraft.player.openContainer instanceof ContainerResearchOverview overview) overview.receive(packet);
+            if (packet.kind() == ResearchViewPacket.CATALOG)
+                ClientResearchCatalog.receive(handler.getNetworkManager(), packet.part());
+            else if (minecraft.player != null && minecraft.player.openContainer instanceof ContainerResearchOverview overview)
+                overview.receive(packet);
         } catch (RuntimeException failure) {
             PrototypeEngineering.LOGGER.error("Cannot install authoritative research view", failure);
         }
@@ -480,7 +482,9 @@ public class ClientProxy extends CommonProxy {
         MinecraftForge.EVENT_BUS.register(ProjectionInteractions.INSTANCE);
         MinecraftForge.EVENT_BUS.register(PreviewClientOpenQueue.INSTANCE);
         ProjectionInteractions.INSTANCE.registerKeys();
-        ClientCommandHandler.instance.registerCommand(new StructurePreviewCommand());
+        var command = new PEClientCommand();
+        ClientCommandHandler.instance.registerCommand(command);
+        MinecraftForge.EVENT_BUS.register(command);
         if (Minecraft.getMinecraft().getResourceManager() instanceof IReloadableResourceManager previewResources)
             previewResources.registerReloadListener(PreviewGuiResources.INSTANCE);
         if (Minecraft.getMinecraft().getResourceManager() instanceof IReloadableResourceManager resources)

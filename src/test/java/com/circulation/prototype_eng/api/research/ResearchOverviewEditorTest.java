@@ -19,7 +19,13 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class ResearchOverviewEditorTest {
     private static final UUID ALICE = new UUID(0, 1), BOB = new UUID(0, 2);
@@ -53,6 +59,9 @@ class ResearchOverviewEditorTest {
                                             })
                                             .stage(ResearchLevelStage.builder(1, 1).researchTier(2).durationTicks(600).resourceFormula(ResearchResourceFormula.builder().build())
                                                                      .prerequisite(BASE, 2).rewardGroup(1, group).build()).build());
+        registry.register(ResearchDefinition.builder(id("special")).maxLevel(1).specialOnly()
+                                            .stage(ResearchLevelStage.builder(1, 1).researchTier(1).durationTicks(1)
+                                                                     .resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
         registry.freeze();
         return registry;
     }
@@ -101,6 +110,49 @@ class ResearchOverviewEditorTest {
         var reservation = UUID.randomUUID();
         assertTrue(source.tryReserveSource(BASE, reservation));
         assertEquals(ResearchLevelResult.SOURCE_RESERVED, world.completeForEditor(membership(), permission(true), TARGET, 1, 2, Set.of(ALICE), _ -> null, () -> true));
+        assertEquals(before.players(), world.snapshot().players());
+        assertEquals(before.teams(), world.snapshot().teams());
+    }
+
+    @Test
+    void teamDebugCompletesEveryMemberThenForgetsLevelsWithoutDuplicatingRewardClaims() {
+        var registry = registry();
+        var writes = new ObjectArrayList<ResearchWorldSnapshot>();
+        var world = world(registry, writes::add);
+        assertEquals(ResearchLevelResult.APPLIED, world.setAllForEditor(membership(), permission(true), true, 2, Set.of(ALICE), _ -> null, () -> true));
+        assertEquals(1, writes.size());
+        for (var member : ObjectList.of(ALICE, BOB)) {
+            assertEquals(2, world.player(member).completedLevel(BASE));
+            assertEquals(1, world.player(member).completedLevel(TARGET));
+            assertEquals(0, world.player(member).completedLevel(id("special")));
+            assertEquals(3, world.player(member).rewardClaimsSnapshot().size());
+        }
+        assertTrue(world.snapshot().teams().getFirst().queue().entries().isEmpty());
+        var claims = world.player(BOB).rewardClaimsSnapshot();
+        assertEquals(ResearchLevelResult.APPLIED, world.setAllForEditor(membership(), permission(true), false, 3, Set.of(ALICE), _ -> null, () -> true));
+        assertEquals(2, writes.size());
+        var restored = new ResearchWorld(registry, ResearchPermissionPolicy.DEFAULT, _ -> {
+        });
+        restored.restore(writes.getLast());
+        for (var member : ObjectList.of(ALICE, BOB)) {
+            assertEquals(0, restored.player(member).completedLevel(BASE));
+            assertEquals(0, restored.player(member).completedLevel(TARGET));
+        }
+        assertEquals(claims, restored.player(BOB).rewardClaimsSnapshot());
+        assertEquals(ResearchLevelResult.APPLIED, restored.setAllForEditor(membership(), permission(true), true, 4, Set.of(ALICE), _ -> null, () -> true));
+        assertEquals(claims, restored.player(BOB).rewardClaimsSnapshot());
+    }
+
+    @Test
+    void teamDebugPrechecksAuthorityAndEverySourceBeforeChangingAnyResearch() {
+        var registry = registry();
+        var world = world(registry, _ -> fail("Rejected debug operation saved changes"));
+        var before = world.snapshot();
+        assertEquals(ResearchLevelResult.PERMISSION_DENIED, world.setAllForEditor(membership(), permission(false), true, 2, Set.of(ALICE), _ -> null, () -> true));
+        assertEquals(ResearchLevelResult.STALE_CONTEXT, world.setAllForEditor(membership(), permission(true), false, 2, Set.of(ALICE), _ -> null, () -> false));
+        assertTrue(world.player(BOB).tryReserveSource(TARGET, UUID.randomUUID()));
+        for (boolean complete : new boolean[]{true, false})
+            assertEquals(ResearchLevelResult.SOURCE_RESERVED, world.setAllForEditor(membership(), permission(true), complete, 2, Set.of(ALICE), _ -> null, () -> true));
         assertEquals(before.players(), world.snapshot().players());
         assertEquals(before.teams(), world.snapshot().teams());
     }

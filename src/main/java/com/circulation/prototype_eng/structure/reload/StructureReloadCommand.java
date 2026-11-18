@@ -1,19 +1,17 @@
 package com.circulation.prototype_eng.structure.reload;
 
 import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.command.PECommand;
 import com.circulation.prototype_eng.localization.StructureText;
 import net.minecraft.command.CommandBase;
 import net.minecraft.command.ICommandSender;
 import net.minecraft.server.MinecraftServer;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Actual administrative entry; accepted work reports completion only after the joined publication.
- */
 public final class StructureReloadCommand extends CommandBase {
     @Override
     public @NotNull String getName() {
-        return "pe_structures";
+        return "reload";
     }
 
     @Override
@@ -27,8 +25,13 @@ public final class StructureReloadCommand extends CommandBase {
     }
 
     @Override
+    public boolean checkPermission(@NotNull MinecraftServer server, @NotNull ICommandSender sender) {
+        return PECommand.canAdminister(sender);
+    }
+
+    @Override
     public void execute(@NotNull MinecraftServer server, @NotNull ICommandSender sender, String @NotNull [] arguments) {
-        if (arguments.length != 1 || !arguments[0].equals("reload")) {
+        if (arguments.length != 0) {
             sender.sendMessage(StructureText.ReloadUsage.text());
             return;
         }

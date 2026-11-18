@@ -23,16 +23,13 @@ import org.jetbrains.annotations.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
 
-/**
- * Actual client command: authoritative geometry, GUI and read-only projection, without sample content.
- */
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
 public final class StructurePreviewCommand extends CommandBase {
     @Override
     public String getName() {
-        return "pe_preview";
+        return "preview";
     }
 
     @Override

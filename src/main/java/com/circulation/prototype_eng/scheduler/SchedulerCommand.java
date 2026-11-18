@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.scheduler;
 
 import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.command.PECommand;
 import com.circulation.prototype_eng.api.scheduler.SchedulerReport;
 import com.circulation.prototype_eng.localization.SchedulerText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -15,9 +16,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.function.Function;
 
-/**
- * Actual permission-2 command; settings changes flow through the retained owner tick boundary.
- */
 public final class SchedulerCommand extends CommandBase {
     private final Function<MinecraftServer, TaskScheduler> scheduler;
     private final Function<MinecraftServer, SchedulerConfig.Settings> reload;
@@ -66,7 +64,7 @@ public final class SchedulerCommand extends CommandBase {
 
     @Override
     public @NotNull String getName() {
-        return "pe_scheduler";
+        return "scheduler";
     }
 
     @Override
@@ -77,6 +75,11 @@ public final class SchedulerCommand extends CommandBase {
     @Override
     public int getRequiredPermissionLevel() {
         return 2;
+    }
+
+    @Override
+    public boolean checkPermission(@NotNull MinecraftServer server, @NotNull ICommandSender sender) {
+        return PECommand.canAdminister(sender);
     }
 
     @Override
