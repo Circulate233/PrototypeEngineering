@@ -81,7 +81,7 @@ class ResearchOverviewEditorTest {
         assertEquals(1, cloud.view().completedLevel(TARGET));
         for (var player : ObjectList.of(ALICE, BOB)) {
             assertEquals(2, world.player(player).completedLevel(BASE));
-            assertEquals(0, world.player(player).completedLevel(TARGET));
+            assertEquals(1, world.player(player).completedLevel(TARGET));
             assertEquals(3, world.player(player).rewardClaimsSnapshot().size());
             for (var claim : world.player(player).rewardClaimsSnapshot())
                 assertEquals(RewardClaim.Status.UNCLAIMED, claim.status());

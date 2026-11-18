@@ -15,7 +15,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.UUID;
 
 /**
- * Direct ITEM_ONLY research source. Personal research travels with players instead of this state.
+ * Legacy direct ITEM_ONLY source retained to read old worlds and settle frozen downloads.
  */
 public final class TeamOwnedResearch {
     public static final NbtCodec<Snapshot> CODEC = new SnapshotCodec();
@@ -241,6 +241,7 @@ public final class TeamOwnedResearch {
             this.levelRaised = levelRaised;
         }
 
+        @SuppressWarnings("unused") // Retained for callers of the legacy direct-source API.
         public boolean levelRaised() {
             return levelRaised;
         }

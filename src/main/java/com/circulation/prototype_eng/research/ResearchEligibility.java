@@ -37,9 +37,8 @@ public final class ResearchEligibility {
     }
 
     /**
-     * Current members contribute their personal maximum; item-only definitions use the team's own
-     * source exclusively. Blacklist and staged prerequisites affect the resulting view across both
-     * sources without erasing stored levels. Conditions run for each structurally eligible target.
+     * Current members contribute their personal maximum; old direct levels remain readable for
+     * saved worlds and unfinished legacy transactions. Blacklists and prerequisites filter the view. Conditions run for each structurally eligible target.
      * Resources and membership must be captured by the server owner before calling this method.
      * Supplied membership sets and blacklists remain borrowed read-only while any view retains them.
      */
@@ -93,7 +92,7 @@ public final class ResearchEligibility {
         }
         for (var entry : teamOwnedResearch.object2IntEntrySet()) {
             var id = entry.getKey();
-            if (entry.getIntValue() > 0) {
+            if (entry.getIntValue() > raw.getInt(id)) {
                 raw.put(id, entry.getIntValue());
             }
         }

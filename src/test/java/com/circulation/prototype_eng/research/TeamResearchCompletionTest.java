@@ -78,14 +78,14 @@ class TeamResearchCompletionTest {
             prepared.complete();
             assertFalse(players.get(FIRST).busy());
             for (var player : players.values()) {
-                assertEquals(id.equals(PERSONAL) ? 2 : 0, player.completedLevel(id));
+                assertEquals(2, player.completedLevel(id));
                 var claims = player.rewardClaimsSnapshot().stream().filter(claim -> claim.key().researchId().equals(id)).toList();
                 assertEquals(1, claims.size());
                 assertEquals(2, claims.getFirst().key().level());
                 assertEquals(RewardClaim.Status.UNCLAIMED, claims.getFirst().status());
             }
         }
-        assertEquals(2, source.completedLevel(TEAM));
+        assertEquals(0, source.completedLevel(TEAM));
         assertEquals(0, source.completedLevel(PERSONAL));
     }
 
@@ -100,7 +100,9 @@ class TeamResearchCompletionTest {
         var prepared = completion.prepare(TEAM, 2, List.of(FIRST, SECOND), players, source, 5);
         assertNotNull(prepared);
         prepared.commit();
-        assertEquals(2, source.completedLevel(TEAM));
+        assertEquals(2, players.get(FIRST).completedLevel(TEAM));
+        assertEquals(2, players.get(SECOND).completedLevel(TEAM));
+        assertEquals(0, source.completedLevel(TEAM));
         prepared.rollback();
         assertEquals(before, source.snapshot());
         assertEquals(firstBefore, players.get(FIRST).snapshot());

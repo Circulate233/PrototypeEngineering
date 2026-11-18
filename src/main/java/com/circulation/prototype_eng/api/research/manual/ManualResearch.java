@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.api.research.manual;
 
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
-import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.TeamOwnedResearch;
 import com.circulation.prototype_eng.api.research.TeamResearchCompletion;
 import com.circulation.prototype_eng.api.research.queue.ResearchProgress;
@@ -591,7 +590,6 @@ public final class ManualResearch {
         if (team.busy()) {
             return null;
         }
-        boolean teamOwned = queue.registry().require(session.queueKey().researchId()).deliveryPolicy() == ResearchDownloadDeliveryPolicy.ITEM_ONLY;
         var baselines = new Object2IntOpenHashMap<UUID>(context.members().size());
         baselines.defaultReturnValue(-1);
         for (var member : context.members()) {
@@ -599,7 +597,7 @@ public final class ManualResearch {
             if (player.busy()) {
                 return null;
             }
-            baselines.put(member, teamOwned ? team.completedLevel(session.queueKey().researchId()) : player.completedLevel(session.queueKey().researchId()));
+            baselines.put(member, player.completedLevel(session.queueKey().researchId()));
         }
         return new ManualResearchSession.CompletionIntent(context.serverTime(), baselines);
     }

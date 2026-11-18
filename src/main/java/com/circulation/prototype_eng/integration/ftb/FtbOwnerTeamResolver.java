@@ -5,9 +5,11 @@ import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolver;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import com.feed_the_beast.ftblib.lib.data.ForgePlayer;
+import com.feed_the_beast.ftblib.lib.data.ForgeTeam;
 import com.feed_the_beast.ftblib.lib.data.TeamType;
 import com.feed_the_beast.ftblib.lib.data.Universe;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectSet;
 import net.minecraft.server.MinecraftServer;
 import org.jetbrains.annotations.Nullable;
 
@@ -18,10 +20,40 @@ import java.util.UUID;
  */
 @SuppressWarnings("unused") // Server hosts construct this adapter explicitly and pass it to NetworkPlanner.capture.
 public final class FtbOwnerTeamResolver implements OwnerTeamResolver {
+    private static final String SINGLEPLAYER_TEAM_NAME = "singleplayer";
     private final MinecraftServer server;
 
     public FtbOwnerTeamResolver(MinecraftServer server) {
         this.server = server;
+    }
+
+    /** The built-in integrated-server team is a personal team for each member. */
+    public static boolean personalTeam(ForgeTeam team) {
+        return team.universe.server.isSinglePlayer() && team.type == TeamType.SERVER
+            && SINGLEPLAYER_TEAM_NAME.equals(team.getId());
+    }
+
+    private static boolean personalTeam(Universe universe, ForgePlayer member) {
+        if (!universe.server.isSinglePlayer()) return false;
+        var team = member.team;
+        return team == null || team.universe == universe && (team.type == TeamType.NONE || personalTeam(team) && team.isMember(member));
+    }
+
+    static String teamId(boolean personal, UUID member, String ftbId) {
+        return personal ? member.toString() : ftbId;
+    }
+
+    /** Resolves a personal ID only while its owner still belongs to the default FTB team. */
+    public static @Nullable ForgePlayer personalOwner(Universe universe, String id) {
+        final UUID owner;
+        try {
+            owner = UUID.fromString(id);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+        if (!owner.toString().equals(id)) return null;
+        var player = universe.getPlayer(owner);
+        return player != null && personalTeam(universe, player) ? player : null;
     }
 
     private static UUID requirePlayerId(@Nullable ForgePlayer player, String teamId, String role) {
@@ -62,6 +94,8 @@ public final class FtbOwnerTeamResolver implements OwnerTeamResolver {
         if (owner == null) {
             return rejected(ownerId, OwnerTeamResolutionStatus.OWNER_UNKNOWN, "FTBLib has no persistent owner " + ownerId);
         }
+        if (personalTeam(universe, owner))
+            return OwnerTeamResolution.resolved(ownerId, teamId(true, ownerId, ""), OwnerTeamType.PLAYER, ObjectSet.of(ownerId), ownerId);
         var team = owner.team;
         if (team == null) {
             return rejected(ownerId, OwnerTeamResolutionStatus.NO_TEAM, "Owner " + ownerId + " has no FTBLib team");
@@ -77,14 +111,14 @@ public final class FtbOwnerTeamResolver implements OwnerTeamResolver {
             return rejected(ownerId, OwnerTeamResolutionStatus.UNSUPPORTED_TEAM_TYPE,
                 "FTBLib team type " + team.type + " is not persistent machine ownership");
         }
-        String teamId = team.getUIDCode();
+        String teamId = teamId(false, ownerId, team.getUIDCode());
         var members = new ObjectOpenHashSet<UUID>();
         var elements = team.getMembers();
         for (int index = 0; index < elements.size(); index++) {
             var member = elements.get(index);
             members.add(requirePlayerId(member, teamId, "member"));
         }
-        if (!members.contains(ownerId)) {
+        if (personalTeam(team) || !members.contains(ownerId)) {
             return rejected(ownerId, OwnerTeamResolutionStatus.INVALID_TEAM,
                 "FTBLib team " + teamId + " does not contain queried owner " + ownerId);
         }

@@ -76,7 +76,7 @@ public final class PlayerResearchStateNbt implements NbtCodec<PlayerResearchStat
             var entry = savedLevels.getCompoundTagAt(index);
             var id = new ResourceLocation(entry.getString("Research"));
             int level = entry.getInteger("Level");
-            validateLevel(id, level, true);
+            validateLevel(id, level);
             levels.put(id, level);
         }
         var claims = new ObjectArrayList<RewardClaim>();
@@ -148,16 +148,15 @@ public final class PlayerResearchStateNbt implements NbtCodec<PlayerResearchStat
         return claim;
     }
 
-    private void validateLevel(ResourceLocation id, int level, boolean personalSource) {
+    private void validateLevel(ResourceLocation id, int level) {
         var definition = research.require(id);
-        if (level < 1 || level > definition.maxLevel() || definition.specialOnly()
-            || personalSource && definition.deliveryPolicy() != ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM) {
+        if (level < 1 || level > definition.maxLevel() || definition.specialOnly()) {
             throw new IllegalArgumentException("Research level is invalid for player source/claim: " + id);
         }
     }
 
     private void validateClaim(RewardClaim claim) {
-        validateLevel(claim.key().researchId(), claim.key().level(), false);
+        validateLevel(claim.key().researchId(), claim.key().level());
         var choices = research.require(claim.key().researchId()).rewardGroupsForLevel(claim.key().level());
         if (choices.isEmpty()) throw new IllegalArgumentException("Reward claim has no registered reward level");
         if (claim.status() == RewardClaim.Status.UNCLAIMED) return;

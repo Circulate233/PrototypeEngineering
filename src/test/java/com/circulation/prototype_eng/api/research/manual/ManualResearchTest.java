@@ -72,7 +72,7 @@ class ManualResearchTest {
         assertEquals(ManualResearch.Status.WAITING_FOR_TURN, fixture.advance(1));
         assertEquals(ManualResearch.Status.ADVANCED, fixture.advance(2));
         assertEquals(ManualResearch.Status.COMPLETED, fixture.advance(3));
-        assertEquals(1, fixture.team.completedLevel(ID));
+        assertEquals(1, fixture.players.get(PLAYER).completedLevel(ID));
     }
 
     @Test
@@ -87,7 +87,7 @@ class ManualResearchTest {
         assertEquals(ManualResearch.Status.COMPLETED, fixture.advance(3));
         assertTrue(fixture.durableSaves > initialSaves);
         assertEquals(2, fixture.progressedSaves);
-        assertEquals(1, fixture.team.completedLevel(ID));
+        assertEquals(1, fixture.players.get(PLAYER).completedLevel(ID));
         assertEquals(0, fixture.saved.queue().entries().size());
     }
 

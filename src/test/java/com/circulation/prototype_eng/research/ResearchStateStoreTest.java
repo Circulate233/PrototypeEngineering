@@ -8,9 +8,13 @@ import com.circulation.prototype_eng.api.research.ResearchDataCenters;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.ResearchLevelStage;
+import com.circulation.prototype_eng.api.research.ResearchLevelResult;
+import com.circulation.prototype_eng.api.research.ResearchPermissionContext;
+import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchResourceFormula;
 import com.circulation.prototype_eng.api.research.ResearchWorldSnapshot;
+import com.circulation.prototype_eng.api.research.ResearchWorld;
 import com.circulation.prototype_eng.api.research.TeamOwnedResearch;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskCommit;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskOperation;
@@ -19,9 +23,12 @@ import com.circulation.prototype_eng.api.research.download.ResearchDownloadOpera
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadReceipt;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadSources;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
+import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
+import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectSet;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
@@ -30,6 +37,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,12 +45,14 @@ import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -54,6 +64,94 @@ class ResearchStateStoreTest {
     private static final FileTime SENTINEL = FileTime.fromMillis(1_600_000_000_000L);
     @TempDir
     Path directory;
+
+    @Test
+    void completedItemResearchSurvivesReopenForEveryMemberAndFollowsThemToNewTeams() throws IOException {
+        var registry = itemRegistry();
+        var codec = new ResearchWorldNbt(registry, new ResourceKeyNbt(_ -> null));
+        var store = new ResearchStateStore(legacy(), codec);
+        var world = world(registry, store);
+        var members = ObjectSet.of(FIRST, SECOND);
+        var original = OwnerTeamResolution.resolved(FIRST, "1234", OwnerTeamType.PLAYER, members, FIRST);
+        var op = new ResearchPermissionContext(FIRST, "1234", null, "1234", true, false, true);
+        assertEquals(ResearchLevelResult.APPLIED, world.completeForEditor(original, op, RESEARCH, 1, 1, Set.of(FIRST), _ -> null, () -> true));
+        world.saveChanged(2);
+        world.close(3);
+        var reopened = new ResearchStateStore(legacy(), codec);
+        var saved = reopened.read();
+        assertNotNull(saved);
+        assertTrue(saved.teams().getFirst().research().levels().isEmpty());
+        assertEquals(2, saved.players().size());
+        var restored = world(registry, reopened);
+        restored.restore(saved);
+        for (var player : members) {
+            var personal = OwnerTeamResolution.resolved(player, player.toString(), OwnerTeamType.PLAYER, ObjectSet.of(player), player);
+            var cloud = restored.captureCloud(personal, () -> true);
+            assertNotNull(cloud);
+            assertNotNull(cloud.view());
+            assertEquals(1, cloud.view().completedLevel(RESEARCH));
+        }
+        var newcomer = new UUID(0, 99);
+        var oldTeam = OwnerTeamResolution.resolved(newcomer, "1234", OwnerTeamType.PLAYER, ObjectSet.of(newcomer), newcomer);
+        var view = restored.captureCloud(oldTeam, () -> true);
+        assertNotNull(view);
+        assertNotNull(view.view());
+        assertEquals(0, view.view().completedLevel(RESEARCH));
+        restored.close(4);
+    }
+
+    @Test
+    void knownDefaultTeamMigratesWithoutMergingAnUnidentifiedTeamAndPrunesEmptyShards() throws IOException {
+        var registry = itemRegistry();
+        var codec = new ResearchWorldNbt(registry, new ResourceKeyNbt(_ -> null));
+        var store = new ResearchStateStore(legacy(), codec);
+        var direct = new Object2IntOpenHashMap<ResourceLocation>();
+        direct.put(RESEARCH, 1);
+        var queue = new TeamResearchQueue(registry, "ABCD");
+        var entry = queue.enqueue(RESEARCH, 1, FIRST, 1);
+        var main = new ResearchWorldSnapshot.Team("ABCD", ObjectSet.of(FIRST), ObjectSet.of(),
+            new TeamOwnedResearch.Snapshot("ABCD", direct), queue.snapshot(), ObjectList.of());
+        var unrelated = new ResearchWorldSnapshot.Team("CDEF", ObjectSet.of(FIRST), ObjectSet.of(),
+            new TeamOwnedResearch.Snapshot("CDEF", direct), new TeamResearchQueue(registry, "CDEF").snapshot(), ObjectList.of());
+        var empty = new ResearchWorldSnapshot.Team("8743", ObjectSet.of(), ObjectSet.of(),
+            new TeamOwnedResearch("8743", registry).snapshot(), new TeamResearchQueue(registry, "8743").snapshot(), ObjectList.of());
+        var saved = new ResearchWorldSnapshot(5, ObjectList.of(playerSnapshot(FIRST, false)), ObjectList.of(main, unrelated, empty));
+        store.write(saved);
+        var migrated = LegacyResearchTeams.migrate(saved, FIRST, "ABCD", ObjectSet.of("CDEF"));
+        store.write(migrated);
+        var actual = new ResearchStateStore(legacy(), codec).read();
+        assertNotNull(actual);
+        assertEquals(1, actual.players().getFirst().completedLevels().getInt(RESEARCH));
+        assertEquals(2, actual.teams().size());
+        assertEquals(unrelated, actual.teams().getFirst());
+        var personal = actual.teams().getLast();
+        assertEquals(FIRST.toString(), personal.teamId());
+        assertEquals(entry, personal.queue().entries().getFirst());
+        assertTrue(personal.research().levels().isEmpty());
+        assertEquals(actual, LegacyResearchTeams.migrate(actual, FIRST, "ABCD", ObjectSet.of("CDEF")));
+        try (var files = Files.list(root().resolve("teams"))) {
+            assertEquals(2, files.count());
+        }
+    }
+
+    private static ResearchWorld world(ResearchRegistry registry, ResearchStateStore store) {
+        return new ResearchWorld(registry, ResearchPermissionPolicy.DEFAULT, snapshot -> {
+            try {
+                store.write(snapshot);
+            } catch (IOException failure) {
+                throw new UncheckedIOException(failure);
+            }
+        });
+    }
+
+    private static ResearchRegistry itemRegistry() {
+        var registry = new ResearchRegistry();
+        registry.register(ResearchDefinition.builder(RESEARCH).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY)
+            .stage(ResearchLevelStage.builder(1, 1).durationTicks(1).researchTier(0)
+                .resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+        registry.freeze();
+        return registry;
+    }
 
     @Test
     void roundTripKeepsOwnersOperationsAndIndexOrderingInSeparateFiles() throws IOException {

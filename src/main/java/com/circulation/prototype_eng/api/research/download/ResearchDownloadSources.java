@@ -119,51 +119,46 @@ public final class ResearchDownloadSources {
         if (team != null) requireTeam(membership.teamId(), team);
         var members = new ObjectArrayList<>(membership.members());
         members.sort(null);
-        if (definition.deliveryPolicy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM) {
-            if (database == null || database.storedResearch().getInt(definition.id()) < downloadLevel) {
+        boolean requiresDatabase = definition.deliveryPolicy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM;
+        if (requiresDatabase) {
+            if (database == null || database.storedResearch().getInt(definition.id()) < downloadLevel)
                 return evaluation(Status.MISSING_DATABASE_RESEARCH_LEVEL);
-            }
             if (definition.researchTierForLevel(downloadLevel) > database.level())
                 return evaluation(Status.DATA_CENTER_LEVEL_TOO_LOW);
-            var changes = new ObjectArrayList<MemberChange>(members.size());
-            int teamLevel = team == null ? 0 : team.completedLevel(definition.id());
-            int beforeVisible = 0;
-            int afterVisible = 0;
-            for (int index2 = 0; index2 < members.size(); index2++) {
-                var member = members.get(index2);
-                var source = player(players, member);
-                int before;
-                if (source == null) before = 0;
-                else synchronized (source) {
-                    if (!source.canWriteResearch(definition.id())) return evaluation(Status.SOURCE_BUSY);
-                    before = source.completedLevel(definition.id());
-                }
-                requireSourceLevel(definition, before);
-                if (before < cost) return evaluation(Status.PERSONAL_LEVEL_INSUFFICIENT);
-                changes.add(new MemberChange(member, before, before - cost));
-                beforeVisible = Math.max(beforeVisible, before);
-                afterVisible = Math.max(afterVisible, before - cost);
-            }
-            return new Evaluation(Status.READY, new Plan(definition.deliveryPolicy(), definition.id(), downloadLevel,
-                cost, membership.teamId(), members, changes, teamLevel, teamLevel),
-                teamLevel > 0 ? teamLevel : beforeVisible, teamLevel > 0 ? teamLevel : afterVisible);
         }
-        if (team == null) return evaluation(Status.TEAM_LEVEL_INSUFFICIENT);
-        synchronized (team) {
+        int legacyLevel = team == null ? 0 : team.completedLevel(definition.id());
+        var changes = new ObjectArrayList<MemberChange>(members.size());
+        int beforeVisible = 0;
+        int afterVisible = 0;
+        boolean insufficient = false;
+        for (int index = 0; index < members.size(); index++) {
+            var member = members.get(index);
+            var source = player(players, member);
+            int before = 0;
+            if (source != null) synchronized (source) {
+                if (!source.canWriteResearch(definition.id())) return evaluation(Status.SOURCE_BUSY);
+                before = source.completedLevel(definition.id());
+            }
+            requireSourceLevel(definition, before);
+            if (before < cost) insufficient = true;
+            int after = Math.max(0, before - cost);
+            changes.add(new MemberChange(member, before, after));
+            beforeVisible = Math.max(beforeVisible, before);
+            afterVisible = Math.max(afterVisible, after);
+        }
+        // Existing direct levels and already frozen legacy plans remain independently payable.
+        if (!requiresDatabase && team != null && legacyLevel > 0 && legacyLevel >= beforeVisible) {
+            if (legacyLevel < downloadLevel || legacyLevel < cost) return evaluation(Status.TEAM_LEVEL_INSUFFICIENT);
             if (!team.canWriteResearch(definition.id())) return evaluation(Status.SOURCE_BUSY);
-            int before = team.completedLevel(definition.id());
-            if (before < downloadLevel || before < cost) return evaluation(Status.TEAM_LEVEL_INSUFFICIENT);
-            int personalMaximum = 0;
-            for (int index = 0; index < members.size(); index++) {
-                var source = player(players, members.get(index));
-                if (source != null) synchronized (source) {
-                    personalMaximum = Math.max(personalMaximum, source.completedLevel(definition.id()));
-                }
-            }
             return new Evaluation(Status.READY, new Plan(definition.deliveryPolicy(), definition.id(), downloadLevel,
-                cost, membership.teamId(), members, ObjectList.of(), before, before - cost),
-                before, before - cost > 0 ? before - cost : personalMaximum);
+                cost, membership.teamId(), members, ObjectList.of(), legacyLevel, legacyLevel - cost),
+                legacyLevel, Math.max(legacyLevel - cost, beforeVisible));
         }
+        if (!requiresDatabase && beforeVisible < downloadLevel) return evaluation(Status.TEAM_LEVEL_INSUFFICIENT);
+        if (insufficient) return evaluation(Status.PERSONAL_LEVEL_INSUFFICIENT);
+        return new Evaluation(Status.READY, new Plan(definition.deliveryPolicy(), definition.id(), downloadLevel,
+            cost, membership.teamId(), members, changes, legacyLevel, legacyLevel),
+            Math.max(legacyLevel, beforeVisible), Math.max(legacyLevel, afterVisible));
     }
 
     /**
@@ -175,7 +170,7 @@ public final class ResearchDownloadSources {
         requireTeam(plan.teamId(), team);
         var acquired = new ObjectArrayList<PlayerResearchState>(plan.memberChanges().size());
         try {
-            if (plan.policy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM) {
+            if (!legacyTeamSource(plan)) {
                 var elements13 = plan.memberChanges();
                 for (int index13 = 0; index13 < elements13.size(); index13++) {
                     var change = elements13.get(index13);
@@ -216,7 +211,7 @@ public final class ResearchDownloadSources {
         requireOwner();
         validate(plan);
         requireTeam(plan.teamId(), team);
-        if (plan.policy() == ResearchDownloadDeliveryPolicy.ITEM_ONLY) {
+        if (legacyTeamSource(plan)) {
             return team.releaseSource(plan.researchId(), operationId) ? Status.READY : Status.SOURCE_BUSY;
         }
         var originalSources = new ObjectArrayList<PlayerResearchState>(plan.memberChanges().size());
@@ -252,7 +247,7 @@ public final class ResearchDownloadSources {
         var held = new ObjectArrayList<HeldPlayer>();
         TeamOwnedResearch.Completion teamMutation = null;
         try {
-            if (plan.policy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM) {
+            if (!legacyTeamSource(plan)) {
                 var elements14 = plan.memberChanges();
                 for (int index14 = 0; index14 < elements14.size(); index14++) {
                     var change = elements14.get(index14);
@@ -301,7 +296,7 @@ public final class ResearchDownloadSources {
         requireOwner();
         validate(plan);
         requireTeam(plan.teamId(), team);
-        if (plan.policy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM) {
+        if (!legacyTeamSource(plan)) {
             var elements12 = plan.memberChanges();
             for (int index12 = 0; index12 < elements12.size(); index12++) {
                 var change = elements12.get(index12);
@@ -335,8 +330,12 @@ public final class ResearchDownloadSources {
             var change = elements7.get(index7);
             requireSourceLevel(definition, change.beforeLevel());
         }
-        if (plan.policy() == ResearchDownloadDeliveryPolicy.ITEM_ONLY)
+        if (legacyTeamSource(plan))
             requireSourceLevel(definition, plan.teamBeforeLevel());
+    }
+
+    private static boolean legacyTeamSource(Plan plan) {
+        return plan.policy() == ResearchDownloadDeliveryPolicy.ITEM_ONLY && plan.memberChanges().isEmpty();
     }
 
     private void requireTeam(String teamId, TeamOwnedResearch team) {

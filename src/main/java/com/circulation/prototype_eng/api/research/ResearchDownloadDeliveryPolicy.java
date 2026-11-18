@@ -1,15 +1,15 @@
 package com.circulation.prototype_eng.api.research;
 
 /**
- * Ordinary completion ownership and available download delivery paths, independent of specialOnly.
+ * Available download delivery paths for research. Ordinary levels belong to players.
  */
 public enum ResearchDownloadDeliveryPolicy {
     /**
-     * Team-owned completion; item download consumes the declared number of levels.
+     * Item download requires no stored database level; it consumes the declared member levels.
      */
     ITEM_ONLY,
     /**
-     * Player-owned completion; database download preserves levels, item download consumes them.
+     * Database download preserves levels; item download consumes the declared member levels.
      */
     DATABASE_AND_ITEM
 }

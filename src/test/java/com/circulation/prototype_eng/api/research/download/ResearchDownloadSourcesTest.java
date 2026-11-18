@@ -52,6 +52,30 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 class ResearchDownloadSourcesTest {
     @Test
+    void itemOnlyDownloadReservesAndConsumesEachPersonalSourceAfterPlanReload() {
+        var fixture = new Fixture(1);
+        for (var member : membership().members()) fixture.players.get(member).completeAtLeast(TEAM, 2);
+        var evaluated = fixture.sources.evaluate(fixture.registry.require(TEAM), 2, fixture.cost, membership(), null,
+            fixture.players, fixture.team);
+        assertEquals(READY, evaluated.status());
+        var plan = Objects.requireNonNull(evaluated.plan());
+        assertEquals(membership().members().size(), plan.memberChanges().size());
+        assertEquals(0, plan.teamBeforeLevel());
+        var codec = fixture.sources.codec();
+        var loaded = codec.decode(codec.encode(plan));
+        assertEquals(plan, loaded);
+        assertEquals(READY, fixture.sources.reserve(loaded, OPERATION, fixture.players, fixture.team));
+        for (var member : loaded.members()) assertTrue(fixture.players.get(member).sourceReservedBy(TEAM, OPERATION));
+        var prepared = ready(fixture.sources.prepare(loaded, OPERATION, fixture.players, fixture.team));
+        prepared.commit();
+        prepared.complete();
+        assertEquals(READY, fixture.sources.verifyCommitted(loaded, fixture.players, fixture.team));
+        assertEquals(READY, fixture.sources.release(loaded, OPERATION, fixture.players, fixture.team));
+        for (var member : loaded.members()) assertEquals(1, fixture.players.get(member).completedLevel(TEAM));
+        assertEquals(0, fixture.team.completedLevel(TEAM));
+    }
+
+    @Test
     void visibleLevelLossTracksTheTeamProjectionWhileDirectSourcePaymentsStillCommit() {
         for (boolean retainedPersonalLevel : new boolean[]{false, true}) {
             var fixture = new Fixture(2);
@@ -542,7 +566,8 @@ class ResearchDownloadSourcesTest {
         var other = Objects.requireNonNull(completion.prepare(OTHER_TEAM, 2, plan.members(), fixture.players, fixture.team, 7));
         other.commit();
         other.complete();
-        assertEquals(2, fixture.team.completedLevel(OTHER_TEAM));
+        assertEquals(0, fixture.team.completedLevel(OTHER_TEAM));
+        for (var member : plan.members()) assertEquals(2, fixture.players.get(member).completedLevel(OTHER_TEAM));
         assertEquals(SOURCE_BUSY, fixture.sources.reserve(plan, FOREIGN_OPERATION, fixture.players, fixture.team));
         assertEquals(SOURCE_BUSY, fixture.sources.prepare(plan, fixture.players, fixture.team).status());
         assertEquals(SOURCE_BUSY, fixture.sources.prepare(plan, FOREIGN_OPERATION, fixture.players, fixture.team).status());

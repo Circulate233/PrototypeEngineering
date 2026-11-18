@@ -20,7 +20,7 @@
 
 ## 个人遗忘与绝对等级管理
 
-`ServerResearch.requestForgetPersonal/requestSetPlayerLevel/requestSetTeamLevel` 复用原MAIN、server/world/player session与原窗口guard。个人仅本人当前队伍，管理员要求实际operator；PLAYER经持久FTB owner解析支持离线目标，并核所有peer成员一致性。TEAM以Universe实际稳定UID/类型/有效性及成员反向解析核对；显式未活跃历史ID可使用空成员来源，Universe不可用则暂停，不能按缺provider当作队伍消失。
+`ServerResearch.requestForgetPersonal/requestSetPlayerLevel/requestSetTeamLevel` 复用原MAIN、server/world/player session与原窗口guard。个人仅本人当前队伍，管理员要求实际operator；PLAYER经持久FTB owner解析支持离线目标，并核所有peer成员一致性。TEAM 以服务端当前身份、类型、有效性及成员反查核对；默认单人队使用玩家 UUID，正式队使用 FTB 队伍 UID。活动队伍的设置操作写全体当前成员的个人等级；显式历史 ID 仍可维护旧直属来源。Universe 不可用时暂停。
 
 `ResearchWorld.forgetPersonal/setPlayerResearchLevel/setTeamResearchLevel` 执行匹配来源kind、普通/非special、范围与准确权限重验。遗忘阈值k仅删个人k及以上后缀，管理为绝对等级，0移除。未变返回UNCHANGED；拒绝或失效不创建新来源表。上调复用原completion receipt、个人rewardLevels为空，下调复用原down-only source mutation；不更改下载的降级限制，不创造领取资格或调用奖励/开始事件，无材料/FE/XP费用。
 

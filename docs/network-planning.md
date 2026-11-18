@@ -14,7 +14,7 @@ NetworkRuntime 现已把整批结果发布到显式 MachineNetworkDevice，并�
 
 ## FTB 查询
 
-外部宿主使用 `new FtbOwnerTeamResolver(server)`，作为 capture 的 resolver；其他队伍来源实现同一个公开接口。适配器校验准确服务器线程及 Universe.server 身份，通过持久 `Universe.getPlayer(UUID)` 查询 owner，没有在线要求。接受有效 PLAYER / SERVER，SERVER 可以没有队长；owner 与可选队长必须位于捕获成员集合。
+外部宿主使用 `new FtbOwnerTeamResolver(server)`，作为 capture 的 resolver；其他队伍来源实现同一个公开接口。适配器校验准确服务器线程及 Universe.server 身份，通过持久 `Universe.getPlayer(UUID)` 查询 owner，没有在线要求。接受有效 PLAYER / SERVER，SERVER 可以没有队长；owner 与可选队长必须位于捕获成员集合。单人游戏的 FTB 默认 `singleplayer` 队按玩家 UUID 拆为个人队，成员只有该玩家；加入实际队伍后使用该队的 UID 和成员。
 
 Universe 未加载或不属于本服务器、未知 owner、无队伍、无效队伍和不支持的类型返回结构化拒绝。损坏成员 UUID、跨 Universe 的 team 等非法状态抛错，不能变成常规空队伍。拒绝结果不提供有效 team payload；不会每 tick 刷重复告警日志。FTBLib 自身 isValid 已排除真实无队长 PLAYER；公共结果工厂沿用旧 API，对外部 provider 不增加这条额外限制。
 

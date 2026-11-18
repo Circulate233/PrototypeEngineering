@@ -269,7 +269,7 @@ Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 
 
 `ResearchLevelStage.builder(first, last)` 必须设置 `.durationTicks(long)`、研究阶数和网络资源公式，多个阶段完整覆盖 `1..maxLevel`。时间为单站基准 tick，多站可加速。阶数 0 使用玩家手动研究，只允许 `AEItemKey` 材料且禁止网络资源；正阶由研究站推进，可使用其他 `AEKey` 材料。`.material(AEKey, long)` 添加普通资源总量，`.materialRequirement(...)` 只接受固定静态输入。
 
-`ResearchResourceFormula.builder().constant(type, total)` / `.affine(type, base, slope)` 定义网络资源总量，`.perTick(type, limit)` / `.affinePerTick(type, base, slope)` 按单站每 tick 用量定义，并乘研究时间 T 换算为总量。等级增长使用 `目标等级 - 阶段首级`，数量为 double；同一资源重复添加及混用总量/tick 定义会相加。`ResearchLevelStage.resourceDemandForLevel(int level)` 返回合计总量，`resourceLimitsForLevel(int level)` 返回合计总量除以 T 的单站限制，均校验等级属于本阶段。实际网络增量同时受该限制、研究站自身 `rates`、可用网络量及剩余需求约束。公式直接借用 builder 完成的 Map，交付后必须停止修改；总览不显示“单站上限”文案，业务公式与研究站速率接口仍保留。`DATABASE_AND_ITEM` 允许个人研究写入数据库或下载成物品；`ITEM_ONLY` 普通完成量归队伍并通过物品下载交付。
+`ResearchResourceFormula.builder().constant(type, total)` / `.affine(type, base, slope)` 定义网络资源总量，`.perTick(type, limit)` / `.affinePerTick(type, base, slope)` 按单站每 tick 用量定义，并乘研究时间 T 换算为总量。等级增长使用 `目标等级 - 阶段首级`，数量为 double；同一资源重复添加及混用总量/tick 定义会相加。`ResearchLevelStage.resourceDemandForLevel(int level)` 返回合计总量，`resourceLimitsForLevel(int level)` 返回合计总量除以 T 的单站限制，均校验等级属于本阶段。实际网络增量同时受该限制、研究站自身 `rates`、可用网络量及剩余需求约束。公式直接借用 builder 完成的 Map，交付后必须停止修改；总览不显示“单站上限”文案，业务公式与研究站速率接口仍保留。普通研究完成时对当时的全体队员写个人等级，队伍按当前成员最高等级聚合。`DATABASE_AND_ITEM` 可写入数据库或下载成物品；`ITEM_ONLY` 仅改变交付方式，不改变等级归属。
 
 计算网络资源由使用方实现并复用 `NetworkResourceType` 单例，不需要资源注册，库没有默认资源。提供资源的物品实现 `NetworkComputerComponent`；已有显式物品适配仍可用组件注册事件，但登记适配不会使普通物品符合默认运算仓的插入条件。物品接口定义优先于适配表。机器用 `MachineOwnership` 保存所有者，`MachineNetworkDevice` 声明角色，`NetworkRecipeWork` 处理研究和数值需求。
 

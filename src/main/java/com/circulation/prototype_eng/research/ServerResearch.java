@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.research;
 
 import ae2.api.stacks.AEItemKey;
+import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -20,6 +21,7 @@ import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchServerConfiguration;
 import com.circulation.prototype_eng.api.research.ResearchWorld;
+import com.circulation.prototype_eng.api.research.ResearchWorldSnapshot;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryAdapter;
@@ -76,6 +78,7 @@ import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.EnumActionResult;
 import net.minecraft.util.EnumFacing;
@@ -96,9 +99,11 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.HexFormat;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -152,11 +157,45 @@ public final class ServerResearch {
         });
         try {
             var saved = file.read();
-            if (saved != null) world.restore(saved);
+            if (saved != null) {
+                var migrated = migrateLocalTeam(server, overworld, saved);
+                world.restore(migrated);
+                if (migrated != saved) world.checkpoint(migrated.serverTime());
+            }
         } catch (IOException failure) {
             throw new UncheckedIOException(failure);
         }
         session = new Session(server, overworld, world, permissions);
+    }
+
+    private static ResearchWorldSnapshot migrateLocalTeam(MinecraftServer server, WorldServer world, ResearchWorldSnapshot saved) {
+        if (!server.isSinglePlayer()) return saved;
+        var host = world.getWorldInfo().getPlayerNBTTagCompound();
+        if (host == null || !host.hasUniqueId("UUID")) return saved;
+        var hostId = host.getUniqueId("UUID");
+        if (hostId == null) return saved;
+        var directory = world.getSaveHandler().getWorldDirectory().toPath().resolve("data/ftb_lib/teams");
+        var otherFtbIds = new ObjectOpenHashSet<String>();
+        String uid = "0002";
+        if (!Files.notExists(directory)) {
+            try (var files = Files.newDirectoryStream(directory, "*.dat")) {
+                for (var path : files) {
+                    if (!Files.isRegularFile(path)) continue;
+                    try (var input = Files.newInputStream(path)) {
+                        var team = CompressedStreamTools.readCompressed(input);
+                        if (!team.hasKey("UID", 2)) continue;
+                        var code = HexFormat.of().withUpperCase().toHexDigits(team.getShort("UID"));
+                        if (path.getFileName().toString().equals("singleplayer.dat") && "singleplayer".equals(team.getString("ID"))
+                            && TeamType.SERVER.getName().equals(team.getString("Type"))) uid = code;
+                        else otherFtbIds.add(code);
+                    }
+                }
+            } catch (IOException failure) {
+                PrototypeEngineering.LOGGER.warn("Cannot verify legacy research team identities in {}", directory, failure);
+                return saved;
+            }
+        }
+        return LegacyResearchTeams.migrate(saved, hostId, uid, otherFtbIds);
     }
 
     /**
@@ -1178,7 +1217,9 @@ public final class ServerResearch {
         seeds.add(actor.getUniqueID());
         if (targetPlayer != null) seeds.add(targetPlayer);
         var liveTeam = targetTeam == null ? null : levelTeam(current, targetTeam);
-        if (liveTeam != null) {
+        var personalOwner = targetTeam == null ? null : FtbOwnerTeamResolver.personalOwner(Universe.get(), targetTeam);
+        if (personalOwner != null) seeds.add(personalOwner.getId());
+        else if (liveTeam != null) {
             var elements5 = liveTeam.getMembers();
             for (int index5 = 0; index5 < elements5.size(); index5++) {
                 var member = elements5.get(index5);
@@ -1201,6 +1242,10 @@ public final class ServerResearch {
             membership = captures.get(targetPlayer);
             if (!membership.accepted()) return ResearchLevelResult.STALE_CONTEXT;
             teamId = membership.teamId();
+        } else if (personalOwner != null) {
+            membership = captures.get(personalOwner.getId());
+            if (!membership.accepted() || !targetTeam.equals(membership.teamId())) return ResearchLevelResult.STALE_CONTEXT;
+            targetMembers.add(personalOwner.getId());
         } else if (liveTeam != null) {
             var elements10 = liveTeam.getMembers();
             for (int index10 = 0; index10 < elements10.size(); index10++) {
@@ -1228,9 +1273,12 @@ public final class ServerResearch {
 
     private static @Nullable ForgeTeam levelTeam(Session current, String id) {
         if (!Universe.loaded() || Universe.get().server != current.server) return null;
+        var universe = Universe.get();
+        var personalOwner = FtbOwnerTeamResolver.personalOwner(universe, id);
+        if (personalOwner != null) return personalOwner.team;
         ForgeTeam found = null;
-        for (var team : Universe.get().getTeams()) {
-            if (!id.equals(team.getUIDCode())) continue;
+        for (var team : universe.getTeams()) {
+            if (FtbOwnerTeamResolver.personalTeam(team) || !id.equals(team.getUIDCode())) continue;
             if (found != null) throw new IllegalStateException("Duplicate target team identity");
             if (team.universe != Universe.get() || !team.isValid() || team.type != TeamType.PLAYER && team.type != TeamType.SERVER)
                 throw new IllegalStateException("Invalid target team identity");
@@ -1243,6 +1291,8 @@ public final class ServerResearch {
         if (!Universe.loaded() || Universe.get().server != current.server || levelTeam(current, id) != captured)
             return false;
         var now = new ObjectOpenHashSet<UUID>();
+        var personalOwner = FtbOwnerTeamResolver.personalOwner(Universe.get(), id);
+        if (personalOwner != null) return members.equals(Set.of(personalOwner.getId()));
         if (captured != null) {
             var elements4 = captured.getMembers();
             for (int index4 = 0; index4 < elements4.size(); index4++) {
@@ -1450,8 +1500,7 @@ public final class ServerResearch {
                     station.progress() != null && station.progress().target().equals(saved.target()) ? station : null);
                 states.add(new ResearchOverviewPacket.State(id, personal, completed, playerView.team().structuralTargets().getInt(id),
                     downloaded, downloadedTo, canStart, canDownload,
-                    !playerView.savePending() && personal > 0 && definition.deliveryPolicy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM
-                        && !definition.specialOnly() && playerView.forgetPermission() == ResearchPermissionPolicy.Decision.ALLOWED && current.world.canForget(actor.getUniqueID(), id),
+                    !playerView.savePending() && personal > 0 && !definition.specialOnly() && playerView.forgetPermission() == ResearchPermissionPolicy.Decision.ALLOWED && current.world.canForget(actor.getUniqueID(), id),
                     pickerView != null && pickerView.visible() && !definition.specialOnly() && processable > 0, processable,
                     progress, claims, membership.accepted() ? current.world.otherMemberLevel(membership.members(), actor.getUniqueID(), id) : 0,
                     new ResearchOverviewPacket.Availability(playerView.team().startPermission(),
@@ -1660,6 +1709,10 @@ public final class ServerResearch {
      */
     public static String teamTitle(EntityPlayerMP actor, String teamId) {
         var current = actorSession(actor);
+        if (Universe.loaded() && Universe.get().server == current.server) {
+            var personalOwner = FtbOwnerTeamResolver.personalOwner(Universe.get(), teamId);
+            if (personalOwner != null) return personalOwner.getName();
+        }
         var team = levelTeam(current, teamId);
         if (team == null)
             throw new IllegalStateException("Research station team " + teamId + " is not a current FTB team");
@@ -2030,12 +2083,17 @@ public final class ServerResearch {
         if (!Universe.loaded() || Universe.get().server != current.server) {
             return null;
         }
-        var player = Universe.get().getPlayer(actor.getUniqueID());
-        if (player == null || player.team == null || !player.team.isValid() || !membership.teamId().equals(player.team.getUIDCode())) {
-            return null;
-        }
-        return new ResearchPermissionContext(actor.getUniqueID(), membership.teamId(), null, membership.teamId(),
-            player.team.isOwner(player), player.team.isModerator(player), current.server.getPlayerList().canSendCommands(actor.getGameProfile()));
+        var universe = Universe.get();
+        var actorId = actor.getUniqueID();
+        var player = universe.getPlayer(actorId);
+        if (player == null) return null;
+        boolean personal = FtbOwnerTeamResolver.personalOwner(universe, membership.teamId()) == player;
+        var team = player.team;
+        if (!personal && (team == null || team.universe != universe || !team.isValid() || FtbOwnerTeamResolver.personalTeam(team)
+            || !membership.teamId().equals(team.getUIDCode()))) return null;
+        return new ResearchPermissionContext(actorId, membership.teamId(), null, membership.teamId(),
+            personal || team.isOwner(player), !personal && team.isModerator(player),
+            current.server.getPlayerList().canSendCommands(actor.getGameProfile()));
     }
 
     private static void requireManual(ResourceLocation id, int target) {

@@ -108,6 +108,8 @@ public final class ResearchWorld {
     private PlayerResearchState.Completion activePlayerLevel;
     @Nullable
     private TeamOwnedResearch.Completion activeTeamLevel;
+    @Nullable
+    private Object2ObjectOpenHashMap<UUID, PlayerResearchState.Completion> activeMemberLevels;
 
     /**
      * The writer must synchronously save the supplied read-only checkpoint without modifying research sources
@@ -280,7 +282,7 @@ public final class ResearchWorld {
                 var researchId = entry.getKey();
                 var research = registry.require(researchId);
                 if (research.specialOnly()) return ResearchLevelResult.OUT_OF_RANGE;
-                if (research.deliveryPolicy() == ResearchDownloadDeliveryPolicy.ITEM_ONLY && !team.research.canWriteResearch(researchId))
+                if (team.research.completedLevel(researchId) > 0 && !team.research.canWriteResearch(researchId))
                     return ResearchLevelResult.SOURCE_RESERVED;
                 for (var member : membership.members())
                     if (!players.get(member).canWriteResearch(researchId)) return ResearchLevelResult.SOURCE_RESERVED;
@@ -1721,8 +1723,7 @@ public final class ResearchWorld {
             var action = forget ? ResearchPermissionPolicy.Action.FORGET_PERSONAL_RESEARCH : ResearchPermissionPolicy.Action.MODIFY_ANY_RESEARCH_LEVEL;
             if (permissions.can(action, permission) != ResearchPermissionPolicy.Decision.ALLOWED)
                 return ResearchLevelResult.PERMISSION_DENIED;
-            if (definition.specialOnly() || definition.deliveryPolicy() != ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                return ResearchLevelResult.SOURCE_MISMATCH;
+            if (definition.specialOnly()) return ResearchLevelResult.SOURCE_MISMATCH;
             if (level < (forget ? 1 : 0) || level > definition.maxLevel()) return ResearchLevelResult.OUT_OF_RANGE;
             var previous = players.get(target);
             int before = previous == null ? 0 : previous.completedLevel(id);
@@ -1756,7 +1757,7 @@ public final class ResearchWorld {
     }
 
     /**
-     * Explicit stable team IDs may repair an empty or historical direct source table.
+     * Set each current member's ordinary level; historical IDs can still repair their legacy source.
      */
     public ResearchLevelResult setTeamResearchLevel(String target, Collection<UUID> members, ResearchPermissionContext permission,
                                                     ResourceLocation id, int level, long time, BooleanSupplier current) {
@@ -1773,10 +1774,12 @@ public final class ResearchWorld {
             var action = ResearchPermissionPolicy.Action.MODIFY_ANY_RESEARCH_LEVEL;
             if (permissions.can(action, permission) != ResearchPermissionPolicy.Decision.ALLOWED)
                 return ResearchLevelResult.PERMISSION_DENIED;
-            if (definition.specialOnly() || definition.deliveryPolicy() != ResearchDownloadDeliveryPolicy.ITEM_ONLY)
-                return ResearchLevelResult.SOURCE_MISMATCH;
+            if (definition.specialOnly()) return ResearchLevelResult.SOURCE_MISMATCH;
             if (level < 0 || level > definition.maxLevel()) return ResearchLevelResult.OUT_OF_RANGE;
             var previous = teams.get(target);
+            if (!capturedMembers.isEmpty()) return setMemberLevels(target, capturedMembers, previous, id, level, time, current);
+            // The explicit historical-source repair API remains available for old worlds with no live membership.
+            if (definition.deliveryPolicy() != ResearchDownloadDeliveryPolicy.ITEM_ONLY) return ResearchLevelResult.SOURCE_MISMATCH;
             int before = previous == null ? 0 : previous.research.completedLevel(id);
             if (level == before) return ResearchLevelResult.UNCHANGED;
             if (levelWritersBusy()) return ResearchLevelResult.BUSY;
@@ -1806,6 +1809,65 @@ public final class ResearchWorld {
                 activeTeamLevel = null;
             }
         });
+    }
+
+    private ResearchLevelResult setMemberLevels(String target, ObjectSet<UUID> members, @Nullable TeamProgress previous,
+                                                 ResourceLocation id, int level, long time, BooleanSupplier current) {
+        if (levelWritersBusy()) return ResearchLevelResult.BUSY;
+        int legacyLevel = previous == null ? 0 : previous.research.completedLevel(id);
+        if (legacyLevel > 0) {
+            if (previous.research.sourceReserved(id)) return ResearchLevelResult.SOURCE_RESERVED;
+            if (pendingLevelCompletion(id, null, target)) return ResearchLevelResult.BUSY;
+        }
+        var sources = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
+        for (var member : members) {
+            var source = players.get(member);
+            int before = source == null ? 0 : source.completedLevel(id);
+            if (before == level) continue;
+            if (source != null && source.sourceReserved(id)) return ResearchLevelResult.SOURCE_RESERVED;
+            if (before > level && pendingLevelCompletion(id, member, null)) return ResearchLevelResult.BUSY;
+            sources.put(member, source == null ? new PlayerResearchState(member) : source);
+        }
+        if (sources.isEmpty() && legacyLevel == 0) return ResearchLevelResult.UNCHANGED;
+        if (!current.getAsBoolean()) return ResearchLevelResult.STALE_CONTEXT;
+        var receipts = new Object2ObjectOpenHashMap<UUID, PlayerResearchState.Completion>();
+        var transactions = new ObjectArrayList<ReversibleTransaction>();
+        boolean committed = false;
+        try {
+            for (var entry : sources.object2ObjectEntrySet()) {
+                var source = entry.getValue();
+                int before = source.completedLevel(id);
+                var receipt = level > before ? source.tryPrepareCompletion(id, true, level, IntSets.emptySet(), time)
+                    : source.tryPrepareSourceMutation(id, before, level, null);
+                if (receipt == null) return ResearchLevelResult.BUSY;
+                receipts.put(entry.getKey(), receipt);
+                transactions.add(receipt);
+            }
+            if (legacyLevel > 0) {
+                activeTeamLevel = previous.research.tryPrepareSourceMutation(id, legacyLevel, 0, null);
+                if (activeTeamLevel == null) return ResearchLevelResult.BUSY;
+                transactions.add(activeTeamLevel);
+            }
+            activeMemberLevels = receipts;
+            if (!current.getAsBoolean()) return ResearchLevelResult.STALE_CONTEXT;
+            for (var transaction : transactions) transaction.commit();
+            committed = true;
+            for (var entry : sources.object2ObjectEntrySet()) players.putIfAbsent(entry.getKey(), entry.getValue());
+            captureTeam(target, members);
+            dirty = true;
+            persist();
+            return ResearchLevelResult.APPLIED;
+        } finally {
+            try {
+                for (int index = transactions.size() - 1; index >= 0; index--) {
+                    if (committed) transactions.get(index).complete();
+                    else transactions.get(index).rollback();
+                }
+            } finally {
+                activeMemberLevels = null;
+                activeTeamLevel = null;
+            }
+        }
     }
 
     private boolean levelWritersBusy() {
@@ -2177,6 +2239,10 @@ public final class ResearchWorld {
 
     private PlayerResearchState.Snapshot playerSnapshot(PlayerResearchState player, @Nullable PlayerResearchState.RewardSession reward) {
         if (activePlayerLevel != null && activePlayerLevel.owns(player)) return activePlayerLevel.snapshot();
+        if (activeMemberLevels != null) {
+            var mutation = activeMemberLevels.get(player.playerUuid());
+            if (mutation != null && mutation.owns(player)) return mutation.snapshot();
+        }
         if (activeDownload != null && activeDownload.owns(player)) return activeDownload.snapshot(player);
         if (reward != null && reward == activeReward && reward.owns(player, reward.requireCurrent().key()))
             return reward.snapshot();

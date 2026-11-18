@@ -21,8 +21,7 @@
 
 `ResearchEligibility.calculate` 实际计算 `TeamResearchView`：
 
-- DATABASE_AND_ITEM 仅聚合当前成员的个人最大等级；换队不清掉个人源。
-- ITEM_ONLY 仅读取直属队伍源；拒绝个人/队伍混存、未知研究和普通源中的 specialOnly。
+- 两种普通下载策略均读取当前成员个人等级的最高值；旧直属等级仍可读取以兼容历史存档。普通来源不接受 specialOnly。
 - 黑名单归零，前置按等级阶段级联回退；互斥只阻止新目标，不回退已完成等级。
 - `canStart` 校验实际请求者属于捕获成员、目标为当前有效等级加一，再执行真实 `startCondition.canStart`。回调异常传播。
 - `structurallyEligible` 供已有队列重建使用，只核对结构资格，不重新执行用户开始条件。
@@ -31,7 +30,7 @@
 
 ## 个人遗忘与管理员来源修复
 
-PN个人遗忘与operator绝对等级已接Java、原MAIN及原AE默认GUI。普通DATABASE_AND_ITEM只对本人当前队伍个人源按min(before,k−1)删阈值后缀；管理PLAYER/TEAM按来源策略设置0..maxLevel，0移除，specialOnly拒绝。离线玩家和显式空/历史稳定队伍支持；服务器捕获实际FTB身份/角色，目标只是意图。没有费用、开始或奖励事件，原领取资格及全部组/片段/时间保持，上调不创造资格。
+PN个人遗忘与operator绝对等级已接Java、原MAIN及原AE默认GUI。两种普通研究都对本人当前队伍的个人源按 min(before, k−1) 删除等级后缀；管理员可为个人或当前队伍全体成员设置 0..maxLevel，0 移除，specialOnly 拒绝。离线玩家和显式空/历史稳定队伍支持；服务器捕获实际FTB身份/角色，目标只是意图。没有费用、开始或奖励事件，原领取资格及全部组/片段/时间保持，上调不创造资格。
 
 下载预留、其他writer和所有保留旧队伍冻结completionIntent保护来源减少。原协调先结算会话后prune，无立即丢弃或退款；World原单writer/pendingSave用于准确IO恢复。默认GUI与V2有界快照/原ACT保持窗口与可见行绑定，普通旧ACT新增null字段由Gson省略。详见[服务器研究](server-research.md)、[研究界面](research-gui.md)及 `build/staging/research-actions/`；最终扩大受影响497/54、完整1579/200、13Java全级MCP/完整读回及MCPbuild通过，实机未验收。
 
@@ -53,7 +52,7 @@ PN个人遗忘与operator绝对等级已接Java、原MAIN及原AE默认GUI。普
 
 `TeamResearchCompletion.prepare/prepareFrozen` 复用 PN `TeamResearchCompletionImpl` 的双来源传播与恢复基线规则：
 
-- DATABASE_AND_ITEM 提升冻结成员的个人等级；ITEM_ONLY 仅提升 `TeamOwnedResearch`，但两者都给成员创建逐研究等级奖励资格。
+- 两种普通下载策略都提升完成时冻结成员的个人等级，并为成员创建相应的奖励领取资格。
 - 完成仅创建 UNCLAIMED 资格，不执行奖励回调。
 - 普通重复完成可修复缺失资格；恢复提交使用原成员基线，保留已存在领取证据。
 - 按各阶段实际奖励等级遍历，移除旧 `boolean[targetLevel+1]` 和逐等级扫描。

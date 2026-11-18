@@ -260,7 +260,7 @@ ParallelController.create("example:parallel_module", "tile.example.parallel_modu
 
 first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表示研究站阶数。`prerequisite(id, minimumLevel)` 要求前置研究达到指定等级，`mutex(id, minimumLevel)` 则在对应研究达到该等级时阻止这一阶段。奖励方法的 level 是研究的实际等级，必须位于本段范围内。
 
-`Research.create(id, maxLevel, specialOnly, deliveryPolicy, stages, condition)` 组装整项研究。maxLevel 是最大等级，specialOnly 限制普通研究入口，deliveryPolicy 选择 `DATABASE_AND_ITEM` 或 `ITEM_ONLY`，stages 是等级段数组，condition 是入队资格函数。下载等级费用由下载配方定义，研究不设置该参数。配置完毕调用 `register()` 提交定义。
+`Research.create(id, maxLevel, specialOnly, deliveryPolicy, stages, condition)` 组装整项研究。maxLevel 是最大等级，specialOnly 限制普通研究入口，deliveryPolicy 选择 `DATABASE_AND_ITEM` 或 `ITEM_ONLY`，只控制下载方式；普通研究完成一律写入完成时各队员的个人等级。`stages` 是等级段数组，condition 是入队资格函数。下载等级费用由下载配方定义，研究不设置该参数。配置完毕调用 `register()` 提交定义。
 
 `Research.alwaysAllowed()` 表示资格函数不增加额外条件，实际权限仍会由服务器规则检查。自定义资格函数读取 `targetLevel`、`networkCenterLevel`、`sharedLevel(researchId)` 和 `available(resource)` 等捕获事实，返回 bool；它不能修改资源或把当前数量当作后续工作已经预留的数量。`unlock(effectId, targetId, level)` 声明达到指定等级后的解锁效果，必须在研究定义被注册前完成。
 

@@ -1425,8 +1425,10 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     private int effectiveAfter(Entry entry, ResourceLocation forgotten, int keep, Object2IntOpenHashMap<ResourceLocation> levels) {
         if (levels.containsKey(entry.id())) return levels.getInt(entry.id());
         levels.put(entry.id(), 0);
-        int raw = entry.specialOnly() ? 0 : entry.deliveryPolicy() == ResearchDownloadDeliveryPolicy.ITEM_ONLY ? entry.teamLevel()
-            : Math.max(entry.otherMemberLevel(), entry.id().equals(forgotten) ? keep : entry.personalLevel());
+        int recorded = Math.max(entry.otherMemberLevel(), entry.personalLevel());
+        int raw = entry.specialOnly() ? 0 : Math.max(entry.otherMemberLevel(), entry.id().equals(forgotten) ? keep : entry.personalLevel());
+        // A still-readable legacy team level can exceed all personal levels.
+        if (entry.teamLevel() > recorded) raw = Math.max(raw, entry.teamLevel());
         while (raw > 0) {
             boolean met = true;
             var requirements = entry.stage(raw).prerequisites();

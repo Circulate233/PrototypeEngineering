@@ -69,10 +69,8 @@ public final class TeamResearchCompletion {
         if (members.isEmpty()) {
             throw new IllegalArgumentException("Research completion requires team members");
         }
-        boolean teamOwned = definition.deliveryPolicy() == ResearchDownloadDeliveryPolicy.ITEM_ONLY;
-        if (!teamOwned && team.completedLevel(id) != 0) {
-            throw new IllegalArgumentException("Personal research also has a team-owned source");
-        }
+        // Existing frozen item-only completions may still carry a baseline from the old direct source.
+        int legacyLevel = team.completedLevel(id);
         if (baselines != null && baselines.size() != members.size()) {
             throw new IllegalArgumentException("Frozen completion membership differs");
         }
@@ -84,11 +82,7 @@ public final class TeamResearchCompletion {
             if (player == null || !player.playerUuid().equals(member)) {
                 throw new IllegalArgumentException("Missing or mismatched player research state");
             }
-            int personalLevel = player.completedLevel(id);
-            if (teamOwned && personalLevel != 0) {
-                throw new IllegalArgumentException("Team research also has a personal source");
-            }
-            int current = teamOwned ? team.completedLevel(id) : personalLevel;
+            int current = Math.max(legacyLevel, player.completedLevel(id));
             if (current < 0 || current > definition.maxLevel()) {
                 throw new IllegalArgumentException("Completed research exceeds definition");
             }
@@ -97,7 +91,7 @@ public final class TeamResearchCompletion {
                 throw new IllegalArgumentException("Frozen completion baseline is incompatible");
             }
         }
-        if (teamOwned && !team.canWriteResearch(id)) {
+        if (legacyLevel > 0 && !team.canWriteResearch(id)) {
             return null;
         }
         for (var member : members) {
@@ -109,19 +103,10 @@ public final class TeamResearchCompletion {
         var transactions = new ObjectArrayList<ReversibleTransaction>();
         var raisedPlayers = new ObjectArrayList<UUID>();
         var eligiblePlayers = new ObjectArrayList<UUID>();
-        int teamBaseline = team.completedLevel(id);
         try {
-            var teamMutation = teamOwned ? team.tryPrepareCompletion(id, targetLevel) : null;
-            if (teamOwned && teamMutation == null) {
-                return null;
-            }
-            if (teamMutation != null) {
-                transactions.add(teamMutation);
-            }
             for (var member : members) {
                 var player = players.get(member);
-                int baseline = baselines != null ? baselines.getInt(member)
-                    : teamOwned ? teamBaseline : player.completedLevel(id);
+                int baseline = baselines != null ? baselines.getInt(member) : player.completedLevel(id);
                 var rewardLevels = new IntArrayList();
                 var elements = definition.stages();
                 for (int index3 = 0; index3 < elements.size(); index3++) {
@@ -133,7 +118,7 @@ public final class TeamResearchCompletion {
                     }
                 }
                 rewardLevels.sort(null);
-                var mutation = player.tryPrepareCompletion(id, !teamOwned, targetLevel, rewardLevels, worldTime);
+                var mutation = player.tryPrepareCompletion(id, true, targetLevel, rewardLevels, worldTime);
                 if (mutation == null) {
                     for (int index = transactions.size() - 1; index >= 0; index--) {
                         transactions.get(index).rollback();
@@ -141,7 +126,7 @@ public final class TeamResearchCompletion {
                     return null;
                 }
                 transactions.add(mutation);
-                if (teamMutation == null ? mutation.levelRaised() : teamMutation.levelRaised()) {
+                if (mutation.levelRaised()) {
                     raisedPlayers.add(member);
                 }
                 if (mutation.rewardClaimEligibilityCreated()) {

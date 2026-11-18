@@ -96,7 +96,6 @@ class ResearchWorldLevelActionsTest {
         var world = fixture.world;
         var target = member(UNKNOWN, "unseen", UNKNOWN);
         assertEquals(ResearchLevelResult.PERMISSION_DENIED, world.setPlayerResearchLevel(target, permission("old", UNKNOWN, "unseen", false), PERSONAL, 1, 11, () -> true));
-        assertEquals(ResearchLevelResult.SOURCE_MISMATCH, world.setPlayerResearchLevel(target, permission("old", UNKNOWN, "unseen", true), DIRECT, 1, 12, () -> true));
         assertEquals(ResearchLevelResult.SOURCE_MISMATCH, world.setPlayerResearchLevel(target, permission("old", UNKNOWN, "unseen", true), SPECIAL, 1, 13, () -> true));
         assertEquals(ResearchLevelResult.OUT_OF_RANGE, world.setPlayerResearchLevel(target, permission("old", UNKNOWN, "unseen", true), PERSONAL, 6, 14, () -> true));
         assertEquals(ResearchLevelResult.STALE_CONTEXT, world.forgetPersonal(member(BOB, "old", ALICE, BOB), permission("old", BOB, "old", true), PERSONAL, 1, 15, () -> true));
