@@ -1150,7 +1150,7 @@ public final class ServerResearch {
             && permission.equals(permission(current, actor, membership));
         if (ResearchRegistry.INSTANCE.require(id).researchTierForLevel(target) == 0) {
             return current.world.start(membership, permission, id, target,
-                new TeamResearchStart.Environment(0, 0, 0, Reference2DoubleMaps.emptyMap()), operationTime(current),
+                new TeamResearchStart.Environment(0, 0, Reference2DoubleMaps.emptyMap()), operationTime(current),
                 online.keySet(), actorCurrent);
         }
         var network = ServerNetworkRuntime.forServer(current.server);
@@ -1584,8 +1584,7 @@ public final class ServerResearch {
                         processable = Math.min(completed, candidate.lastLevel());
                     }
                 }
-                boolean devices = stage.researchTier() == 0 || admission.networkCenterLevel() > 0 && active != null
-                    && active.tier() >= stage.researchTier() && highestStation >= stage.researchTier();
+                boolean devices = stage.researchTier() == 0 || admission.networkCenterLevel() > 0 && highestStation >= stage.researchTier();
                 boolean canStart = visible && !playerView.savePending() && completed < definition.maxLevel() && !definition.specialOnly()
                     && playerView.team().startPermission() == ResearchPermissionPolicy.Decision.ALLOWED
                     && playerView.team().structuralTargets().containsKey(id) && playerView.team().queueRows().size() < 5 && devices;

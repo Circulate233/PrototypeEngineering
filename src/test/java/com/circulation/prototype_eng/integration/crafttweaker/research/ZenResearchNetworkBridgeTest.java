@@ -133,11 +133,11 @@ class ZenResearchNetworkBridgeTest {
         var amounts = new Reference2DoubleOpenHashMap<NetworkResourceType>();
         var admission = new TeamResearchStart(research, configuration.permissions());
         var missing = new TeamResearchStart.Request(queue, view, permission, definition.id(), 1,
-            new TeamResearchStart.Environment(1, 1, 1, amounts), 1, () -> true);
+            new TeamResearchStart.Environment(1, 1, amounts), 1, () -> true);
         assertEquals(TeamResearchStart.Status.NOT_STARTABLE, admission.start(missing).status());
         amounts.put(compute, 100);
         var supplied = new TeamResearchStart.Request(queue, view, permission, definition.id(), 1,
-            new TeamResearchStart.Environment(1, 1, 1, amounts), 2, () -> true);
+            new TeamResearchStart.Environment(1, 1, amounts), 2, () -> true);
         assertEquals(TeamResearchStart.Status.STARTED, admission.start(supplied).status());
         assertEquals(1, queue.size());
         assertEquals(ResearchPermissionPolicy.Decision.NOT_SERVER_OPERATOR, configuration.permissions().can(ResearchPermissionPolicy.Action.MODIFY_ANY_RESEARCH_LEVEL, permission));

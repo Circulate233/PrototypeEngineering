@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
+import com.circulation.prototype_eng.api.network.MachineDataCenterStorage;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
@@ -21,6 +23,8 @@ import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.testsupport.TestResources;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Map;
 import java.util.Objects;
@@ -49,9 +53,15 @@ class ResearchStationWorkTest {
         return new ResearchStationWork(queue, new TeamOwnedResearch("team", fixture.research), Map.of(OWNER, new PlayerResearchState(OWNER)));
     }
 
-    @Test
-    void pooledMaterialsPowerAndRemainingNetworkBudgetCommitTogether() {
-        try (var fixture = new StationFixtures(2, 100, 2, definition(4, 40, 4))) {
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 2})
+    void pooledMaterialsPowerAndRemainingNetworkBudgetCommitTogether(int databaseTier) {
+        try (var fixture = new StationFixtures(2, 100, Math.max(1, databaseTier), definition(4, 40, 4))) {
+            if (databaseTier == 0) {
+                var database = fixture.entries.stream().filter(entry -> entry.machine().components().assemblyBindings().stream()
+                    .anyMatch(binding -> binding.component() instanceof MachineDataCenterStorage)).findFirst().orElseThrow();
+                Objects.requireNonNull(database.machine().lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+            }
             var first = fixture.poweredStation(2);
             var second = fixture.poweredStation(2);
             Objects.requireNonNull(first.warehouse().input()).insert(A, 1, Actionable.MODULATE);

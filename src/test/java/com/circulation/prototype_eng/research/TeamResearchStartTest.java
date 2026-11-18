@@ -54,11 +54,11 @@ class TeamResearchStartTest {
     }
 
     private static TeamResearchStart.Environment empty() {
-        return environment(0, 0, 0);
+        return environment(0, 0);
     }
 
-    private static TeamResearchStart.Environment environment(int center, int dataCenter, int station) {
-        return new TeamResearchStart.Environment(center, dataCenter, station, Reference2DoubleMaps.emptyMap());
+    private static TeamResearchStart.Environment environment(int center, int station) {
+        return new TeamResearchStart.Environment(center, station, Reference2DoubleMaps.emptyMap());
     }
 
     @Test
@@ -75,7 +75,7 @@ class TeamResearchStartTest {
         var supply = new Reference2DoubleOpenHashMap<NetworkResourceType>();
         supply.put(ComputingResourceFixtures.COMPUTE, 15);
         var result = setup.start(ResearchPermissionPolicy.DEFAULT).start(setup.request(member(),
-            new TeamResearchStart.Environment(0, 0, 0, supply), () -> true));
+            new TeamResearchStart.Environment(0, 0, supply), () -> true));
         assertEquals(TeamResearchStart.Status.STARTED, result.status());
         assertNotNull(result.entry());
         assertEquals(MEMBER, result.entry().requestedBy());
@@ -105,17 +105,15 @@ class TeamResearchStartTest {
     }
 
     @Test
-    void tieredAdmissionRequiresTheSelectedDataCenterAndAStationAtTheResearchTier() {
+    void tieredAdmissionRequiresAnActiveCenterAndAStationAtTheResearchTier() {
         var setup = setup(2, ResearchStartCondition.ALWAYS_ALLOWED);
         var start = setup.start(ResearchPermissionPolicy.DEFAULT);
         assertEquals(TeamResearchStart.Status.NO_ACTIVE_CENTER, start.start(setup.request(member(), empty(), () -> true)).status());
-        assertEquals(TeamResearchStart.Status.DATA_CENTER_LEVEL_INSUFFICIENT,
-            start.start(setup.request(member(), environment(3, 1, 3), () -> true)).status());
         assertEquals(TeamResearchStart.Status.STATION_LEVEL_INSUFFICIENT,
-            start.start(setup.request(member(), environment(3, 2, 1), () -> true)).status());
+            start.start(setup.request(member(), environment(3, 1), () -> true)).status());
         var operator = new ResearchPermissionContext(OPERATOR, "other", null, "team", false, false, true);
         assertEquals(TeamResearchStart.Status.STARTED,
-            start.start(setup.request(operator, environment(3, 2, 2), () -> true)).status());
+            start.start(setup.request(operator, environment(3, 2), () -> true)).status());
         assertEquals(1, setup.queue.size());
     }
 

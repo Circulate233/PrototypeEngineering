@@ -63,14 +63,13 @@ class ResearchStationAdmissionTest {
 
 
     @Test
-    void actualMissingStationDataCenterAndCenterProduceTheirNormalAdmissionDenials() {
+    void actualMissingStationAndCenterProduceTheirNormalAdmissionDenials() {
         try (var fixture = new StationFixtures(1, 100, 2, definition(2, ResearchStartCondition.ALWAYS_ALLOWED))) {
             fixture.refresh();
             var queue = queue(fixture);
             var noStation = fixture.selector.admission("team");
             assertTrue(noStation.current());
             assertEquals(3, noStation.environment().networkCenterLevel());
-            assertEquals(2, noStation.environment().dataCenterLevel());
             assertEquals(0, noStation.environment().highestResearchStationLevel());
             assertEquals(TeamResearchStart.Status.STATION_LEVEL_INSUFFICIENT, start(fixture, queue, noStation).status());
             fixture.station(1, 0);
@@ -81,15 +80,13 @@ class ResearchStationAdmissionTest {
             Objects.requireNonNull(data.machine().lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
             fixture.refresh();
             var noData = fixture.selector.admission("team");
-            assertEquals(0, noData.environment().dataCenterLevel());
             assertEquals(1, noData.environment().highestResearchStationLevel());
-            assertEquals(TeamResearchStart.Status.DATA_CENTER_LEVEL_INSUFFICIENT, start(fixture, queue, noData).status());
+            assertEquals(TeamResearchStart.Status.STATION_LEVEL_INSUFFICIENT, start(fixture, queue, noData).status());
             Objects.requireNonNull(fixture.entries.getFirst().machine().lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
             fixture.refresh();
             var noCenter = fixture.selector.admission("team");
             assertTrue(noCenter.current());
             assertEquals(0, noCenter.environment().networkCenterLevel());
-            assertEquals(0, noCenter.environment().dataCenterLevel());
             assertEquals(0, noCenter.environment().highestResearchStationLevel());
             assertTrue(noCenter.environment().availableResources().isEmpty());
             assertEquals(TeamResearchStart.Status.NO_ACTIVE_CENTER, start(fixture, queue, noCenter).status());
@@ -99,7 +96,7 @@ class ResearchStationAdmissionTest {
 
     @Test
     void highestStationIsAcrossDimensionsAndRequiresTheActualLevelAuthorizedDevicePermit() {
-        try (var fixture = new StationFixtures(1, 100, 3, definition(3, ResearchStartCondition.ALWAYS_ALLOWED))) {
+        try (var fixture = new StationFixtures(1, 100, 1, definition(3, ResearchStartCondition.ALWAYS_ALLOWED))) {
             fixture.station(2, 0);
             fixture.station(3, 9);
             var excessive = fixture.station(4, -3);
@@ -112,7 +109,6 @@ class ResearchStationAdmissionTest {
             var captured = fixture.selector.admission("team");
             assertTrue(captured.current());
             assertEquals(3, captured.environment().networkCenterLevel());
-            assertEquals(3, captured.environment().dataCenterLevel());
             assertEquals(3, captured.environment().highestResearchStationLevel());
             assertEquals(TeamResearchStart.Status.STARTED, start(fixture, queue(fixture), captured).status());
             assertFalse(Objects.requireNonNull(fixture.selector.capture("team", 2)).rates().isEmpty());
@@ -186,13 +182,13 @@ class ResearchStationAdmissionTest {
             fixture.station(3, 0);
             fixture.refresh();
             var original = fixture.selector.admission("team");
-            assertEquals(1, original.environment().dataCenterLevel());
+            assertEquals(1, Objects.requireNonNull(Objects.requireNonNull(original.center()).dataCenterResearch()).level());
             fixture.dataCenter(2);
             fixture.refresh();
             assertFalse(original.current());
-            assertEquals(1, original.environment().dataCenterLevel());
+            assertEquals(1, Objects.requireNonNull(Objects.requireNonNull(original.center()).dataCenterResearch()).level());
             var replaced = fixture.selector.admission("team");
-            assertEquals(2, replaced.environment().dataCenterLevel());
+            assertEquals(2, Objects.requireNonNull(Objects.requireNonNull(replaced.center()).dataCenterResearch()).level());
             fixture.nextTick();
             assertFalse(replaced.current());
             assertTrue(fixture.selector.admission("team").current());

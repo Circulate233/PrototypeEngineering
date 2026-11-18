@@ -65,7 +65,7 @@ class ResearchWorldTest {
     }
 
     private static TeamResearchStart.Environment environment() {
-        return new TeamResearchStart.Environment(2, 1, 1, Reference2DoubleMaps.emptyMap());
+        return new TeamResearchStart.Environment(2, 1, Reference2DoubleMaps.emptyMap());
     }
 
     private static OwnerTeamResolution membership(UUID player, String team, UUID... members) {

@@ -54,8 +54,6 @@ public final class ResearchStations {
             var snapshot = permit.deviceSnapshot();
             if (snapshot.level() < tier)
                 continue;
-            var data = permit.dataCenterResearch();
-            if (data == null || data.level() < tier) continue;
             result.add(new Station(identity.identity().machineId(), machine, role, permit));
         }
 
@@ -119,9 +117,8 @@ public final class ResearchStations {
                 highestStation = Math.max(highestStation, permit.deviceSnapshot().level());
         }
 
-        var data = center == null ? null : center.dataCenterResearch();
         var environment = new TeamResearchStart.Environment(center == null ? 0 : center.deviceSnapshot().level(),
-            data == null ? 0 : data.level(), highestStation, center == null ? Reference2DoubleMaps.emptyMap() : center.availableResources());
+            highestStation, center == null ? Reference2DoubleMaps.emptyMap() : center.availableResources());
         return new Admission(identities, identities.revision(), center, environment);
     }
 

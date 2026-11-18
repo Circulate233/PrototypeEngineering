@@ -306,9 +306,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     private boolean deviceShort(Entry entry) {
         int tier = entry.stage(target(entry)).tier();
         if (entry.specialOnly() || entry.teamLevel() >= entry.maxLevel() || tier == 0) return false;
-        var database = activeDatabase();
-        return container.view.centerLevel() == 0 || database == null || database.tier() < tier
-            || container.view.stationLevel() < tier;
+        return container.view.centerLevel() == 0 || container.view.stationLevel() < tier;
     }
 
     private void updateView() {
@@ -593,14 +591,10 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         }
         if (contextMenu != null) drawContextMenu();
         if (editorDialog != null) drawEditorDialog();
-        if (!hoverText.isEmpty()) {
-            GlStateManager.pushMatrix();
-            GlStateManager.scale(4D / 3, 4D / 3, 1);
-            GuiUtils.drawHoveringText(hoverText, (int) (mouseX * 0.75), (int) (mouseY * 0.75),
-                (int) (screenW * 0.75), (int) (screenH * 0.75), -1, fontRenderer);
-            GlStateManager.popMatrix();
-        }
         GlStateManager.popMatrix();
+        if (!hoverText.isEmpty()) {
+            GuiUtils.drawHoveringText(hoverText, actualMouseX, actualMouseY, width, height, -1, fontRenderer);
+        }
         GlStateManager.color(1, 1, 1, 1);
         GlStateManager.enableDepth();
     }
@@ -1578,11 +1572,8 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             display.deviceReasons = List.of();
             return display.deviceReasons;
         }
-        var reasons = new ObjectArrayList<String>(3);
+        var reasons = new ObjectArrayList<String>(2);
         if (container.view.centerLevel() == 0) reasons.add(tr(NoCenter));
-        var db = activeDatabase();
-        if (db == null) reasons.add(tr(NoDatabase));
-        else if (db.tier() < tier) reasons.add(tr(DatabaseLow, tier, db.tier()));
         if (container.view.stationLevel() < tier) reasons.add(tr(StationLow, tier, container.view.stationLevel()));
         display.deviceReasons = reasons.isEmpty() ? List.of() : reasons;
         return display.deviceReasons;

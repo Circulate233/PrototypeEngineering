@@ -114,7 +114,7 @@ class ResearchWorldStationTest {
         });
         var member = OwnerTeamResolution.resolved(OWNER, "team", OwnerTeamType.SERVER, ObjectSets.singleton(OWNER), null);
         var permission = new ResearchPermissionContext(OWNER, "team", null, "team", true, false, false);
-        var environment = new TeamResearchStart.Environment(1, 1, 1, Reference2DoubleMaps.emptyMap());
+        var environment = new TeamResearchStart.Environment(1, 1, Reference2DoubleMaps.emptyMap());
         for (var name : List.of("a", "b", "c"))
             world.start(member, permission, id(name), 1, environment, 0, Set.of(OWNER), () -> true);
         var rows = world.snapshot().teams().getFirst().queue().entries();

@@ -87,9 +87,6 @@ public final class TeamResearchStart {
             if (environment.networkCenterLevel() == 0) {
                 return denied(Status.NO_ACTIVE_CENTER);
             }
-            if (environment.dataCenterLevel() < tier) {
-                return denied(Status.DATA_CENTER_LEVEL_INSUFFICIENT);
-            }
             if (environment.highestResearchStationLevel() < tier) {
                 return denied(Status.STATION_LEVEL_INSUFFICIENT);
             }
@@ -114,13 +111,13 @@ public final class TeamResearchStart {
 
     public enum Status {
         STARTED, QUEUE_BUSY, QUEUE_FULL, DUPLICATE_TARGET, PERMISSION_DENIED, NOT_STARTABLE,
-        NO_ACTIVE_CENTER, DATA_CENTER_LEVEL_INSUFFICIENT, STATION_LEVEL_INSUFFICIENT, STALE_CONTEXT
+        NO_ACTIVE_CENTER, STATION_LEVEL_INSUFFICIENT, STALE_CONTEXT
     }
 
     /**
      * Active device levels; zero represents absence. Resources retain the current captured vector.
      */
-    public record Environment(int networkCenterLevel, int dataCenterLevel, int highestResearchStationLevel,
+    public record Environment(int networkCenterLevel, int highestResearchStationLevel,
                               Reference2DoubleMap<NetworkResourceType> availableResources) {
 
     }

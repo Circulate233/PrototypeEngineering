@@ -515,7 +515,7 @@ class ResearchWorldRewardTest {
             new ObjectOpenHashSet<>(ObjectList.of(ALICE)), ALICE);
         var permission = new ResearchPermissionContext(ALICE, "new_team", null, "new_team", true, false, false);
         assertEquals(TeamResearchStart.Status.STARTED, world.start(membership, permission, WORK, 1,
-            new TeamResearchStart.Environment(2, 1, 1, Reference2DoubleMaps.emptyMap()), 13, Set.of(ALICE), () -> true).status());
+            new TeamResearchStart.Environment(2, 1, Reference2DoubleMaps.emptyMap()), 13, Set.of(ALICE), () -> true).status());
         var newTeam = world.snapshot().teams().stream().filter(team -> team.teamId().equals("new_team")).findFirst().orElseThrow();
         assertTrue(newTeam.research().levels().isEmpty());
         assertEquals(ResearchRewardClaimer.Status.CLAIMED, claim(world, new Adapter(saves)).status());

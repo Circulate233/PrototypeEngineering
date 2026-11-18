@@ -217,7 +217,7 @@ class ResearchWorldViewTest {
         var bobMembership = membership(BOB, "manual_team", ALICE, BOB);
         var bobPermission = new ResearchPermissionContext(BOB, "manual_team", null, "manual_team", true, false, false);
         var started = world.start(bobMembership, bobPermission, manualId, 1,
-            new TeamResearchStart.Environment(0, 0, 0, Reference2DoubleMaps.emptyMap()), 0, Set.of(ALICE, BOB), () -> true);
+            new TeamResearchStart.Environment(0, 0, Reference2DoubleMaps.emptyMap()), 0, Set.of(ALICE, BOB), () -> true);
         assertEquals(TeamResearchStart.Status.STARTED, started.status());
         var inventory = (ManualResearchInventory) Proxy.newProxyInstance(ManualResearchInventory.class.getClassLoader(),
             new Class<?>[]{ManualResearchInventory.class}, (_, method, args) -> switch (method.getName()) {
