@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.research.content;
 
+import com.circulation.prototype_eng.api.research.ResearchVisibility;
 import com.circulation.prototype_eng.api.research.content.ResearchContent;
 import com.circulation.prototype_eng.api.research.content.ResearchContentLoadResult;
 import com.circulation.prototype_eng.api.research.content.ResearchPage;
@@ -18,12 +19,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Map;
 
-/**
- * Loads client display JSON from data, then overlays fields supplied by the current language.
- * No Minecraft item registry or client renderer is required by the file loader.
- */
 public final class ResearchContentLoader {
     private static final System.Logger LOGGER = System.getLogger("prototype_eng/research_content");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -48,6 +47,71 @@ public final class ResearchContentLoader {
         } catch (RuntimeException failure) {
             throw failed(Files.exists(localized) ? localized : base, failure);
         }
+    }
+
+    public ResearchContent loadLocalized(ResourceLocation id, String language, String baseText) {
+        var localized = contentPath(language, id);
+        try {
+            var data = GSON.fromJson(baseText, JsonObject.class);
+            if (Files.exists(localized)) overlayText(data, read(localized));
+            return parseContent(id, data);
+        } catch (RuntimeException failure) {
+            throw failed(localized, failure);
+        }
+    }
+
+    public String localizedTitle(ResourceLocation id, String language, String baseTitle) {
+        var localized = contentPath(language, id);
+        if (!Files.exists(localized)) return baseTitle;
+        try {
+            return text(read(localized), "title", baseTitle);
+        } catch (RuntimeException failure) {
+            throw failed(localized, failure);
+        }
+    }
+
+    BaseData loadBase(ResourceLocation id, ResearchVisibility defaultVisibility) {
+        var file = contentPath("data", id);
+        if (!Files.exists(file)) {
+            if (missing.add(id)) LOGGER.log(System.Logger.Level.WARNING, "Research content is missing at " + file);
+            return baseData(id, new JsonObject(), defaultVisibility);
+        }
+        try {
+            return baseData(id, read(file), defaultVisibility);
+        } catch (RuntimeException failure) {
+            throw failed(file, failure);
+        }
+    }
+
+    BaseData saveBase(ResourceLocation id, String text, ResearchVisibility defaultVisibility) {
+        var file = contentPath("data", id);
+        try {
+            var data = GSON.fromJson(text, JsonObject.class);
+            var base = baseData(id, data, defaultVisibility);
+            write(file, data);
+            missing.remove(id);
+            return base;
+        } catch (IOException | RuntimeException failure) {
+            throw failed(file, failure);
+        }
+    }
+
+    private static BaseData baseData(ResourceLocation id, JsonObject data, ResearchVisibility defaultVisibility) {
+        var parsed = parseContent(id, data);
+        var visibility = !data.has("visibility") ? defaultVisibility : switch (data.get("visibility").getAsString()) {
+            case "always" -> ResearchVisibility.ALWAYS;
+            case "after_prerequisites" -> ResearchVisibility.AFTER_PREREQUISITES;
+            case "after_completion" -> ResearchVisibility.AFTER_COMPLETION;
+            default -> throw new IllegalArgumentException("Unknown visibility for " + id + ": " + data.get("visibility"));
+        };
+        return new BaseData(data.toString(), new ResearchOverviewLayout.Node(parsed.title(), parsed.icon()), visibility);
+    }
+
+    static String formatJson(String text) {
+        return GSON.toJson(GSON.fromJson(text, JsonObject.class));
+    }
+
+    record BaseData(String json, ResearchOverviewLayout.Node node, ResearchVisibility visibility) {
     }
 
     private static ResearchContent parseContent(ResourceLocation id, JsonObject data) {
@@ -77,11 +141,6 @@ public final class ResearchContentLoader {
         return path;
     }
 
-    public Path sourcePath(String language, ResourceLocation id) {
-        var localized = contentPath(language, id);
-        return Files.exists(localized) ? localized : contentPath("data", id);
-    }
-
     public ResearchPage loadPage(String namespace) {
         var file = pagePath(namespace);
         var positions = new Object2ObjectOpenHashMap<String, ResearchPage.Position>();
@@ -102,17 +161,57 @@ public final class ResearchContentLoader {
                 var array = data.getAsJsonArray("researches");
                 for (int i = 0; i < array.size(); i++) members.add(new ResourceLocation(array.get(i).getAsString()));
             }
-            return new ResearchPage(data.has("order") ? data.get("order").getAsInt() : 0, manual,
+            var priorityValue = data.has("priority") ? data.get("priority") : data.get("order");
+            int priority = priorityValue == null ? 0 : pagePriority(priorityValue);
+            return new ResearchPage(priority, manual,
                 data.has("title") ? data.get("title").getAsString() : null, members, positions);
         } catch (RuntimeException failure) {
             throw failed(file, failure);
         }
     }
 
+    private static int pagePriority(JsonElement value) {
+        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) {
+            throw new IllegalArgumentException("Research page priority must be an integer");
+        }
+        return value.getAsBigDecimal().intValueExact();
+    }
+
     public void exportPage(String namespace, ResearchPage page) {
         var file = pagePath(namespace);
+        try {
+            write(file, pageJson(namespace, page));
+        } catch (IOException failure) {
+            throw failed(file, failure);
+        }
+    }
+
+    void exportPages(Map<String, ResearchPage> updated, Map<String, ResearchPage> previous, List<String> changed) {
+        int saved = 0;
+        try {
+            for (; saved < changed.size(); saved++) {
+                var id = changed.get(saved);
+                exportPage(id, updated.get(id));
+            }
+        } catch (RuntimeException failure) {
+            for (int i = saved - 1; i >= 0; i--) {
+                var id = changed.get(i);
+                try {
+                    var prior = previous.get(id);
+                    if (prior == null) Files.deleteIfExists(pagePath(id));
+                    else exportPage(id, prior);
+                } catch (IOException | RuntimeException recoveryFailure) {
+                    failure.addSuppressed(recoveryFailure);
+                    LOGGER.log(System.Logger.Level.ERROR, "Cannot restore research page " + id, recoveryFailure);
+                }
+            }
+            throw failure;
+        }
+    }
+
+    private static JsonObject pageJson(String namespace, ResearchPage page) {
         var data = new JsonObject();
-        data.addProperty("order", page.order());
+        data.addProperty("priority", page.order());
         data.addProperty("layout", page.manual() ? "manual" : "auto");
         if (page.title() != null) data.addProperty("title", page.title());
         if (page.researches() != null) {
@@ -129,12 +228,7 @@ public final class ResearchContentLoader {
             positions.add(id.toString(), point);
         }
         data.add("positions", positions);
-        try {
-            Files.createDirectories(file.getParent());
-            Files.writeString(file, GSON.toJson(data) + System.lineSeparator(), StandardCharsets.UTF_8);
-        } catch (IOException failure) {
-            throw failed(file, failure);
-        }
+        return data;
     }
 
     /**
@@ -188,11 +282,34 @@ public final class ResearchContentLoader {
                 overlay(effective, data);
             }
             parseContent(id, effective);
-            Files.createDirectories(file.getParent());
-            Files.writeString(file, GSON.toJson(data) + System.lineSeparator(), StandardCharsets.UTF_8);
+            write(file, data);
             missing.remove(id);
         } catch (IOException | RuntimeException failure) {
             throw failed(file, failure);
+        }
+    }
+
+    public void saveLocalized(ResourceLocation id, String language, String text, String baseText) {
+        var file = contentPath(language, id);
+        try {
+            var data = GSON.fromJson(text, JsonObject.class);
+            var effective = GSON.fromJson(baseText, JsonObject.class);
+            overlayText(effective, data);
+            parseContent(id, effective);
+            write(file, data);
+        } catch (IOException | RuntimeException failure) {
+            throw failed(file, failure);
+        }
+    }
+
+    private static void write(Path path, JsonObject data) throws IOException {
+        Files.createDirectories(path.getParent());
+        var temporary = Files.createTempFile(path.getParent(), ".research-", ".tmp");
+        try {
+            Files.writeString(temporary, GSON.toJson(data) + System.lineSeparator(), StandardCharsets.UTF_8);
+            Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(temporary);
         }
     }
 
@@ -212,6 +329,23 @@ public final class ResearchContentLoader {
             if (existing instanceof JsonObject object && entry.getValue() instanceof JsonObject replacement)
                 overlay(object, replacement);
             else target.add(entry.getKey(), entry.getValue());
+        }
+    }
+
+    private static void overlayText(JsonObject target, JsonObject source) {
+        for (var entry : source.entrySet()) {
+            switch (entry.getKey()) {
+                case "title", "summary", "description" -> target.add(entry.getKey(), entry.getValue());
+                case "rewards" -> {
+                    var current = target.getAsJsonObject("rewards");
+                    if (current == null) {
+                        current = new JsonObject();
+                        target.add("rewards", current);
+                    }
+                    overlay(current, entry.getValue().getAsJsonObject());
+                }
+                default -> { }
+            }
         }
     }
 

@@ -24,7 +24,8 @@ public enum ResearchOverviewGuiText implements LocalizationEnum {
     DetailProgress, Incomplete, ResearchTierLevel, ManualTierLevel,
     AddPage, AddResearch, EditResearch, PageId, PageTitle, ResearchSearch, ResearchChoice, NoResearchChoices,
     ContentData, ContentLanguage, ContentTarget, SaveContent, ContentSaved, ContentSaveFailed, ContentInvalid,
-    EditorHelp, PageCreated, ResearchAdded, UnsavedChanges;
+    EditorHelp, PageCreated, ResearchAdded, UnsavedChanges, DetailLoading, DetailUnavailable,
+    EditorSaving, EditorTimedOut, CatalogChanged, ContentChanged, RewardDisplayUnavailable;
 
     @Override
     public String getTranslationKey() {

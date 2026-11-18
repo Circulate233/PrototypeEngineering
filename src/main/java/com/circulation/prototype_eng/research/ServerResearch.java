@@ -48,6 +48,13 @@ import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
 import com.circulation.prototype_eng.api.research.queue.ResearchProgress;
 import com.circulation.prototype_eng.container.ResearchOverviewPacket;
 import com.circulation.prototype_eng.container.ContainerResearchOverview;
+import com.circulation.prototype_eng.container.ResearchOverviewDetail;
+import com.circulation.prototype_eng.container.ResearchOverviewDisplay;
+import com.circulation.prototype_eng.network.InitNetwork;
+import com.circulation.prototype_eng.network.clientbound.ResearchViewPacket;
+import com.circulation.prototype_eng.research.content.ResearchOverviewLayout;
+import com.circulation.prototype_eng.research.content.ResearchViewCodec;
+import com.circulation.prototype_eng.research.content.ServerResearchCatalog;
 import com.circulation.prototype_eng.api.research.station.ResearchStations;
 import com.circulation.prototype_eng.api.research.view.DataCenterPlayerView;
 import com.circulation.prototype_eng.api.research.view.ResearchPlayerView;
@@ -71,12 +78,15 @@ import com.feed_the_beast.ftblib.lib.data.TeamType;
 import com.feed_the_beast.ftblib.lib.data.Universe;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.network.PacketBuffer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.server.MinecraftServer;
@@ -100,6 +110,7 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -138,7 +149,7 @@ public final class ServerResearch {
     /**
      * FML serverStarting calls this after the overworld and frozen registries are available.
      */
-    public static synchronized void start(MinecraftServer server) {
+    public static synchronized void start(MinecraftServer server, Path configRoot) {
         requireThread(server);
         if (session != null) {
             throw new IllegalStateException("A research server session is already installed");
@@ -165,7 +176,100 @@ public final class ServerResearch {
         } catch (IOException failure) {
             throw new UncheckedIOException(failure);
         }
-        session = new Session(server, overworld, world, permissions);
+        session = new Session(server, overworld, world, permissions, new ServerResearchCatalog(configRoot, registry));
+    }
+
+    public static void reloadCatalog(MinecraftServer server) {
+        var current = active(server);
+        current.catalog.reload();
+        refreshCatalogs(current);
+    }
+
+    public static long editCatalog(EntityPlayerMP actor, long revision, Consumer<ServerResearchCatalog> edit) {
+        var current = actorSession(actor);
+        if (!editorAuthorized(actor)) throw new IllegalStateException("The research editor authorization expired");
+        if (revision != current.catalog.revision()) return -1;
+        edit.accept(current.catalog);
+        refreshCatalogs(current);
+        return current.catalog.revision();
+    }
+
+    private static void refreshCatalogs(Session current) {
+        var players = current.server.getPlayerList().getPlayers();
+        for (int i = 0; i < players.size(); i++) publishCatalog(current, players.get(i));
+    }
+
+    public static void refreshCatalogs(MinecraftServer server) {
+        var current = session;
+        if (current != null && !current.closing && current.server == server) refreshCatalogs(current);
+    }
+
+    private static void publishCatalog(Session current, EntityPlayerMP actor) {
+        if (!currentActor(current, actor)) return;
+        var membership = current.resolver.resolve(actor.getUniqueID());
+        if (membership.status() == OwnerTeamResolutionStatus.UNIVERSE_UNAVAILABLE) return;
+        var permission = viewPermission(current, actor, membership);
+        if (permission == null) {
+            invalidatePreviousCatalog(current, actor, membership);
+            return;
+        }
+        var cloud = membership.accepted() ? current.world.captureCloud(membership, permission, ResearchPermissionPolicy.Action.VIEW_TEAM_RESEARCH,
+            () -> currentActor(current, actor) && sameResolution(membership, current.resolver.resolve(actor.getUniqueID()))) : null;
+        if (membership.accepted() && cloud == null) {
+            invalidatePreviousCatalog(current, actor, current.resolver.resolve(actor.getUniqueID()));
+            return;
+        }
+        var levels = cloud == null || cloud.view() == null ? Object2IntMaps.<ResourceLocation>emptyMap() : cloud.view().sharedLevels();
+        publishCatalog(current, actor, catalogTeamId(membership),
+            current.catalog.visible(visibilityLevels(current, membership, levels, cloud != null && cloud.view() != null)));
+    }
+
+    private static String catalogTeamId(OwnerTeamResolution membership) {
+        return membership.accepted() ? membership.teamId() : "";
+    }
+
+    private static void invalidatePreviousCatalog(Session current, EntityPlayerMP actor, OwnerTeamResolution membership) {
+        if (membership.status() == OwnerTeamResolutionStatus.UNIVERSE_UNAVAILABLE || !currentActor(current, actor)) return;
+        var published = current.publishedCatalogs.get(actor.getUniqueID());
+        String teamId = catalogTeamId(membership);
+        if (published != null && !published.teamId().equals(teamId)) publishCatalog(current, actor, teamId, Set.of());
+    }
+
+    private static void publishCatalog(Session current, EntityPlayerMP actor, String teamId, Set<ResourceLocation> visible) {
+        long revision = current.catalog.revision();
+        var published = current.publishedCatalogs.get(actor.getUniqueID());
+        if (published == null || published.revision() != revision || !published.visible().equals(visible)) {
+            var layout = current.catalog.layout(visible, false);
+            InitNetwork.sendResearchView(actor, ResearchViewPacket.CATALOG, 0, buffer -> {
+                var data = new PacketBuffer(buffer);
+                data.writeVarLong(revision);
+                ResearchViewCodec.writeLayout(data, layout);
+            });
+        } else if (published.teamId().equals(teamId)) {
+            return;
+        }
+        current.publishedCatalogs.put(actor.getUniqueID(), new CatalogPublication(revision, teamId, visible));
+    }
+
+    @SuppressWarnings("resource") // The server owns the borrowed network runtime.
+    private static Object2IntMap<ResourceLocation> visibilityLevels(Session current, OwnerTeamResolution membership,
+                                                                  Object2IntMap<ResourceLocation> shared, boolean canSeeTeam) {
+        if (!canSeeTeam) return shared;
+        var plan = ServerNetworkRuntime.forServer(current.server).plan();
+        var team = plan == null ? null : plan.teams().get(membership.teamId());
+        if (team == null || team.dataCenterId() == null) return shared;
+        var physical = current.dataCenters.capture(membership.teamId(), team.dataCenterId());
+        if (physical == null) return shared;
+        Object2IntOpenHashMap<ResourceLocation> levels = null;
+        for (var entry : physical.snapshot().storedResearch().object2IntEntrySet()) {
+            if (!ResearchRegistry.INSTANCE.require(entry.getKey()).specialOnly()) continue;
+            if (levels == null) levels = new Object2IntOpenHashMap<>(shared);
+            levels.put(entry.getKey(), entry.getIntValue());
+        }
+        return levels == null ? shared : levels;
+    }
+
+    private record CatalogPublication(long revision, String teamId, Set<ResourceLocation> visible) {
     }
 
     private static ResearchWorldSnapshot migrateLocalTeam(MinecraftServer server, WorldServer world, ResearchWorldSnapshot saved) {
@@ -1378,7 +1482,8 @@ public final class ServerResearch {
      */
     @SuppressWarnings({"resource", "DataFlowIssue"})
     public static void requestOverview(EntityPlayerMP actor, @Nullable MachineControllerHost picker,
-                                       boolean editor, BooleanSupplier ownerCurrent, Consumer<Overview> result) {
+                                       boolean editor, @Nullable ResourceLocation requestedDetail, @Nullable String previousTeam,
+                                       BooleanSupplier ownerCurrent, Consumer<Overview> result) {
         var current = actorSession(actor);
         ServerTaskSchedulers.forServer(current.server).submit(() -> {
             if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
@@ -1388,29 +1493,33 @@ public final class ServerResearch {
             var online = onlinePlayers(current);
             var captures = capture(current, Set.of(actor.getUniqueID()));
             if (unavailable(captures)) {
-                result.accept(null);
+                result.accept(unavailableOverview(current, actor, previousTeam, ownerCurrent));
                 return;
             }
             var membership = captures.get(actor.getUniqueID());
             var permission = viewPermission(current, actor, membership);
             if (permission == null) {
-                result.accept(null);
+                result.accept(unavailableOverview(current, actor, previousTeam, ownerCurrent));
                 return;
             }
             var authority = proof(current, captures, online);
             var playerView = current.world.project(actor.getUniqueID(), membership, permission,
                 () -> authority.getAsBoolean() && ownerCurrent.getAsBoolean());
             if (playerView == null) {
-                result.accept(null);
+                result.accept(unavailableOverview(current, actor, previousTeam, ownerCurrent));
                 return;
             }
             var station = current.world.stationView(permission, current.stations, operationTime(current), id -> inventory(current, id));
             if (station == null) {
-                result.accept(null);
+                result.accept(unavailableOverview(current, actor, previousTeam, ownerCurrent));
                 return;
             }
             boolean visible = playerView.team().viewPermission() == ResearchPermissionPolicy.Decision.ALLOWED;
+            boolean editing = editor && editorAuthorized(actor);
+            var catalogVisible = current.catalog.visible(visibilityLevels(current, membership, playerView.team().sharedLevels(), visible));
+            var shown = editing ? current.catalog.registeredIds() : catalogVisible;
             var databases = new ObjectArrayList<ResearchOverviewPacket.Database>();
+            var storage = new Object2ObjectOpenHashMap<UUID, Object2IntMap<ResourceLocation>>();
             var admission = current.stations.admission(playerView.team().id()).environment();
             int highestStation = admission.highestResearchStationLevel();
             var identities = ServerMachineIdentities.forServer(current.server).uniqueRegistrations();
@@ -1421,11 +1530,13 @@ public final class ServerResearch {
                     continue;
                 if (visible && machine instanceof DataCenter database) {
                     var snapshot = database.dataCenterStorage().snapshot();
+                    storage.put(snapshot.dataCenterId(), snapshot.storedResearch());
                     var stored = new ObjectArrayList<ResearchOverviewPacket.Stored>();
-                    for (var entry : snapshot.storedResearch().object2IntEntrySet())
-                        stored.add(new ResearchOverviewPacket.Stored(entry.getKey(), entry.getIntValue()));
+                    for (var entry : snapshot.storedResearch().object2IntEntrySet()) {
+                        if (shown.contains(entry.getKey())) stored.add(new ResearchOverviewPacket.Stored(entry.getKey(), entry.getIntValue()));
+                    }
                     databases.add(new ResearchOverviewPacket.Database(snapshot.dataCenterId(), machine.type().displayName().text().getUnformattedText(),
-                        snapshot.level(), snapshot.capacity(), stored));
+                        snapshot.level(), snapshot.capacity(), snapshot.storedResearch().size(), stored));
                 }
             }
             var plan = ServerNetworkRuntime.forServer(current.server).plan();
@@ -1437,9 +1548,10 @@ public final class ServerResearch {
             DataCenterView pickerView = picker == null ? null : dataCenterView(actor, picker);
             int pickerLevel = pickerView == null ? 0 : pickerView.contents().level();
             var queue = new ObjectArrayList<ResearchOverviewPacket.Queue>();
-            for (int index = 0; index < playerView.team().queueRows().size(); index++) {
-                var row = playerView.team().queueRows().get(index);
-                queue.add(new ResearchOverviewPacket.Queue(row.entryId(), row.researchId(), row.targetLevel()));
+            var queueRows = playerView.team().queueRows();
+            for (int index = 0; index < queueRows.size(); index++) {
+                var row = queueRows.get(index);
+                if (shown.contains(row.researchId())) queue.add(new ResearchOverviewPacket.Queue(row.entryId(), row.researchId(), row.targetLevel(), index));
             }
             var retained = current.world.retainedProgress(playerView.team().id());
             var progressByResearch = new Object2ObjectOpenHashMap<ResourceLocation, ResearchProgress.Snapshot>();
@@ -1450,6 +1562,7 @@ public final class ServerResearch {
             for (int index = 0; index < definitions.size(); index++) {
                 var definition = definitions.get(index);
                 var id = definition.id();
+                if (!shown.contains(id)) continue;
                 int completed = playerView.team().sharedLevels().getInt(id), personal = playerView.personalLevels().getInt(id);
                 int target = completed == definition.maxLevel() ? completed : completed + 1;
                 var stage = definition.stageForLevel(target);
@@ -1475,7 +1588,7 @@ public final class ServerResearch {
                     && active.tier() >= stage.researchTier() && highestStation >= stage.researchTier();
                 boolean canStart = visible && !playerView.savePending() && completed < definition.maxLevel() && !definition.specialOnly()
                     && playerView.team().startPermission() == ResearchPermissionPolicy.Decision.ALLOWED
-                    && playerView.team().structuralTargets().containsKey(id) && queue.size() < 5 && devices;
+                    && playerView.team().structuralTargets().containsKey(id) && playerView.team().queueRows().size() < 5 && devices;
                 boolean canDownload = visible && !playerView.savePending() && active != null && completed > downloaded
                     && definition.deliveryPolicy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM && !definition.specialOnly()
                     && definition.researchTierForLevel(completed) <= active.tier()
@@ -1484,20 +1597,23 @@ public final class ServerResearch {
                 if (canDownload)
                     for (int ruleIndex = 0; ruleIndex < definition.mutexRulesForLevel(completed).size(); ruleIndex++) {
                         var rule = definition.mutexRulesForLevel(completed).get(ruleIndex);
-                        if (Math.max(active.level(rule.researchId()), playerView.team().sharedLevels().getInt(rule.researchId())) >= rule.minLevel()) {
+                        if (Math.max(storage.get(active.id()).getInt(rule.researchId()), playerView.team().sharedLevels().getInt(rule.researchId())) >= rule.minLevel()) {
                             canDownload = false;
                             break;
                         }
                     }
                 var claims = new ObjectArrayList<ResearchOverviewPacket.Claim>();
-                for (int claimIndex = 0; claimIndex < playerView.claims().size(); claimIndex++) {
-                    var claim = playerView.claims().get(claimIndex);
-                    if (claim.researchId().equals(id))
-                        claims.add(new ResearchOverviewPacket.Claim(claim.level(), claim.status(), claim.selectedGroupId()));
+                if (id.equals(requestedDetail)) {
+                    for (int claimIndex = 0; claimIndex < playerView.claims().size(); claimIndex++) {
+                        var claim = playerView.claims().get(claimIndex);
+                        if (claim.researchId().equals(id))
+                            claims.add(new ResearchOverviewPacket.Claim(claim.level(), claim.status(), claim.selectedGroupId()));
+                    }
                 }
                 var saved = visible ? progressByResearch.get(id) : null;
-                var progress = saved == null ? null : overviewProgress(definition, saved,
-                    station.progress() != null && station.progress().target().equals(saved.target()) ? station : null);
+                var progress = saved == null ? null : id.equals(requestedDetail) ? overviewProgress(definition, saved,
+                    station.progress() != null && station.progress().target().equals(saved.target()) ? station : null)
+                    : new ResearchOverviewPacket.Progress(saved.target().level(), saved.elapsedTicks(), List.of(), List.of());
                 states.add(new ResearchOverviewPacket.State(id, personal, completed, playerView.team().structuralTargets().getInt(id),
                     downloaded, downloadedTo, canStart, canDownload,
                     !playerView.savePending() && personal > 0 && !definition.specialOnly() && playerView.forgetPermission() == ResearchPermissionPolicy.Decision.ALLOWED && current.world.canForget(actor.getUniqueID(), id),
@@ -1508,7 +1624,7 @@ public final class ServerResearch {
                         playerView.forgetPermission(), current.permissions.can(ResearchPermissionPolicy.Action.MANAGE_RESEARCH_QUEUE, permission))));
             }
             ResearchOverviewPacket.Current activeResearch = null;
-            if (!queue.isEmpty() && station.progress() != null) {
+            if (!queue.isEmpty() && queue.getFirst().position() == 0 && station.progress() != null) {
                 var head = queue.getFirst();
                 var definition = ResearchRegistry.INSTANCE.require(head.id());
                 var progress = overviewProgress(definition, station.progress(), station);
@@ -1530,21 +1646,48 @@ public final class ServerResearch {
             }
             var environment = new ResearchOverviewPacket.Environment(playerView.team().id(), membership.accepted() ? teamTitle(actor, membership.teamId()) : "",
                 admission.networkCenterLevel(), highestStation, activeId, station.canManage(), playerView.savePending(),
-                editor && editorAuthorized(actor), visible, pickerLevel,
+                editing, visible, pickerLevel,
                 picker == null ? "" : picker.type().displayName().text().getUnformattedText(), pickerView == null ? 0 : pickerView.contents().storedResearch().size(),
-                pickerView == null ? 0 : pickerView.contents().capacity(), actor.getUniqueID());
+                pickerView == null ? 0 : pickerView.contents().capacity(), actor.getUniqueID(), queueRows.size());
             if (!authority.getAsBoolean() || !ownerCurrent.getAsBoolean()) {
-                result.accept(null);
+                result.accept(unavailableOverview(current, actor, previousTeam, ownerCurrent));
                 return;
             }
-            result.accept(new Overview(states, queue, databases, activeResearch, environment));
+            publishCatalog(current, actor, environment.teamId(), catalogVisible);
+            result.accept(new Overview(states, queue, databases, activeResearch, environment, current.catalog.revision(), shown));
         }, ExecutionMode.MAIN_THREAD);
+    }
+
+    private static @Nullable Overview unavailableOverview(Session current, EntityPlayerMP actor, @Nullable String previousTeam,
+                                                          BooleanSupplier ownerCurrent) {
+        if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) return null;
+        var membership = current.resolver.resolve(actor.getUniqueID());
+        if (membership.status() == OwnerTeamResolutionStatus.UNIVERSE_UNAVAILABLE) return null;
+        invalidatePreviousCatalog(current, actor, membership);
+        String teamId = catalogTeamId(membership);
+        if (previousTeam == null || previousTeam.equals(teamId)) return null;
+        var environment = new ResearchOverviewPacket.Environment(teamId, "", 0, 0, null, false, false,
+            false, false, 0, "", 0, 0, actor.getUniqueID(), 0);
+        return new Overview(List.of(), List.of(), List.of(), null, environment, current.catalog.revision(), Set.of());
     }
 
     public record Overview(List<ResearchOverviewPacket.State> states, List<ResearchOverviewPacket.Queue> queue,
                            List<ResearchOverviewPacket.Database> databases,
                            @Nullable ResearchOverviewPacket.Current current,
-                           ResearchOverviewPacket.Environment environment) {
+                           ResearchOverviewPacket.Environment environment, long catalogRevision, Set<ResourceLocation> visible) {
+    }
+
+    public static ResearchOverviewLayout editorLayout(EntityPlayerMP actor) {
+        if (!editorAuthorized(actor)) throw new IllegalStateException("Research editor authorization expired");
+        return actorSession(actor).catalog.layout(Set.of(), true);
+    }
+
+    public static @Nullable ResearchOverviewDetail overviewDetail(EntityPlayerMP actor, ResourceLocation id, Overview projection) {
+        var current = actorSession(actor);
+        if (!projection.visible().contains(id) || projection.catalogRevision() != current.catalog.revision()
+            || projection.environment().editable() && !editorAuthorized(actor)) return null;
+        var definition = ResearchOverviewDisplay.definition(ResearchRegistry.INSTANCE.require(id), projection.visible(), true);
+        return new ResearchOverviewDetail(definition, projection.environment().editable() ? current.catalog.editableJson(id) : current.catalog.detailJson(id));
     }
 
     private static ResearchOverviewPacket.Progress overviewProgress(ResearchDefinition definition,
@@ -1807,6 +1950,7 @@ public final class ServerResearch {
                 RewardDeliveryRecovery.reconcileDeliveryJournal(player);
                 current.world.playerLogin(player.getUniqueID(), operationTime(current));
                 releaseConfirmedRewards(current, player);
+                publishCatalog(current, player);
             }
         });
     }
@@ -1879,6 +2023,7 @@ public final class ServerResearch {
         if (registered != null && registered != player) {
             return;
         }
+        current.publishedCatalogs.remove(player.getUniqueID());
         ServerTaskSchedulers.forServer(current.server).runAtBoundary(() -> {
             if (session != current || current.closing) {
                 return;
@@ -2133,14 +2278,17 @@ public final class ServerResearch {
         private final ResearchStations stations;
         private final ResearchDataCenters dataCenters;
         private final DataCenterResearchAccess database;
+        private final ServerResearchCatalog catalog;
+        private final Object2ObjectOpenHashMap<UUID, CatalogPublication> publishedCatalogs = new Object2ObjectOpenHashMap<>();
         private final ObjectOpenHashSet<UUID> rewardCleanup = new ObjectOpenHashSet<>();
         private boolean closing;
 
-        private Session(MinecraftServer server, WorldServer overworld, ResearchWorld world, ResearchPermissionPolicy permissions) {
+        private Session(MinecraftServer server, WorldServer overworld, ResearchWorld world, ResearchPermissionPolicy permissions, ServerResearchCatalog catalog) {
             this.server = server;
             this.overworld = overworld;
             this.world = world;
             this.permissions = permissions;
+            this.catalog = catalog;
             resolver = new FtbOwnerTeamResolver(server);
             stations = new ResearchStations(ServerMachineIdentities.forServer(server), () -> requireThread(server));
             dataCenters = new ResearchDataCenters(ServerMachineIdentities.forServer(server), () -> requireThread(server));

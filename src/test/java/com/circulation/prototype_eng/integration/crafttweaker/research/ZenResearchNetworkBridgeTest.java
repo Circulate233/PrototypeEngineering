@@ -12,6 +12,7 @@ import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchServerConfiguration;
 import com.circulation.prototype_eng.api.research.ResearchServerConfigurationEvent;
 import com.circulation.prototype_eng.api.research.ResearchUnlockQuery;
+import com.circulation.prototype_eng.api.research.ResearchVisibility;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
 import com.circulation.prototype_eng.api.research.TeamResearchView;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
@@ -100,7 +101,7 @@ class ZenResearchNetworkBridgeTest {
                 .reward(1, reward);
             Research.create("ct_research:research", 2, false, "ITEM_ONLY", [stage], function(context) {
                 return context.playerId != "" && context.teamId == "team" && context.available(compute) >= 100;
-            }).unlock("ct_research:effect", "ct_research:target", 1).register();
+            }).visibility("after_completion").unlock("ct_research:effect", "ct_research:target", 1).register();
             ResearchServer.permissions(function(action, context) { return context.standardDecision(action); });
             var original = ResearchHarness.recipe();
             ResearchHarness.extension(function(recipe, requirements) {
@@ -120,6 +121,7 @@ class ZenResearchNetworkBridgeTest {
         DefinitionRegistrations.dispatch(new ResearchServerConfigurationEvent(configuration));
         configuration.freeze();
         var definition = research.require(new ResourceLocation("ct_research:research"));
+        assertEquals(ResearchVisibility.AFTER_COMPLETION, definition.visibility());
         var compute = definition.totalResourceDemandForLevel(1).keySet().iterator().next();
         assertEquals(3000000000L, definition.totalResourceDemandForLevel(1).getDouble(compute));
         assertTrue(definition.unlocks(new ResearchUnlockQuery(new ResourceLocation("ct_research:effect"), new ResourceLocation("ct_research:target"), 1)));

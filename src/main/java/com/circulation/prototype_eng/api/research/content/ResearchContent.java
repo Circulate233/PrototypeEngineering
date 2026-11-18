@@ -6,11 +6,7 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-
-/**
- * Immutable direct-display client text; executable research and reward definitions stay separate.
- * Loaded collections and icon JSON are borrowed read-only. Text is direct display content, not translation keys.
- */
+/** Loaded collections and icon JSON are borrowed read-only. */
 public record ResearchContent(String title, String summary, ObjectList<String> description,
                               @Nullable JsonObject icon, Object2ObjectMap<ResourceLocation, Reward> rewards) {
     public Reward reward(ResourceLocation groupId) {

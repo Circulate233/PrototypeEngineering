@@ -1,13 +1,14 @@
 package com.circulation.prototype_eng.container;
 
 import ae2.api.stacks.AEKey;
-import ae2.api.stacks.GenericStack;
 import ae2.container.guisync.PacketWritable;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourcePackets;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
 import com.circulation.prototype_eng.api.research.reward.RewardClaim;
+import com.circulation.prototype_eng.api.research.reward.RewardPresentation;
+import com.circulation.prototype_eng.api.research.reward.RewardPresentationRegistry;
 import io.netty.buffer.ByteBuf;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.network.PacketBuffer;
@@ -19,9 +20,6 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.BiConsumer;
 
-/**
- * Definitions are sent once. Subsequent updates contain only changed research rows and sections.
- */
 @SuppressWarnings({"ClassCanBeRecord", "DataFlowIssue"})
 public final class ResearchOverviewPacket implements PacketWritable {
     public static final ResearchOverviewPacket EMPTY = new ResearchOverviewPacket(true, List.of(), List.of(), List.of(), List.of(), true, null, Environment.EMPTY);
@@ -134,7 +132,7 @@ public final class ResearchOverviewPacket implements PacketWritable {
         reset = data.readBoolean();
         definitions = data.readBoolean() ? readList(data, ResearchOverviewPacket::readDefinition) : null;
         states = readList(data, ResearchOverviewPacket::readState);
-        queue = data.readBoolean() ? readList(data, value -> new Queue(value.readVarLong(), value.readResourceLocation(), value.readVarInt())) : null;
+        queue = data.readBoolean() ? readList(data, value -> new Queue(value.readVarLong(), value.readResourceLocation(), value.readVarInt(), value.readVarInt())) : null;
         databases = data.readBoolean() ? readList(data, ResearchOverviewPacket::readDatabase) : null;
         currentChanged = data.readBoolean();
         int mode = currentChanged ? data.readUnsignedByte() : 0;
@@ -156,6 +154,7 @@ public final class ResearchOverviewPacket implements PacketWritable {
             target.writeVarLong(row.entryId());
             target.writeResourceLocation(row.id());
             target.writeVarInt(row.targetLevel());
+            target.writeVarInt(row.position());
         });
         data.writeBoolean(databases != null);
         if (databases != null) writeList(data, databases, ResearchOverviewPacket::writeDatabase);
@@ -184,7 +183,7 @@ public final class ResearchOverviewPacket implements PacketWritable {
         }
     }
 
-    public record RewardGroup(ResourceLocation id, List<GenericStack> items) {
+    public record RewardGroup(ResourceLocation id, RewardPresentation presentation) {
     }
 
     public record Rewards(int level, List<RewardGroup> groups) {
@@ -312,15 +311,19 @@ public final class ResearchOverviewPacket implements PacketWritable {
         }
     }
 
-    public record Queue(long entryId, ResourceLocation id, int targetLevel) {
+    public record Queue(long entryId, ResourceLocation id, int targetLevel, int position) {
     }
 
     public record Stored(ResourceLocation id, int level) {
     }
 
-    public record Database(UUID id, String name, int tier, int capacity, List<Stored> stored) {
+    public record Database(UUID id, String name, int tier, int capacity, int occupied, List<Stored> stored) {
+        public Database(UUID id, String name, int tier, int capacity, List<Stored> stored) {
+            this(id, name, tier, capacity, stored.size(), stored);
+        }
+
         public int remaining() {
-            return capacity - stored.size();
+            return capacity - occupied;
         }
 
         public int level(ResourceLocation research) {
@@ -348,16 +351,16 @@ public final class ResearchOverviewPacket implements PacketWritable {
     public record Environment(String teamId, String teamName, int centerLevel, int stationLevel,
                               @Nullable UUID activeDatabase, boolean canManage, boolean savePending,
                               boolean editable, boolean visible, int databaseLevel, String databaseName,
-                              int databaseStored, int databaseCapacity, @Nullable UUID playerId) {
-        public static final Environment EMPTY = new Environment("", "", 0, 0, null, false, false, false, false, 0, "", 0, 0, null);
+                              int databaseStored, int databaseCapacity, @Nullable UUID playerId, int queuedCount) {
+        public static final Environment EMPTY = new Environment("", "", 0, 0, null, false, false, false, false, 0, "", 0, 0, null, 0);
     }
 
-    private static Definition readDefinition(PacketBuffer data) {
+    static Definition readDefinition(PacketBuffer data) {
         return new Definition(data.readResourceLocation(), data.readVarInt(), data.readBoolean(),
             ResearchDownloadDeliveryPolicy.values()[data.readUnsignedByte()], readList(data, ResearchOverviewPacket::readStage));
     }
 
-    private static void writeDefinition(PacketBuffer data, Definition value) {
+    static void writeDefinition(PacketBuffer data, Definition value) {
         data.writeResourceLocation(value.id());
         data.writeVarInt(value.maxLevel());
         data.writeBoolean(value.specialOnly());
@@ -372,7 +375,7 @@ public final class ResearchOverviewPacket implements PacketWritable {
             readList(data, value -> new Material(AEKey.readKey(value), value.readVarLong())),
             readList(data, value -> new Resource(NetworkResourcePackets.read(value), value.readDouble(), value.readDouble())),
             readList(data, value -> new Rewards(value.readVarInt(), readList(value, group -> new RewardGroup(group.readResourceLocation(),
-                readList(group, item -> new GenericStack(AEKey.readKey(item), item.readVarLong())))))));
+                RewardPresentationRegistry.INSTANCE.read(group))))));
     }
 
     private static void writeStage(PacketBuffer data, Stage value) {
@@ -395,10 +398,7 @@ public final class ResearchOverviewPacket implements PacketWritable {
             target.writeVarInt(reward.level());
             writeList(target, reward.groups(), (groupTarget, group) -> {
                 groupTarget.writeResourceLocation(group.id());
-                writeList(groupTarget, group.items(), (itemTarget, item) -> {
-                    AEKey.writeKey(itemTarget, item.what());
-                    itemTarget.writeVarLong(item.amount());
-                });
+                RewardPresentationRegistry.INSTANCE.write(groupTarget, group.presentation());
             });
         });
     }
@@ -479,7 +479,8 @@ public final class ResearchOverviewPacket implements PacketWritable {
     }
 
     private static Database readDatabase(PacketBuffer data) {
-        return new Database(data.readUniqueId(), data.readString(32767), data.readVarInt(), data.readVarInt(), readList(data, value -> new Stored(value.readResourceLocation(), value.readVarInt())));
+        return new Database(data.readUniqueId(), data.readString(32767), data.readVarInt(), data.readVarInt(), data.readVarInt(),
+            readList(data, value -> new Stored(value.readResourceLocation(), value.readVarInt())));
     }
 
     private static void writeDatabase(PacketBuffer data, Database value) {
@@ -487,6 +488,7 @@ public final class ResearchOverviewPacket implements PacketWritable {
         data.writeString(value.name());
         data.writeVarInt(value.tier());
         data.writeVarInt(value.capacity());
+        data.writeVarInt(value.occupied());
         writeList(data, value.stored(), (target, row) -> {
             target.writeResourceLocation(row.id());
             target.writeVarInt(row.level());
@@ -568,7 +570,8 @@ public final class ResearchOverviewPacket implements PacketWritable {
 
     private static Environment readEnvironment(PacketBuffer data) {
         return new Environment(data.readString(32767), data.readString(32767), data.readVarInt(), data.readVarInt(), data.readBoolean() ? data.readUniqueId() : null,
-            data.readBoolean(), data.readBoolean(), data.readBoolean(), data.readBoolean(), data.readVarInt(), data.readString(32767), data.readVarInt(), data.readVarInt(), data.readBoolean() ? data.readUniqueId() : null);
+            data.readBoolean(), data.readBoolean(), data.readBoolean(), data.readBoolean(), data.readVarInt(), data.readString(32767), data.readVarInt(), data.readVarInt(), data.readBoolean() ? data.readUniqueId() : null,
+            data.readVarInt());
     }
 
     private static void writeEnvironment(PacketBuffer data, Environment value) {
@@ -588,10 +591,12 @@ public final class ResearchOverviewPacket implements PacketWritable {
         data.writeVarInt(value.databaseCapacity());
         data.writeBoolean(value.playerId() != null);
         if (value.playerId() != null) data.writeUniqueId(value.playerId());
+        data.writeVarInt(value.queuedCount());
     }
 
     private static <T> List<T> readList(PacketBuffer data, Function<PacketBuffer, T> reader) {
         int count = data.readVarInt();
+        if (count < 0 || count > data.readableBytes()) throw new IllegalArgumentException("Invalid research row count");
         var values = new ObjectArrayList<T>(count);
         for (int index = 0; index < count; index++) values.add(reader.apply(data));
         return values;

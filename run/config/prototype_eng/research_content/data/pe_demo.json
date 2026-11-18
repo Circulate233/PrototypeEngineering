@@ -1,5 +1,5 @@
 {
-  "order": 10,
+  "priority": 10,
   "layout": "manual",
   "positions": {
     "basic_circuit": [

@@ -19,6 +19,7 @@ import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.network.play.server.SPacketSetSlot;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.MinecraftException;
 import net.minecraft.world.WorldServer;
@@ -41,6 +42,7 @@ import java.util.UUID;
 public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
     public static final String DELIVERY_TAG = ItemDeliveryTemplates.DELIVERY_TAG;
     private static final int MAX_FRAGMENTS = 4096;
+    private static final int PLAYER_INVENTORY_WINDOW = -2;
     private final EntityPlayerMP player;
     private final MinecraftServer server;
     private final WorldServer overworld;
@@ -413,7 +415,12 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
             throw new IllegalStateException("Duplicate confirmed reward leaf " + fragment.id());
         for (int index1 = 0; index1 < slots.size(); index1++) {
             int slot = slots.getInt(index1);
-            player.inventory.setInventorySlotContents(slot, releasedStack(player.inventory.getStackInSlot(slot)));
+            var stack = releasedStack(player.inventory.getStackInSlot(slot));
+            player.inventory.setInventorySlotContents(slot, stack);
+            if (player.openContainer != player.inventoryContainer) {
+                // The normal inventory window's main slots are ignored while another window is open.
+                player.connection.sendPacket(new SPacketSetSlot(PLAYER_INVENTORY_WINDOW, slot, stack));
+            }
         }
         if (cursor) player.inventory.setItemStack(releasedStack(player.inventory.getItemStack()));
         for (int index3 = 0; index3 < drops.size(); index3++) {

@@ -7,24 +7,29 @@ import ae2.api.stacks.GenericStack;
 import ae2.client.gui.AEBaseGui;
 import ae2.client.gui.Icon;
 import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.api.client.research.ResearchIcon;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
 import com.circulation.prototype_eng.api.research.content.ResearchPage;
 import com.circulation.prototype_eng.api.research.content.ResearchContent;
+import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.research.reward.RewardClaim;
+import com.circulation.prototype_eng.api.research.reward.RewardPresentation;
+import com.circulation.prototype_eng.api.research.reward.RewardRenderContext;
 import com.circulation.prototype_eng.api.research.view.ResearchStationView;
+import com.circulation.prototype_eng.client.research.ClientResearchCatalog;
 import com.circulation.prototype_eng.client.research.ClientResearchContents;
 import com.circulation.prototype_eng.client.research.ResearchOverviewViewState;
 import com.circulation.prototype_eng.container.ContainerResearchOverview;
 import com.circulation.prototype_eng.container.ResearchOverviewPacket;
 import com.circulation.prototype_eng.container.ResearchOverviewPacket.*;
 import com.circulation.prototype_eng.localization.ResearchOverviewGuiText;
+import com.circulation.prototype_eng.research.content.ResearchOverviewLayout;
 import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.Minecraft;
@@ -45,10 +50,11 @@ import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 
 import java.io.IOException;
-import java.util.Comparator;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -65,6 +71,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     private static final double S = 1.7, COL = 92 * S, ROW = 40 * S;
     private static final int NODE = 44, WIDE = 84, EXP_W = 128, EXP_H = 52, LEFT = 320, SIDE = 352;
     private static final int BASE = 0xcbccd4, LOCKED = 0x8f94a9, MARK = 0xd8a43a;
+    private static final long EDITOR_RESPONSE_TIMEOUT_MS = 15_000;
     private static final Slice FRAME = new Slice(new ResourceLocation("ae2", "textures/guis/background.png"), 256, 256, 4, 7);
     private static final Slice BUTTON = new Slice(new ResourceLocation("ae2", "textures/guis/button.png"), 200, 20, 2, 4);
     private static final Slice BUTTON_HOVER = new Slice(new ResourceLocation("ae2", "textures/guis/button_highlighted.png"), 200, 20, 2, 4);
@@ -84,8 +91,12 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     private final double[] bannerClipA = new double[12], bannerClipB = new double[12];
     private List<Entry> knownEntries;
     private List<Database> knownDatabases;
+    private @Nullable ResearchOverviewLayout knownLayout;
     private @Nullable Entry knownSelected;
     private @Nullable ResearchContent knownDetailContent;
+    private @Nullable ResourceLocation serverDetail;
+    private boolean detailReady;
+    private boolean detailUnavailable;
     private @Nullable PageView page;
     private @Nullable ResourceLocation selected;
     private @Nullable ResourceLocation forgetting;
@@ -110,8 +121,25 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     private long contentRevision = -1;
     private @Nullable ContextMenu contextMenu;
     private @Nullable EditorDialog editorDialog;
+    private @Nullable EditorOperation editorOperation;
     private boolean editorRepeatWasEnabled;
     private boolean restoreView = true;
+    private final RewardRenderContext rewardRendering = new RewardRenderContext() {
+        @Override
+        public void item(GenericStack stack, double x, double y, double size) {
+            drawRewardSlot(stack, x, y, size);
+        }
+
+        @Override
+        public void text(String text, double x, double y, double width) {
+            label(text, x, y, width, 11, SOFT);
+        }
+
+        @Override
+        public void tooltip(double x, double y, double width, double height, List<String> lines) {
+            if (mouseY >= bodyTop && mouseY <= bodyBottom) GuiResearchOverview.this.tooltip(x, y, width, height, lines);
+        }
+    };
 
     public GuiResearchOverview(ContainerResearchOverview container, InventoryPlayer player) {
         super(container, player);
@@ -163,9 +191,8 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     }
 
     private int queueIndex(ResourceLocation id) {
-        var queue = container.view.queue();
-        for (int i = 0; i < queue.size(); i++) if (queue.get(i).id().equals(id)) return i;
-        return -1;
+        var queued = container.view.queued(id);
+        return queued == null ? -1 : queued.position();
     }
 
     private double fraction(Entry entry) {
@@ -235,10 +262,9 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     }
 
     private Display display(ResourceLocation id) {
-        var content = ClientResearchContents.get(id);
         var found = displays.get(id);
-        if (found == null || found.content != content) {
-            found = new Display(content);
+        if (found == null) {
+            found = new Display(ClientResearchContents.name(id, knownLayout == null ? null : knownLayout.nodes().get(id)));
             displays.put(id, found);
         }
         return found;
@@ -251,7 +277,8 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         if (baseline.entries != view.entries() || baseline.queue != view.queue() || baseline.databases != view.databases()
             || baseline.center != view.centerLevel() || baseline.station != view.stationLevel()
             || !Objects.equals(baseline.active, active) || baseline.manage != view.canManage()
-            || baseline.pending != view.savePending() || baseline.databaseTier != view.databaseLevel() || baseline.page != page) {
+            || baseline.pending != view.savePending() || baseline.databaseTier != view.databaseLevel()
+            || baseline.queuedCount != view.queuedCount() || baseline.page != page) {
             baseline.entries = view.entries();
             baseline.queue = view.queue();
             baseline.databases = view.databases();
@@ -261,6 +288,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             baseline.manage = view.canManage();
             baseline.pending = view.savePending();
             baseline.databaseTier = view.databaseLevel();
+            baseline.queuedCount = view.queuedCount();
             baseline.page = page;
             baseline.generation++;
         }
@@ -285,9 +313,9 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
 
     private void updateView() {
         long revision = ClientResearchContents.revision();
-        if (contentRevision != revision) {
+        boolean languageChanged = contentRevision != revision;
+        if (languageChanged) {
             contentRevision = revision;
-            knownEntries = null;
             knownDatabases = null;
             pickerRules.clear();
             if (container.databaseMode())
@@ -313,19 +341,31 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             };
             if (reason != null) showToast(tr(reason));
         }
+        receiveEditorResult();
         var entries = container.view.entries();
+        boolean definitionsChanged = knownEntries == null || knownEntries.size() != entries.size();
         if (knownEntries != entries) {
-            boolean definitionsChanged = knownEntries == null || knownEntries.size() != entries.size();
             if (!definitionsChanged) for (int i = 0; i < entries.size(); i++) {
-                if (knownEntries.get(i).definition() != entries.get(i).definition()) {
+                var before = knownEntries.get(i);
+                var after = entries.get(i);
+                if (!before.id().equals(after.id()) || target(before) != target(after)) {
                     definitionsChanged = true;
                     break;
                 }
             }
             knownEntries = entries;
-            if (definitionsChanged) rebuildPages(entries);
             detailDirty = true;
         }
+        var layout = container.editorMode() ? container.view.layout() : ClientResearchCatalog.layout();
+        if (layout != knownLayout || languageChanged || definitionsChanged) {
+            var previous = knownLayout;
+            knownLayout = layout;
+            displays.clear();
+            rebuildPages(layout, previous);
+            detailDirty = true;
+        }
+        if (editorOperation != null && editorOperation.confirmed) applyEditorResult();
+        if (editorOperation != null && MinecraftTime() >= editorOperation.deadline) failEditorOperation(tr(EditorTimedOut));
         if (restoreView && page != null && container.view.playerId() != null && screenW > 0 && screenH > 0) {
             restoreView = false;
             var saved = ResearchOverviewViewState.load(mc.gameDir.toPath().resolve("config"));
@@ -343,7 +383,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             var counts = new Int2LongOpenHashMap();
             for (int i = 0; i < databases.size(); i++) {
                 var database = databases.get(i);
-                stored.addTo(database.tier(), database.stored().size());
+                stored.addTo(database.tier(), database.occupied());
                 counts.addTo(database.tier(), database.capacity());
             }
             capacities.clear();
@@ -354,12 +394,9 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             detailDirty = true;
         }
         var entry = selected == null ? null : container.view.entry(selected);
+        updateDetail(entry);
         if (entry != knownSelected) {
             knownSelected = entry;
-            detailDirty = true;
-        }
-        if (entry != null && display(entry.id()).content != knownDetailContent) {
-            knownDetailContent = display(entry.id()).content;
             detailDirty = true;
         }
         if (entry != null) {
@@ -372,7 +409,9 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             rebuildDetail(entry);
             detailDirty = false;
         }
-        if (held && Mouse.isButtonDown(0) && !moved && pressedNode != null && container.editorMode() && MinecraftTime() - pressedAt >= 300) {
+        updateContentEditor();
+        if (held && Mouse.isButtonDown(0) && !moved && pressedNode != null && container.editorMode()
+            && editorOperation == null && MinecraftTime() - pressedAt >= 300) {
             dragging = pressedNode;
             dragX = nodeStartX;
             dragY = nodeStartY;
@@ -383,46 +422,85 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         return Minecraft.getSystemTime();
     }
 
-    private void rebuildPages(List<Entry> entries) {
+    private void updateDetail(@Nullable Entry entry) {
+        var editorId = editorDialog != null && editorDialog.mode == EditorMode.CONTENT ? editorDialog.research : null;
+        var targetId = editorId != null ? editorId : entry == null ? null : entry.id();
+        if (!Objects.equals(targetId, serverDetail)) {
+            if (targetId == null) container.clearDetail();
+            else container.requestDetail(targetId);
+            serverDetail = targetId;
+        }
+        var data = entry == null ? null : container.view.detail(entry.id());
+        boolean unavailable = entry != null && container.view.detailUnavailable(entry.id());
+        boolean ready = data != null;
+        var content = data == null ? null : ClientResearchContents.detail(entry.id(), data.json());
+        if (content != knownDetailContent || detailReady != ready || detailUnavailable != unavailable) {
+            knownDetailContent = content;
+            detailReady = ready;
+            detailUnavailable = unavailable;
+            detailDirty = true;
+        }
+    }
+
+    private void rebuildPages(ResearchOverviewLayout layout, @Nullable ResearchOverviewLayout previousLayout) {
         String previous = page == null ? null : page.id;
+        var previousPages = new Object2ObjectOpenHashMap<>(pagesById);
         pages.clear();
         pagesById.clear();
         pagesByResearch.clear();
-        var all = new ObjectArrayList<ResourceLocation>();
-        var pageIds = new ObjectLinkedOpenHashSet<String>();
-        pageIds.addAll(ClientResearchContents.pageIds());
-        for (int i = 0; i < entries.size(); i++) {
-            var id = entries.get(i).id();
-            all.add(id);
-            pageIds.add(id.getNamespace());
-        }
-        for (var pageId : pageIds) ClientResearchContents.page(pageId);
-        for (var pageId : pageIds) {
-            var config = ClientResearchContents.page(pageId);
-            var members = ClientResearchContents.pageResearches(pageId, all);
+        for (var configured : layout.pages()) {
+            var pageId = configured.id();
+            var config = configured.page();
+            var members = new ObjectArrayList<ResourceLocation>();
+            if (config.researches() != null) for (var id : config.researches())
+                if (container.view.entry(id) != null) members.add(id);
+            if (members.isEmpty() && !container.editorMode()) continue;
             var positions = new Object2ObjectOpenHashMap<String, ResearchPage.Position>();
-            if (config.manual()) {
+            var previousPage = previousPages.get(pageId);
+            boolean savedPage = editorOperation != null && editorOperation.confirmed && editorOperation.type == EditorOperationType.EXPORT
+                && pageId.equals(editorOperation.page);
+            boolean preserveEdits = previousPage != null && previousPage.edited && !savedPage
+                && (layout == previousLayout || unchangedPage(previousLayout, configured) || addingResearchTo(pageId));
+            if (config.manual() || preserveEdits) {
                 positions.putAll(config.positions());
-                int below = 0, lost = 0;
-                for (var position : positions.values()) below = Math.max(below, position.y() + 80);
+                if (preserveEdits && config.researches() != null) for (var id : config.researches()) {
+                    var position = previousPage.layout.positions().get(id.toString());
+                    if (position != null) positions.put(id.toString(), position);
+                }
+                long below = 0;
+                int lost = 0;
+                for (var position : positions.values()) below = Math.max(below, (long) position.y() + 80);
                 for (int i = 0; i < members.size(); i++) {
                     var path = members.get(i).toString();
                     if (!positions.containsKey(path)) {
-                        positions.put(path, new ResearchPage.Position(lost % 6 * 92, below + lost / 6 * 40));
+                        positions.put(path, new ResearchPage.Position(lost % 6 * 92, (int) Math.min(Integer.MAX_VALUE, below + lost / 6 * 40L)));
                         lost++;
                     }
                 }
             } else autoLayout(members, positions);
-            var view = new PageView(pageId, ClientResearchContents.pageName(pageId), members,
-                new ResearchPage(config.order(), config.manual(), config.title(), config.researches(), positions));
+            var view = new PageView(pageId, ClientResearchContents.pageName(pageId, config.title()), members,
+                new ResearchPage(config.priority(), config.manual() || preserveEdits, config.title(), members, positions));
+            view.edited = preserveEdits;
+            if (preserveEdits && !config.manual()) view.automaticPositions = previousPage.automaticPositions;
             pages.add(view);
             pagesById.put(view.id, view);
             for (int i = 0; i < members.size(); i++) pagesByResearch.put(members.get(i), view);
         }
-        pages.sort(Comparator.comparingInt((PageView p) -> p.layout.order()).thenComparing(p -> p.id));
         page = previous == null ? null : pagesById.get(previous);
-        if (page == null && !pages.isEmpty()) page = pages.getFirst();
+        if (page == null && !pages.isEmpty()) switchPage(pages.getFirst());
         if (selected != null && (page == null || !page.ids.contains(selected))) collapse();
+        if (pressedNode != null && (page == null || !page.ids.contains(pressedNode))) pressedNode = dragging = null;
+        if (editorDialog != null && editorDialog.mode == EditorMode.RESEARCH) filterResearchChoices();
+    }
+
+    private boolean addingResearchTo(String pageId) {
+        return editorOperation != null && editorOperation.type == EditorOperationType.ADD && pageId.equals(editorOperation.page);
+    }
+
+    private static boolean unchangedPage(@Nullable ResearchOverviewLayout layout, ResearchOverviewLayout.Page next) {
+        if (layout == null) return false;
+        for (var previous : layout.pages()) if (previous.id().equals(next.id())) return previous.page().equals(next.page());
+        return false;
     }
 
     private int depth(ResourceLocation id, List<ResourceLocation> members, Object2IntOpenHashMap<ResourceLocation> depths) {
@@ -608,12 +686,12 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             box(x - (drag ? 2 : 1), y - (drag ? 2 : 1), w + (drag ? 4 : 2), h + (drag ? 4 : 2), LIGHT, LIGHT);
         box(x, y, w, h, brighten ? brighter(state.background) : state.background, brighten ? brighter(state.border) : state.border, 2);
         double iconX = x + (expanded ? 10 : 8), iconY = y + (h - 28) / 2;
-        var researchIcon = ClientResearchContents.icon(entry.id());
+        var researchIcon = nodeIcon(entry.id());
         if (researchIcon != null && (dim || blocked(entry) || brighten || drag))
             nodeIcons.draw(mc, researchIcon, (float) iconX, (float) iconY, 28, (dim ? 0.35F : blocked(entry) ? 0.6F : 1) * (drag ? 0.9F : 1),
                 dim ? 1 : 0, brighten ? 1.07F : 1);
         else icon(entry.id(), iconX, iconY, 28);
-        String name = display(entry.id()).content.title();
+        String name = display(entry.id()).title;
         if (expanded) {
             double infoY = y + (showsProgress(entry) ? 6.5 : 10);
             label(name, x + 45, infoY, w - 55, 13, TEXT);
@@ -642,7 +720,8 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         if (inside(panX + x * zoom, panY + y * zoom, w * zoom, h * zoom) && !overChrome()) {
             hoverText.clear();
             hoverText.add(name + (entry.maxLevel() > 1 ? " Lv." + entry.teamLevel() + " / " + maxText(entry) : ""));
-            if (!display(entry.id()).content.summary().isEmpty()) hoverText.add(display(entry.id()).content.summary());
+            if (entry.id().equals(selected) && knownDetailContent != null && !knownDetailContent.summary().isEmpty())
+                hoverText.add(knownDetailContent.summary());
             hoverText.add(container.databaseMode() ? pickerReason(entry) : statusText(entry));
             if (missing(entry)) appendRequirements(hoverText, entry.stage(target(entry)).prerequisites(), true);
             hoverText.addAll(deviceReasons(entry));
@@ -682,7 +761,9 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     }
 
     private void switchPage(PageView next) {
-        page = next;
+        var current = pagesById.get(next.id);
+        if (current == null) return;
+        page = current;
         selected = forgetting = null;
         panX = 340;
         panY = 120;
@@ -710,24 +791,27 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             leftBottom = y + height;
             return;
         }
-        var queue = container.view.queue();
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < TeamResearchQueue.CAPACITY; i++) {
             double x = 20 + i * 54, y = leftTop;
-            if (i < queue.size()) {
-                var row = queue.get(i);
+            var row = container.view.queueSlot(i);
+            if (row != null) {
                 var entry = container.view.entry(row.id());
+                if (entry == null) {
+                    ring(x + 23, y + 23, 23, 2, LINE, 0, 1);
+                    continue;
+                }
                 ring(x + 23, y + 23, 23, 23, LINE, 0, 1);
                 if (i == 0) ring(x + 23, y + 23, 23, 3, SLOT, DARK, fraction(entry));
                 circle(x + 23, y + 23, 20, inside(x, y, 46, 46) ? HOVER : i == 0 ? LIGHT : SLOT);
                 icon(row.id(), x + 11, y + 11, 24);
                 circle(x + 45, y + 5, 8, DARK);
                 centeredLabel(Integer.toString(i + 1), x + 37, y - 3, 16, 16, 11, LIGHT);
-                hit(x, y, 46, 46, true, () -> focus(row.id()), List.of(display(row.id()).content.title() + " Lv." + row.targetLevel(), tr(Progress, percentage(fraction(entry)))));
+                hit(x, y, 46, 46, true, () -> focus(row.id()), List.of(display(row.id()).title + " Lv." + row.targetLevel(), tr(Progress, percentage(fraction(entry)))));
             } else ring(x + 23, y + 23, 23, 2, LINE, 0, 1);
         }
         leftBottom = leftTop + 46;
         var current = container.view.current();
-        if (current == null) return;
+        if (current == null || container.view.entry(current.id()) == null) return;
         double contentHeight = 20 + 6 + 5 + 24;
         if (!current.materials().isEmpty())
             contentHeight += (current.manual() ? 0 : 20) + current.materials().size() * 34;
@@ -742,7 +826,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
 
     private void drawCurrent(Current current, double top) {
         double x = 25, y = top + 7, w = 278;
-        String name = display(current.id()).content.title();
+        String name = display(current.id()).title;
         String title = current.manual() ? tr(Contributor, current.contributorName().isEmpty() ? tr(Nobody) : current.contributorName()) : name + " Lv." + current.targetLevel();
         String secondary = current.manual() ? current.contributor() == null ? tr(Paused) : name + " Lv." + current.targetLevel() : tr(Stations, current.workingStations());
         double secondaryWidth = Math.min(130, textWidth(secondary, 11));
@@ -903,7 +987,6 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         centeredLabel("ESC", right - w - 37, screenH - 26, 29, 16, 11, TEXT);
     }
 
-    // Detail content is rebuilt only when its research projection, reward choice or confirmation changes.
     private void rebuildDetail(@Nullable Entry entry) {
         detail.clear();
         footerInfo.clear();
@@ -911,6 +994,12 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         footerInfoHeight = 0;
         detailHeight = 0;
         if (entry == null) return;
+        var content = knownDetailContent;
+        if (content == null) {
+            addParagraph(tr(detailUnavailable ? DetailUnavailable : DetailLoading), 12, 20, SOFT);
+            finishDetail();
+            return;
+        }
         if (forgetting != null) {
             forgetPreview(entry);
             for (int i = 0; i < footerInfo.size(); i++) {
@@ -923,7 +1012,6 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
                 }
             }
         }
-        var content = display(entry.id()).content;
         if (!content.summary().isEmpty()) addParagraph(content.summary(), 13, 19, TEXT);
         for (int i = 0; i < content.description().size(); i++)
             paragraph(content.description().get(i), 12, 18, SOFT, i + 1 == content.description().size() ? 6 : 2);
@@ -1053,7 +1141,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     private void requiredResearch(Required required, boolean mutex) {
         var other = container.view.entry(required.id());
         boolean met = other != null && other.teamLevel() >= required.level();
-        String name = display(required.id()).content.title() + " Lv." + required.level();
+        String name = display(required.id()).title + " Lv." + required.level();
         var sourcePage = pagesByResearch.get(required.id());
         if (sourcePage != null && sourcePage != page) name += " (" + sourcePage.name + ")";
         required(name, tr(met ? Done : Incomplete), mutex == met);
@@ -1097,14 +1185,13 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             double height = 16 + 20;
             for (int i = 0; i < groups.size(); i++) {
                 var group = groups.get(i);
-                var description = display(entry.id()).content.reward(group.id());
+                var description = knownDetailContent.reward(group.id());
                 var titleLines = fontRenderer.listFormattedStringToWidth(description.title(), (int) ((DETAIL_CONTENT_WIDTH - 28) * 9D / 12));
                 var descriptionLines = description.description().isEmpty() ? List.<String>of()
                     : fontRenderer.listFormattedStringToWidth(description.description(), (int) ((DETAIL_CONTENT_WIDTH - 28) * 9D / 11));
-                int slotRows = (group.items().size() + 6) / 7;
-                int slotsHeight = slotRows == 0 ? 0 : slotRows * 40 - 4;
-                double groupHeight = 10 + titleLines.size() * 20 + 4 + slotsHeight + (descriptionLines.isEmpty() ? 0 : 4 + descriptionLines.size() * 15);
-                cards.add(new RewardCardGroup(group.id(), titleLines, descriptionLines, group.items(), groupHeight, choiceAllowed && group.id().equals(selectedGroup)));
+                double presentationHeight = presentationHeight(group.id(), group.presentation());
+                double groupHeight = 10 + titleLines.size() * 20 + 4 + presentationHeight + (descriptionLines.isEmpty() ? 0 : 4 + descriptionLines.size() * 15);
+                cards.add(new RewardCardGroup(group.id(), titleLines, descriptionLines, group.presentation(), presentationHeight, groupHeight, choiceAllowed && group.id().equals(selectedGroup)));
                 height += 5 + groupHeight;
             }
             if (claimable) height += 5 + 24;
@@ -1135,7 +1222,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         var entry = knownSelected;
         overviewSlot(left + 11, 11, 44);
         icon(entry.id(), left + 17, 17, 32);
-        truncatedTooltip(display(entry.id()).content.title(), left + 65, 11, 224, 16);
+        truncatedTooltip(display(entry.id()).title, left + 65, 11, 224, 16);
         square(left + 299, 11, Icon.CLEAR, this::collapse, List.of(tr(Collapse)));
         var status = status(entry);
         String statusLabel = container.databaseMode() ? tr(Selectable) : statusText(entry);
@@ -1145,7 +1232,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             : entry.maxLevel() > 1 ? "Lv." + entry.teamLevel() + " / " + maxText(entry) : "";
         double levelWidth = levelLabel.isEmpty() ? 0 : Math.min(224, chipWidth(levelLabel, true));
         boolean wrapLevel = levelWidth > 0 && chipWidth + 6 + levelWidth > 224;
-        label(display(entry.id()).content.title(), left + 65, 11 + ((wrapLevel ? 20 : 21) - 16) / 2D, 224, 16, TEXT);
+        label(display(entry.id()).title, left + 65, 11 + ((wrapLevel ? 20 : 21) - 16) / 2D, 224, 16, TEXT);
         double chipY = wrapLevel ? 33 : 34.5;
         chip(statusLabel, left + 65, chipY, chipWidth, chipTone, false);
         if (levelWidth > 0)
@@ -1153,7 +1240,8 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         double headerBottom = wrapLevel ? 87 : 63;
         fill(left + 11, headerBottom, 318, 1, LINE);
         bodyTop = headerBottom + 9;
-        computeFooter();
+        if (detailReady) computeFooter();
+        else footerTop = screenH;
         bodyBottom = footerTop - 9;
         detailHeight = 0;
         for (int i = 0; i < detail.size(); i++) detailHeight += detail.get(i).height;
@@ -1171,7 +1259,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             fill(left + 322, bodyTop, 4, scrollHeight, BASE);
             fill(left + 322, bodyTop + (scrollHeight - thumb) * detailScroll / Math.max(1, detailHeight - scrollHeight), 4, thumb, MUTED);
         }
-        drawFooter(entry, left + 11, footerTop);
+        if (detailReady) drawFooter(entry, left + 11, footerTop);
     }
 
     private void drawDetailRow(Entry entry, DetailRow row, double x, double y) {
@@ -1248,9 +1336,9 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             for (int line = 0; line < group.title.size(); line++)
                 label(group.title.get(line), innerX + 6, contentY + line * 20, innerWidth - 12, 12, TEXT);
             contentY += group.title.size() * 20 + 4;
-            drawSlots(group.items, innerX + 6, contentY, innerWidth - 12);
-            int rows = (group.items.size() + 6) / 7;
-            contentY += rows == 0 ? 0 : rows * 40 - 4;
+            if (group.presentationHeight > 0 && contentY <= bodyBottom && contentY + group.presentationHeight > bodyTop)
+                renderPresentation(group, innerX + 6, contentY, innerWidth - 12);
+            contentY += group.presentationHeight;
             if (!group.description.isEmpty()) {
                 contentY += 4;
                 for (int line = 0; line < group.description.size(); line++)
@@ -1269,9 +1357,48 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         }
     }
 
+    private double presentationHeight(ResourceLocation id, RewardPresentation presentation) {
+        try {
+            double height = presentation.height(rewardRendering, DETAIL_CONTENT_WIDTH - 28);
+            if (Double.isFinite(height) && height >= 0) return height;
+            throw new IllegalArgumentException("Invalid reward presentation height: " + height);
+        } catch (RuntimeException failure) {
+            PrototypeEngineering.LOGGER.error("Cannot measure research reward presentation {}", id, failure);
+            return 15;
+        }
+    }
+
+    private void renderPresentation(RewardCardGroup group, double x, double y, double width) {
+        if (group.renderFailed) {
+            label(tr(RewardDisplayUnavailable), x, y, width, 11, BAD);
+            return;
+        }
+        try {
+            group.presentation.render(rewardRendering, x, y, width);
+        } catch (RuntimeException failure) {
+            group.renderFailed = true;
+            PrototypeEngineering.LOGGER.error("Cannot render research reward presentation {}", group.id, failure);
+            label(tr(RewardDisplayUnavailable), x, y, width, 11, BAD);
+        }
+    }
+
     private void detailHit(double x, double y, double width, double height, boolean enabled, Runnable action, List<String> tooltip) {
         double top = Math.max(y, bodyTop), bottom = Math.min(y + height, bodyBottom);
         if (bottom > top) hit(x, top, width, bottom - top, enabled, action, tooltip);
+    }
+
+    private void drawRewardSlot(GenericStack item, double x, double y) {
+        drawRewardSlot(item, x, y, 36);
+    }
+
+    private void drawRewardSlot(GenericStack item, double x, double y, double size) {
+        double inset = size / 18;
+        overviewSlot(x, y, size);
+        keyIcon(item.what(), x + inset, y + inset, size - 2 * inset);
+        aligned(item.what().formatAmount(item.amount(), AmountFormat.SLOT), x + size - inset / 2, y + size * (2D / 3), size - inset / 2,
+            Math.max(1, (int) Math.round(11 * size / 36)), LIGHT);
+        if (mouseY >= bodyTop && mouseY <= bodyBottom)
+            tooltip(x, y, size, size, List.of(item.what().getDisplayName().getFormattedText(), amount(item.what(), item.amount())));
     }
 
     private void drawSlots(List<GenericStack> stacks, double x, double y, double width) {
@@ -1280,11 +1407,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             var item = stacks.get(i);
             int slotRow = i / columns;
             double slotX = x + i % columns * 40, slotY = y + slotRow * 40;
-            overviewSlot(slotX, slotY, 36);
-            keyIcon(item.what(), slotX + 2, slotY + 2, 32);
-            aligned(item.what().formatAmount(item.amount(), AmountFormat.SLOT), slotX + 35, slotY + 24, 35, 11, LIGHT);
-            if (mouseY >= bodyTop && mouseY <= bodyBottom)
-                tooltip(slotX, slotY, 36, 36, List.of(item.what().getDisplayName().getFormattedText(), amount(item.what(), item.amount())));
+            drawRewardSlot(item, slotX, slotY);
         }
     }
 
@@ -1350,7 +1473,6 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             label(tr(PickerFooter), x, y + 29, w, 12, SOFT);
             return;
         }
-        int index = queueIndex(entry.id());
         if (container.editorMode()) {
             var database = activeDatabase();
             boolean available = entry.specialOnly() ? database != null && database.level(entry.id()) < entry.maxLevel()
@@ -1363,15 +1485,16 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             label(tr(entry.specialOnly() ? EditorSpecialHint : EditorHint), x, y + 29, w, 12, WAIT);
             return;
         }
-        if (index > 0) {
-            long entryId = container.view.queue().get(index).entryId();
+        var queued = container.view.queued(entry.id());
+        if (queued != null && queued.position() > 0) {
+            long entryId = queued.entryId();
             action(x, y, half, tr(Current), container.view.canManage(), () -> container.manage(entryId, ResearchStationView.Action.CURRENT), List.of(tr(CurrentHint)));
             action(x + half + 6, y, half, tr(Remove), container.view.canManage(), () -> container.manage(entryId, ResearchStationView.Action.REMOVE), List.of(tr(RemoveHint)));
             y += 30;
             action(x, y, w, tr(Download), entry.canDownload(), () -> container.download(entry.id(), entry.teamLevel()), List.of(downloadReason(entry)));
         } else {
-            if (index == 0) {
-                long entryId = container.view.queue().getFirst().entryId();
+            if (queued != null) {
+                long entryId = queued.entryId();
                 action(x, y, half, tr(Remove), container.view.canManage(), () -> container.manage(entryId, ResearchStationView.Action.REMOVE), List.of(tr(RemoveHint)));
             } else
                 action(x, y, half, tr(fraction(entry) > 0 ? Continue : Start), entry.canStart(), () -> container.start(entry.id(), target(entry)), startReasons(entry));
@@ -1403,19 +1526,19 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         for (int i = 0; i < knownEntries.size(); i++) {
             var other = knownEntries.get(i);
             if (!other.id().equals(entry.id()) && after.getInt(other.id()) < before.getInt(other.id()))
-                footerInfo.add(tr(ForgetDependent, display(other.id()).content.title(), before.getInt(other.id()), after.getInt(other.id())));
+                footerInfo.add(tr(ForgetDependent, display(other.id()).title, before.getInt(other.id()), after.getInt(other.id())));
         }
         var queue = container.view.queue();
         for (int i = 0; i < queue.size(); i++) {
             var queued = queue.get(i);
             if (queued.targetLevel() > (long) after.getInt(queued.id()) + 1) {
-                footerInfo.add(tr(ForgetQueue, display(queued.id()).content.title(), queued.targetLevel()));
+                footerInfo.add(tr(ForgetQueue, display(queued.id()).title, queued.targetLevel()));
                 continue;
             }
             var prerequisites = container.view.entry(queued.id()).stage(queued.targetLevel()).prerequisites();
             for (int j = 0; j < prerequisites.size(); j++)
                 if (after.getInt(prerequisites.get(j).id()) < prerequisites.get(j).level()) {
-                    footerInfo.add(tr(ForgetQueue, display(queued.id()).content.title(), queued.targetLevel()));
+                    footerInfo.add(tr(ForgetQueue, display(queued.id()).title, queued.targetLevel()));
                     break;
                 }
         }
@@ -1476,7 +1599,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         result.addAll(deviceReasons(entry));
         if (!container.view.canManage()) result.add(tr(Denied));
         if (container.view.savePending()) result.add(tr(SavePending));
-        if (container.view.queue().size() >= 5) result.add(tr(QueueFull));
+        if (container.view.queuedCount() >= TeamResearchQueue.CAPACITY) result.add(tr(QueueFull));
         if (!entry.canStart() && result.isEmpty()) result.add(tr(Denied));
         if (result.isEmpty()) result.add(tr(Start));
         display.startReasons = result;
@@ -1490,7 +1613,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             boolean met = entry != null && entry.teamLevel() >= item.level();
             if (prerequisite != met) {
                 var sourcePage = pagesByResearch.get(item.id());
-                result.add(tr(prerequisite ? Prerequisites : Mutex) + ": " + display(item.id()).content.title() + " Lv." + item.level()
+                result.add(tr(prerequisite ? Prerequisites : Mutex) + ": " + display(item.id()).title + " Lv." + item.level()
                     + (sourcePage != null && sourcePage != page ? " (" + sourcePage.name + ")" : ""));
             }
         }
@@ -1524,7 +1647,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
                 for (int i = 0; i < mutex.size(); i++) {
                     var other = container.view.entry(mutex.get(i).id());
                     if (Math.max(database.level(mutex.get(i).id()), other == null ? 0 : other.teamLevel()) >= mutex.get(i).level()) {
-                        result = tr(DownloadMutex, display(mutex.get(i).id()).content.title());
+                        result = tr(DownloadMutex, display(mutex.get(i).id()).title);
                         break;
                     }
                 }
@@ -1571,6 +1694,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
 
     private boolean containsNode(ResourceLocation id, double x, double y) {
         var entry = container.view.entry(id);
+        if (entry == null) return false;
         boolean expanded = id.equals(selected);
         double nx = panX + nodeX(id) * zoom, ny = panY + (nodeY(id) - (expanded ? 4 : 0)) * zoom;
         double w = expanded ? EXP_W : showsProgress(entry) ? WIDE : NODE;
@@ -1690,14 +1814,18 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         } else if (dragging != null) {
             var id = dragging;
             dragging = null;
-            page.layout.move(id.toString(), (int) Math.round(dragX / S), (int) Math.round(dragY / S));
-            if (!page.layout.manual())
-                page.layout = new ResearchPage(page.layout.order(), true, page.layout.title(), page.layout.researches(), page.layout.positions());
-            ClientResearchContents.retainPage(page.id, page.layout);
-            detailDirty = true;
+            if (page != null && page.ids.contains(id) && container.view.entry(id) != null) {
+                if (!page.layout.manual()) {
+                    page.automaticPositions = Map.copyOf(page.layout.positions());
+                    page.layout = new ResearchPage(page.layout.priority(), true, page.layout.title(), page.layout.researches(), page.layout.positions());
+                }
+                page.layout.move(id.toString(), (int) Math.round(dragX / S), (int) Math.round(dragY / S));
+                page.edited = true;
+                detailDirty = true;
+            }
         } else if (!moved && pressedNode != null) {
             var entry = container.view.entry(pressedNode);
-            if (container.databaseMode() ? entry.selectable() : container.editorMode() || !missing(entry)) {
+            if (entry != null && (container.databaseMode() ? entry.selectable() : container.editorMode() || !missing(entry))) {
                 if (pressedNode.equals(selected)) collapse();
                 else {
                     selected = pressedNode;
@@ -1788,6 +1916,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     }
 
     private void openPageEditor() {
+        if (editorOperation != null) return;
         var dialog = new EditorDialog(EditorMode.PAGE);
         dialog.first = new GuiTextField(0, fontRenderer, 0, 0, 1, 1);
         dialog.first.setMaxStringLength(128);
@@ -1798,7 +1927,9 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     }
 
     private void openResearchPicker(double worldX, double worldY) {
+        if (editorOperation != null) return;
         var dialog = new EditorDialog(EditorMode.RESEARCH);
+        dialog.page = page.id;
         dialog.worldX = (int) Math.round(worldX);
         dialog.worldY = (int) Math.round(worldY);
         dialog.first = new GuiTextField(0, fontRenderer, 0, 0, 1, 1);
@@ -1809,29 +1940,50 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     }
 
     private void openContentEditor(ResourceLocation research) {
-        try {
-            var dialog = new EditorDialog(EditorMode.CONTENT);
-            dialog.research = research;
-            dialog.languages.addAll(mc.getLanguageManager().getLanguages());
-            dialog.editor = new ResearchJsonTextEditor(ClientResearchContents.readContentJson(research, null));
-            dialog.loadedJson = dialog.editor.text();
-            openEditorDialog(dialog);
-        } catch (RuntimeException failure) {
-            PrototypeEngineering.LOGGER.error("Cannot read research content {}", research, failure);
-            showToast(tr(ContentSaveFailed, failure.getMessage()));
+        if (editorOperation != null) return;
+        var dialog = new EditorDialog(EditorMode.CONTENT);
+        dialog.research = research;
+        dialog.languages.addAll(mc.getLanguageManager().getLanguages());
+        openEditorDialog(dialog);
+        updateContentEditor();
+    }
+
+    private void updateContentEditor() {
+        var dialog = editorDialog;
+        if (dialog == null || dialog.mode != EditorMode.CONTENT
+            || editorOperation != null && editorOperation.type == EditorOperationType.CONTENT) return;
+        var data = container.view.detail(dialog.research);
+        if (data == null) {
+            if (dialog.editor == null && container.view.detailUnavailable(dialog.research))
+                editorFailure(dialog, tr(DetailUnavailable));
+            return;
         }
+        var json = data.json();
+        if (dialog.editor == null) {
+            dialog.editor = new ResearchJsonTextEditor(json);
+            dialog.loadedJson = dialog.editor.text();
+        } else if (!json.equals(dialog.serverJson) && dialog.language < 0) {
+            if (!dialog.editor.text().equals(dialog.loadedJson)) {
+                dialog.stale = true;
+                editorFailure(dialog, tr(ContentChanged));
+                return;
+            }
+            dialog.editor.setText(json);
+            dialog.loadedJson = dialog.editor.text();
+            dialog.stale = false;
+        }
+        dialog.serverJson = json;
     }
 
     private void filterResearchChoices() {
         var dialog = editorDialog;
         String query = dialog.first.getText().toLowerCase(Locale.ROOT);
         dialog.filtered.clear();
-        var entries = container.view.entries();
-        for (int index = 0; index < entries.size(); index++) {
-            var entry = entries.get(index);
-            if (page.ids.contains(entry.id())) continue;
+        var selectedPage = pagesById.get(dialog.page);
+        if (selectedPage != null) for (var entry : container.view.entries()) {
+            if (selectedPage.ids.contains(entry.id())) continue;
             if (query.isEmpty() || entry.id().toString().toLowerCase(Locale.ROOT).contains(query)
-                || display(entry.id()).content.title().toLowerCase(Locale.ROOT).contains(query))
+                || display(entry.id()).title.toLowerCase(Locale.ROOT).contains(query))
                 dialog.filtered.add(entry.id());
         }
         dialog.choiceScroll = 0;
@@ -1869,7 +2021,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
                 if (id.equals(dialog.research)) fill(x + 21, rowY, w - 42, 28, LIGHT);
                 else if (inside(x + 21, rowY, w - 42, 28)) fill(x + 21, rowY, w - 42, 28, HOVER);
                 icon(id, x + 26, rowY + 2, 24);
-                label(display(id).content.title(), x + 59, rowY + 2, w - 86, 12, TEXT);
+                label(display(id).title, x + 59, rowY + 2, w - 86, 12, TEXT);
                 label(id.toString(), x + 59, rowY + 16, w - 86, 10, SOFT);
             }
             if (dialog.filtered.isEmpty()) centeredLabel(tr(NoResearchChoices), x + 18, top, w - 36, 330, 13, SOFT);
@@ -1879,8 +2031,11 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             box(x + w - 340, y + 52, 322, 27, inside(x + w - 340, y + 52, 322, 27) ? HOVER : SLOT, LINE);
             label(target, x + w - 332, y + 58, 284, 12, TEXT);
             label("▼", x + w - 42, y + 58, 18, 12, TEXT);
-            dialog.editor.draw(fontRenderer, x + 18, y + 92, w - 36, h - 174);
-            if (Mouse.isButtonDown(0)) dialog.editor.drag(fontRenderer, mouseX, mouseY);
+            if (dialog.editor == null) centeredLabel(tr(dialog.failed ? DetailUnavailable : DetailLoading), x + 18, y + 92, w - 36, h - 174, 13, SOFT);
+            else {
+                dialog.editor.draw(fontRenderer, x + 18, y + 92, w - 36, h - 174);
+                if (editorOperation == null && Mouse.isButtonDown(0)) dialog.editor.drag(fontRenderer, mouseX, mouseY);
+            }
             label(tr(EditorHelp), x + 18, y + h - 75, w - 36, 11, SOFT);
             if (dialog.languagesOpen) drawLanguages(dialog);
         }
@@ -1889,9 +2044,9 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             if (inside(x + 18, y + h - 60, w - 36, 18) && textWidth(dialog.message, 11) > w - 36)
                 hoverText.addAll(fontRenderer.listFormattedStringToWidth(dialog.message, 600));
         }
-        boolean enabled = dialog.mode != EditorMode.RESEARCH || dialog.research != null;
+        boolean enabled = canSave(dialog);
         editorButton(tr(dialog.mode == EditorMode.PAGE ? AddPage : dialog.mode == EditorMode.RESEARCH ? AddResearch : SaveContent), x + w - 240, y + h - 36, enabled);
-        editorButton(tr(Cancel), x + w - 124, y + h - 36, true);
+        editorButton(tr(Cancel), x + w - 124, y + h - 36, editorOperation == null);
     }
 
     private void drawEditorField(GuiTextField field, double x, double y, double w) {
@@ -1926,6 +2081,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
 
     private void dialogClick() {
         var dialog = editorDialog;
+        if (editorOperation != null) return;
         double x = dialog.x, y = dialog.y, w = dialog.w, h = dialog.h;
         if (dialog.languagesOpen) {
             double listX = x + w - 340, listY = y + 82;
@@ -1936,15 +2092,15 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
                     dialog.message = tr(UnsavedChanges);
                     dialog.failed = true;
                 } else try {
-                    var language = selected < 0 ? null : dialog.languages.get(selected).getLanguageCode();
-                    String text = ClientResearchContents.readContentJson(dialog.research, language);
+                    String text = selected < 0 ? dialog.serverJson
+                        : ClientResearchContents.readLocalized(dialog.research, dialog.languages.get(selected).getLanguageCode());
                     dialog.language = selected;
                     dialog.editor.setText(text);
                     dialog.loadedJson = dialog.editor.text();
                     dialog.message = "";
+                    dialog.failed = false;
                 } catch (RuntimeException failure) {
-                    dialog.message = tr(ContentSaveFailed, failure.getCause() == null ? failure.getMessage() : failure.getCause().getMessage());
-                    dialog.failed = true;
+                    editorFailure(dialog, tr(ContentSaveFailed, failureMessage(failure)));
                 }
             }
             dialog.languagesOpen = false;
@@ -1958,10 +2114,10 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             saveEditorDialog();
             return;
         }
-        if (dialog.mode == EditorMode.CONTENT) {
+        if (dialog.mode == EditorMode.CONTENT && dialog.editor != null) {
             if (inside(x + w - 340, y + 52, 322, 27)) dialog.languagesOpen = true;
             else dialog.editor.click(fontRenderer, mouseX, mouseY);
-        } else {
+        } else if (dialog.mode != EditorMode.CONTENT) {
             dialog.first.mouseClicked((int) (mouseX * 0.75), (int) (mouseY * 0.75), 0);
             if (dialog.second != null) dialog.second.mouseClicked((int) (mouseX * 0.75), (int) (mouseY * 0.75), 0);
             if (dialog.mode == EditorMode.RESEARCH && inside(x + 21, y + 95, w - 42, 319)) {
@@ -1973,31 +2129,26 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
 
     private void saveEditorDialog() {
         var dialog = editorDialog;
+        if (!canSave(dialog)) return;
         try {
             switch (dialog.mode) {
                 case PAGE -> {
                     String id = dialog.first.getText().trim();
-                    ClientResearchContents.createPage(id, dialog.second.getText().trim());
-                    rebuildPages(container.view.entries());
-                    switchPage(pagesById.get(id));
-                    closeEditorDialog();
-                    showToast(tr(PageCreated));
+                    String title = dialog.second.getText().trim();
+                    beginEditorOperation(EditorOperationType.CREATE, id, dialog).token = container.createPage(id, title.isEmpty() ? null : title);
                 }
                 case RESEARCH -> {
-                    if (dialog.research == null) return;
-                    var registered = new ObjectArrayList<ResourceLocation>();
-                    var entries = container.view.entries();
-                    for (int index = 0; index < entries.size(); index++) registered.add(entries.get(index).id());
-                    ClientResearchContents.retainPage(page.id, page.layout);
-                    ClientResearchContents.addResearch(page.id, dialog.research, dialog.worldX, dialog.worldY, registered);
-                    rebuildPages(entries);
-                    closeEditorDialog();
-                    detailDirty = true;
-                    showToast(tr(ResearchAdded));
+                    var target = pagesById.get(dialog.page);
+                    beginEditorOperation(EditorOperationType.ADD, dialog.page, dialog).token =
+                        container.addResearch(dialog.page, dialog.research, dialog.worldX, dialog.worldY, target.layout.manual(), target.automaticPositions);
                 }
                 case CONTENT -> {
-                    ClientResearchContents.saveContentJson(dialog.research,
-                        dialog.language < 0 ? null : dialog.languages.get(dialog.language).getLanguageCode(), dialog.editor.text());
+                    if (dialog.language < 0) {
+                        beginEditorOperation(EditorOperationType.CONTENT, null, dialog).token = container.saveContent(dialog.research, dialog.editor.text());
+                        return;
+                    }
+                    ClientResearchContents.saveLocalized(dialog.research, dialog.languages.get(dialog.language).getLanguageCode(),
+                        dialog.editor.text(), dialog.serverJson);
                     dialog.loadedJson = dialog.editor.text();
                     dialog.message = tr(ContentSaved);
                     dialog.failed = false;
@@ -2005,20 +2156,117 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
                 }
             }
         } catch (RuntimeException failure) {
-            dialog.message = tr(ContentSaveFailed, failure.getCause() == null ? failure.getMessage() : failure.getCause().getMessage());
-            dialog.failed = true;
+            editorOperation = null;
+            PrototypeEngineering.LOGGER.error("Cannot save research editor input for {}", dialog.research, failure);
+            editorFailure(dialog, tr(ContentSaveFailed, failureMessage(failure)));
         }
+    }
+
+    private boolean canSave(EditorDialog dialog) {
+        return editorOperation == null && container.view.layoutRevision() >= 0 && switch (dialog.mode) {
+            case PAGE -> !dialog.first.getText().isBlank();
+            case RESEARCH -> dialog.research != null && pagesById.containsKey(dialog.page);
+            case CONTENT -> contentEditorReady(dialog);
+        };
+    }
+
+    private boolean contentEditorReady(EditorDialog dialog) {
+        var data = container.view.detail(dialog.research);
+        return data != null && dialog.editor != null && !dialog.stale && Objects.equals(dialog.serverJson, data.json())
+            && container.view.detailRevision(dialog.research) >= container.view.layoutRevision();
+    }
+
+    private EditorOperation beginEditorOperation(EditorOperationType type, @Nullable String pageId, @Nullable EditorDialog dialog) {
+        editorOperation = new EditorOperation(type, pageId, dialog);
+        if (dialog != null) {
+            dialog.message = tr(EditorSaving);
+            dialog.failed = false;
+        }
+        return editorOperation;
+    }
+
+    private void receiveEditorResult() {
+        var pending = editorOperation;
+        var result = container.view.editResult();
+        if (pending == null || pending.confirmed || result == null || result.token() != pending.token) return;
+        switch (result.status()) {
+            case SAVED -> {
+                pending.confirmed = true;
+                pending.revision = result.revision();
+            }
+            case STALE -> failEditorOperation(tr(CatalogChanged));
+            case ERROR -> failEditorOperation(tr(ActionFailed));
+        }
+    }
+
+    private void applyEditorResult() {
+        var pending = editorOperation;
+        if (container.view.layoutRevision() < pending.revision) return;
+        switch (pending.type) {
+            case CREATE -> {
+                var created = pagesById.get(pending.page);
+                if (created == null) return;
+                switchPage(created);
+                closeEditorDialog();
+                showToast(tr(PageCreated));
+            }
+            case ADD -> {
+                var updated = pagesById.get(pending.page);
+                if (updated == null || !updated.ids.contains(pending.research)) return;
+                closeEditorDialog();
+                showToast(tr(ResearchAdded));
+            }
+            case CONTENT -> {
+                var dialog = pending.dialog;
+                if (container.view.detailRevision(dialog.research) < pending.revision) return;
+                var data = container.view.detail(dialog.research);
+                if (data == null) {
+                    editorFailure(dialog, tr(DetailUnavailable));
+                    break;
+                }
+                dialog.serverJson = data.json();
+                dialog.editor.setText(dialog.serverJson);
+                dialog.loadedJson = dialog.editor.text();
+                dialog.message = tr(ContentSaved);
+                dialog.failed = false;
+                dialog.stale = false;
+                detailDirty = true;
+            }
+            case EXPORT -> {
+                var updated = pagesById.get(pending.page);
+                if (updated != null) updated.edited = false;
+                showToast(tr(Exported));
+            }
+        }
+        editorOperation = null;
+    }
+
+    private void failEditorOperation(String reason) {
+        var pending = editorOperation;
+        editorOperation = null;
+        if (pending.dialog != null) editorFailure(pending.dialog, tr(ContentSaveFailed, reason));
+        else showToast(tr(ContentSaveFailed, reason));
+    }
+
+    private static String failureMessage(RuntimeException failure) {
+        return failure.getCause() == null ? failure.getMessage() : failure.getCause().getMessage();
+    }
+
+    private static void editorFailure(EditorDialog dialog, String message) {
+        dialog.message = message;
+        dialog.failed = true;
     }
 
     private void dialogKeyTyped(char character, int code) {
         var dialog = editorDialog;
+        if (editorOperation != null) return;
         if (code == Keyboard.KEY_ESCAPE) {
             if (dialog.languagesOpen) dialog.languagesOpen = false;
             else closeEditorDialog();
             return;
         }
         if (dialog.mode == EditorMode.CONTENT) {
-            if (!dialog.languagesOpen) dialog.editor.keyTyped(fontRenderer, character, code);
+            if (!dialog.languagesOpen && dialog.editor != null) dialog.editor.keyTyped(fontRenderer, character, code);
         } else {
             if (code == Keyboard.KEY_TAB && dialog.second != null) {
                 boolean first = dialog.first.isFocused();
@@ -2043,6 +2291,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     }
 
     private void closeEditorDialog() {
+        if (editorOperation != null && !editorOperation.confirmed && editorOperation.dialog == editorDialog) editorOperation = null;
         Keyboard.enableRepeatEvents(editorRepeatWasEnabled);
         editorDialog = null;
         held = canvasDrag = scrollbarDrag = false;
@@ -2055,6 +2304,25 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
 
     private enum EditorMode {PAGE, RESEARCH, CONTENT}
 
+    private enum EditorOperationType {CREATE, ADD, CONTENT, EXPORT}
+
+    private static final class EditorOperation {
+        private final EditorOperationType type;
+        private final @Nullable String page;
+        private final @Nullable EditorDialog dialog;
+        private final @Nullable ResourceLocation research;
+        private final long deadline = MinecraftTime() + EDITOR_RESPONSE_TIMEOUT_MS;
+        private long token, revision;
+        private boolean confirmed;
+
+        private EditorOperation(EditorOperationType type, @Nullable String page, @Nullable EditorDialog dialog) {
+            this.type = type;
+            this.page = page;
+            this.dialog = dialog;
+            this.research = dialog == null ? null : dialog.research;
+        }
+    }
+
     private static final class EditorDialog {
         private final EditorMode mode;
         private @Nullable GuiTextField first, second;
@@ -2062,9 +2330,11 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         private final ObjectArrayList<ResourceLocation> filtered = new ObjectArrayList<>();
         private final ObjectArrayList<Language> languages = new ObjectArrayList<>();
         private @Nullable ResourceLocation research;
+        private @Nullable String page;
+        private @Nullable String serverJson;
         private String loadedJson = "", message = "";
         private int language = -1, languageScroll, choiceScroll, worldX, worldY;
-        private boolean languagesOpen, failed;
+        private boolean languagesOpen, failed, stale;
         private double x, y, w, h;
 
         private EditorDialog(EditorMode mode) {
@@ -2100,11 +2370,12 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     }
 
     private void export() {
+        if (page == null || editorOperation != null) return;
         try {
-            ClientResearchContents.exportPage(page.id, page.layout);
-            showToast(tr(Exported));
+            beginEditorOperation(EditorOperationType.EXPORT, page.id, null).token = container.savePage(page.id, page.layout);
         } catch (RuntimeException failure) {
-            PrototypeEngineering.LOGGER.error("Cannot export research page {}", page.id, failure);
+            editorOperation = null;
+            PrototypeEngineering.LOGGER.error("Cannot save research page {}", page.id, failure);
             showToast(tr(ExportFailed));
         }
     }
@@ -2129,7 +2400,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     }
 
     private void icon(ResourceLocation id, double x, double y, double size) {
-        var icon = ClientResearchContents.icon(id);
+        var icon = nodeIcon(id);
         if (icon == null) return;
         GlStateManager.pushMatrix();
         GlStateManager.translate(x, y, 0);
@@ -2138,6 +2409,10 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         GlStateManager.popMatrix();
         GlStateManager.disableLighting();
         GlStateManager.disableDepth();
+    }
+
+    private @Nullable ResearchIcon nodeIcon(ResourceLocation id) {
+        return ClientResearchContents.icon(id, knownLayout == null ? null : knownLayout.nodes().get(id));
     }
 
     private void keyIcon(AEKey key, double x, double y, double size) {
@@ -2353,6 +2628,8 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         private final String id, name;
         private final List<ResourceLocation> ids;
         private ResearchPage layout;
+        private Map<String, ResearchPage.Position> automaticPositions = Map.of();
+        private boolean edited;
 
         private PageView(String id, String name, List<ResourceLocation> ids, ResearchPage layout) {
             this.id = id;
@@ -2363,15 +2640,15 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     }
 
     private static final class Display {
-        private final ResearchContent content;
+        private final String title;
         private Entry entry;
         private long generation = -1;
         private Status status;
         private String statusText, downloadReason, forgetReason, pickerReason;
         private List<String> deviceReasons, startReasons;
 
-        private Display(ResearchContent content) {
-            this.content = content;
+        private Display(String title) {
+            this.title = title;
         }
     }
 
@@ -2380,7 +2657,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         private List<Queue> queue;
         private List<Database> databases;
         private UUID active;
-        private int center, station, databaseTier;
+        private int center, station, databaseTier, queuedCount;
         private boolean manage, pending;
         private PageView page;
         private long generation;
@@ -2427,7 +2704,23 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
                               double height) {
     }
 
-    private record RewardCardGroup(ResourceLocation id, List<String> title, List<String> description,
-                                   List<GenericStack> items, double height, boolean chosen) {
+    private static final class RewardCardGroup {
+        private final ResourceLocation id;
+        private final List<String> title, description;
+        private final RewardPresentation presentation;
+        private final double presentationHeight, height;
+        private final boolean chosen;
+        private boolean renderFailed;
+
+        private RewardCardGroup(ResourceLocation id, List<String> title, List<String> description,
+                                RewardPresentation presentation, double presentationHeight, double height, boolean chosen) {
+            this.id = id;
+            this.title = title;
+            this.description = description;
+            this.presentation = presentation;
+            this.presentationHeight = presentationHeight;
+            this.height = height;
+            this.chosen = chosen;
+        }
     }
 }

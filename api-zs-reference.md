@@ -262,15 +262,19 @@ first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表�
 
 `Research.create(id, maxLevel, specialOnly, deliveryPolicy, stages, condition)` 组装整项研究。maxLevel 是最大等级，specialOnly 限制普通研究入口，deliveryPolicy 选择 `DATABASE_AND_ITEM` 或 `ITEM_ONLY`，只控制下载方式；普通研究完成一律写入完成时各队员的个人等级。`stages` 是等级段数组，condition 是入队资格函数。下载等级费用由下载配方定义，研究不设置该参数。配置完毕调用 `register()` 提交定义。
 
+注册前可调用 `.visibility("AFTER_PREREQUISITES")` 设置总览可见性。可选 `ALWAYS`（默认，不主动隐藏）、`AFTER_PREREQUISITES`（达到所有前置要求等级后可见）、`AFTER_COMPLETION`（本研究完成至少一级后可见）。任何隐藏的前置都会隐藏依赖它的研究。此设置不改变入队条件；服务端基础展示文件的 `visibility` 字段可以覆盖脚本设置。
+
 `Research.alwaysAllowed()` 表示资格函数不增加额外条件，实际权限仍会由服务器规则检查。自定义资格函数读取 `targetLevel`、`networkCenterLevel`、`sharedLevel(researchId)` 和 `available(resource)` 等捕获事实，返回 bool；它不能修改资源或把当前数量当作后续工作已经预留的数量。`unlock(effectId, targetId, level)` 声明达到指定等级后的解锁效果，必须在研究定义被注册前完成。
 
-`Research.display(...)` 已移除；脚本只注册研究业务数据，名称、简介、说明、图标、奖励组文字与分页布局由客户端 `config/prototype_eng/research_content/` JSON 提供。基础文件位于 `data/<namespace>/<path>.json`，当前语言同名文件只覆盖其中出现的字段，对象递归合并，数组及其他值整体替换；不使用 `en_us` 回退，语言文件缺失时直接使用基础内容。图标内置 `item`、`fluid` 和 `icon` 三种解析，扩展解析器由 Java addon 在客户端注册；奖励组文字在 `rewards` 对象中按完整组 ID 提供。分页文件为 `data/<pageId>.json`，`title` 缺失时使用 `gui.prototype_eng.research_page.<pageId>` 名称键。未提供 `researches` 时按页 ID 对应命名空间默认分组；完整 ID 列表可跨命名空间，空列表保留空页，`positions` 使用完整研究 ID 的自由整数坐标。规则与客户端读写入口见[研究总览](docs/research-overview.md#客户端研究内容与分页文件)及[Java 研究 API](api.md#研究与计算网络)。研究站、数据库与下载 JEI 按研究 ID 在客户端读取内容，内容文件不注册业务研究。
+`Research.display(...)` 已移除。服务端 `config/prototype_eng/research_content/` 的 `data/<namespace>/<path>.json` 提供基础展示，`data/<pageId>.json` 定义分页成员、布局和 `priority`（越小越靠前）。客户端按当前语言叠加名称、简介、说明与奖励组文字。图标内置 `item`、`fluid` 和 `icon` 三种类型，扩展解析器由 Java addon 在客户端注册；奖励组文字在 `rewards` 对象中按完整组 ID 提供。具体文件格式与编辑方式见[研究总览](docs/research-overview.md)及[Java 研究 API](api.md#研究与计算网络)。内容文件不注册业务研究。
 
-研究总览的打开入口由 Java addon 使用 `ResearchGuiAccess` 封装，脚本不注册默认打开按键或物品，也没有自动打开总览的方法。测试 mod 默认用 R 打开玩家模式；管理员通过 `/pe_research_edit [在线玩家名]`（命令权限等级 2）打开编辑模式，省略参数开自己，控制台须指定目标。目标玩家无需 OP，授权限于本次准确容器，关闭或换容器以及授权者离线、重连或失权后撤销。编辑模式右键可创建空分页、移入已注册研究及编辑基础/游戏语言 JSON；语言层保存须已有基础文件。总览视角单独保存在客户端，Java 打开、编辑和保存方法见 [API](api.md#研究与计算网络)。
+研究总览的打开入口由 Java addon 使用 `ResearchGuiAccess` 封装，脚本不注册默认打开按键或物品，也没有自动打开总览的方法。测试 mod 默认用 R 打开玩家模式；管理员通过 `/pe_research_edit [在线玩家名]`（命令权限等级 2）打开编辑模式，省略参数开自己，控制台须指定目标。目标玩家无需 OP，授权限于本次容器，关闭或换容器以及授权者离线、重连或失权后撤销。编辑模式右键可创建空分页、移入已注册研究及编辑 JSON；基础展示保存到服务端，语言文字用收到的基础展示校验后保存到当前客户端。总览视角单独保存在客户端，Java 打开、编辑和保存方法见 [API](api.md#研究与计算网络)。
 
 `ResearchServer.permissions(callback)` 设置服务端权限回调。回调的 action 和返回值使用 Java 对应枚举的字符串名称；不添加特例时调用 `context.standardDecision(action)`。在启动阶段注册，否则研究服务可能已完成初始化。
 
-`ResearchReward.create(groupId)` 创建可领取的奖励组，链式 `.item(childId, resource)` 添加物品奖励，`.event(childId, callback)` 添加自定义交付函数。childId 在组内必须唯一且保持稳定。事件结果为 `APPLIED`、`ALREADY_APPLIED` 或 `RETRY_LATER`，分别表示本次已交付、此前已交付和稍后重试。使用玩家、研究、等级、奖励组和 child ID 组成的事件身份去重；保存确认失败可能导致回调重试，不能再次发放已经完成的奖励。
+`ResearchReward.create(groupId)` 创建可领取的奖励组，链式 `.item(childId, resource)` 添加物品奖励，`.event(childId, callback)` 添加自定义交付函数。总览按需取得奖励展示，物品显示为数量槽，事件显示 ID，多个子项自动换行。自定义展示类型由 Java addon 注册。childId 在组内必须唯一且保持稳定。事件结果为 `APPLIED`、`ALREADY_APPLIED` 或 `RETRY_LATER`，分别表示本次已交付、此前已交付和稍后重试。使用玩家、研究、等级、奖励组和 child ID 组成的事件身份去重；保存确认失败可能导致回调重试，不能再次发放已经完成的奖励。
+
+脚本奖励组使用默认展示：物品显示原生槽位，事件显示子项 ID。奖励组标题和说明通过基础展示与语言文件填写；自定义奖励展示类型由 [Java API](api.md#研究与计算网络) 注册。
 
 `ResearchDownloads.register(id, material, researchId, researchLevel, levelCost, outputTemplate)` 注册单输入、单输出的研究下载配方。每次消耗一件 material，产物及数量来自 outputTemplate，researchLevel 为配方要求的研究等级，levelCost 为来源付款等级，允许 0。附加 callback 的重载使用 `callback.createOutput(context)` 返回实际产物，返回 null 或空物品表示本次不匹配，不产生无对应输出的错误提示；outputTemplate 用于 JEI 静态展示。必须保证回调只构造输出，禁止扣库存、修改研究或世界。
 

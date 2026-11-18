@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.integration.crafttweaker.research;
 import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
+import com.circulation.prototype_eng.api.research.ResearchVisibility;
 import crafttweaker.annotations.ZenRegister;
 import net.minecraft.util.ResourceLocation;
 import stanhebben.zenscript.annotations.ZenClass;
@@ -55,6 +56,13 @@ public final class ZenResearch {
     public ZenResearch unlock(String effectId, String targetId, int level) {
         if (value != null) throw new IllegalStateException("Research definition is already captured");
         builder.unlock(new ResourceLocation(effectId), new ResourceLocation(targetId), level);
+        return this;
+    }
+
+    @ZenMethod
+    public ZenResearch visibility(String mode) {
+        if (value != null) throw new IllegalStateException("Research definition is already captured");
+        builder.visibility(ResearchVisibility.valueOf(mode.toUpperCase(Locale.ROOT)));
         return this;
     }
 

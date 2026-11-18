@@ -23,6 +23,7 @@ public final class ResearchStationClientView {
     public final ObjectArrayList<Material> materials = new ObjectArrayList<>();
     public final ObjectArrayList<Resource> resources = new ObjectArrayList<>();
     private String name;
+    private long namesRevision = -1;
     private final ObjectArrayList<String> queueNames = new ObjectArrayList<>();
     private final ObjectArrayList<String> queueLevels = new ObjectArrayList<>();
 
@@ -100,6 +101,7 @@ public final class ResearchStationClientView {
     @SuppressWarnings("DataFlowIssue")
     @SideOnly(Side.CLIENT)
     public String name() {
+        updateNamesRevision();
         if (name == null) {
             name = ClientResearchContents.name(definition.id());
         }
@@ -108,6 +110,7 @@ public final class ResearchStationClientView {
 
     @SideOnly(Side.CLIENT)
     public String queueName(int index) {
+        updateNamesRevision();
         if (queueNames.isEmpty()) for (int index3 = 0; index3 < queue.size(); index3++) {
             var entry = queue.get(index3);
             queueNames.add(ClientResearchContents.name(entry.id()));
@@ -118,8 +121,20 @@ public final class ResearchStationClientView {
 
     @SideOnly(Side.CLIENT)
     public String queueLevel(int index) {
+        updateNamesRevision();
         if (queueNames.isEmpty()) queueName(index);
         return queueLevels.get(index);
+    }
+
+    @SideOnly(Side.CLIENT)
+    private void updateNamesRevision() {
+        long revision = ClientResearchContents.revision();
+        if (namesRevision != revision) {
+            namesRevision = revision;
+            name = null;
+            queueNames.clear();
+            queueLevels.clear();
+        }
     }
 
     public static final class Material {

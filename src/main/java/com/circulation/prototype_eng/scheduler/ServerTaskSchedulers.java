@@ -145,6 +145,7 @@ public final class ServerTaskSchedulers {
             current.dataCentersSynced = false;
             try {
                 current.scheduler.tick(current::prepareNetwork);
+                if (tick % 20 == 0) ServerResearch.refreshCatalogs(current.server);
             } finally {
                 current.tickOpen = false;
                 try {

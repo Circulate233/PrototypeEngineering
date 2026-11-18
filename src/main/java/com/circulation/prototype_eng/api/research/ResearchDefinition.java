@@ -10,6 +10,7 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import net.minecraft.util.ResourceLocation;
 
+import java.util.Objects;
 
 /**
  * Immutable PN research definition. Continuous stages cover exactly 1..maxLevel.
@@ -21,6 +22,7 @@ public final class ResearchDefinition {
     private final int maxLevel;
     private final boolean specialOnly;
     private final ResearchDownloadDeliveryPolicy deliveryPolicy;
+    private final ResearchVisibility visibility;
     private final ObjectList<ResearchLevelStage> stages;
     private final Object2IntMap<UnlockKey> unlockLevels;
     private final ResearchStartCondition startCondition;
@@ -33,6 +35,7 @@ public final class ResearchDefinition {
         maxLevel = builder.maxLevel;
         specialOnly = builder.specialOnly;
         deliveryPolicy = builder.deliveryPolicy;
+        visibility = builder.visibility;
         if (builder.stages.isEmpty()) {
             throw new IllegalArgumentException("Research must declare stages: " + id);
         }
@@ -75,6 +78,10 @@ public final class ResearchDefinition {
 
     public ResearchDownloadDeliveryPolicy deliveryPolicy() {
         return deliveryPolicy;
+    }
+
+    public ResearchVisibility visibility() {
+        return visibility;
     }
 
     public ObjectList<ResearchLevelStage> stages() {
@@ -147,6 +154,7 @@ public final class ResearchDefinition {
         private int maxLevel;
         private boolean specialOnly;
         private ResearchDownloadDeliveryPolicy deliveryPolicy;
+        private ResearchVisibility visibility = ResearchVisibility.ALWAYS;
         private ResearchStartCondition startCondition = ResearchStartCondition.ALWAYS_ALLOWED;
 
         private Builder(ResourceLocation id) {
@@ -172,6 +180,11 @@ public final class ResearchDefinition {
 
         public Builder deliveryPolicy(ResearchDownloadDeliveryPolicy policy) {
             deliveryPolicy = policy;
+            return this;
+        }
+
+        public Builder visibility(ResearchVisibility mode) {
+            visibility = Objects.requireNonNull(mode);
             return this;
         }
 

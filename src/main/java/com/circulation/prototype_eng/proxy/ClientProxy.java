@@ -25,6 +25,7 @@ import com.circulation.prototype_eng.client.gui.GuiResourceHatch;
 import com.circulation.prototype_eng.client.gui.GuiScannerInstrument;
 import com.circulation.prototype_eng.client.gui.GuiResearchOverview;
 import com.circulation.prototype_eng.client.research.ClientResearchContents;
+import com.circulation.prototype_eng.client.research.ClientResearchCatalog;
 import com.circulation.prototype_eng.client.preview.PreviewClientOpenQueue;
 import com.circulation.prototype_eng.client.preview.PreviewEmbeddedInput;
 import com.circulation.prototype_eng.client.preview.PreviewGuiResources;
@@ -60,6 +61,7 @@ import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
 import com.circulation.prototype_eng.network.clientbound.HatchConfigurationPacket;
 import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
+import com.circulation.prototype_eng.network.clientbound.ResearchViewPacket;
 import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
 import com.circulation.prototype_eng.research.reward.RewardItemEntity;
 import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
@@ -424,6 +426,18 @@ public class ClientProxy extends CommonProxy {
         }
     }
 
+    @Override
+    public void receiveResearchView(ResearchViewPacket packet, Object connection) {
+        var minecraft = packetOwner();
+        if (!(connection instanceof NetHandlerPlayClient handler) || minecraft.getConnection() != handler) return;
+        try {
+            if (packet.kind() == ResearchViewPacket.CATALOG) ClientResearchCatalog.receive(handler.getNetworkManager(), packet.part());
+            else if (minecraft.player != null && minecraft.player.openContainer instanceof ContainerResearchOverview overview) overview.receive(packet);
+        } catch (RuntimeException failure) {
+            PrototypeEngineering.LOGGER.error("Cannot install authoritative research view", failure);
+        }
+    }
+
     @SubscribeEvent
     public void connected(FMLNetworkEvent.ClientConnectedToServerEvent event) {
         Minecraft.getMinecraft().addScheduledTask(() -> {
@@ -443,6 +457,7 @@ public class ClientProxy extends CommonProxy {
             },
             () -> structures().disconnected(event.getManager()),
             () -> hatchConfigurations().disconnected(event.getManager()),
+            () -> ClientResearchCatalog.disconnect(event.getManager()),
             () -> recipeDefinitions().disconnected(event.getManager())));
 
     }

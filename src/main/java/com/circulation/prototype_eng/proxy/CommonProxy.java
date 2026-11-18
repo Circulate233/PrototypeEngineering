@@ -1,8 +1,6 @@
 package com.circulation.prototype_eng.proxy;
 
 import com.circulation.prototype_eng.api.gui.ResearchGuiAccess;
-import com.circulation.prototype_eng.research.ResearchEditCommand;
-
 import com.circulation.prototype_eng.BuilderConfig;
 import com.circulation.prototype_eng.ControllerConfig;
 import com.circulation.prototype_eng.HatchConfig;
@@ -31,6 +29,8 @@ import com.circulation.prototype_eng.api.research.ResearchRegistrationEvent;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchServerConfiguration;
 import com.circulation.prototype_eng.api.research.ResearchServerConfigurationEvent;
+import com.circulation.prototype_eng.api.research.reward.RewardPresentationRegistrationEvent;
+import com.circulation.prototype_eng.api.research.reward.RewardPresentationRegistry;
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistrationEvent;
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistry;
 import com.circulation.prototype_eng.api.research.download.ResearchItemImportRegistry;
@@ -54,9 +54,12 @@ import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
 import com.circulation.prototype_eng.network.InitNetwork;
 import com.circulation.prototype_eng.network.clientbound.HatchConfigurationPacket;
 import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
+import com.circulation.prototype_eng.network.clientbound.ResearchViewPacket;
 import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
 import com.circulation.prototype_eng.recipe.ServerRecipeDefinitions;
 import com.circulation.prototype_eng.recipe.ServerRecipeManifests;
+import com.circulation.prototype_eng.research.ResearchEditCommand;
+import com.circulation.prototype_eng.research.ResearchReloadCommand;
 import com.circulation.prototype_eng.research.ServerResearch;
 import com.circulation.prototype_eng.scheduler.SchedulerCommand;
 import com.circulation.prototype_eng.scheduler.SchedulerConfig;
@@ -92,6 +95,7 @@ import java.util.function.Consumer;
 public class CommonProxy implements IGuiHandler {
     private StructureJsonLoader structureData = StructureJsonLoader.empty();
     private Path structureDirectory;
+    private Path configRoot;
     private StructureCatalog javaStructures;
     private StructurePredicateRegistry structureFactories;
 
@@ -100,6 +104,7 @@ public class CommonProxy implements IGuiHandler {
     }
 
     public void preInit(FMLPreInitializationEvent event) {
+        configRoot = event.getModConfigurationDirectory().toPath();
         HatchConfig.load(event.getModConfigurationDirectory());
         BuilderConfig.load(event.getModConfigurationDirectory());
         ControllerConfig.load(event.getModConfigurationDirectory());
@@ -107,7 +112,7 @@ public class CommonProxy implements IGuiHandler {
         ParallelControllerConfig.load(event.getModConfigurationDirectory());
         SchedulerConfig.load(event.getModConfigurationDirectory());
         OrientationToolConfig.load(event.getModConfigurationDirectory());
-        structureDirectory = event.getModConfigurationDirectory().toPath().resolve(Tags.MOD_ID).resolve("structures");
+        structureDirectory = configRoot.resolve(Tags.MOD_ID).resolve("structures");
         structureData = StructureJsonLoader.readDirectory(structureDirectory);
         InitNetwork.init();
         HatchCapabilityRegistration.register();
@@ -118,6 +123,8 @@ public class CommonProxy implements IGuiHandler {
     public void postInit() {
         MinecraftForge.EVENT_BUS.post(new NetworkComputerComponentRegistrationEvent(NetworkComputerComponentRegistry.INSTANCE));
         NetworkComputerComponentRegistry.INSTANCE.freeze();
+        MinecraftForge.EVENT_BUS.post(new RewardPresentationRegistrationEvent(RewardPresentationRegistry.INSTANCE));
+        RewardPresentationRegistry.INSTANCE.freeze();
         MinecraftForge.EVENT_BUS.post(new ResearchRegistrationEvent(ResearchRegistry.INSTANCE));
         ResearchRegistry.INSTANCE.freeze();
         MinecraftForge.EVENT_BUS.post(new ResearchItemDownloadRegistrationEvent(ResearchItemDownloadRegistry.INSTANCE));
@@ -171,10 +178,11 @@ public class CommonProxy implements IGuiHandler {
     }
 
     public final void serverStarting(FMLServerStartingEvent event) {
-        ServerResearch.start(event.getServer());
+        ServerResearch.start(event.getServer(), configRoot);
         event.registerServerCommand(new StructureReloadCommand());
         event.registerServerCommand(new SchedulerCommand());
         event.registerServerCommand(new ResearchEditCommand());
+        event.registerServerCommand(new ResearchReloadCommand());
     }
 
     public final void serverStopping() {
@@ -214,6 +222,10 @@ public class CommonProxy implements IGuiHandler {
 
     public void receiveRecipeDefinitions(RecipeDefinitionManifestPacket packet, Object connection) {
         throw new IllegalStateException("Server proxy cannot receive client recipe declaration manifests");
+    }
+
+    public void receiveResearchView(ResearchViewPacket packet, Object connection) {
+        throw new IllegalStateException("Server proxy cannot receive a client research view");
     }
 
     public boolean controllerDisplayConnectionCurrent(MachineControllerBlockEntity tile, @Nullable NetworkManager manager) {

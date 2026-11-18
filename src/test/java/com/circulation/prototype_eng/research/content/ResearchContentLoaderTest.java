@@ -139,6 +139,27 @@ class ResearchContentLoaderTest {
     }
 
     @Test
+    void localLanguageEditsUseTheSuppliedServerBaseAndLeaveItsIconUntouched() {
+        var loader = loader();
+        var base = """
+            {"title":"Server","icon":{"kind":"icon","id":"server:icon"},
+             "description":["Shared details"],"rewards":{"addon:reward":{"title":"Server reward","description":"Shared reward"}}}
+            """;
+        loader.saveLocalized(RESEARCH, "zh_cn", """
+            {"title":"本地名称","icon":{"id":"client:icon"},"rewards":{"addon:reward":{"title":"本地奖励"}}}
+            """, base);
+        assertFalse(Files.exists(file("data")));
+        var localized = loader.loadLocalized(RESEARCH, "zh_cn", base);
+        assertEquals("本地名称", localized.title());
+        assertEquals(ObjectList.of("Shared details"), localized.description());
+        assertNotNull(localized.icon());
+        assertEquals("server:icon", localized.icon().get("id").getAsString());
+        assertEquals("本地奖励", localized.reward(GROUP).title());
+        assertEquals("Shared reward", localized.reward(GROUP).description());
+        assertEquals("Server", loader.loadLocalized(RESEARCH, "en_us", base).title());
+    }
+
+    @Test
     void languageEditorRequiresDataBeforeCreatingItsSelectedLayer() {
         var loader = loader();
         var failure = assertThrows(IllegalStateException.class,

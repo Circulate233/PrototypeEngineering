@@ -249,7 +249,7 @@
       <li>玩家模式：前置未完成的研究点击无反馈，悬停列出还需完成的研究；开始条件正文只显示网络中心与研究站，不重复显示活动数据库需求。操作由服务端判定，不可用按钮悬停说明缺少条件；下载到数据库按实际数据库的阶级和容量判断。下载到数据库不会重复，队伍任一数据库已存等级不低于队伍等级时提示“已下载到 …”。</li><li>遗忘：详情底部的“遗忘个人等级”只移除自己的个人等级（可选择从哪一级起遗忘），队伍等级按全体成员重新计算；前置因此不足的研究会一并回退，并提示受影响的研究与队列条目。仅物品研究和特殊研究不能个人遗忘。</li>
       <li>数据库模式用于选择下载到物品的研究：任意队伍已完成、研究阶级不高于本数据库阶级的研究都可以选择，不要求已存于本数据库；特殊研究、未完成或阶级过高的研究变暗且点击无反馈，悬停说明原因。</li>
       <li>正式游戏的编辑模式由命令打开。所有研究都可以点击打开详情，详情中的“开始研究”立即完成下一级，缺少的前置研究同时补齐，特殊研究的按钮为“写入数据库”。长按研究约 0.3 秒后可自由拖动，松开后记录像素坐标，该页随之改为手动布局；“导出”覆盖该页的分页文件。右键画布空白处可添加分页或把已注册研究加入当前页，右键研究可编辑基础内容 JSON 和语言覆盖文件。此 HTML 演示研究操作、自由拖动和分页 JSON 生成，右键菜单与内容编辑窗口请在正式游戏中使用。</li>
-      <li>研究名称、简介、图标和奖励组文字来自客户端研究内容 JSON。分页可通过 researches 显式列出完整研究 ID，positions 同样使用完整 ID；未指定 researches 时按分页 ID 对应的研究命名空间归组。分页名称可直接指定 title，未指定时读取自动生成的本地化键。此预览的“导出”生成可复制保存的 JSON。</li>
+      <li>正式游戏由服务端同步可见分页、节点名称、图标和布局，查看研究时再获取详情。客户端语言文件覆盖文字。无可见研究的分页只在编辑模式显示。分页通过 researches 指定完整研究 ID，positions 使用相同的 ID；未指定成员时按分页 ID 对应的研究命名空间分组。priority 数值越小越靠前；未提供 title 时读取分页本地化键。此预览的“导出”生成可保存到服务端的分页 JSON。</li>
     </ul>
     <div class="ov-export" id="ov-export" hidden><p id="ov-export-path"></p><pre id="ov-export-json"></pre></div>
   </div>
@@ -272,8 +272,8 @@
         book_enchanted: "附魔书", book_normal: "书", map_filled: "地图", slimeball: "黏液球", diamond: "钻石", nether_star: "下界之星"};
 
       const PAGES = [
-        {id: "pe_run_tests", name: "运行测试", order: 0, layout: "auto", positions: {}},
-        {id: "pe_demo", name: "示例扩展", order: 10, layout: "manual", positions: {}}
+        {id: "pe_run_tests", name: "运行测试", priority: 0, layout: "auto", positions: {}},
+        {id: "pe_demo", name: "示例扩展", priority: 10, layout: "manual", positions: {}}
       ];
       const DEMO_POSITIONS = {basic_circuit: [0, 110], data_storage: [100, 50], signal_amp: [100, 130], high_heat: [100, 220], cartography: [200, 0],
         logic_array: [205, 75], crystal_resonance: [200, 130], refining: [200, 220], quantum_link: [310, 75], optical_link: [310, 130], sticky_seal: [310, 180],
@@ -672,7 +672,7 @@
 
       function renderChrome() {
         const db = homeDb();
-        $("ov-pages").innerHTML = PAGES.slice().sort((a, b) => a.order - b.order).map(p => {
+        $("ov-pages").innerHTML = PAGES.slice().sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id)).map(p => {
           const ids = ORDER.filter(id => R[id].page === p.id);
           const count = picking() ? "可选 " + ids.filter(id => selectable(id).ok).length + " 项" : "已完成 " + ids.filter(id => !R[id].special && level(id) >= R[id].max).length + " / " + ids.length;
           const tip = p.name + "\n" + count + (editing() ? "\n分页 ID " + p.id + "\n名称键 gui.prototype_eng.research_page." + p.id : "");
@@ -1074,14 +1074,14 @@
           }
           case "ov-exportbtn": {
             const p = page(), ids = ORDER.filter(id => R[id].page === p.id);
-            const json = {order: p.order, layout: p.layout, researches: ids, positions: {}};
+            const json = {priority: p.priority, layout: p.layout, researches: ids, positions: {}};
             if (p.title != null) json.title = p.title;
             if (p.layout === "manual") {
               const pos = positions(p);
               json.positions = Object.fromEntries(ids.map(id => [id, pos[R[id].path]]));
             }
-            $("ov-export-path").textContent = "分页文件示例（复制保存到 config/prototype_eng/research_content/data/" + p.id + ".json）：";
-            $("ov-export-json").textContent = JSON.stringify(json, null, 2).replace(/\[\n\s+(\d+),\n\s+(\d+)\n\s+\]/g, "[$1, $2]");
+            $("ov-export-path").textContent = "分页文件示例（复制到服务端 config/prototype_eng/research_content/data/" + p.id + ".json）：";
+            $("ov-export-json").textContent = JSON.stringify(json, null, 2).replace(/\[\n\s+(-?\d+),\n\s+(-?\d+)\n\s+]/g, "[$1, $2]");
             $("ov-export").hidden = false;
             toast("已生成分页 JSON，可复制后保存");
             break;

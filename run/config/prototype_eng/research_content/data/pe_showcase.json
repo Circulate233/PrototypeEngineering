@@ -1,5 +1,5 @@
 {
-  "order": 20,
+  "priority": 20,
   "layout": "auto",
   "positions": {}
 }

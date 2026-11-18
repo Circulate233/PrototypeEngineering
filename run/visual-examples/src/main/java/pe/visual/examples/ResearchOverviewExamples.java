@@ -3,6 +3,7 @@ package pe.visual.examples;
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.stacks.AEFluidKey;
 import ae2.api.stacks.AEItemKey;
+import ae2.api.stacks.GenericStack;
 import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.DataCenterController;
@@ -24,6 +25,7 @@ import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchResourceFormula;
 import com.circulation.prototype_eng.api.research.reward.RewardChild;
 import com.circulation.prototype_eng.api.research.reward.RewardGroup;
+import com.circulation.prototype_eng.api.research.reward.RewardPresentationRegistrationEvent;
 import com.circulation.prototype_eng.api.research.station.ResearchStation;
 import com.circulation.prototype_eng.api.structure.StructureDefinitions;
 import com.circulation.prototype_eng.api.structure.StructurePattern;
@@ -50,7 +52,7 @@ import java.util.Objects;
 
 /**
  * Real research definitions matching the preview, followed by focused display and interaction examples.
- * Names, descriptions, reward text, icons and page positions are owned by client JSON files.
+ * Server JSON supplies names, descriptions, reward text, icons and page positions.
  */
 @Mod.EventBusSubscriber(modid = VisualExamples.MOD_ID)
 public final class ResearchOverviewExamples {
@@ -128,6 +130,12 @@ public final class ResearchOverviewExamples {
             cells.put(new BlockPos(0, 0, 1), block("prototype_eng:energy_input_hatch_4"));
         } else cells.put(new BlockPos(0, 1, 0), block("minecraft:gold_block"));
         return cells;
+    }
+
+    @SubscribeEvent
+    public static void rewards(RewardPresentationRegistrationEvent event) {
+        event.registry().register(ProspectingRewardPresentation.TYPE, ProspectingRewardPresentation.class,
+            (buffer, value) -> value.write(buffer), ProspectingRewardPresentation::read);
     }
 
     @SubscribeEvent
@@ -236,12 +244,14 @@ public final class ResearchOverviewExamples {
         pickaxe.setStackDisplayName("Prototype Survey Pickaxe");
         var bow = new ItemStack(Items.BOW);
         bow.setStackDisplayName("Prototype Field Bow");
+        var pickaxeReward = new RewardChild.Item(showcaseId("gallery_pickaxe"), AEItemKey.of(pickaxe), 1);
+        var bowReward = new RewardChild.Item(showcaseId("gallery_bow"), AEItemKey.of(bow), 1);
         result.add(showcase("reward_gallery", 1, ResearchDownloadDeliveryPolicy.ITEM_ONLY,
             stage(1, 1, 0, 100).material(AEItemKey.of(Items.PAPER), 4)
                                .rewardGroup(1, new RewardGroup(showcaseId("gallery_supplies"), supplies))
-                               .rewardGroup(1, group(showcaseId("gallery_tools"),
-                                   new RewardChild.Item(showcaseId("gallery_pickaxe"), AEItemKey.of(pickaxe), 1),
-                                   new RewardChild.Item(showcaseId("gallery_bow"), AEItemKey.of(bow), 1)))
+                               .rewardGroup(1, new RewardGroup(showcaseId("gallery_tools"), List.of(pickaxeReward, bowReward),
+                                   new ProspectingRewardPresentation(new GenericStack(pickaxeReward.resource(), pickaxeReward.amount()),
+                                       new GenericStack(bowReward.resource(), bowReward.amount()))))
                                .rewardGroup(1, group(showcaseId("gallery_gems"), reward(showcaseId("gallery_diamond"), Items.DIAMOND, 2),
                                    reward(showcaseId("gallery_emerald"), Items.EMERALD, 4), reward(showcaseId("gallery_quartz"), Items.QUARTZ, 16))).build()));
         result.add(showcase("manual_chain", 3, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM,
