@@ -4,24 +4,26 @@ import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipeBuilder;
 import com.circulation.prototype_eng.api.recipe.importing.ImportedRecipePool;
-import com.circulation.prototype_eng.integration.recipeimport.RecipeImportSupport;
+import com.circulation.prototype_eng.api.recipe.importing.RecipePoolType;
 import com.circulation.prototype_eng.integration.recipeimport.thermalexpansion.ThermalInsolatorSource;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.function.BiPredicate;
 
-public final class InsolatorRecipePool extends ImportedRecipePool<ThermalInsolatorSource.InsolatorContext> {
-    public InsolatorRecipePool(ResourceLocation id, String title) {
-        this(id, title, (_, _) -> true);
+public final class InsolatorRecipePool extends ImportedRecipePool {
+    @FunctionalInterface
+    public interface OnCreate {
+        boolean create(RecipeBuilder recipe, int energy, int water, int secondaryChance, boolean hasFertilizer);
     }
 
-    public InsolatorRecipePool(ResourceLocation id, String title,
-        BiPredicate<RecipeBuilder, ThermalInsolatorSource.InsolatorContext> onCreate) {
-        super(id, title, () -> {
-            RecipeImportSupport.requireMod("thermalexpansion");
-            return ThermalInsolatorSource.read(id, false);
-        }, onCreate);
+    @SuppressWarnings("unused")
+    public InsolatorRecipePool(ResourceLocation id, String title) {
+        this(id, title, null);
+    }
+
+    public InsolatorRecipePool(ResourceLocation id, String title, @Nullable OnCreate onCreate) {
+        super(id, title, () -> ThermalInsolatorSource.read(id, onCreate), RecipePoolType.GENERAL);
     }
 
     private InsolatorRecipePool(InsolatorRecipePool original, List<MachineRecipe> recipes, List<MachineType> machines) {

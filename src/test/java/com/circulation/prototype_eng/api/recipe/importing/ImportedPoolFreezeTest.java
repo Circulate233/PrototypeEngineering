@@ -24,13 +24,13 @@ class ImportedPoolFreezeTest {
     void freezesCanonicalDefinitionsAndIndependentMachineBindingsWithoutReimporting() {
         var reads = new AtomicInteger();
         var callbacks = new AtomicInteger();
-        var pool = new ImportedRecipePool<>(id("pool"), "import.freeze.title", () -> {
+        var pool = ImportedRecipePool.withoutContext(id("pool"), "import.freeze.title", () -> {
             reads.incrementAndGet();
-            return List.of(new ImportedRecipe<>(new RecipeBuilder(id("recipe"), 1), "source"));
-        }, (recipe, context) -> {
+            return List.of(new RecipeBuilder(id("recipe"), 1));
+        }, recipe -> {
             callbacks.incrementAndGet();
             recipe.durationTicks(3);
-            return context.equals("source");
+            return true;
         });
         assertTrue(pool.machines().isEmpty());
         assertEquals(0, reads.get());

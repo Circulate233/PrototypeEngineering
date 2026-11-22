@@ -3,8 +3,10 @@ package com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.
 import com.circulation.prototype_eng.api.recipe.importing.nuclearcraft.AlloyFurnaceRecipePool;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipePool;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipeBuilder;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.ZenImportData;
 import crafttweaker.annotations.ZenRegister;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
@@ -18,12 +20,12 @@ public final class ZenAlloyFurnaceRecipePool extends ZenRecipePool {
 
     @ZenMethod
     public static ZenAlloyFurnaceRecipePool create(String id, String titleKey, String revision) {
-        return new ZenAlloyFurnaceRecipePool(new AlloyFurnaceRecipePool(new ResourceLocation(id), titleKey), revision);
+        return create(id, titleKey, revision, null);
     }
 
     @ZenMethod
-    public static ZenAlloyFurnaceRecipePool create(String id, String titleKey, String revision, ZenNuclearImportCallback onCreate) {
+    public static ZenAlloyFurnaceRecipePool create(String id, String titleKey, String revision, @Nullable ZenNuclearImportCallback onCreate) {
         return new ZenAlloyFurnaceRecipePool(new AlloyFurnaceRecipePool(new ResourceLocation(id), titleKey,
-            (recipe, context) -> onCreate.create(new ZenRecipeBuilder(recipe), new ZenNuclearImportContext(context))), revision);
+            onCreate == null ? null : (recipe, durationTicks, energyPerTick, radiation, extras) -> onCreate.create(new ZenRecipeBuilder(recipe), durationTicks, energyPerTick, radiation, ZenImportData.extras(extras))), revision);
     }
 }

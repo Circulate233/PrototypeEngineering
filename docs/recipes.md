@@ -370,6 +370,8 @@ scanner 的同步 startIn 与 bounded beginAdmission 均把准确 `RecipeCatalog
 
 所有 `RecipePool` 均可通过 `withConfiguration/withRequirements/withAuxiliaryInputs/withEvent` 添加公共材料、完整需求、阶段事件及配方设置。普通池、组合池和独立惰性模组导入池共用该接口，具体创建方法、来源组、回调和保存要求见[配方池公共配置与模组配方导入](recipe-imports.md)。下述 Simple 原始 Entry 的限制只约束基础索引定义，公共完整需求由通用配置添加。
 
+每个导入池通过 `poolType(RecipePoolType.SINGLE_INPUT/GENERAL)` 选择真实底层池，ZS 使用 `.poolType("single_input"/"general")`。熔炉、IC2 压缩机与打粉机、匠魂熔炼及 NC 熔化机默认 `SINGLE_INPUT`，其余七类来源默认 `GENERAL`；设置和读取类型不初始化来源，首次初始化之后禁止修改。创建回调的首个参数为可编辑配方，其余参数由各池单独定义，例如熔炉的 `float experience`、匠魂熔炼的两个温度整数；匠魂合金只有配方参数。熔炉保留原生小数经验。省略回调时使用 `null`，不调用默认返回 true 的函数，也不转换仅供回调使用的数据。Java 自定义来源构造器接收惰性的 `Supplier<List<MachineRecipe>>`，`withoutContext` 接收 builder 列表和可选 `Predicate<RecipeBuilder>`，无回调时默认 `null`。
+
 混合提供者使用[CompositeRecipePool与异步发现](recipe-execution-policy.md#多个提供者的组合配方池)。新增纯库存预算游标`beginMatch`供Default/Simple/组合复用，实际多池Selection已走组合策略入口；异步`CandidatePass`只产生候选，main收据和freshness后才建进程并准入。组合16项、单项重试64项缓存有界；首次冷组合在发现worker编译，主线程只捕获provider引用。
 
 `RecipePool` 现在是公开接口，保留 `id/translationKey/recipes/machines`，`prepareRecipe(recipe)` 用于注册前应用池的公共声明，默认返回原对象；实现必须保留 ID，并原样返回已准备的配方。默认通用实现为 `DefaultRecipePool`；`registerPool` 仍创建通用池。独立外部实现通过自己的 `freeze(recipes, machines)` 保留策略与配置，返回完整不可变 canonical 实例。注册表先校验 ID、标题、全部配方及静态机器的准确对象与顺序，再统一发布目录和反查；不会把自定义池改成通用具体类。当前注册仍是一次冻结，没有新增运行时配方重载协议。
@@ -382,7 +384,9 @@ Default/Simple两种池缓存同一固定输入索引供公开库存API复用；
 
 `beginCandidates(machine, groups)` 是实际扫描调用的公开策略入口，返回原 `RecipeCandidateIndex.Cursor`。null（包括 cursor 的 null result）只回退本池完整且组兼容的配方，empty 表示本池无候选；外部结果须是本池 canonical 子集，且不得漏掉其职责下仍可能成功的配方。目录冻结时保存成员、组与原 priority；每个 pass 只采样所选 canonical 池，不先枚举它们的全量配方。各池意见先 union、准确去重并按原 priority 排序，再经过现有 external index intersection；只访问本池 fallback 或实际返回结果，不扫描全目录造 scope。`Selection.accepts` 保留目录、机器和准确配方成员约束；预算 yield 保留游标，`restartLiveIndexes` 同时重取池策略与外部索引的 live 观察。
 
-`SimpleRecipePool.Entry.create(id, durationTicks, input, outputs, groups)` 声明单个固定 START 输入和任意数量固定 END 输出，`outputs` 为只读冻结的 `List<GenericStack>`，可为空；单输出的 `GenericStack` 便捷重载保留。`Entry.outputs()` 返回全部输出，`Entry.of`、canonical freeze、外部JEI页绑定及CT `Pool.simple` 均保留完整列表。一个输入条目不等于只消耗一个物品，输入/输出仍使用原AEKey与long数量。该池不接受 TICK IO、概率/属性概率、随机输出、fuzzy/dynamic、checkpoint、selector 或其他需求；这些能力继续使用通用池。相同AEKey的配方保留原priority；索引只按固定输入的真实库存键和数量阈值访问postings，输出数量不影响匹配。最后仍进入原factory、要求/事务、共享并行、研究/计算与START准入，索引不消费材料或授予执行权限。默认选择[单输入专用JEI页](jei.md#2026-11-12-单输入多输出与动态材料布局)，有效外部页面或自定义页仍优先。
+`SimpleRecipePool.Entry.create(id, durationTicks, input, outputs, groups)` 声明单个固定 START 输入和任意数量固定 END 输出，`outputs` 为只读冻结的 `List<GenericStack>`，可为空；单输出的 `GenericStack` 便捷重载保留。`Entry.outputs()` 返回全部输出，`Entry.of`、canonical freeze、外部JEI页绑定及CT `Pool.simple` 均保留完整列表。一个输入条目不等于只消耗一个物品，输入/输出仍使用原AEKey与long数量。原始 `Entry` 不接受 TICK IO、概率/属性概率、随机输出、fuzzy/dynamic、checkpoint、selector 或其他需求。相同AEKey的配方保留原priority；索引只按固定输入的真实库存键和数量阈值访问postings，输出数量不影响匹配。最后仍进入原factory、要求/事务、共享并行、研究/计算与START准入，索引不消费材料或授予执行权限。默认选择[单输入专用JEI页](jei.md#2026-11-12-单输入多输出与动态材料布局)，有效外部页面或自定义页仍优先。
+
+`SimpleRecipePool.forRecipes(id, titleKey, recipes)` 接收完整定义，导入池的 `SINGLE_INPUT` 使用该入口。转换结果必须恰好包含一个平铺的 START 主输入，可以是固定输入、fuzzy 输入组或 dynamic 输入组；允许其他完整需求和输出，固定输入满足稳定性条件时建立稀疏索引，不能证明固定下界时沿原匹配与完整准入处理。公共辅助输入独立配置，不改变主输入计数。多个主输入、TICK 资源输入或 `SELECTIVE/CHECKPOINT` 嵌套输入会抛出异常，禁止自动创建通用池。需要这些输入形状时，必须在首次初始化前把导入池显式设为 `GENERAL`。`freeze` 保留传入配方的准确实例和绑定，禁止重新转换来源或重跑创建回调。
 
 `SimpleRecipePool.withAuxiliaryInputs(List<GenericStack>)` 在池上独立声明公共辅助输入，返回新池，所有现有配方均在 START 消耗这些材料。例如声明 1 mB 水后，每执行一份配方都另需 1 mB 水；N 并行消耗 N mB。辅助材料支持任意已注册 AEKey 类型，与普通固定输入使用相同的倍率、来源分配、缺料等待和事务；相同键的主输入与辅助材料累加，材料不足或数量溢出时禁止部分付款。`match`、`beginMatch`、实际稀疏候选发现及其数量上界只看原主输入，辅助材料的完整可行性在 START 检查。重复调用替换整份辅助列表，传空列表清除辅助材料，不会层层追加。
 

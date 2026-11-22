@@ -4,7 +4,9 @@ import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.AEKey;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.recipe.RecipeBuilder;
-import com.circulation.prototype_eng.api.recipe.importing.ImportedRecipe;
+import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.importing.tconstruct.MeltingRecipePool;
+import org.jetbrains.annotations.Nullable;
 import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
@@ -22,22 +24,39 @@ public final class TConstructMeltingSource {
     private TConstructMeltingSource() {
     }
 
-    public static List<ImportedRecipe<MeltingContext>> read(ResourceLocation poolId) {
+    public static List<MachineRecipe> read(ResourceLocation poolId) {
+        return read(poolId, null);
+    }
+
+    public static List<MachineRecipe> read(ResourceLocation poolId, @Nullable MeltingRecipePool.OnCreate onCreate) {
         RecipeImportSupport.requireMod("tconstruct");
         var sourceRecipes = TinkerRegistry.getAllMeltingRecipies();
-        var result = new ObjectArrayList<ImportedRecipe<MeltingContext>>(sourceRecipes.size());
+        return convertAll(poolId, sourceRecipes, onCreate);
+    }
+
+    static List<MachineRecipe> convertAll(ResourceLocation poolId, List<MeltingRecipe> sourceRecipes,
+                                          @Nullable MeltingRecipePool.OnCreate onCreate) {
+        var result = new ObjectArrayList<MachineRecipe>(sourceRecipes.size());
         for (int index = 0; index < sourceRecipes.size(); index++) {
             var source = sourceRecipes.get(index);
+            RecipeBuilder recipe;
             try {
-                result.add(convert(RecipeImportSupport.id(poolId, "melting/" + index), source));
+                recipe = draft(RecipeImportSupport.id(poolId, "melting/" + index), source);
             } catch (RuntimeException exception) {
                 PrototypeEngineering.LOGGER.error("Rejected TConstruct melting recipe {} in pool {}", index, poolId, exception);
+                continue;
             }
+            if (onCreate == null || onCreate.create(recipe, source.getTemperature(), source.getUsableTemperature()))
+                result.add(recipe.build());
         }
         return result;
     }
 
-    public static ImportedRecipe<MeltingContext> convert(ResourceLocation id, MeltingRecipe source) {
+    public static MachineRecipe convert(ResourceLocation id, MeltingRecipe source) {
+        return draft(id, source).build();
+    }
+
+    private static RecipeBuilder draft(ResourceLocation id, MeltingRecipe source) {
         var input = source.input;
         if (input.amountNeeded <= 0)
             throw new IllegalArgumentException("Melting input must consume a positive number of items");
@@ -61,10 +80,7 @@ public final class TConstructMeltingSource {
             ResourceChance.ALWAYS, null, List.of(), List.of(dynamicInput));
         var recipe = new RecipeBuilder(id, Math.max(1, Math.round(source.temperature / 10F)));
         recipe.addRequirement(RecipeRequirements.RESOURCES.requirement(RecipeImportSupport.id(id, "resources"), resources));
-        return new ImportedRecipe<>(recipe,
-            new MeltingContext(source, source.getTemperature(), source.getUsableTemperature()));
+        return recipe;
     }
 
-    public record MeltingContext(MeltingRecipe source, int temperature, int usableTemperature) {
-    }
 }

@@ -8,5 +8,5 @@ import stanhebben.zenscript.annotations.ZenClass;
 @ZenClass("mods.prototype_eng.recipe.importing.tconstruct.MeltingCallback")
 @FunctionalInterface
 public interface ZenMeltingImportCallback {
-    boolean create(ZenRecipeBuilder recipe, ZenMeltingImportContext context);
+    boolean create(ZenRecipeBuilder recipe, int temperature, int usableTemperature);
 }

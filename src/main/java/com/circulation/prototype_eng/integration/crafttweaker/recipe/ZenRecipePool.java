@@ -8,6 +8,8 @@ import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.RecipeConfiguration;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
+import com.circulation.prototype_eng.api.recipe.importing.ImportedRecipePool;
+import com.circulation.prototype_eng.api.recipe.importing.RecipePoolType;
 import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
 import com.circulation.prototype_eng.integration.crafttweaker.jei.ClientJeiDeclarations;
 import com.circulation.prototype_eng.integration.crafttweaker.jei.ZenJeiOptions;
@@ -24,9 +26,6 @@ import stanhebben.zenscript.annotations.ZenMethod;
 import java.util.List;
 import java.util.function.Supplier;
 
-/**
- * An immutable declaration submitted to the existing recipe registration phase.
- */
 // ZenScript discovers these entry points through annotations rather than Java call sites.
 @SuppressWarnings("unused")
 @ZenRegister
@@ -36,6 +35,7 @@ public class ZenRecipePool {
     private final Supplier<List<ZenRecipe>> recipeSource;
     private volatile @Nullable List<ZenRecipe> recipeBindings;
     private final boolean deferred;
+    private final @Nullable ImportedRecipePool importedSource;
     @Nullable
     private final ZenJeiOptions options;
     @Nullable
@@ -52,11 +52,17 @@ public class ZenRecipePool {
 
     private ZenRecipePool(RecipePool value, Supplier<List<ZenRecipe>> recipeSource, boolean deferred,
                           @Nullable ZenJeiOptions options, @Nullable ZenJeiPage page) {
+        this(value, recipeSource, deferred, options, page, value instanceof ImportedRecipePool imported ? imported : null);
+    }
+
+    private ZenRecipePool(RecipePool value, Supplier<List<ZenRecipe>> recipeSource, boolean deferred,
+                          @Nullable ZenJeiOptions options, @Nullable ZenJeiPage page, @Nullable ImportedRecipePool importedSource) {
         this.value = value;
         this.recipeSource = recipeSource;
         this.deferred = deferred;
         this.options = options;
         this.page = page;
+        this.importedSource = importedSource;
     }
 
     public static ZenRecipePool imported(RecipePool pool, String revision) {
@@ -118,6 +124,17 @@ public class ZenRecipePool {
     }
 
     @ZenMethod
+    public ZenRecipePool poolType(String type) {
+        if (importedSource == null) throw new IllegalStateException("Only imported recipe pools have a selectable implementation");
+        importedSource.poolType(switch (type) {
+            case "single_input" -> RecipePoolType.SINGLE_INPUT;
+            case "general" -> RecipePoolType.GENERAL;
+            default -> throw new IllegalArgumentException("Unknown recipe pool type: " + type);
+        });
+        return this;
+    }
+
+    @ZenMethod
     public ZenRecipePool requirements(ZenRequirement[] requirements) {
         return transformed(value.withRequirements(ZenRecipeSupport.requirements(requirements)));
     }
@@ -168,7 +185,7 @@ public class ZenRecipePool {
                 bindings.add(recipe == previous.recipe() ? previous : new ZenRecipe(previous.codec().withRecipe(recipe)));
             }
             return bindings;
-        }, deferred, options, page);
+        }, deferred, options, page, importedSource);
     }
 
     /**
@@ -213,17 +230,17 @@ public class ZenRecipePool {
 
     @ZenMethod
     public ZenRecipePool existingJeiPage(String categoryUid) {
-        return new ZenRecipePool(value.withExistingJeiPage(categoryUid), this::recipes, deferred, options, page);
+        return new ZenRecipePool(value.withExistingJeiPage(categoryUid), this::recipes, deferred, options, page, importedSource);
     }
 
     @ZenMethod
     public ZenRecipePool jeiOptions(ZenJeiOptions settings) {
-        return new ZenRecipePool(value, this::recipes, deferred, settings, page);
+        return new ZenRecipePool(value, this::recipes, deferred, settings, page, importedSource);
     }
 
     @ZenMethod
     public ZenRecipePool customJeiPage(ZenJeiPage handle) {
-        return new ZenRecipePool(value, this::recipes, deferred, options, handle);
+        return new ZenRecipePool(value, this::recipes, deferred, options, handle, importedSource);
     }
 
     public void declareClient() {

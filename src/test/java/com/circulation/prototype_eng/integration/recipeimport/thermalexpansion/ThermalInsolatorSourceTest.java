@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ThermalInsolatorSourceTest {
@@ -72,8 +73,8 @@ class ThermalInsolatorSourceTest {
             assertEquals(2, forward.size());
             assertEquals(forward.size(), reverse.size());
             for (int index = 0; index < forward.size(); index++) {
-                var expected = forward.get(index).recipe().build();
-                var actual = reverse.get(index).recipe().build();
+                var expected = forward.get(index);
+                var actual = reverse.get(index);
                 assertEquals(expected.id(), actual.id());
                 assertEquals(expected.orderedRequirements().size(), actual.orderedRequirements().size());
                 for (int requirementIndex = 0; requirementIndex < expected.orderedRequirements().size(); requirementIndex++) {
@@ -103,13 +104,40 @@ class ThermalInsolatorSourceTest {
         }
     }
 
+    @Test
+    void creationHandlerCanRejectRecipesAndPropagatesFailure() {
+        var plant = new ItemStack(Items.PUMPKIN_SEEDS);
+        var fertilizer = new ItemStack(Items.DYE, 2, 15);
+        var source = InsolatorManager.addRecipe(101, 37, plant, fertilizer,
+            new ItemStack(Items.PUMPKIN_SEEDS, 4), new ItemStack(Items.STICK, 2), 35, InsolatorManager.Type.STANDARD);
+        assertNotNull(source);
+        try {
+            var id = new ResourceLocation("thermal_import_test", "handler");
+            assertTrue(ThermalInsolatorSource.convertAll(id, false, List.of(source), (_, _, _, _, _) -> false).isEmpty());
+            var failure = new IllegalStateException("Creation handler failed");
+            assertSame(failure, assertThrows(IllegalStateException.class,
+                () -> ThermalInsolatorSource.convertAll(id, false, List.of(source), (_, _, _, _, _) -> {
+                    throw failure;
+                })));
+        } finally {
+            InsolatorManager.removeRecipe(plant, fertilizer);
+        }
+    }
+
     private static void verify(InsolatorManager.Type type, ItemStack plant, ItemStack fertilizer) {
         var source = InsolatorManager.addRecipe(101, 37, plant, fertilizer,
             new ItemStack(Items.WHEAT, 4), new ItemStack(Items.STICK, 2), 35, type);
         assertNotNull(source);
         try {
-            var imported = ThermalInsolatorSource.convert(new ResourceLocation("thermal_import_test", type.name().toLowerCase(Locale.ROOT)), source);
-            var recipe = imported.recipe().build();
+            var id = new ResourceLocation("thermal_import_test", type.name().toLowerCase(Locale.ROOT));
+            var recipe = ThermalInsolatorSource.convertAll(id, type == InsolatorManager.Type.TREE, List.of(source),
+                (_, sourceEnergy, water, chance, hasFertilizer) -> {
+                    assertEquals(source.getEnergy(), sourceEnergy);
+                    assertEquals(source.getWater(), water);
+                    assertEquals(source.getSecondaryOutputChance(), chance);
+                    assertEquals(source.hasFertilizer(), hasFertilizer);
+                    return true;
+                }).getFirst();
             ResourceRequirement ordinary = null;
             ResourceRequirement secondary = null;
             EnergyRequirement energy = null;
@@ -142,10 +170,6 @@ class ThermalInsolatorSourceTest {
             assertEquals(source.getSecondaryOutputChance(), secondary.chance().percent());
             assertEquals(source.getEnergy(), energy.input());
             assertEquals(0, energy.inputPerTick());
-            var context = imported.context();
-            assertNotNull(context);
-            assertSame(source, context.source());
-            assertEquals(type == InsolatorManager.Type.TREE, context.tree());
         } finally {
             InsolatorManager.removeRecipe(plant, fertilizer);
         }

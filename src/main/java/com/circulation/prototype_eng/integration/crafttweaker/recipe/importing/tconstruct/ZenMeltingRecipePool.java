@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipePo
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipeBuilder;
 import crafttweaker.annotations.ZenRegister;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
@@ -18,12 +19,12 @@ public final class ZenMeltingRecipePool extends ZenRecipePool {
 
     @ZenMethod
     public static ZenMeltingRecipePool create(String id, String titleKey, String revision) {
-        return new ZenMeltingRecipePool(new MeltingRecipePool(new ResourceLocation(id), titleKey), revision);
+        return create(id, titleKey, revision, null);
     }
 
     @ZenMethod
-    public static ZenMeltingRecipePool create(String id, String titleKey, String revision, ZenMeltingImportCallback onCreate) {
+    public static ZenMeltingRecipePool create(String id, String titleKey, String revision, @Nullable ZenMeltingImportCallback onCreate) {
         return new ZenMeltingRecipePool(new MeltingRecipePool(new ResourceLocation(id), titleKey,
-            (recipe, context) -> onCreate.create(new ZenRecipeBuilder(recipe), new ZenMeltingImportContext(context))), revision);
+            onCreate == null ? null : (recipe, temperature, usableTemperature) -> onCreate.create(new ZenRecipeBuilder(recipe), temperature, usableTemperature)), revision);
     }
 }

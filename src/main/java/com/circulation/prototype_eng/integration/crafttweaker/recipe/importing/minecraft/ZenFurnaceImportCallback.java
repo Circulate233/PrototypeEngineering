@@ -8,5 +8,5 @@ import stanhebben.zenscript.annotations.ZenClass;
 @ZenClass("mods.prototype_eng.recipe.importing.minecraft.FurnaceCallback")
 @FunctionalInterface
 public interface ZenFurnaceImportCallback {
-    boolean create(ZenRecipeBuilder recipe, ZenFurnaceImportContext context);
+    boolean create(ZenRecipeBuilder recipe, float experience);
 }

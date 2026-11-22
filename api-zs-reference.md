@@ -88,7 +88,9 @@ machine.register("v1");
 
 `.requirements(Requirement[])` 追加全池公共需求，`.event(id, "START/TICK/END", callback)` 添加普通可逆阶段事件。`.durationTicks/.groups/.maxThreads/.parallelism` 设置全池配方字段。公共任意回调需求不能证明原输入数量稳定时，匹配保留完整组兼容候选。`Builder.create(id, ticks)` 和 `Builder.from(recipe)` 使用相同需求与事件入口，`build(revision)` 创建配方。事件 callback 接收 `EventContext` 并返回 `EventTransaction`；具体事务及 probe 规则见[配方池公共配置](docs/recipe-imports.md#通用阶段事件)。
 
-`mods.prototype_eng.recipe.importing.<modid>` 按来源模组分包，每种配方提供独立池类，例如 `minecraft.FurnaceRecipePool`、`ic2.CompressorRecipePool` 和 `tconstruct.MeltingRecipePool`。各类 `create(id, titleKey, revision[, callback])` 创建自己的实例，构造和配置时不读取来源，首次实际读取才转换并执行 callback。callback 可修改 Builder，返回 false 拒绝收录；有来源特有数据时另提供对应上下文。完整类型、上下文属性和 Java/ZS 用例见[模组配方导入](docs/recipe-imports.md)。
+`mods.prototype_eng.recipe.importing.<modid>` 按来源模组分包，每种配方提供独立池类，例如 `minecraft.FurnaceRecipePool`、`ic2.CompressorRecipePool` 和 `tconstruct.MeltingRecipePool`。各类 `create(id, titleKey, revision[, callback])` 创建自己的实例，构造和配置时不读取来源，首次实际读取才转换。callback 可修改 Builder，返回 false 拒绝收录；省略或传入 `null` 时不调用回调，也不转换仅供回调使用的数据。每种池直接定义额外参数，熔炉为 `function(recipe, experience)`，其中 experience 是保留原生小数的 float；匠魂熔炼为 `function(recipe, temperature, usableTemperature)`，匠魂合金只有 `function(recipe)`。IC2 使用 `IData metadata`，NC 使用 `durationTicks/energyPerTick/radiation` 和 `IData[] extras`，TC6 使用 `sourceId/aspects/instability/research/mainInput`，Thermal 使用 `energy/water/secondaryChance/hasFertilizer`。完整类型、参数顺序和用例见[模组配方导入](docs/recipe-imports.md#来源组与回调参数)。
+
+导入池的 `.poolType("single_input")` 和 `.poolType("general")` 分别选择实际的 `SimpleRecipePool` 与 `DefaultRecipePool`。熔炉、IC2 压缩机与打粉机、匠魂熔炼及 NC 熔化机默认单输入，其余七类来源默认通用池。必须在首次读取、匹配或注册事件初始化之前设置，设置本身不读取来源；经过辅助材料、公共需求、时长或 JEI 配置后仍可调用，修改同一导入实例并返回当前对象。熔炉创建回调增加其他普通输入时，先在初始化前设为 `general`；其他来源切成 `single_input` 后必须恰好保留一个平铺的固定、fuzzy 或 dynamic START 主输入。公共辅助材料独立追加，不参与主输入计数。多个主输入、TICK 资源输入或 `SELECTIVE/CHECKPOINT` 会明确报错，不自动改回通用池。两种切换及无额外参数回调的完整脚本见[ZS 用例](docs/recipe-imports.md#zs-用例)。
 
 `existingJeiPage(uid)` 让该池沿用已经存在的 JEI 分类入口。`jeiOptions(options)` 设置概率提示和候选材料的显示方式。这些设置方法返回一个新池；必须把返回结果用于注册。`customJeiPage(Page.named(id))` 只引用 Java 页面，并不会自行创建 JEI 布局。
 

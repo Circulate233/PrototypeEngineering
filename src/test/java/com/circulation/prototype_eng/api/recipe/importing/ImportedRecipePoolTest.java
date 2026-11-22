@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BiPredicate;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -25,12 +25,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class ImportedRecipePoolTest {
     private static final ResourceLocation ID = new ResourceLocation("imports_test", "pool");
 
-    private static Supplier<List<ImportedRecipe<String>>> source(AtomicInteger reads) {
+    private static Supplier<List<RecipeBuilder>> source(AtomicInteger reads) {
         return () -> {
             reads.incrementAndGet();
             return List.of(
-                new ImportedRecipe<>(new RecipeBuilder(new ResourceLocation("imports_test", "accepted"), 5), "accept"),
-                new ImportedRecipe<>(new RecipeBuilder(new ResourceLocation("imports_test", "rejected"), 5), "reject"));
+                new RecipeBuilder(new ResourceLocation("imports_test", "accepted"), 5),
+                new RecipeBuilder(new ResourceLocation("imports_test", "rejected"), 5));
         };
     }
 
@@ -38,10 +38,10 @@ class ImportedRecipePoolTest {
     void configurationAndMetadataDeferSourceUntilRegistrationAndRetainCanonicalDefinitions() {
         var reads = new AtomicInteger();
         var calls = new AtomicInteger();
-        var imported = new ImportedRecipePool<>(ID, "pool.title", source(reads), (recipe, context) -> {
+        var imported = ImportedRecipePool.withoutContext(ID, "pool.title", source(reads), recipe -> {
             calls.incrementAndGet();
             recipe.durationTicks(17);
-            return context.equals("accept");
+            return recipe.id().getPath().equals("accepted");
         });
         var energy = RecipeRequirements.ENERGY.requirement(new ResourceLocation("imports_test", "common_energy"),
             new EnergyRequirement(0, 2, 0, 0, false));
@@ -72,16 +72,16 @@ class ImportedRecipePoolTest {
     void independentInstancesSnapshotAtTheirOwnFirstAccessAndRunFiltersOnce() {
         var reads = new AtomicInteger();
         var firstCalls = new AtomicInteger();
-        BiPredicate<RecipeBuilder, String> fast = (recipe, context) -> {
+        Predicate<RecipeBuilder> fast = recipe -> {
             firstCalls.incrementAndGet();
             recipe.durationTicks(3);
-            return context.equals("accept");
+            return recipe.id().getPath().equals("accepted");
         };
-        var first = new ImportedRecipePool<>(ID, "pool.title", source(reads), fast);
-        var second = new ImportedRecipePool<>(new ResourceLocation("imports_test", "other"), "pool.other", source(reads),
-            (recipe, context) -> {
+        var first = ImportedRecipePool.withoutContext(ID, "pool.title", source(reads), fast);
+        var second = ImportedRecipePool.withoutContext(new ResourceLocation("imports_test", "other"), "pool.other", source(reads),
+            recipe -> {
                 recipe.durationTicks(29);
-                return context.equals("reject");
+                return recipe.id().getPath().equals("rejected");
             });
         var firstRecipes = first.recipes();
         assertEquals(1, reads.get());
@@ -98,7 +98,7 @@ class ImportedRecipePoolTest {
     @Test
     void concurrentFirstReadsShareOneCompleteSnapshot() throws Exception {
         var reads = new AtomicInteger();
-        var pool = new ImportedRecipePool<>(ID, "pool.title", source(reads));
+        var pool = ImportedRecipePool.withoutContext(ID, "pool.title", source(reads), null);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var tasks = new ObjectArrayList<Future<List<MachineRecipe>>>();
             for (int i = 0; i < 8; i++) tasks.add(executor.submit(pool::recipes));
@@ -115,7 +115,7 @@ class ImportedRecipePoolTest {
         var failed = ImportedRecipePool.withoutContext(ID, "pool.title", () -> {
             reads.incrementAndGet();
             throw expected;
-        }, _ -> true);
+        }, null);
         assertSame(expected, assertThrows(IllegalArgumentException.class, failed::recipes));
         assertSame(expected, assertThrows(IllegalStateException.class, failed::recipes).getCause());
         assertEquals(1, reads.get());
@@ -123,7 +123,7 @@ class ImportedRecipePoolTest {
         holder[0] = ImportedRecipePool.withoutContext(ID, "pool.title", () -> {
             holder[0].recipes();
             return List.of();
-        }, _ -> true);
+        }, null);
         assertThrows(IllegalStateException.class, holder[0]::recipes);
         assertThrows(IllegalStateException.class, holder[0]::recipes);
     }

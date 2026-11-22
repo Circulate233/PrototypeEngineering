@@ -10,6 +10,7 @@ import stanhebben.zenscript.type.ZenTypeNative;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.lang.reflect.Proxy;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -17,8 +18,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BiPredicate;
-import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -54,11 +53,9 @@ class OptionalImportLoadingTest {
                 var pool = constructor.newInstance(id, "optional.pool.title");
                 assertSame(javaType, pool.getClass());
                 assertNotSame(pool, constructor.newInstance(id, "optional.pool.title"));
-                var noContext = declaration.modid.equals("tconstruct") && declaration.name.equals("AlloyRecipePool");
-                var callbackType = noContext ? Predicate.class : BiPredicate.class;
-                Object callback = noContext ? (Predicate<Object>) _ -> true : (BiPredicate<Object, Object>) (_, _) -> true;
+                var callbackType = loader.loadClass(javaType.getName() + "$OnCreate");
                 var filtered = javaType.getConstructor(ResourceLocation.class, String.class, callbackType)
-                    .newInstance(id, "optional.pool.title", callback);
+                    .newInstance(id, "optional.pool.title", null);
                 assertSame(javaType, filtered.getClass());
                 assertNotSame(pool, filtered);
                 assertEquals(id, pool.getClass().getMethod("id").invoke(pool));
@@ -73,6 +70,32 @@ class OptionalImportLoadingTest {
                 assertEquals(id.toString(), zenPool.getClass().getMethod("id").invoke(zenPool));
                 assertEquals(true, zenPool.getClass().getMethod("deferred").invoke(zenPool));
                 assertSame(javaType, zenPool.getClass().getMethod("value").invoke(zenPool).getClass());
+                var callbackName = switch (declaration.modid) {
+                    case "minecraft" -> RECIPE_PACKAGE + "importing.minecraft.ZenFurnaceImportCallback";
+                    case "ic2" -> RECIPE_PACKAGE + "importing.ic2.ZenIc2ImportCallback";
+                    case "nuclearcraft" -> RECIPE_PACKAGE + "importing.nuclearcraft.ZenNuclearImportCallback";
+                    case "tconstruct" -> RECIPE_PACKAGE + (declaration.name.equals("AlloyRecipePool")
+                        ? "ZenRecipeCreateCallback" : "importing.tconstruct.ZenMeltingImportCallback");
+                    case "thaumcraft" -> RECIPE_PACKAGE + "importing.thaumcraft.ZenInfusionImportCallback";
+                    case "thermalexpansion" -> RECIPE_PACKAGE + "importing.thermalexpansion.ZenInsolatorImportCallback";
+                    default -> throw new AssertionError("Unexpected import mod " + declaration.modid);
+                };
+                var scriptCallbackType = loader.loadClass(callbackName);
+                var scriptCallback = Proxy.newProxyInstance(loader, new Class<?>[]{scriptCallbackType}, (_, method, _) -> {
+                    throw new AssertionError("Creation callback invoked before first recipe access for " + suffix + ": " + method);
+                });
+                var callbackFactory = zenType.getMethod("create", String.class, String.class, String.class, scriptCallbackType);
+                var configured = callbackFactory.invoke(null, id.toString(), "optional.pool.title", "v1", scriptCallback);
+                assertSame(zenType, configured.getClass());
+                assertNotSame(zenPool, configured);
+                assertEquals(true, configured.getClass().getMethod("deferred").invoke(configured));
+                var configuredPool = configured.getClass().getMethod("value").invoke(configured);
+                assertSame(javaType, configuredPool.getClass());
+                assertTrue(((List<?>) configuredPool.getClass().getMethod("machines").invoke(configuredPool)).isEmpty());
+                var poolType = (Enum<?>) configuredPool.getClass().getMethod("poolType").invoke(configuredPool);
+                assertSame(configuredPool,
+                    configuredPool.getClass().getMethod("poolType", poolType.getDeclaringClass()).invoke(configuredPool, poolType));
+                assertEquals(0, loader.rejected.get(), suffix);
             }
 
             var diagnostics = new ByteArrayOutputStream();
@@ -89,11 +112,9 @@ class OptionalImportLoadingTest {
                 "ZenRecipe", "ZenRequirement", "ZenResource", "ZenParallelismSelection", "ZenParallelismCallback")) {
                 registry.registerNativeClass(loader.loadClass(RECIPE_PACKAGE + simpleName));
             }
-            for (var suffix : List.of("minecraft.ZenFurnaceImportContext", "minecraft.ZenFurnaceImportCallback",
-                "ic2.ZenIc2ImportContext", "ic2.ZenIc2ImportCallback", "nuclearcraft.ZenNuclearImportContext",
-                "nuclearcraft.ZenNuclearImportCallback", "tconstruct.ZenMeltingImportContext", "tconstruct.ZenMeltingImportCallback",
-                "thaumcraft.ZenInfusionImportContext", "thaumcraft.ZenInfusionImportCallback",
-                "thermalexpansion.ZenInsolatorImportContext", "thermalexpansion.ZenInsolatorImportCallback")) {
+            for (var suffix : List.of("minecraft.ZenFurnaceImportCallback",
+                "ic2.ZenIc2ImportCallback", "nuclearcraft.ZenNuclearImportCallback", "tconstruct.ZenMeltingImportCallback",
+                "thaumcraft.ZenInfusionImportCallback", "thermalexpansion.ZenInsolatorImportCallback")) {
                 registry.registerNativeClass(loader.loadClass(RECIPE_PACKAGE + "importing." + suffix));
             }
             for (var declaration : declarations) {

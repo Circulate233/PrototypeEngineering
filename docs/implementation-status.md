@@ -1,5 +1,19 @@
 # 实施进度
 
+## 2026-11-22 导入池独立回调与底层类型选择
+
+十二类导入池各自公开嵌套 OnCreate 接口，参数直接按该来源定义，不再使用统一 ImportedRecipe 或来源 Context。熔炉为 recipe、float experience，IC2 为 recipe、NBT metadata，NC 为 recipe、时长、功率、辐射和 extras，匠魂熔炼为 recipe、两个温度，合金仅为 recipe，TC6 为 recipe、来源 ID、本质、不稳定度、研究键和具体主输入，Thermal 为 recipe、能量、水、副产物概率和肥料标记。ZS 对应转换为基础值、IData 和 IItemStack；熔炉保留原生小数经验。省略或显式传 null 都不创建默认返回 true 的函数，不复制仅供回调使用的元数据，不构造 ZS 桥接参数或执行回调。回调拒绝与来源转换失败分别处理，回调异常传播至初始化入口记录日志并保存失败，不重复执行。
+
+新增 RecipePoolType.SINGLE_INPUT/GENERAL 和首次读取前的 poolType 方法，分别创建实际 SimpleRecipePool/DefaultRecipePool。默认单输入来源为熔炉、IC2 压缩机和打粉机、匠魂熔炼、NC 熔化机，其余七类默认通用池。NC SDK 已确认 MelterRecipes 的输入槽为一个物品、零流体。首次读取前可多次修改类型，初始化执行中、成功或失败后禁止修改。Java implementation 会触发首次初始化，poolType getter 不会。ZS 的公共材料、需求、时长及 JEI 包装保留原惰性来源引用，配置链之后仍可设置底层。
+
+SimpleRecipePool.forRecipes 验证最终定义恰好有一个平铺的 START 主输入，允许固定、模糊和动态输入，保留来源原生匹配与 NBT 规则。固定输入满足稳定条件时使用原数量索引，无法证明下界时保留候选；额外能量、事件和输出按完整需求执行。多个主输入、TICK 资源输入及 SELECTIVE/CHECKPOINT 嵌套定义明确失败，禁止自动改用通用池。公共辅助材料独立参与普通事务，缺料、并行和回滚保持完整。冻结保留具体来源类、底层模式、准确配方与机器绑定。JEI 按实际底层识别单输入池，页面绑定外层 canonical 池；最终显示需要多个输入槽时使用普通网格，不省略动态候选或辅助材料。
+
+TC6 的 ZS 创建桥接使用嵌套处理器，构造非空回调时不提前链接可选 AspectList 参数。隔离测试拒绝加载六类可选来源包，并为全部十二种工厂传入非空 Proxy，确认构造不调用回调、不加载来源且仍允许设置底层类型。NC extras 保留数值类型、嵌套列表及只读 IData；NBT 输入先复制，避免字节和整数数组共享原数据。未知类型及 null 字段明确抛出异常。该转换不承诺复制由 Java 调用方已经标记 immutable 的 IData 的内部数组。
+
+验证：完整离线 Gradle build、全部 Spotless、1865 tests / 293 suites 通过，失败、错误和跳过均为零。本轮新增 17 项行为测试，覆盖实际底层、首次读取与冻结、回调参数/拒绝/异常、动态 NBT 匹配、辅助材料事务、JEI 更新和 extras 转换；66 项专项及后续非空回调隔离、4 项 extras 验证均通过。56 个修改或新增 Java 文件本机 MCP get_file_problems(errorsOnly:false) 最终错误、警告和弱警告均为零，IDEA 定向构建成功。文档 Java 用例使用项目真实 SDK 编译通过，ZS 行为通过原编译与执行测试验证。新导入文档全级零诊断；api.md 一项弱警告、api-zs-reference.md 两项弱警告、docs/recipes.md 29 项错误/335 项警告/1 项弱警告均对应修改前已有内容，基线比对没有新增诊断。
+
+本轮证据位于 build/import-pool-strategies-20261122/，最终日志 verified-build.log，全量测试统计 full-test-summary.json，Java 检查 all-java-idea-final.json，IDEA 构建 idea-build-final.json，文档编译及隔离 documentation-optional-data-verified.log，文档诊断基线 document-diagnostics-baseline.json。来源默认形状证据为 nc-melter-sdk-shape-javap.txt，初始测试夹具及验证脚本依赖问题的失败日志已保留，最终结果均通过。同步维护规范、Java/ZS API 与使用文档，完成本地英文提交，不推送，保留 AGENTS.md 用户修改。未启动 Minecraft 客户端或服务端，实际安装来源模组的注册及 JEI 效果由用户复验。
+
 ## 2026-11-22 通用配方池配置与独立模组导入池
 
 `RecipePool` 接口新增公共完整需求、辅助材料、START/TICK/END 事件、时长、分组、线程上限和最终并行选择配置，单个 `RecipeBuilder` 共用同一需求与事件接口。配置返回新声明，应用于初始及追加注册配方，保留准确 canonical、revision 和 codec。纯材料/能量配置沿原提供者候选策略，单输入辅助材料仍只用原主输入查候选；任意回调、属性、选择器或最终并行选择无法保证输入下界时保留全池组兼容候选。事件使用原可逆事务，线程由机器 executionPolicy 决定，probe 不执行事件，改变准入前提需显式 preparation。

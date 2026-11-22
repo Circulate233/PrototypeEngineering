@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipePo
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipeBuilder;
 import crafttweaker.annotations.ZenRegister;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
@@ -18,12 +19,12 @@ public final class ZenFurnaceRecipePool extends ZenRecipePool {
 
     @ZenMethod
     public static ZenFurnaceRecipePool create(String id, String titleKey, String revision) {
-        return new ZenFurnaceRecipePool(new FurnaceRecipePool(new ResourceLocation(id), titleKey), revision);
+        return create(id, titleKey, revision, null);
     }
 
     @ZenMethod
-    public static ZenFurnaceRecipePool create(String id, String titleKey, String revision, ZenFurnaceImportCallback onCreate) {
+    public static ZenFurnaceRecipePool create(String id, String titleKey, String revision, @Nullable ZenFurnaceImportCallback onCreate) {
         return new ZenFurnaceRecipePool(new FurnaceRecipePool(new ResourceLocation(id), titleKey,
-            (recipe, context) -> onCreate.create(new ZenRecipeBuilder(recipe), new ZenFurnaceImportContext(context))), revision);
+            onCreate == null ? null : (recipe, experience) -> onCreate.create(new ZenRecipeBuilder(recipe), experience)), revision);
     }
 }

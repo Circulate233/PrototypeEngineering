@@ -18,6 +18,7 @@ import com.circulation.prototype_eng.api.recipe.CompositeRecipePool;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.RecipeBuilder;
 import com.circulation.prototype_eng.api.recipe.importing.ImportedRecipePool;
+import com.circulation.prototype_eng.api.recipe.importing.RecipePoolType;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarationKey;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarationRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarations;
@@ -42,27 +43,21 @@ import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
 import com.circulation.prototype_eng.integration.crafttweaker.ZenComponentData;
 import com.circulation.prototype_eng.integration.crafttweaker.ZenComponentDataType;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.minecraft.ZenFurnaceImportCallback;
-import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.minecraft.ZenFurnaceImportContext;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.minecraft.ZenFurnaceRecipePool;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.ic2.ZenCompressorRecipePool;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.ic2.ZenIc2ImportCallback;
-import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.ic2.ZenIc2ImportContext;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.ic2.ZenMaceratorRecipePool;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.nuclearcraft.ZenAlloyFurnaceRecipePool;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.nuclearcraft.ZenChemicalReactorRecipePool;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.nuclearcraft.ZenInfuserRecipePool;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.nuclearcraft.ZenMelterRecipePool;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.nuclearcraft.ZenNuclearImportCallback;
-import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.nuclearcraft.ZenNuclearImportContext;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.tconstruct.ZenAlloyRecipePool;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.tconstruct.ZenMeltingImportCallback;
-import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.tconstruct.ZenMeltingImportContext;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.tconstruct.ZenMeltingRecipePool;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.thaumcraft.ZenInfusionImportCallback;
-import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.thaumcraft.ZenInfusionImportContext;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.thaumcraft.ZenInfusionRecipePool;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.thermalexpansion.ZenInsolatorImportCallback;
-import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.thermalexpansion.ZenInsolatorImportContext;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.thermalexpansion.ZenInsolatorRecipePool;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.thermalexpansion.ZenInsolatorTreeRecipePool;
 import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
@@ -78,6 +73,9 @@ import crafttweaker.zenscript.expand.ExpandString;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
+import it.unimi.dsi.fastutil.floats.FloatArrayList;
+import net.minecraft.init.Bootstrap;
+import net.minecraft.item.crafting.FurnaceRecipes;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
@@ -109,6 +107,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -153,9 +152,9 @@ class ZenRecipeBridgeTest {
         }
         for (var type : List.of(ZenRecipeBuilder.class, ZenRecipeCreateCallback.class,
             ZenRecipeEventAction.class, ZenRecipeEventCallback.class, ZenRecipeEventContext.class, ZenRecipeEventTransaction.class,
-            ZenFurnaceImportContext.class, ZenFurnaceImportCallback.class, ZenIc2ImportContext.class, ZenIc2ImportCallback.class,
-            ZenNuclearImportContext.class, ZenNuclearImportCallback.class, ZenMeltingImportContext.class, ZenMeltingImportCallback.class,
-            ZenInfusionImportContext.class, ZenInfusionImportCallback.class, ZenInsolatorImportContext.class, ZenInsolatorImportCallback.class,
+            ZenFurnaceImportCallback.class, ZenIc2ImportCallback.class,
+            ZenNuclearImportCallback.class, ZenMeltingImportCallback.class,
+            ZenInfusionImportCallback.class, ZenInsolatorImportCallback.class,
             ZenParallelismSelection.class, ZenParallelismCallback.class)) registry.registerNativeClass(type);
         for (var type : List.of(ZenFurnaceRecipePool.class, ZenCompressorRecipePool.class, ZenMaceratorRecipePool.class,
             ZenAlloyFurnaceRecipePool.class, ZenInfuserRecipePool.class, ZenChemicalReactorRecipePool.class, ZenMelterRecipePool.class,
@@ -452,35 +451,35 @@ class ZenRecipeBridgeTest {
             import mods.prototype_eng.recipe.importing.thermalexpansion.InsolatorRecipePool;
             import mods.prototype_eng.recipe.importing.thermalexpansion.InsolatorTreeRecipePool;
             import tests.prototype_eng.Harness;
-            var furnace = FurnaceRecipePool.create("import_factory:furnace", "title", "v1", function(recipe, context) {
+            var furnace = FurnaceRecipePool.create("import_factory:furnace", "title", "v1", function(recipe, experience) {
                 recipe.durationTicks(50);
-                return context.experience >= 0;
+                return experience >= 0;
             });
             Harness.captureImportedFactory(furnace);
             Harness.captureSecondImportedFactory(FurnaceRecipePool.create("import_factory:second_furnace", "title", "v1"));
             Harness.captureConfiguredFactory(furnace.durationTicks(60).groups(["import_factory:group"])
-                .maxThreads(3).existingJeiPage("minecraft:smelting"));
-            Harness.captureImportedFactory(CompressorRecipePool.create("import_factory:compressor", "title", "v1", function(recipe, context) {
-                return context.inputAmount > 0;
+                .maxThreads(3).existingJeiPage("minecraft:smelting").poolType("general"));
+            Harness.captureImportedFactory(CompressorRecipePool.create("import_factory:compressor", "title", "v1", function(recipe, metadata) {
+                return metadata.length >= 0;
             }));
             Harness.captureImportedFactory(MaceratorRecipePool.create("import_factory:macerator", "title", "v1"));
-            Harness.captureImportedFactory(AlloyFurnaceRecipePool.create("import_factory:alloy", "title", "v1", function(recipe, context) {
-                return context.radiation == 0;
+            Harness.captureImportedFactory(AlloyFurnaceRecipePool.create("import_factory:alloy", "title", "v1", function(recipe, duration, energy, radiation, extras) {
+                return radiation == 0 && extras.length >= 0;
             }));
             Harness.captureImportedFactory(InfuserRecipePool.create("import_factory:infuser", "title", "v1"));
             Harness.captureImportedFactory(ChemicalReactorRecipePool.create("import_factory:chemical", "title", "v1"));
             Harness.captureImportedFactory(MelterRecipePool.create("import_factory:melter", "title", "v1"));
-            Harness.captureImportedFactory(MeltingRecipePool.create("import_factory:melting", "title", "v1", function(recipe, context) {
-                return context.temperature < 1000;
+            Harness.captureImportedFactory(MeltingRecipePool.create("import_factory:melting", "title", "v1", function(recipe, temperature, usableTemperature) {
+                return temperature < 1000 && usableTemperature >= 0;
             }));
             Harness.captureImportedFactory(AlloyRecipePool.create("import_factory:smeltery_alloy", "title", "v1", function(recipe) {
                 return recipe.duration > 0;
             }));
-            Harness.captureImportedFactory(InfusionRecipePool.create("import_factory:infusion", "title", "v1", function(recipe, context) {
-                return context.aspectAmount("aer") < 100;
+            Harness.captureImportedFactory(InfusionRecipePool.create("import_factory:infusion", "title", "v1", function(recipe, sourceId, aspects, instability, research, mainInput) {
+                return aspects.length >= 0 && instability >= 0;
             }));
-            Harness.captureImportedFactory(InsolatorRecipePool.create("import_factory:insolator", "title", "v1", function(recipe, context) {
-                return context.water > 0;
+            Harness.captureImportedFactory(InsolatorRecipePool.create("import_factory:insolator", "title", "v1", function(recipe, energy, water, secondaryChance, hasFertilizer) {
+                return water > 0 && energy >= 0;
             }));
             Harness.captureImportedFactory(InsolatorTreeRecipePool.create("import_factory:tree", "title", "v1"));
             """, "import_factories.zs");
@@ -499,9 +498,61 @@ class ZenRecipeBridgeTest {
         assertEquals("import_factory:furnace", Harness.configuredFactory.id());
         assertEquals("minecraft:smelting", Harness.configuredFactory.value().existingJeiPageId());
         assertTrue(Harness.configuredFactory.deferred());
+        assertEquals(RecipePoolType.GENERAL, assertInstanceOf(ImportedRecipePool.class,
+            Harness.importedFactories.getFirst().value()).poolType());
         assertInstanceOf(ZenFurnaceRecipePool.class, Harness.secondImportedFactory);
         assertNotSame(Harness.importedFactories.getFirst(), Harness.secondImportedFactory);
         assertNotSame(Harness.importedFactories.getFirst().value(), Harness.secondImportedFactory.value());
+    }
+
+    @Test
+    void realZenFurnaceCallbackReceivesNativeExperienceAndCanAddAnotherInputWithGeneralBackend() throws Exception {
+        Bootstrap.register();
+        Harness.importedFactories.clear();
+        Harness.experiences.clear();
+        Harness.secondImportedFactory = null;
+        var compiled = compile("""
+            import mods.prototype_eng.recipe.importing.minecraft.FurnaceRecipePool;
+            import mods.prototype_eng.recipe.Requirement;
+            import tests.prototype_eng.Harness;
+            var source = FurnaceRecipePool.create("direct_parameters:furnace", "title", "v1", function(recipe, experience) {
+                Harness.captureExperience(experience);
+                recipe.addRequirement(Requirement.resources("direct_parameters:extra_input", [Harness.resource()], []));
+                return experience > 0;
+            });
+            Harness.captureSecondImportedFactory(source);
+            Harness.captureImportedFactory(source.durationTicks(1).auxiliaryInputs([Harness.resource()])
+                .existingJeiPage("minecraft:smelting").poolType("general"));
+            """, "direct_furnace_parameters.zs");
+        assertEquals("", compiled.diagnostics());
+        Objects.requireNonNull(compiled.module().getMain()).run();
+        assertTrue(Harness.experiences.isEmpty());
+        assertEquals("minecraft:smelting", Harness.importedFactories.getFirst().value().existingJeiPageId());
+        var expected = new FloatArrayList();
+        int accepted = 0;
+        var furnace = FurnaceRecipes.instance();
+        for (var output : furnace.getSmeltingList().values()) {
+            float experience = furnace.getSmeltingExperience(output);
+            expected.add(experience);
+            if (experience > 0) accepted++;
+        }
+        var recipes = Harness.importedFactories.getFirst().recipes();
+        assertEquals(accepted, recipes.size());
+        assertFalse(recipes.isEmpty());
+        expected.sort(Float::compare);
+        Harness.experiences.sort(Float::compare);
+        assertArrayEquals(expected.toFloatArray(), Harness.experiences.toFloatArray());
+        var source = assertInstanceOf(ImportedRecipePool.class, Objects.requireNonNull(Harness.secondImportedFactory).value());
+        assertInstanceOf(DefaultRecipePool.class, source.implementation());
+        for (var recipe : recipes) {
+            assertEquals(1, recipe.recipe().durationTicks());
+            assertTrue(recipe.recipe().orderedRequirements().stream()
+                .anyMatch(requirement -> requirement.id().equals(new ResourceLocation("direct_parameters", "extra_input"))));
+            assertSame(recipe.recipe(), recipe.codec().recipe());
+        }
+        int calls = Harness.experiences.size();
+        Harness.importedFactories.getFirst().recipes();
+        assertEquals(calls, Harness.experiences.size());
     }
 
     @Test
@@ -853,6 +904,12 @@ class ZenRecipeBridgeTest {
         private static final ObjectArrayList<ZenRecipePool> importedFactories = new ObjectArrayList<>();
         private static ZenRecipePool configuredFactory;
         private static ZenRecipePool secondImportedFactory;
+        private static final FloatArrayList experiences = new FloatArrayList();
+
+        @ZenMethod
+        public static void captureExperience(float experience) {
+            experiences.add(experience);
+        }
 
         @ZenMethod
         public static void captureImportedFactory(ZenRecipePool pool) {

@@ -6,6 +6,7 @@ import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipeBu
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipeCreateCallback;
 import crafttweaker.annotations.ZenRegister;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
@@ -19,12 +20,12 @@ public final class ZenAlloyRecipePool extends ZenRecipePool {
 
     @ZenMethod
     public static ZenAlloyRecipePool create(String id, String titleKey, String revision) {
-        return new ZenAlloyRecipePool(new AlloyRecipePool(new ResourceLocation(id), titleKey), revision);
+        return create(id, titleKey, revision, null);
     }
 
     @ZenMethod
-    public static ZenAlloyRecipePool create(String id, String titleKey, String revision, ZenRecipeCreateCallback onCreate) {
+    public static ZenAlloyRecipePool create(String id, String titleKey, String revision, @Nullable ZenRecipeCreateCallback onCreate) {
         return new ZenAlloyRecipePool(new AlloyRecipePool(new ResourceLocation(id), titleKey,
-            recipe -> onCreate.create(new ZenRecipeBuilder(recipe))), revision);
+            onCreate == null ? null : (recipe) -> onCreate.create(new ZenRecipeBuilder(recipe))), revision);
     }
 }

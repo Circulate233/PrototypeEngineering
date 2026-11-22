@@ -19,10 +19,13 @@ import slimeknights.mantle.util.RecipeMatch;
 import slimeknights.tconstruct.library.smeltery.AlloyRecipe;
 import slimeknights.tconstruct.library.smeltery.MeltingRecipe;
 
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TConstructRecipeSourcesTest {
@@ -36,7 +39,7 @@ class TConstructRecipeSourcesTest {
         var source = new MeltingRecipe(RecipeMatch.of(new ItemStack(Items.IRON_INGOT), 144, 3),
             new FluidStack(FluidRegistry.WATER, 1), 750);
         var imported = TConstructMeltingSource.convert(id("melting"), source);
-        var payload = resources(imported.recipe().build());
+        var payload = resources(imported);
         var input = payload.dynamicInputs().getFirst();
 
         assertEquals(source.input.amountNeeded, input.amount());
@@ -44,10 +47,6 @@ class TConstructRecipeSourcesTest {
         assertSame(source.getResult().getFluid(), ((AEFluidKey) payload.outputs().getFirst().what()).getFluid());
         assertTrue(input.matcher().matches(AEItemKey.of(new ItemStack(Items.IRON_INGOT)), input.pattern()));
         assertFalse(input.matcher().matches(AEItemKey.of(new ItemStack(Items.GOLD_INGOT)), input.pattern()));
-        var context = imported.context();
-        assertNotNull(context);
-        assertSame(source, context.source());
-
         var taggedIron = new ItemStack(Items.IRON_INGOT);
         taggedIron.setTagInfo("import_test", new NBTTagString("accepted"));
         assertEquals(source.matches(copyWithCount(taggedIron, source.input.amountNeeded)),
@@ -61,7 +60,7 @@ class TConstructRecipeSourcesTest {
         var source = new AlloyRecipe(new FluidStack(alloy, 600),
             new FluidStack(FluidRegistry.WATER, 200), new FluidStack(FluidRegistry.LAVA, 400));
         var imported = TConstructAlloySource.convert(id("alloy"), source);
-        var payload = resources(imported.recipe().build());
+        var payload = resources(imported);
 
         assertEquals(source.getFluids().size(), payload.inputs().size());
         for (int index = 0; index < source.getFluids().size(); index++) {
@@ -70,9 +69,38 @@ class TConstructRecipeSourcesTest {
         }
         assertSame(alloy, ((AEFluidKey) payload.outputs().getFirst().what()).getFluid());
         assertEquals(source.getResult().amount, payload.outputs().getFirst().amount());
-        var context = imported.context();
-        assertNotNull(context);
-        assertSame(source, context.source());
+    }
+
+    @Test
+    void meltingHandlerReceivesTemperaturesCanRejectAndPropagatesFailure() {
+        var source = new MeltingRecipe(RecipeMatch.of(new ItemStack(Items.IRON_INGOT), 144, 3),
+            new FluidStack(FluidRegistry.WATER, 1), 750);
+        var calls = new AtomicInteger();
+        var rejected = TConstructMeltingSource.convertAll(id("handler"), List.of(source), (_, temperature, usable) -> {
+            calls.incrementAndGet();
+            assertEquals(source.getTemperature(), temperature);
+            assertEquals(source.getUsableTemperature(), usable);
+            return false;
+        });
+        assertEquals(1, calls.get());
+        assertTrue(rejected.isEmpty());
+        var failure = new IllegalStateException("Creation handler failed");
+        assertSame(failure, assertThrows(IllegalStateException.class,
+            () -> TConstructMeltingSource.convertAll(id("failed"), List.of(source), (_, _, _) -> {
+                throw failure;
+            })));
+    }
+
+    @Test
+    void alloyHandlerReceivesOnlyTheRecipeAndCanModifyItBeforeAccepting() {
+        var source = new AlloyRecipe(new FluidStack(FluidRegistry.LAVA, 600),
+            new FluidStack(FluidRegistry.WATER, 200), new FluidStack(FluidRegistry.LAVA, 400));
+        var imported = TConstructAlloySource.convertAll(id("alloy_handler"), List.of(source), recipe -> {
+            recipe.durationTicks(17);
+            return true;
+        });
+        assertEquals(17, imported.getFirst().durationTicks());
+        assertTrue(TConstructAlloySource.convertAll(id("rejected_alloy"), List.of(source), _ -> false).isEmpty());
     }
 
     private static ItemStack copyWithCount(ItemStack stack, int count) {

@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipePo
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipeBuilder;
 import crafttweaker.annotations.ZenRegister;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
@@ -18,12 +19,12 @@ public final class ZenInsolatorTreeRecipePool extends ZenRecipePool {
 
     @ZenMethod
     public static ZenInsolatorTreeRecipePool create(String id, String titleKey, String revision) {
-        return new ZenInsolatorTreeRecipePool(new InsolatorTreeRecipePool(new ResourceLocation(id), titleKey), revision);
+        return create(id, titleKey, revision, null);
     }
 
     @ZenMethod
-    public static ZenInsolatorTreeRecipePool create(String id, String titleKey, String revision, ZenInsolatorImportCallback onCreate) {
+    public static ZenInsolatorTreeRecipePool create(String id, String titleKey, String revision, @Nullable ZenInsolatorImportCallback onCreate) {
         return new ZenInsolatorTreeRecipePool(new InsolatorTreeRecipePool(new ResourceLocation(id), titleKey,
-            (recipe, context) -> onCreate.create(new ZenRecipeBuilder(recipe), new ZenInsolatorImportContext(context))), revision);
+            onCreate == null ? null : (recipe, energy, water, secondaryChance, hasFertilizer) -> onCreate.create(new ZenRecipeBuilder(recipe), energy, water, secondaryChance, hasFertilizer)), revision);
     }
 }

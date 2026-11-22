@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.recipe.importing;
 import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipeBuilder;
 import com.circulation.prototype_eng.api.recipe.RecipeInventoryMatch;
@@ -18,75 +17,76 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /** Source data and conversion callbacks are evaluated once, at the first recipe access. */
-public class ImportedRecipePool<C> implements RecipePool {
+public class ImportedRecipePool implements RecipePool {
     private static final Logger LOGGER = LogManager.getLogger();
     private final ResourceLocation id;
     private final String translationKey;
-    private final Supplier<? extends List<ImportedRecipe<C>>> source;
-    private final BiPredicate<RecipeBuilder, C> onCreate;
-    private volatile @Nullable DefaultRecipePool initialized;
+    private final Supplier<? extends List<MachineRecipe>> source;
+    private volatile RecipePoolType poolType;
+    private volatile @Nullable RecipePool initialized;
     private @Nullable Throwable failure;
     private boolean initializing;
 
-    public static ImportedRecipePool<@Nullable Void> withoutContext(ResourceLocation id, String translationKey,
-        Supplier<? extends List<RecipeBuilder>> source, Predicate<RecipeBuilder> onCreate) {
+    public static ImportedRecipePool withoutContext(ResourceLocation id, String translationKey,
+        Supplier<? extends List<RecipeBuilder>> source, @Nullable Predicate<RecipeBuilder> onCreate) {
         Objects.requireNonNull(source, "source");
-        Objects.requireNonNull(onCreate, "onCreate");
-        return new ImportedRecipePool<>(id, translationKey, () -> {
+        return new ImportedRecipePool(id, translationKey, () -> {
             var drafts = source.get();
-            var imported = new ObjectArrayList<ImportedRecipe<@Nullable Void>>(drafts.size());
-            for (int i = 0; i < drafts.size(); i++) imported.add(new ImportedRecipe<>(drafts.get(i), null));
+            var imported = new ObjectArrayList<MachineRecipe>(drafts.size());
+            for (int i = 0; i < drafts.size(); i++) {
+                var draft = drafts.get(i);
+                if (onCreate == null || onCreate.test(draft)) imported.add(draft.build());
+            }
             return imported;
-        }, (recipe, _) -> onCreate.test(recipe));
+        });
+    }
+
+    public static ImportedRecipePool withoutContext(ResourceLocation id, String translationKey,
+        Supplier<? extends List<RecipeBuilder>> source) {
+        return withoutContext(id, translationKey, source, null);
     }
 
     public ImportedRecipePool(ResourceLocation id, String translationKey,
-                              Supplier<? extends List<ImportedRecipe<C>>> source) {
-        this(id, translationKey, source, (_, _) -> true);
+                              Supplier<? extends List<MachineRecipe>> source) {
+        this(id, translationKey, source, RecipePoolType.GENERAL);
     }
 
-    public ImportedRecipePool(ResourceLocation id, String translationKey,
-                              Supplier<? extends List<ImportedRecipe<C>>> source,
-                              BiPredicate<RecipeBuilder, C> onCreate) {
+    protected ImportedRecipePool(ResourceLocation id, String translationKey,
+                                 Supplier<? extends List<MachineRecipe>> source, RecipePoolType poolType) {
         this.id = Objects.requireNonNull(id, "id");
         if (translationKey == null || translationKey.isBlank())
             throw new IllegalArgumentException("Pool title is required");
         this.translationKey = translationKey;
         this.source = Objects.requireNonNull(source, "source");
-        this.onCreate = Objects.requireNonNull(onCreate, "onCreate");
+        this.poolType = Objects.requireNonNull(poolType, "poolType");
     }
 
-    protected ImportedRecipePool(ImportedRecipePool<C> original, List<MachineRecipe> recipes, List<MachineType> machines) {
+    protected ImportedRecipePool(ImportedRecipePool original, List<MachineRecipe> recipes, List<MachineType> machines) {
         id = original.id;
         translationKey = original.translationKey;
         source = original.source;
-        onCreate = original.onCreate;
-        initialized = original.data().freeze(recipes, machines);
+        var implementation = original.data();
+        poolType = original.poolType;
+        initialized = implementation.freeze(recipes, machines);
     }
 
-    private DefaultRecipePool data() {
+    private RecipePool data() {
         var current = initialized;
         return current == null ? initialize() : current;
     }
 
-    private synchronized DefaultRecipePool initialize() {
+    private synchronized RecipePool initialize() {
         if (initialized != null) return initialized;
         if (failure != null) throw new IllegalStateException("Recipe import previously failed: " + id, failure);
         if (initializing) throw new IllegalStateException("Recursive recipe import: " + id);
         initializing = true;
         try {
             var imported = Objects.requireNonNull(source.get(), "Imported recipe source");
-            var accepted = new ObjectArrayList<MachineRecipe>(imported.size());
-            for (int i = 0; i < imported.size(); i++) {
-                var entry = imported.get(i);
-                if (onCreate.test(entry.recipe(), entry.context())) accepted.add(entry.recipe().build());
-            }
-            var completed = new DefaultRecipePool(id, translationKey, accepted);
+            var completed = poolType.create(id, translationKey, imported);
             initialized = completed;
             return completed;
         } catch (RuntimeException | Error ex) {
@@ -96,6 +96,21 @@ public class ImportedRecipePool<C> implements RecipePool {
         } finally {
             initializing = false;
         }
+    }
+
+    public RecipePoolType poolType() {
+        return poolType;
+    }
+
+    public synchronized ImportedRecipePool poolType(RecipePoolType value) {
+        if (initialized != null || initializing || failure != null)
+            throw new IllegalStateException("Recipe pool type is fixed after first access: " + id);
+        poolType = Objects.requireNonNull(value, "poolType");
+        return this;
+    }
+
+    public RecipePool implementation() {
+        return data();
     }
 
     @Override
@@ -120,6 +135,11 @@ public class ImportedRecipePool<C> implements RecipePool {
     }
 
     @Override
+    public MachineRecipe prepareRecipe(MachineRecipe recipe) {
+        return data().prepareRecipe(recipe);
+    }
+
+    @Override
     public List<RecipeInventoryMatch> match(AEKey2LongMap inventory, int parallelism) {
         return data().match(inventory, parallelism);
     }
@@ -135,7 +155,7 @@ public class ImportedRecipePool<C> implements RecipePool {
     }
 
     @Override
-    public ImportedRecipePool<C> freeze(List<MachineRecipe> recipes, List<MachineType> machines) {
-        return new ImportedRecipePool<>(this, recipes, machines);
+    public ImportedRecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines) {
+        return new ImportedRecipePool(this, recipes, machines);
     }
 }

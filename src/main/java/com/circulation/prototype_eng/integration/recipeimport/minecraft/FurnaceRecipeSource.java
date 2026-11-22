@@ -3,14 +3,15 @@ package com.circulation.prototype_eng.integration.recipeimport.minecraft;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.recipe.RecipeBuilder;
-import com.circulation.prototype_eng.api.recipe.importing.ImportedRecipe;
+import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.importing.minecraft.FurnaceRecipePool;
+import org.jetbrains.annotations.Nullable;
 import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.FurnaceRecipes;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.oredict.OreDictionary;
@@ -23,14 +24,15 @@ public final class FurnaceRecipeSource {
     private FurnaceRecipeSource() {
     }
 
-    public record FurnaceContext(ItemStack input, ItemStack output, float experience) {
+    public static List<MachineRecipe> read(ResourceLocation poolId) {
+        return read(poolId, null);
     }
 
-    public static List<ImportedRecipe<FurnaceContext>> read(ResourceLocation poolId) {
+    public static List<MachineRecipe> read(ResourceLocation poolId, @Nullable FurnaceRecipePool.OnCreate onCreate) {
         var furnace = FurnaceRecipes.instance();
         var entries = new ObjectArrayList<>(furnace.getSmeltingList().entrySet());
         entries.sort(Comparator.comparing(entry -> entry.getKey().serializeNBT().toString()));
-        var recipes = new ObjectArrayList<ImportedRecipe<FurnaceContext>>(entries.size());
+        var recipes = new ObjectArrayList<MachineRecipe>(entries.size());
         for (int i = 0; i < entries.size(); i++) {
             var entry = entries.get(i);
             var input = entry.getKey().copy();
@@ -53,7 +55,7 @@ public final class FurnaceRecipeSource {
                 new ResourceRequirement(List.of(), List.of(), List.of(),
                     List.of(new GenericStack(outputKey, output.getCount())), false,
                     ResourceChance.ALWAYS, null, List.of(), List.of(ingredient))));
-            recipes.add(new ImportedRecipe<>(builder, new FurnaceContext(input, output, furnace.getSmeltingExperience(output))));
+            if (onCreate == null || onCreate.create(builder, furnace.getSmeltingExperience(output))) recipes.add(builder.build());
         }
         return recipes;
     }

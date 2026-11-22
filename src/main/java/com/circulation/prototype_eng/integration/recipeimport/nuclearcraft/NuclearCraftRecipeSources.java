@@ -6,7 +6,12 @@ import ae2.api.stacks.AEKey;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.recipe.RecipeBuilder;
-import com.circulation.prototype_eng.api.recipe.importing.ImportedRecipe;
+import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.importing.nuclearcraft.AlloyFurnaceRecipePool;
+import com.circulation.prototype_eng.api.recipe.importing.nuclearcraft.InfuserRecipePool;
+import com.circulation.prototype_eng.api.recipe.importing.nuclearcraft.ChemicalReactorRecipePool;
+import com.circulation.prototype_eng.api.recipe.importing.nuclearcraft.MelterRecipePool;
+import org.jetbrains.annotations.Nullable;
 import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
@@ -37,46 +42,87 @@ public final class NuclearCraftRecipeSources {
     private NuclearCraftRecipeSources() {
     }
 
-    public static List<ImportedRecipe<NuclearCraftRecipeContext>> readAlloyFurnace(ResourceLocation poolId) {
-        RecipeImportSupport.requireMod("nuclearcraft");
-        return read(poolId, "alloy_furnace", NCRecipes.alloy_furnace, 400, 10);
+    @SuppressWarnings("unused")
+    public static List<MachineRecipe> readAlloyFurnace(ResourceLocation poolId) {
+        return readAlloyFurnace(poolId, null);
     }
 
-    public static List<ImportedRecipe<NuclearCraftRecipeContext>> readInfuser(ResourceLocation poolId) {
+    public static List<MachineRecipe> readAlloyFurnace(ResourceLocation poolId, @Nullable AlloyFurnaceRecipePool.OnCreate onCreate) {
         RecipeImportSupport.requireMod("nuclearcraft");
-        return read(poolId, "infuser", NCRecipes.infuser, 600, 10);
+        return read(poolId, "alloy_furnace", NCRecipes.alloy_furnace, 400, 10,
+            onCreate == null ? null : onCreate::create);
     }
 
-    public static List<ImportedRecipe<NuclearCraftRecipeContext>> readChemicalReactor(ResourceLocation poolId) {
-        RecipeImportSupport.requireMod("nuclearcraft");
-        return read(poolId, "chemical_reactor", NCRecipes.chemical_reactor, 400, 5);
+    @SuppressWarnings("unused")
+    public static List<MachineRecipe> readInfuser(ResourceLocation poolId) {
+        return readInfuser(poolId, null);
     }
 
-    public static List<ImportedRecipe<NuclearCraftRecipeContext>> readMelter(ResourceLocation poolId) {
+    public static List<MachineRecipe> readInfuser(ResourceLocation poolId, @Nullable InfuserRecipePool.OnCreate onCreate) {
         RecipeImportSupport.requireMod("nuclearcraft");
-        return read(poolId, "melter", NCRecipes.melter, 800, 40);
+        return read(poolId, "infuser", NCRecipes.infuser, 600, 10,
+            onCreate == null ? null : onCreate::create);
     }
 
-    private static List<ImportedRecipe<NuclearCraftRecipeContext>> read(ResourceLocation poolId, String group,
+    @SuppressWarnings("unused")
+    public static List<MachineRecipe> readChemicalReactor(ResourceLocation poolId) {
+        return readChemicalReactor(poolId, null);
+    }
+
+    public static List<MachineRecipe> readChemicalReactor(ResourceLocation poolId, @Nullable ChemicalReactorRecipePool.OnCreate onCreate) {
+        RecipeImportSupport.requireMod("nuclearcraft");
+        return read(poolId, "chemical_reactor", NCRecipes.chemical_reactor, 400, 5,
+            onCreate == null ? null : onCreate::create);
+    }
+
+    @SuppressWarnings("unused")
+    public static List<MachineRecipe> readMelter(ResourceLocation poolId) {
+        return readMelter(poolId, null);
+    }
+
+    public static List<MachineRecipe> readMelter(ResourceLocation poolId, @Nullable MelterRecipePool.OnCreate onCreate) {
+        RecipeImportSupport.requireMod("nuclearcraft");
+        return read(poolId, "melter", NCRecipes.melter, 800, 40,
+            onCreate == null ? null : onCreate::create);
+    }
+
+    private static List<MachineRecipe> read(ResourceLocation poolId, String group,
                                                                         BasicRecipeHandler handler, int baseDuration,
-                                                                        int baseEnergyPerTick) {
+                                                                        int baseEnergyPerTick, @Nullable CreationHandler onCreate) {
         Objects.requireNonNull(handler, "NuclearCraft " + group + " recipes are not initialized");
-        var result = new ObjectArrayList<ImportedRecipe<NuclearCraftRecipeContext>>();
+        var result = new ObjectArrayList<MachineRecipe>();
         var sources = handler.getRecipeList();
         for (int sourceIndex = 0; sourceIndex < sources.size(); sourceIndex++) {
+            var source = sources.get(sourceIndex);
+            List<RecipeBuilder> recipes;
             try {
-                result.addAll(convert(poolId, group, sourceIndex, sources.get(sourceIndex), baseDuration, baseEnergyPerTick));
+                recipes = drafts(poolId, group, sourceIndex, source, baseDuration, baseEnergyPerTick);
             } catch (RuntimeException failure) {
                 PrototypeEngineering.LOGGER.error("Rejected NuclearCraft recipe {}[{}] while importing pool {}",
                     group, sourceIndex, poolId, failure);
+                continue;
             }
+            accept(recipes, source, baseDuration, baseEnergyPerTick, onCreate, result);
         }
         return result;
     }
 
-    static List<ImportedRecipe<NuclearCraftRecipeContext>> convert(ResourceLocation poolId, String group,
-                                                                   int sourceIndex, BasicRecipe source,
-                                                                   int baseDuration, int baseEnergyPerTick) {
+    @SuppressWarnings("SameParameterValue")
+    static List<MachineRecipe> convert(ResourceLocation poolId, String group,
+        int sourceIndex, BasicRecipe source, int baseDuration, int baseEnergyPerTick) {
+        return convert(poolId, group, sourceIndex, source, baseDuration, baseEnergyPerTick, null);
+    }
+
+    static List<MachineRecipe> convert(ResourceLocation poolId, String group,
+        int sourceIndex, BasicRecipe source, int baseDuration, int baseEnergyPerTick, @Nullable CreationHandler onCreate) {
+        var result = new ObjectArrayList<MachineRecipe>();
+        accept(drafts(poolId, group, sourceIndex, source, baseDuration, baseEnergyPerTick), source,
+            baseDuration, baseEnergyPerTick, onCreate, result);
+        return result;
+    }
+
+    private static List<RecipeBuilder> drafts(ResourceLocation poolId, String group,
+        int sourceIndex, BasicRecipe source, int baseDuration, int baseEnergyPerTick) {
         var sourceId = RecipeImportSupport.id(poolId, "nuclearcraft/" + group + "/" + sourceIndex);
         double duration = source.getBaseProcessTime(baseDuration);
         double energy = source.getBaseProcessPower(baseEnergyPerTick);
@@ -114,7 +160,7 @@ public final class NuclearCraftRecipeSources {
             variants = expanded;
         }
 
-        var result = new ObjectArrayList<ImportedRecipe<NuclearCraftRecipeContext>>(variants.size());
+        var result = new ObjectArrayList<RecipeBuilder>(variants.size());
         for (int variantIndex = 0; variantIndex < variants.size(); variantIndex++) {
             var recipeId = RecipeImportSupport.id(sourceId, "variant/" + variantIndex);
             var recipe = new RecipeBuilder(recipeId, template.durationTicks()).addRequirements(template.requirements());
@@ -134,11 +180,24 @@ public final class NuclearCraftRecipeSources {
                 recipe.addRequirement(RecipeRequirements.RESOURCES.requirement(
                     RecipeImportSupport.requirementId(recipe, "inputs"), resources));
             }
-            var context = new NuclearCraftRecipeContext(group, sourceIndex, variantIndex, source,
-                duration, energy, source.getBaseProcessRadiation(), List.copyOf(source.getExtras()));
-            result.add(new ImportedRecipe<>(recipe, context));
+            result.add(recipe);
         }
         return result;
+    }
+
+    @FunctionalInterface
+    interface CreationHandler {
+        boolean create(RecipeBuilder recipe, double durationTicks, double energyPerTick, double radiation, List<Object> extras);
+    }
+
+    private static void accept(List<RecipeBuilder> recipes, BasicRecipe source, int baseDuration, int baseEnergyPerTick,
+                               @Nullable CreationHandler onCreate, List<MachineRecipe> accepted) {
+        for (int i = 0; i < recipes.size(); i++) {
+            var recipe = recipes.get(i);
+            if (onCreate == null || onCreate.create(recipe, source.getBaseProcessTime(baseDuration),
+                source.getBaseProcessPower(baseEnergyPerTick), source.getBaseProcessRadiation(), List.copyOf(source.getExtras())))
+                accepted.add(recipe.build());
+        }
     }
 
     private static void itemOptions(IItemIngredient ingredient, ObjectArrayList<InputOption> result) {

@@ -20,18 +20,23 @@ import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+
+import javax.annotation.Nonnull;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class Ic2RecipeSourcesTest {
@@ -47,8 +52,12 @@ class Ic2RecipeSourcesTest {
         var metadata = new NBTTagCompound();
         metadata.setString("machine", "compressor");
         var source = source(List.of(first, alternate), 5, metadata);
-        var imported = Ic2RecipeSources.convert(id("pool"), "compressor", 0, source);
-        var resources = imported.recipe().build().requirements().get(RecipeRequirements.RESOURCES).getFirst();
+        var captured = new AtomicReference<NBTTagCompound>();
+        var imported = Ic2RecipeSources.convertAll(id("pool"), "compressor", List.of(source), (_, copiedMetadata) -> {
+            captured.set(copiedMetadata);
+            return true;
+        }).getFirst();
+        var resources = imported.requirements().get(RecipeRequirements.RESOURCES).getFirst();
         var actual = (ResourceRequirement) resources.payload();
         var input = actual.dynamicInputs().getFirst();
         assertEquals(source.getInput().getAmount(), input.amount());
@@ -56,10 +65,9 @@ class Ic2RecipeSourcesTest {
         assertTrue(input.matcher().matches(AEItemKey.of(alternate), input.pattern()));
         assertFalse(input.matcher().matches(AEItemKey.of(tagged(new ItemStack(Items.GOLD_INGOT), "rejected")), input.pattern()));
         assertFalse(input.matcher().matches(AEItemKey.of(new ItemStack(Items.DIAMOND)), input.pattern()));
-        assertSame(source, imported.context().source());
-        assertNotSame(metadata, imported.context().metadata());
+        assertNotSame(metadata, captured.get());
         metadata.setString("machine", "changed");
-        assertEquals("compressor", imported.context().metadata().getString("machine"));
+        assertEquals("compressor", captured.get().getString("machine"));
     }
 
     @Test
@@ -68,8 +76,8 @@ class Ic2RecipeSourcesTest {
         var alternate = tagged(new ItemStack(Items.GOLD_INGOT), "accepted");
         var imported = Ic2RecipeSources.convert(id("execution"), "compressor", 0,
             source(List.of(first, alternate), 3, new NBTTagCompound()));
-        var materialOnly = new RecipeBuilder(imported.recipe().id(), 0);
-        for (var requirement : imported.recipe().requirements()) {
+        var materialOnly = new RecipeBuilder(imported.id(), 0);
+        for (var requirement : imported.orderedRequirements()) {
             if (requirement.type() == RecipeRequirements.RESOURCES) materialOnly.addRequirement(requirement);
         }
         var input = hatch(HatchMode.INPUT);
@@ -99,24 +107,52 @@ class Ic2RecipeSourcesTest {
         var first = source(List.of(tagged(new ItemStack(Items.IRON_INGOT), "accepted")), 3, firstMetadata);
         var second = source(List.of(tagged(new ItemStack(Items.GOLD_INGOT), "accepted")), 5, firstMetadata);
         var metadataVariant = source(List.of(tagged(new ItemStack(Items.IRON_INGOT), "accepted")), 3, secondMetadata);
-        var forward = Ic2RecipeSources.convertAll(id("stable"), "compressor", List.of(first, second, metadataVariant));
-        var reverse = Ic2RecipeSources.convertAll(id("stable"), "compressor", List.of(metadataVariant, second, first));
+        var forwardMetadata = new Object2ObjectOpenHashMap<ResourceLocation, NBTTagCompound>();
+        var reverseMetadata = new Object2ObjectOpenHashMap<ResourceLocation, NBTTagCompound>();
+        var forward = Ic2RecipeSources.convertAll(id("stable"), "compressor", List.of(first, second, metadataVariant), (recipe, metadata) -> {
+            forwardMetadata.put(recipe.id(), metadata);
+            return true;
+        });
+        var reverse = Ic2RecipeSources.convertAll(id("stable"), "compressor", List.of(metadataVariant, second, first), (recipe, metadata) -> {
+            reverseMetadata.put(recipe.id(), metadata);
+            return true;
+        });
 
         assertEquals(3, forward.size());
         assertEquals(forward.size(), reverse.size());
         for (int index = 0; index < forward.size(); index++) {
             var expected = forward.get(index);
             var actual = reverse.get(index);
-            assertEquals(expected.recipe().id(), actual.recipe().id());
-            var expectedResources = (ResourceRequirement) expected.recipe().build().requirements().get(RecipeRequirements.RESOURCES).getFirst().payload();
-            var actualResources = (ResourceRequirement) actual.recipe().build().requirements().get(RecipeRequirements.RESOURCES).getFirst().payload();
+            assertEquals(expected.id(), actual.id());
+            var expectedResources = (ResourceRequirement) expected.requirements().get(RecipeRequirements.RESOURCES).getFirst().payload();
+            var actualResources = (ResourceRequirement) actual.requirements().get(RecipeRequirements.RESOURCES).getFirst().payload();
             assertEquals(expectedResources.outputs(), actualResources.outputs());
             var expectedInput = expectedResources.dynamicInputs().getFirst();
             var actualInput = actualResources.dynamicInputs().getFirst();
             assertEquals(expectedInput.amount(), actualInput.amount());
             assertEquals(expectedInput.displayedCandidates(), actualInput.displayedCandidates());
-            assertEquals(Objects.requireNonNull(expected.context()).metadata(), Objects.requireNonNull(actual.context()).metadata());
+            assertEquals(forwardMetadata.get(expected.id()), reverseMetadata.get(actual.id()));
         }
+    }
+
+    @Test
+    void nullHandlerSkipsMetadataSnapshotsAndRejectedRecipesAreNotAdded() {
+        var metadata = new NBTTagCompound() {
+            @Override
+            @Nonnull
+            public NBTTagCompound copy() {
+                throw new AssertionError("Metadata must not be copied without a creation handler");
+            }
+        };
+        var source = source(List.of(tagged(new ItemStack(Items.IRON_INGOT), "accepted")), 1, metadata);
+        assertEquals(1, Ic2RecipeSources.convertAll(id("no_handler"), "compressor", List.of(source)).size());
+        var ordinary = source(List.of(tagged(new ItemStack(Items.IRON_INGOT), "accepted")), 1, new NBTTagCompound());
+        assertTrue(Ic2RecipeSources.convertAll(id("rejected"), "compressor", List.of(ordinary), (_, _) -> false).isEmpty());
+        var failure = new IllegalStateException("Creation handler failed");
+        assertSame(failure, assertThrows(IllegalStateException.class,
+            () -> Ic2RecipeSources.convertAll(id("failed"), "compressor", List.of(ordinary), (_, _) -> {
+                throw failure;
+            })));
     }
 
     private static MachineRecipe<IRecipeInput, Collection<ItemStack>> source(List<ItemStack> candidates, int amount,

@@ -5,7 +5,10 @@ import ae2.api.stacks.GenericStack;
 import cofh.thermalexpansion.util.managers.machine.InsolatorManager;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.recipe.RecipeBuilder;
-import com.circulation.prototype_eng.api.recipe.importing.ImportedRecipe;
+import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.importing.thermalexpansion.InsolatorRecipePool;
+import com.circulation.prototype_eng.api.recipe.importing.thermalexpansion.InsolatorTreeRecipePool;
+import org.jetbrains.annotations.Nullable;
 import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
@@ -27,13 +30,27 @@ public final class ThermalInsolatorSource {
     private ThermalInsolatorSource() {
     }
 
-    public static List<ImportedRecipe<InsolatorContext>> read(ResourceLocation poolId, boolean tree) {
-        RecipeImportSupport.requireMod("thermalexpansion");
-        return convertAll(poolId, tree, Arrays.asList(InsolatorManager.getRecipeList()));
+    public static List<MachineRecipe> read(ResourceLocation poolId, @Nullable InsolatorRecipePool.OnCreate onCreate) {
+        return read(poolId, false, onCreate == null ? null : onCreate::create);
     }
 
-    static List<ImportedRecipe<InsolatorContext>> convertAll(ResourceLocation poolId, boolean tree,
+    public static List<MachineRecipe> readTree(ResourceLocation poolId, @Nullable InsolatorTreeRecipePool.OnCreate onCreate) {
+        return read(poolId, true, onCreate == null ? null : onCreate::create);
+    }
+
+    private static List<MachineRecipe> read(ResourceLocation poolId, boolean tree, @Nullable CreationHandler onCreate) {
+        RecipeImportSupport.requireMod("thermalexpansion");
+        return convertAll(poolId, tree, Arrays.asList(InsolatorManager.getRecipeList()), onCreate);
+    }
+
+    @SuppressWarnings("SameParameterValue")
+    static List<MachineRecipe> convertAll(ResourceLocation poolId, boolean tree,
                                                              Collection<InsolatorManager.InsolatorRecipe> sources) {
+        return convertAll(poolId, tree, sources, null);
+    }
+
+    static List<MachineRecipe> convertAll(ResourceLocation poolId, boolean tree,
+        Collection<InsolatorManager.InsolatorRecipe> sources, @Nullable CreationHandler onCreate) {
         var ordered = new ObjectArrayList<OrderedSource>(sources.size());
         for (var source : sources) {
             if ((source.getType() == InsolatorManager.Type.TREE) != tree) continue;
@@ -51,14 +68,18 @@ public final class ThermalInsolatorSource {
             }
         }
         ordered.sort(Comparator.comparing(OrderedSource::key));
-        var result = new ObjectArrayList<ImportedRecipe<InsolatorContext>>(ordered.size());
+        var result = new ObjectArrayList<MachineRecipe>(ordered.size());
         for (int index = 0; index < ordered.size(); index++) {
             var source = ordered.get(index).source();
+            RecipeBuilder recipe;
             try {
-                result.add(convert(RecipeImportSupport.id(poolId, "insolator/" + index), source));
+                recipe = draft(RecipeImportSupport.id(poolId, "insolator/" + index), source);
             } catch (RuntimeException exception) {
                 PrototypeEngineering.LOGGER.error("Rejected Thermal Insolator recipe {} in pool {}", index, poolId, exception);
+                continue;
             }
+            if (onCreate == null || onCreate.create(recipe, source.getEnergy(), source.getWater(),
+                source.getSecondaryOutputChance(), source.hasFertilizer())) result.add(recipe.build());
         }
         return result;
     }
@@ -71,8 +92,11 @@ public final class ThermalInsolatorSource {
     private record OrderedSource(String key, InsolatorManager.InsolatorRecipe source) {
     }
 
-    public static ImportedRecipe<InsolatorContext> convert(ResourceLocation id,
-                                                          InsolatorManager.InsolatorRecipe source) {
+    public static MachineRecipe convert(ResourceLocation id, InsolatorManager.InsolatorRecipe source) {
+        return draft(id, source).build();
+    }
+
+    private static RecipeBuilder draft(ResourceLocation id, InsolatorManager.InsolatorRecipe source) {
         if (source.getEnergy() < 0 || source.getWater() < 0 || source.getSecondaryOutputChance() < 0)
             throw new IllegalArgumentException("Negative Thermal Insolator source quantity");
         var inputs = new ObjectArrayList<GenericStack>(3);
@@ -99,8 +123,7 @@ public final class ThermalInsolatorSource {
             recipe.addRequirement(RecipeRequirements.RESOURCES.requirement(
                 RecipeImportSupport.id(id, "secondary_output"), secondaryOutput));
         }
-        return new ImportedRecipe<>(recipe, new InsolatorContext(source, source.getType() == InsolatorManager.Type.TREE,
-            source.getEnergy(), source.getWater(), source.getSecondaryOutputChance(), source.hasFertilizer()));
+        return recipe;
     }
 
     private static DynamicInputGroup input(ResourceLocation id, String suffix, ItemStack stack) {
@@ -113,7 +136,8 @@ public final class ThermalInsolatorSource {
             List.of(displayed.what()), Integer.MAX_VALUE);
     }
 
-    public record InsolatorContext(InsolatorManager.InsolatorRecipe source, boolean tree, int energy,
-                                    int water, int secondaryChance, boolean hasFertilizer) {
+    @FunctionalInterface
+    interface CreationHandler {
+        boolean create(RecipeBuilder recipe, int energy, int water, int secondaryChance, boolean hasFertilizer);
     }
 }

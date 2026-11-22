@@ -8,5 +8,5 @@ import stanhebben.zenscript.annotations.ZenClass;
 @ZenClass("mods.prototype_eng.recipe.importing.thermalexpansion.InsolatorCallback")
 @FunctionalInterface
 public interface ZenInsolatorImportCallback {
-    boolean create(ZenRecipeBuilder recipe, ZenInsolatorImportContext context);
+    boolean create(ZenRecipeBuilder recipe, int energy, int water, int secondaryChance, boolean hasFertilizer);
 }

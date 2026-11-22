@@ -5,7 +5,9 @@ import ae2.api.stacks.AEKey;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.recipe.RecipeBuilder;
-import com.circulation.prototype_eng.api.recipe.importing.ImportedRecipe;
+import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.importing.thaumcraft.InfusionRecipePool;
+import org.jetbrains.annotations.Nullable;
 import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
@@ -19,7 +21,6 @@ import net.minecraft.nbt.NBTBase;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.oredict.OreDictionary;
 import thaumcraft.api.ThaumcraftApi;
-import thaumcraft.api.aspects.AspectList;
 import thaumcraft.api.crafting.InfusionRecipe;
 
 import java.util.List;
@@ -30,32 +31,49 @@ public final class ThaumcraftInfusionSource {
     private ThaumcraftInfusionSource() {
     }
 
-    public static List<ImportedRecipe<InfusionContext>> read(ResourceLocation poolId) {
+    public static List<MachineRecipe> read(ResourceLocation poolId) {
+        return read(poolId, null);
+    }
+
+    public static List<MachineRecipe> read(ResourceLocation poolId, @Nullable InfusionRecipePool.OnCreate onCreate) {
         RecipeImportSupport.requireMod("thaumcraft");
         var entries = new ObjectArrayList<>(ThaumcraftApi.getCraftingRecipes().entrySet());
         entries.sort(Map.Entry.comparingByKey());
-        var result = new ObjectArrayList<ImportedRecipe<InfusionContext>>();
+        var result = new ObjectArrayList<MachineRecipe>();
         for (int index = 0; index < entries.size(); index++) {
             var entry = entries.get(index);
             if (!(entry.getValue() instanceof InfusionRecipe source)) continue;
+            List<RecipeBuilder> recipes;
             try {
-                result.addAll(convert(poolId, entry.getKey(), source));
+                recipes = drafts(poolId, entry.getKey(), source);
             } catch (RuntimeException exception) {
                 PrototypeEngineering.LOGGER.error("Rejected Thaumcraft infusion recipe {} in pool {}", entry.getKey(), poolId, exception);
+                continue;
             }
+            accept(recipes, entry.getKey(), source, onCreate, result);
         }
         return result;
     }
 
-    public static List<ImportedRecipe<InfusionContext>> convert(ResourceLocation poolId,
-                                                               ResourceLocation sourceId, InfusionRecipe source) {
-        var converted = new ObjectArrayList<ImportedRecipe<InfusionContext>>();
+    public static List<MachineRecipe> convert(ResourceLocation poolId, ResourceLocation sourceId, InfusionRecipe source) {
+        return convert(poolId, sourceId, source, null);
+    }
+
+    public static List<MachineRecipe> convert(ResourceLocation poolId, ResourceLocation sourceId, InfusionRecipe source,
+                                              @Nullable InfusionRecipePool.OnCreate onCreate) {
+        var result = new ObjectArrayList<MachineRecipe>();
+        accept(drafts(poolId, sourceId, source), sourceId, source, onCreate, result);
+        return result;
+    }
+
+    private static List<RecipeBuilder> drafts(ResourceLocation poolId, ResourceLocation sourceId, InfusionRecipe source) {
+        var converted = new ObjectArrayList<RecipeBuilder>();
         var main = source.getRecipeInput();
         if (main == null) throw new IllegalArgumentException("Infusion source has no main input");
         var output = source.getRecipeOutput();
         var baseId = RecipeImportSupport.id(poolId, "infusion/" + sourceId.getNamespace() + "/" + sourceId.getPath());
         if (output instanceof ItemStack stack) {
-            converted.add(convert(baseId, sourceId, source, main, null, RecipeImportSupport.item(stack)));
+            converted.add(draft(baseId, source, main, null, RecipeImportSupport.item(stack)));
         } else if (output instanceof Object[] nbtOutput && nbtOutput.length == 2
             && nbtOutput[0] instanceof String tag && nbtOutput[1] instanceof NBTBase value) {
             var mainCandidates = main.getMatchingStacks();
@@ -69,7 +87,7 @@ public final class ThaumcraftInfusionSource {
                 outputStack.setCount(1);
                 outputStack.setTagInfo(tag, value.copy());
                 var id = RecipeImportSupport.id(baseId, "variant/" + candidateIndex);
-                converted.add(convert(id, sourceId, source, main, inputStack,
+                converted.add(draft(id, source, main, inputStack,
                     RecipeImportSupport.item(outputStack)));
             }
         } else {
@@ -79,9 +97,8 @@ public final class ThaumcraftInfusionSource {
         return converted;
     }
 
-    private static ImportedRecipe<InfusionContext> convert(ResourceLocation id, ResourceLocation sourceId,
-                                                           InfusionRecipe source, Ingredient main,
-                                                           ItemStack exactMain, GenericStack output) {
+    private static RecipeBuilder draft(ResourceLocation id, InfusionRecipe source, Ingredient main,
+                                       @Nullable ItemStack exactMain, GenericStack output) {
         var inputs = new ObjectArrayList<GenericStack>();
         var dynamic = new ObjectArrayList<DynamicInputGroup>();
         if (exactMain == null) {
@@ -98,8 +115,7 @@ public final class ThaumcraftInfusionSource {
         if (duration < 0) throw new IllegalArgumentException("Negative infusion instability");
         var recipe = new RecipeBuilder(id, duration);
         recipe.addRequirement(RecipeRequirements.RESOURCES.requirement(RecipeImportSupport.id(id, "resources"), resources));
-        return new ImportedRecipe<>(recipe, new InfusionContext(source, sourceId, source.getAspects().copy(),
-            source.instability, source.getResearch(), exactMain == null ? ItemStack.EMPTY : exactMain.copy()));
+        return recipe;
     }
 
     private static DynamicInputGroup ingredient(ResourceLocation id, String suffix, Ingredient ingredient) {
@@ -114,10 +130,17 @@ public final class ThaumcraftInfusionSource {
         return new DynamicInputGroup(matcher, candidates.getFirst(), 1, candidates, Integer.MAX_VALUE);
     }
 
-    /**
-     * Aspect and research data remain available to the pool callback for machine-specific requirements.
-     */
-    public record InfusionContext(InfusionRecipe source, ResourceLocation sourceId, AspectList aspects,
-                                   int instability, String research, ItemStack mainInput) {
+    private static void accept(List<RecipeBuilder> recipes, ResourceLocation sourceId, InfusionRecipe source,
+                               @Nullable InfusionRecipePool.OnCreate onCreate, List<MachineRecipe> accepted) {
+        for (int i = 0; i < recipes.size(); i++) {
+            var recipe = recipes.get(i);
+            if (onCreate == null || onCreate.create(recipe, sourceId, source.getAspects().copy(), source.instability,
+                source.getResearch(), mainInput(recipe))) accepted.add(recipe.build());
+        }
+    }
+
+    private static ItemStack mainInput(RecipeBuilder recipe) {
+        var resources = (ResourceRequirement) recipe.requirements().getFirst().payload();
+        return resources.inputs().isEmpty() ? ItemStack.EMPTY : ((AEItemKey) resources.inputs().getFirst().what()).toStack(1);
     }
 }

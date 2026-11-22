@@ -4,24 +4,26 @@ import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipeBuilder;
 import com.circulation.prototype_eng.api.recipe.importing.ImportedRecipePool;
-import com.circulation.prototype_eng.integration.recipeimport.RecipeImportSupport;
+import com.circulation.prototype_eng.api.recipe.importing.RecipePoolType;
 import com.circulation.prototype_eng.integration.recipeimport.tconstruct.TConstructMeltingSource;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.function.BiPredicate;
 
-public final class MeltingRecipePool extends ImportedRecipePool<TConstructMeltingSource.MeltingContext> {
-    public MeltingRecipePool(ResourceLocation id, String title) {
-        this(id, title, (_, _) -> true);
+public final class MeltingRecipePool extends ImportedRecipePool {
+    @FunctionalInterface
+    public interface OnCreate {
+        boolean create(RecipeBuilder recipe, int temperature, int usableTemperature);
     }
 
-    public MeltingRecipePool(ResourceLocation id, String title,
-        BiPredicate<RecipeBuilder, TConstructMeltingSource.MeltingContext> onCreate) {
-        super(id, title, () -> {
-            RecipeImportSupport.requireMod("tconstruct");
-            return TConstructMeltingSource.read(id);
-        }, onCreate);
+    @SuppressWarnings("unused")
+    public MeltingRecipePool(ResourceLocation id, String title) {
+        this(id, title, null);
+    }
+
+    public MeltingRecipePool(ResourceLocation id, String title, @Nullable OnCreate onCreate) {
+        super(id, title, () -> TConstructMeltingSource.read(id, onCreate), RecipePoolType.SINGLE_INPUT);
     }
 
     private MeltingRecipePool(MeltingRecipePool original, List<MachineRecipe> recipes, List<MachineType> machines) {

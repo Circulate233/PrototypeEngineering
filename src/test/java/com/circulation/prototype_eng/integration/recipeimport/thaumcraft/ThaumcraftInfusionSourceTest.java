@@ -18,6 +18,7 @@ import thaumcraft.api.aspects.AspectList;
 import thaumcraft.api.crafting.InfusionRecipe;
 
 import javax.annotation.Nonnull;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -39,8 +40,17 @@ class ThaumcraftInfusionSourceTest {
         var source = new InfusionRecipe("IMPORT_RESEARCH", new ItemStack(Items.DIAMOND), 2, aspects,
             Ingredient.fromStacks(new ItemStack(Items.IRON_INGOT), new ItemStack(Items.GOLD_INGOT)),
             new ItemStack(Items.REDSTONE), new ItemStack(Items.GLOWSTONE_DUST));
-        var imported = ThaumcraftInfusionSource.convert(id("pool"), id("source"), source).getFirst();
-        var resources = resources(imported.recipe().build());
+        var capturedAspects = new AtomicReference<AspectList>();
+        var imported = ThaumcraftInfusionSource.convert(id("pool"), id("source"), source,
+            (_, sourceId, copiedAspects, instability, research, mainInput) -> {
+                assertEquals(id("source"), sourceId);
+                assertEquals(source.instability, instability);
+                assertEquals(source.getResearch(), research);
+                assertTrue(mainInput.isEmpty());
+                capturedAspects.set(copiedAspects);
+                return true;
+            }).getFirst();
+        var resources = resources(imported);
 
         assertEquals(source.getComponents().size() + 1, resources.dynamicInputs().size());
         var main = resources.dynamicInputs().getFirst();
@@ -48,13 +58,12 @@ class ThaumcraftInfusionSourceTest {
         assertTrue(main.matcher().matches(AEItemKey.of(new ItemStack(Items.GOLD_INGOT)), main.pattern()));
         assertFalse(main.matcher().matches(AEItemKey.of(new ItemStack(Items.COAL)), main.pattern()));
         assertSame(Items.DIAMOND, ((AEItemKey) resources.outputs().getFirst().what()).getItem());
-        var context = imported.context();
-        assertNotNull(context);
-        assertSame(source, context.source());
-        assertNotSame(aspects, context.aspects());
+        assertNotSame(aspects, capturedAspects.get());
         for (var aspect : aspects.getAspects())
-            assertEquals(aspects.getAmount(aspect), context.aspects().getAmount(aspect));
-        assertEquals(source.getResearch(), context.research());
+            assertEquals(aspects.getAmount(aspect), capturedAspects.get().getAmount(aspect));
+        int copiedFire = capturedAspects.get().getAmount(Aspect.FIRE);
+        source.getAspects().add(Aspect.FIRE, 1);
+        assertEquals(copiedFire, capturedAspects.get().getAmount(Aspect.FIRE));
     }
 
     @Test
@@ -67,7 +76,7 @@ class ThaumcraftInfusionSourceTest {
 
         assertEquals(source.getRecipeInput().getMatchingStacks().length, imported.size());
         for (var variant : imported) {
-            var payload = resources(variant.recipe().build());
+            var payload = resources(variant);
             assertEquals(1, payload.outputs().size());
             var input = (AEItemKey) payload.inputs().getFirst().what();
             var output = (AEItemKey) payload.outputs().getFirst().what();
@@ -96,6 +105,27 @@ class ThaumcraftInfusionSourceTest {
 
         assertThrows(IllegalArgumentException.class,
             () -> ThaumcraftInfusionSource.convert(id("pool"), id("wildcard_source"), source));
+    }
+
+    @Test
+    void nullHandlerSkipsAspectMetadataAndCallbacksCanRejectOrFail() {
+        var source = new InfusionRecipe("IMPORT_NO_HANDLER", new ItemStack(Items.DIAMOND), 1,
+            new AspectList(), new ItemStack(Items.IRON_INGOT)) {
+            @Override
+            public AspectList getAspects() {
+                throw new AssertionError("Aspects must not be read without a creation handler");
+            }
+        };
+        assertEquals(1, ThaumcraftInfusionSource.convert(id("pool"), id("no_handler"), source).size());
+        var ordinary = new InfusionRecipe("IMPORT_HANDLER", new ItemStack(Items.DIAMOND), 1,
+            new AspectList(), new ItemStack(Items.IRON_INGOT));
+        assertTrue(ThaumcraftInfusionSource.convert(id("pool"), id("rejected"), ordinary,
+            (_, _, _, _, _, _) -> false).isEmpty());
+        var failure = new IllegalStateException("Creation handler failed");
+        assertSame(failure, assertThrows(IllegalStateException.class,
+            () -> ThaumcraftInfusionSource.convert(id("pool"), id("failed"), ordinary, (_, _, _, _, _, _) -> {
+                throw failure;
+            })));
     }
 
     private static ResourceRequirement resources(MachineRecipe recipe) {

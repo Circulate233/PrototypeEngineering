@@ -7,6 +7,12 @@ import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
+import com.circulation.prototype_eng.api.recipe.importing.ImportedRecipePool;
+import com.circulation.prototype_eng.api.recipe.importing.RecipePoolType;
+import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
+import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
+import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
+import com.circulation.prototype_eng.api.recipe.requirement.FuzzyInputGroup;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.integration.jei.AutoLayoutRecipePage;
@@ -454,6 +460,93 @@ class JeiRecipeIntegrationTest {
         assertTrue(wrapper.handleMouseScroll(10, oldHeight - 1, 1));
         assertEquals(25, layout.group(ITEM_INGREDIENT).getGuiIngredients().size());
         assertThrows(IllegalStateException.class, prepared::apply);
+    }
+
+    @Test
+    void importedSingleInputPagesRetainOuterCanonicalBindingsAcrossPreparedUpdates() {
+        var input = stack(ITEM, "imported_main", 5);
+        var output = stack(ITEM, "imported_output", 2);
+        var recipe = recipe("imported_recipe", List.of(input), List.of(output));
+        var imported = new ImportedRecipePool(id("imported_pool"), "pool.title", () -> List.of(recipe))
+            .poolType(RecipePoolType.SINGLE_INPUT);
+        assertTrue(SingleInputRecipePage.supports(imported));
+        var canonical = imported.freeze(imported.recipes(), List.of());
+        var displays = displays();
+        var snapshot = displays.capture(canonical.recipes());
+        var display = snapshot.describe(recipe);
+        var page = new SingleInputRecipePage(canonical, new JeiTestViews.Helper(), snapshot, JeiRenderOptions.defaults(), JeiTestViews.FONT);
+        var wrapper = page.createRecipe(recipe, display, ingredients(display));
+        assertSame(canonical, page.pool());
+        assertSame(canonical, wrapper.pool());
+        assertSame(recipe, wrapper.recipe());
+        assertEquals(1, page.inputLayout().size());
+        var layout = new JeiTestViews.Layout();
+        page.setRecipe(layout, wrapper, new JeiTestViews.Ingredients());
+        assertEquals(Set.of(input.what()), visibleKeys(layout, true));
+
+        var replacement = new MachineRecipe(recipe.id(), 20, recipe.orderedRequirements());
+        var target = canonical.freeze(List.of(replacement), List.of());
+        var nextSnapshot = displays.capture(target.recipes());
+        var nextDisplay = nextSnapshot.describe(replacement);
+        var update = Objects.requireNonNull(page.prepareUpdate(target, nextSnapshot));
+        var next = update.createRecipe(replacement, nextDisplay, ingredients(nextDisplay));
+        assertSame(canonical, page.pool());
+        assertSame(target, update.pool());
+        assertSame(target, next.pool());
+        assertSame(replacement, next.recipe());
+        update.apply();
+        assertSame(target, page.pool());
+        assertSame(canonical, wrapper.pool());
+        assertSame(recipe, wrapper.recipe());
+        assertEquals(imported.id(), page.pool().id());
+    }
+
+    @Test
+    void importedDynamicAndFuzzyInputsKeepCompleteDisplaysAndSharedMaterials() {
+        var first = stack(ITEM, "candidate_first", 3);
+        var second = stack(ITEM, "candidate_second", 3);
+        var output = stack(ITEM, "candidate_output", 1);
+        var matcher = new NamedResourceMatcher(id("candidate_matcher"), (_, _) -> {
+            throw new AssertionError("JEI must not run dynamic input matching");
+        });
+        var candidates = List.of(first.what(), second.what());
+        var fuzzy = new ResourceRequirement(List.of(), List.of(), List.of(), List.of(output), false,
+            ResourceChance.ALWAYS, null, List.of(new FuzzyInputGroup(candidates, first.amount())), List.of());
+        var dynamic = new ResourceRequirement(List.of(), List.of(), List.of(), List.of(output), false,
+            ResourceChance.ALWAYS, null, List.of(), List.of(new DynamicInputGroup(matcher, first.what(), first.amount(), candidates, 2)));
+        var options = new JeiRenderOptions(true, JeiRenderOptions.CandidateMode.EXPANDED, 0);
+        for (var requirement : List.of(fuzzy, dynamic)) {
+            var recipe = new MachineRecipe(id("candidate_recipe"), 10,
+                List.of(RecipeRequirements.RESOURCES.requirement(id("candidate_io"), requirement)));
+            var imported = new ImportedRecipePool(id("candidate_pool"), "pool.title", () -> List.of(recipe))
+                .poolType(RecipePoolType.SINGLE_INPUT);
+            var canonical = imported.freeze(imported.recipes(), List.of());
+            var displays = displays();
+            var display = displays.describe(recipe);
+            var page = new SingleInputRecipePage(canonical, new JeiTestViews.Helper(), displays, options, JeiTestViews.FONT);
+            var wrapper = page.createRecipe(recipe, display, ingredients(display));
+            var indexed = new JeiTestViews.Ingredients();
+            wrapper.getIngredients(indexed);
+            var layout = new JeiTestViews.Layout();
+            page.setRecipe(layout, wrapper, indexed);
+            assertSame(canonical, wrapper.pool());
+            assertEquals(2, page.inputLayout().size());
+            assertEquals(Set.of(first.what(), second.what()), visibleKeys(layout, true));
+            assertEquals(2, indexed.getInputs(ITEM_INGREDIENT).size());
+            assertFalse(wrapper.handleMouseScroll(10, page.getBackground().getHeight() - 1, -1));
+
+            var auxiliary = stack(FLUID, "candidate_water", 1);
+            var configured = canonical.withAuxiliaryInputs(List.of(auxiliary));
+            assertFalse(SingleInputRecipePage.supports(configured));
+            var configuredRecipe = configured.recipes().getFirst();
+            var configuredDisplay = displays.describe(configuredRecipe);
+            var configuredPage = new AutoLayoutRecipePage(configured, new JeiTestViews.Helper(), displays, options, JeiTestViews.FONT);
+            var configuredWrapper = configuredPage.createRecipe(configuredRecipe, configuredDisplay, ingredients(configuredDisplay));
+            var configuredLayout = new JeiTestViews.Layout();
+            configuredPage.setRecipe(configuredLayout, configuredWrapper, new JeiTestViews.Ingredients());
+            assertEquals(3, configuredPage.inputLayout().size());
+            assertEquals(Set.of(first.what(), second.what(), auxiliary.what()), visibleKeys(configuredLayout, true));
+        }
     }
 
     @Test

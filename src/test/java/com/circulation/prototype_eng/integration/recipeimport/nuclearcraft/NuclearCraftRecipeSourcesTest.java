@@ -9,7 +9,6 @@ import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttrib
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipeBuilder;
-import com.circulation.prototype_eng.api.recipe.importing.ImportedRecipe;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
@@ -39,11 +38,13 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NuclearCraftRecipeSourcesTest {
@@ -61,15 +62,23 @@ class NuclearCraftRecipeSourcesTest {
         var extras = new ObjectArrayList<Object>(List.of(1.75D, 2.5D, 0.125D));
         var source = new BasicRecipe(List.of(items), List.of(fluids),
             List.of(new ItemIngredient(new ItemStack(Items.DIAMOND))), List.of(), extras, true);
-        var variants = NuclearCraftRecipeSources.convert(id("alternatives"), "infuser", 0, source, 8, 4);
+        var capturedExtras = new AtomicReference<List<Object>>();
+        var variants = NuclearCraftRecipeSources.convert(id("alternatives"), "infuser", 0, source, 8, 4,
+            (_, duration, energy, radiation, copiedExtras) -> {
+                assertEquals(source.getBaseProcessTime(8), duration);
+                assertEquals(source.getBaseProcessPower(4), energy);
+                assertEquals(source.getBaseProcessRadiation(), radiation);
+                capturedExtras.set(copiedExtras);
+                return true;
+            });
         assertEquals(4, variants.size());
-        ImportedRecipe<NuclearCraftRecipeContext> selected = null;
+        MachineRecipe selected = null;
         var gold = Objects.requireNonNull(AEItemKey.of(new ItemStack(Items.GOLD_INGOT)));
         var iron = Objects.requireNonNull(AEItemKey.of(new ItemStack(Items.IRON_INGOT)));
         var lava = Objects.requireNonNull(AEFluidKey.of(new FluidStack(FluidRegistry.LAVA, 1)));
         var water = Objects.requireNonNull(AEFluidKey.of(new FluidStack(FluidRegistry.WATER, 1)));
         for (var variant : variants) {
-            var inputs = inputs(variant.recipe());
+            var inputs = inputs(variant);
             assertEquals(2, inputs.size());
             var item = inputs.getFirst();
             var fluid = inputs.getLast();
@@ -80,16 +89,15 @@ class NuclearCraftRecipeSourcesTest {
             if (item.amount() == 4 && fluid.amount() == 250) selected = variant;
         }
         var imported = Objects.requireNonNull(selected);
-        assertSame(source, imported.context().source());
         extras.set(0, 99D);
-        assertEquals(List.of(1.75D, 2.5D, 0.125D), imported.context().extras());
+        assertEquals(List.of(1.75D, 2.5D, 0.125D), capturedExtras.get());
 
         var input = hatch(HatchMode.INPUT, 2);
         var output = hatch(HatchMode.OUTPUT, 1);
         var material = Objects.requireNonNull(input.input());
         material.insert(gold, 4, Actionable.MODULATE);
         material.insert(lava, 249, Actionable.MODULATE);
-        var process = process(materialOnly(imported.recipe()).build(), input, output, 7);
+        var process = process(materialOnly(imported).build(), input, output, 7);
         assertInstanceOf(ProcessResult.Blocked.class, process.tick());
         assertEquals(4, material.availableAmount(gold));
         assertEquals(249, material.availableAmount(lava));
@@ -106,7 +114,7 @@ class NuclearCraftRecipeSourcesTest {
         var fluid = new ChanceFluidIngredient(new FluidIngredient(new FluidStack(FluidRegistry.WATER, 350)), 50, 50, 100);
         var source = new BasicRecipe(List.of(), List.of(), List.of(item), List.of(fluid), List.of(1D, 1D, 0D), true);
         var imported = NuclearCraftRecipeSources.convert(id("chance"), "chemical_reactor", 0, source, 1, 0).getFirst();
-        var recipe = materialOnly(imported.recipe()).build();
+        var recipe = materialOnly(imported).build();
         var diamond = Objects.requireNonNull(AEItemKey.of(new ItemStack(Items.DIAMOND)));
         var water = Objects.requireNonNull(AEFluidKey.of(new FluidStack(FluidRegistry.WATER, 1)));
         var itemAmounts = new LongOpenHashSet();
@@ -140,7 +148,7 @@ class NuclearCraftRecipeSourcesTest {
             var owner = new MachineInstance();
             owner.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 2);
             owner.components().put(MachineHatches.TYPE, new MachineHatches(List.of(output), List.of(), List.of()));
-            var process = new RecipeProcess(owner, materialOnly(imported.recipe()).build(), 1);
+            var process = new RecipeProcess(owner, materialOnly(imported).build(), 1);
             assertSame(ProcessResult.SUCCESS, process.tick());
             var products = Objects.requireNonNull(output.output());
             assertEquals(2L * (percent == 0 ? item.getMinStackSize() : item.getMaxStackSize(0)),
@@ -150,18 +158,39 @@ class NuclearCraftRecipeSourcesTest {
         }
     }
 
-    private static List<DynamicInputGroup> inputs(RecipeBuilder recipe) {
+    @Test
+    void nullHandlerSkipsRadiationDataAndFalseOrFailureStopsRecipeCreation() {
+        var source = new BasicRecipe(List.of(), List.of(), List.of(new ItemIngredient(new ItemStack(Items.DIAMOND))),
+            List.of(), List.of(1D, 1D, 0D), true) {
+            @Override
+            public double getBaseProcessRadiation() {
+                throw new AssertionError("Radiation is only needed by a creation handler");
+            }
+        };
+        assertEquals(1, NuclearCraftRecipeSources.convert(id("no_handler"), "infuser", 0, source, 8, 4).size());
+        var ordinary = new BasicRecipe(List.of(), List.of(), List.of(new ItemIngredient(new ItemStack(Items.DIAMOND))),
+            List.of(), List.of(1D, 1D, 0D), true);
+        assertTrue(NuclearCraftRecipeSources.convert(id("rejected"), "infuser", 0, ordinary, 8, 4,
+            (_, _, _, _, _) -> false).isEmpty());
+        var failure = new IllegalStateException("Creation handler failed");
+        assertSame(failure, assertThrows(IllegalStateException.class,
+            () -> NuclearCraftRecipeSources.convert(id("failed"), "infuser", 0, ordinary, 8, 4, (_, _, _, _, _) -> {
+                throw failure;
+            })));
+    }
+
+    private static List<DynamicInputGroup> inputs(MachineRecipe recipe) {
         var result = new ObjectArrayList<DynamicInputGroup>();
-        for (var requirement : recipe.requirements()) {
+        for (var requirement : recipe.orderedRequirements()) {
             if (requirement.type() == RecipeRequirements.RESOURCES)
                 result.addAll(((ResourceRequirement) requirement.payload()).dynamicInputs());
         }
         return result;
     }
 
-    private static RecipeBuilder materialOnly(RecipeBuilder source) {
+    private static RecipeBuilder materialOnly(MachineRecipe source) {
         var result = new RecipeBuilder(source.id(), 0);
-        for (var requirement : source.requirements())
+        for (var requirement : source.orderedRequirements())
             if (requirement.type() == RecipeRequirements.RESOURCES) result.addRequirement(requirement);
         return result;
     }

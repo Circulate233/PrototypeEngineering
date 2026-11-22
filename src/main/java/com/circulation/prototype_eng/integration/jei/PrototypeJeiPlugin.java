@@ -19,7 +19,6 @@ import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
-import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
 import com.circulation.prototype_eng.block.MachineControllerBlocks;
 import com.circulation.prototype_eng.client.gui.GuiResearchOverview;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -331,8 +330,8 @@ public class PrototypeJeiPlugin implements IModPlugin {
         var pages = RecipePoolJeiRegistry.INSTANCE;
         var helper = registration.getJeiHelpers().getGuiHelper();
         var descriptions = displays.capture(RecipePoolJeiRegistry.recipesForOwnPages(pools, known));
-        pages.freeze(pools, pool -> pool instanceof SimpleRecipePool simple
-            ? new SingleInputRecipePage(simple, helper, descriptions, pages.renderOptions(pool.id()))
+        pages.freeze(pools, pool -> SingleInputRecipePage.supports(pool)
+            ? new SingleInputRecipePage(pool, helper, descriptions, pages.renderOptions(pool.id()))
             : new AutoLayoutRecipePage(pool, helper, descriptions, pages.renderOptions(pool.id())), descriptions, known);
         registrationDescriptions = descriptions;
 

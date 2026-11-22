@@ -565,7 +565,9 @@ com.circulation.prototype_eng
 
 整机并行基数扣除全部宿主的有效运行/已登记pending占用；每配方可指定线程上限。事件或factory最终数量可超过控制器基数，物料、FE和PN按最终有效数量沿原事务计费；降低上限不驱逐已运行进程。预算让出保留纯计算游标，跨tick重新核授权与live候选，不能保存旧permit/lease/预留作为新授权。
 
-RecipePool 是独立公开接口，DefaultRecipePool 提供通用实现，SimpleRecipePool 仅索引受支持的固定START输入/END输出。freeze保留具体策略及canonical身份；选中池的候选先局部并集/稳定排序，再与外部索引相交。默认简单池使用实际owner的安全输入策略，未知输入改写回退；外部可承担明确stable-input契约。库存绑定、context/identity/revision及最终freshness沿同一预算续办，未完成捕获不发布意见。
+RecipePool 是独立公开接口，DefaultRecipePool 提供通用实现。SimpleRecipePool 的 Entry 接口要求一个固定 START 主输入及固定 END 输出；forRecipes 允许一个固定、模糊或动态 START 主输入，其他能量与事件需求继续按完整定义处理。固定输入可建立索引，动态匹配或无法证明数量下界的定义必须保留候选并交由普通准入检查。公共辅助材料独立参与事务，禁止计入主输入候选匹配。freeze 必须保留具体策略、准确配方对象及机器绑定，库存绑定、context/identity/revision 和最终有效性检查沿同一预算继续执行，未完成捕获不得发布意见。
+
+模组配方导入必须按 modid 分包，每种来源配方提供独立、可多次构造的公开池类，Java 与 ZS 使用同一实现。构造和配置不得枚举来源，首次实际读取时才初始化。每个池自行定义创建回调的参数，例如熔炉额外接收 float 经验值，禁止统一包装为 Context；未设置回调时必须保存 null 并跳过参数副本构造与回调执行。回调可以修改配方，返回 false 时拒绝加入，异常必须记录并传播。底层类型通过 poolType 方法在首次访问前选择：熔炉、IC2 压缩机及打粉机、匠魂熔炼和 NC 熔化机默认 SINGLE_INPUT，其余当前导入池默认 GENERAL，允许按回调修改后的最终配方双向切换。选择单输入时必须验证实际主输入形状，禁止失败后自动改用通用池。
 
 ### 5.3 Java API 与 CraftTweaker
 

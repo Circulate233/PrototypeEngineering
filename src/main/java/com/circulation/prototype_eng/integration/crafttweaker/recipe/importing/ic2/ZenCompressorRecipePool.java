@@ -3,8 +3,10 @@ package com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.
 import com.circulation.prototype_eng.api.recipe.importing.ic2.CompressorRecipePool;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipePool;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipeBuilder;
+import crafttweaker.mc1120.data.NBTConverter;
 import crafttweaker.annotations.ZenRegister;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
@@ -18,12 +20,12 @@ public final class ZenCompressorRecipePool extends ZenRecipePool {
 
     @ZenMethod
     public static ZenCompressorRecipePool create(String id, String titleKey, String revision) {
-        return new ZenCompressorRecipePool(new CompressorRecipePool(new ResourceLocation(id), titleKey), revision);
+        return create(id, titleKey, revision, null);
     }
 
     @ZenMethod
-    public static ZenCompressorRecipePool create(String id, String titleKey, String revision, ZenIc2ImportCallback onCreate) {
+    public static ZenCompressorRecipePool create(String id, String titleKey, String revision, @Nullable ZenIc2ImportCallback onCreate) {
         return new ZenCompressorRecipePool(new CompressorRecipePool(new ResourceLocation(id), titleKey,
-            (recipe, context) -> onCreate.create(new ZenRecipeBuilder(recipe), new ZenIc2ImportContext(context))), revision);
+            onCreate == null ? null : (recipe, metadata) -> onCreate.create(new ZenRecipeBuilder(recipe), NBTConverter.from(metadata, true))), revision);
     }
 }
