@@ -119,6 +119,12 @@ public final class SimpleRecipePool implements RecipePool {
         return auxiliaryInputs;
     }
 
+    @Override
+    public RecipePool withConfiguration(RecipeConfiguration configuration) {
+        var common = RecipeConfiguration.builder().auxiliaryInputs(auxiliaryInputs).build().merge(configuration);
+        return new ConfiguredRecipePool(withAuxiliaryInputs(List.of()), common);
+    }
+
     /**
      * Returns a new declaration with shared START inputs. Bind revisions, codecs and callbacks to
      * the returned pool's recipes; their identities change when the shared inputs change.

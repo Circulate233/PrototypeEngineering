@@ -184,6 +184,8 @@ var recipe = new MachineRecipe(
 
 ### 配方池与库存匹配
 
+所有 `RecipePool` 均支持公共配置：`withConfiguration`、`withRequirements`、`withAuxiliaryInputs`、`withEvent`。`RecipeBuilder` 让单个配方与池配置复用完整需求和阶段事件。十二种来源分别提供独立公开池类，Java 位于 `api.recipe.importing.<modid>`，ZS 位于 `mods.prototype_eng.recipe.importing.<modid>`。Java 直接构造，ZS 由各类型的 `create` 创建；构造不读取来源，首次读取才转换并执行可编辑、返回 boolean 的专用创建回调。完整类型、上下文、执行映射、保存及用例见[配方池公共配置与模组导入](docs/recipe-imports.md)。
+
 配方池决定机器可以扫描哪些配方，也提供库存匹配策略。普通机器使用 `DefaultRecipePool` 即可。如果每条配方恰好只有一个固定的开始输入，并且只产生固定结束输出，可以使用 `SimpleRecipePool`；它按主输入资源建立索引，输出数量不限。通过 `pool.withAuxiliaryInputs(List<GenericStack>)` 在池上配置公共辅助输入，例如 `pool.withAuxiliaryInputs(List.of(new GenericStack(AEFluidKey.of(new FluidStack(FluidRegistry.WATER, 1)), 1)))` 使每份配方额外消耗 1 mB 水。必须保留返回池，并对它的 `recipes()` 绑定 revision、codec 和按配方对象登记的行为。辅助材料按普通 START 输入支付和并行缩放，主辅同键累加；匹配候选及数量上界仍只看主输入。重复设置替换整份辅助列表，空列表清除。后续 `registry.registerRecipe(poolId, rawRecipe)` 自动应用池的公共输入；需要绑定保存及准确对象回调时，先调用 `pool.prepareRecipe(rawSingleInputRecipe)` 并使用返回配方，已准备的定义不会重复添加。定义替换也提交经此方法准备的完整配方。完整规则见[配方池接口](docs/recipes.md#配方池接口与简单配方索引)。
 
 `CompositeRecipePool` 把多个池合成一个入口，保留各子池的匹配方式。例如把简单池和 addon 提供的特殊池组合后，机器只需选择组合池。子池不会因为被组合而自动单独注册，是否需要独立 JEI 页面由作者决定。

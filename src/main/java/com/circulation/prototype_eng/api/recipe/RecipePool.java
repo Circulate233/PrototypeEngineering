@@ -1,10 +1,14 @@
 package com.circulation.prototype_eng.api.recipe;
 
 import ae2.api.stacks.AEKey2LongMap;
+import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
 import com.circulation.prototype_eng.api.recipe.scanning.ResourceRecipeIndex;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeEventHandler;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -23,6 +27,26 @@ public interface RecipePool {
     List<MachineRecipe> recipes();
 
     List<MachineType> machines();
+
+    default RecipePool withConfiguration(RecipeConfiguration configuration) {
+        return new ConfiguredRecipePool(this, configuration);
+    }
+
+    default RecipePool withRequirements(List<RecipeRequirement<?>> requirements) {
+        return withConfiguration(RecipeConfiguration.builder().requirements(requirements).build());
+    }
+
+    default RecipePool withAuxiliaryInputs(List<GenericStack> inputs) {
+        return withConfiguration(RecipeConfiguration.builder().auxiliaryInputs(inputs).build());
+    }
+
+    default RecipePool withEvent(ResourceLocation eventId, RecipeStage stage, RecipeEventHandler handler) {
+        return withConfiguration(RecipeConfiguration.builder().event(eventId, stage, handler).build());
+    }
+
+    default RecipePool withExistingJeiPage(@Nullable String categoryUid) {
+        return new ConfiguredRecipePool(this, RecipeConfiguration.builder().build()).withExistingJeiPage(categoryUid);
+    }
 
     /**
      * Applies pool-wide declarations to an appended recipe before registration. Retain its ID and

@@ -92,7 +92,7 @@ public class DefaultRecipeDisplays {
                 display.information(of(JeiText.AttributeAdded, attribute.attribute(), attribute.modifier().id()));
             if (attribute.removeAtEnd())
                 display.information(of(JeiText.AttributeRemoved, attribute.attribute(), attribute.modifier().id()));
-        } else {
+        } else if (requirement.type() != RecipeRequirements.EVENTS) {
             display.information(of(JeiText.CustomRequirement, requirement.type().id(), requirement.id()));
         }
     }

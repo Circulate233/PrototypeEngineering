@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-22 通用池公共配置与模组导入完成：所有池支持公共完整需求、材料、事件及配方设置；十二种来源分别提供按 modid 分包的 Java 具体池类和 ZS create，实例独立、首次访问初始化、专有上下文与 boolean 筛选。冻结保留具体类型/准确配方/机器绑定，IC2/Thermal 稳定排序，ZS 注册延迟建立 codec。完整 build/Spotless、1848 tests / 291 suites、82 Java IDEA 全级零诊断及定向构建通过。入口：[独立池与用例](recipe-imports.md)、[接口](recipes.md#配方池接口与简单配方索引)、[验证记录](implementation-status.md#2026-11-22-通用配方池配置与独立模组导入池)。阶段已完成，使用方按来源映射配置温度/本质等实际需求并维护 revision；未启动游戏，本地英文提交，不推送。
+
 - 2026-11-22 单输入配方池支持独立公共辅助输入：Java `withAuxiliaryInputs(List<GenericStack>)`、ZS `.auxiliaryInputs(Resource[])` 为全池设置普通 START 材料，后续追加注册自动应用；候选匹配及其数量上界仍只按原主输入。辅助材料沿普通事务处理并行倍率、同键累计、来源分配和缺料等待，JEI 与样板包含完整材料。完整 build/Spotless、1817 tests / 282 suites、11 Java IDEA 全级零诊断与定向构建通过；文档既有诊断已单独记录。入口：[配方池](recipes.md#配方池接口与简单配方索引)、[ZS](../api-zs-reference.md#选择配方池)、[验证记录](implementation-status.md#2026-11-22-单输入配方池公共辅助材料)。阶段已完成，使用方按文档配置辅助材料并更新需求变更对应的 revision；未启动游戏，本地英文提交，不推送。
 
 - 2026-11-18 研究总览支持按钮切换自动/手动布局，仅手动允许拖动，切回自动立即重排；全部导出一次保存所有分页。队伍调试按钮完成或遗忘全体成员的全部普通研究，保留奖励记录。正式命令统一为 `/pe research edit [玩家名]`、`/pe research reload`、`/pe structures reload`、`/pe scheduler ...` 和客户端 `/pe preview ...`。完整 build/Spotless、1803 tests / 281 suites、21 Java 与 4 语言 IDEA 全级零诊断及定向构建通过；HTML 脚本语法通过，既有诊断单独记录；29 Java addon 已编译安装。入口：[编辑规则](research-overview.md#编辑模式)、[命令要求](development-spec.md)、[验证记录](implementation-status.md#2026-11-18-总览布局队伍调试与统一命令)。下一步由用户完整重启复验布局切换与全部导出、队伍批量完成/遗忘和新命令；未启动游戏，本地英文提交，不推送。

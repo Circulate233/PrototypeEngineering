@@ -84,7 +84,11 @@ machine.register("v1");
 
 `Pool.create(id, titleKey, recipes)` 创建普通池，适用于有多个输入、FE、逐 tick IO 或复杂输出的配方。`Pool.simple(...)` 建立只有一个固定开始输入的索引池，结束输出数量不限；输入以外的需求不能放入该池。`Pool.combine(...)` 把多个池组成一个机器扫描入口，保留每个子池的匹配规则，但不会自动注册子池。
 
-单输入池可调用 `.auxiliaryInputs(Resource[])` 设置整池公共辅助输入。例如 `Pool.simple("example:washing", "pool.example.washing", recipes).auxiliaryInputs([Resource.fluid(<liquid:water>, 1)])` 为每份配方增加 1 mB 水，N 并行按 N 倍支付。材料类型、数量、倍率、来源分配、缺料与事务处理均沿普通固定输入；主辅相同资源累加。辅助材料独立在池上声明，候选匹配仍只看原主输入。方法返回新池，重复设置替换整份列表，传 `[]` 清除，必须使用返回值注册。新池自动把原 recipe codec 重绑到完整配方，保留 revision、自定义组件、overlay 和校验函数；更改需求后必须更新原配方声明的 revision，按对象绑定的外部行为须使用新池的实际配方。普通池调用该方法会拒绝。
+所有池均可调用 `.auxiliaryInputs(Resource[])` 设置整池公共 START 辅助输入。例如 `Pool.simple("example:washing", "pool.example.washing", recipes).auxiliaryInputs([Resource.fluid(<liquid:water>, 1)])` 为每份配方增加 1 mB 水，N 并行按 N 倍支付。材料类型、数量、倍率、来源分配、缺料与事务处理均沿普通固定输入，主辅同键累加。普通材料配置保留原候选策略，单输入池仍只看原主输入。方法返回新池，重复设置替换列表，传 `[]` 清除，必须使用返回值注册。新池自动把原 codec 重绑到完整配方，保留 revision、自定义组件、overlay 和校验函数；更改需求后必须更新 revision，按准确配方对象登记的行为须使用新池实际配方。
+
+`.requirements(Requirement[])` 追加全池公共需求，`.event(id, "START/TICK/END", callback)` 添加普通可逆阶段事件。`.durationTicks/.groups/.maxThreads/.parallelism` 设置全池配方字段。公共任意回调需求不能证明原输入数量稳定时，匹配保留完整组兼容候选。`Builder.create(id, ticks)` 和 `Builder.from(recipe)` 使用相同需求与事件入口，`build(revision)` 创建配方。事件 callback 接收 `EventContext` 并返回 `EventTransaction`；具体事务及 probe 规则见[配方池公共配置](docs/recipe-imports.md#通用阶段事件)。
+
+`mods.prototype_eng.recipe.importing.<modid>` 按来源模组分包，每种配方提供独立池类，例如 `minecraft.FurnaceRecipePool`、`ic2.CompressorRecipePool` 和 `tconstruct.MeltingRecipePool`。各类 `create(id, titleKey, revision[, callback])` 创建自己的实例，构造和配置时不读取来源，首次实际读取才转换并执行 callback。callback 可修改 Builder，返回 false 拒绝收录；有来源特有数据时另提供对应上下文。完整类型、上下文属性和 Java/ZS 用例见[模组配方导入](docs/recipe-imports.md)。
 
 `existingJeiPage(uid)` 让该池沿用已经存在的 JEI 分类入口。`jeiOptions(options)` 设置概率提示和候选材料的显示方式。这些设置方法返回一个新池；必须把返回结果用于注册。`customJeiPage(Page.named(id))` 只引用 Java 页面，并不会自行创建 JEI 布局。
 

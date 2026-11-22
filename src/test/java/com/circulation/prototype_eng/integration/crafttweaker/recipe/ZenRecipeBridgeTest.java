@@ -16,6 +16,8 @@ import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
 import com.circulation.prototype_eng.api.recipe.CompositeRecipePool;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
+import com.circulation.prototype_eng.api.recipe.RecipeBuilder;
+import com.circulation.prototype_eng.api.recipe.importing.ImportedRecipePool;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarationKey;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarationRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarations;
@@ -39,6 +41,30 @@ import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
 import com.circulation.prototype_eng.integration.crafttweaker.ZenComponentData;
 import com.circulation.prototype_eng.integration.crafttweaker.ZenComponentDataType;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.minecraft.ZenFurnaceImportCallback;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.minecraft.ZenFurnaceImportContext;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.minecraft.ZenFurnaceRecipePool;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.ic2.ZenCompressorRecipePool;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.ic2.ZenIc2ImportCallback;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.ic2.ZenIc2ImportContext;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.ic2.ZenMaceratorRecipePool;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.nuclearcraft.ZenAlloyFurnaceRecipePool;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.nuclearcraft.ZenChemicalReactorRecipePool;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.nuclearcraft.ZenInfuserRecipePool;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.nuclearcraft.ZenMelterRecipePool;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.nuclearcraft.ZenNuclearImportCallback;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.nuclearcraft.ZenNuclearImportContext;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.tconstruct.ZenAlloyRecipePool;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.tconstruct.ZenMeltingImportCallback;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.tconstruct.ZenMeltingImportContext;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.tconstruct.ZenMeltingRecipePool;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.thaumcraft.ZenInfusionImportCallback;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.thaumcraft.ZenInfusionImportContext;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.thaumcraft.ZenInfusionRecipePool;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.thermalexpansion.ZenInsolatorImportCallback;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.thermalexpansion.ZenInsolatorImportContext;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.thermalexpansion.ZenInsolatorRecipePool;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.thermalexpansion.ZenInsolatorTreeRecipePool;
 import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
 import com.circulation.prototype_eng.recipe.RecipeDefinitionManifestCodec;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
@@ -75,6 +101,7 @@ import stanhebben.zenscript.symbols.SymbolType;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.io.StringReader;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
@@ -124,6 +151,16 @@ class ZenRecipeBridgeTest {
             ZenRecipeUpdateCallback.class, IData.class, Harness.class)) {
             registry.registerNativeClass(type);
         }
+        for (var type : List.of(ZenRecipeBuilder.class, ZenRecipeCreateCallback.class,
+            ZenRecipeEventAction.class, ZenRecipeEventCallback.class, ZenRecipeEventContext.class, ZenRecipeEventTransaction.class,
+            ZenFurnaceImportContext.class, ZenFurnaceImportCallback.class, ZenIc2ImportContext.class, ZenIc2ImportCallback.class,
+            ZenNuclearImportContext.class, ZenNuclearImportCallback.class, ZenMeltingImportContext.class, ZenMeltingImportCallback.class,
+            ZenInfusionImportContext.class, ZenInfusionImportCallback.class, ZenInsolatorImportContext.class, ZenInsolatorImportCallback.class,
+            ZenParallelismSelection.class, ZenParallelismCallback.class)) registry.registerNativeClass(type);
+        for (var type : List.of(ZenFurnaceRecipePool.class, ZenCompressorRecipePool.class, ZenMaceratorRecipePool.class,
+            ZenAlloyFurnaceRecipePool.class, ZenInfuserRecipePool.class, ZenChemicalReactorRecipePool.class, ZenMelterRecipePool.class,
+            ZenMeltingRecipePool.class, ZenAlloyRecipePool.class, ZenInfusionRecipePool.class,
+            ZenInsolatorRecipePool.class, ZenInsolatorTreeRecipePool.class)) registry.registerNativeClass(type);
         for (var expansion : List.of(ExpandAnyDict.class, ExpandDataStringDict.class, ExpandInt.class, ExpandBool.class, ExpandString.class))
             registry.registerExpansion(expansion);
         for (var expansion : expansions) registry.registerExpansion(expansion);
@@ -384,15 +421,173 @@ class ZenRecipeBridgeTest {
     }
 
     @Test
-    void sharedInputsRejectGeneralPoolsAndPreserveAnUnchangedSimplePool() {
+    void sharedInputsSupportGeneralPoolsAndPreserveAnUnchangedSimplePool() {
         var recipe = Harness.auxiliaryRecipe();
         var general = ZenRecipePool.create("auxiliary_bridge:general", "pool.title", new ZenRecipe[]{recipe});
-        assertThrows(IllegalArgumentException.class,
-            () -> general.auxiliaryInputs(new ZenResource[]{Harness.resource()}));
+        var updated = general.auxiliaryInputs(new ZenResource[]{Harness.resource()});
+        assertEquals(2, updated.value().recipes().getFirst().orderedRequirements().size());
+        assertSame(updated.value().recipes().getFirst(), updated.recipes().getFirst().codec().recipe());
         assertSame(recipe.recipe(), general.value().recipes().getFirst());
         var simple = ZenRecipePool.simple("auxiliary_bridge:empty", "pool.title", new ZenRecipe[]{recipe});
         assertSame(simple, simple.auxiliaryInputs(new ZenResource[0]));
         assertSame(recipe.recipe(), simple.value().recipes().getFirst());
+    }
+
+    @Test
+    void realZenScriptBuildsAllTypedImportFactoriesWithoutReadingOptionalSources() throws Exception {
+        Harness.importedFactories.clear();
+        Harness.configuredFactory = null;
+        Harness.secondImportedFactory = null;
+        var compiled = compile("""
+            import mods.prototype_eng.recipe.importing.minecraft.FurnaceRecipePool;
+            import mods.prototype_eng.recipe.importing.ic2.CompressorRecipePool;
+            import mods.prototype_eng.recipe.importing.ic2.MaceratorRecipePool;
+            import mods.prototype_eng.recipe.importing.nuclearcraft.AlloyFurnaceRecipePool;
+            import mods.prototype_eng.recipe.importing.nuclearcraft.InfuserRecipePool;
+            import mods.prototype_eng.recipe.importing.nuclearcraft.ChemicalReactorRecipePool;
+            import mods.prototype_eng.recipe.importing.nuclearcraft.MelterRecipePool;
+            import mods.prototype_eng.recipe.importing.tconstruct.MeltingRecipePool;
+            import mods.prototype_eng.recipe.importing.tconstruct.AlloyRecipePool;
+            import mods.prototype_eng.recipe.importing.thaumcraft.InfusionRecipePool;
+            import mods.prototype_eng.recipe.importing.thermalexpansion.InsolatorRecipePool;
+            import mods.prototype_eng.recipe.importing.thermalexpansion.InsolatorTreeRecipePool;
+            import tests.prototype_eng.Harness;
+            var furnace = FurnaceRecipePool.create("import_factory:furnace", "title", "v1", function(recipe, context) {
+                recipe.durationTicks(50);
+                return context.experience >= 0;
+            });
+            Harness.captureImportedFactory(furnace);
+            Harness.captureSecondImportedFactory(FurnaceRecipePool.create("import_factory:second_furnace", "title", "v1"));
+            Harness.captureConfiguredFactory(furnace.durationTicks(60).groups(["import_factory:group"])
+                .maxThreads(3).existingJeiPage("minecraft:smelting"));
+            Harness.captureImportedFactory(CompressorRecipePool.create("import_factory:compressor", "title", "v1", function(recipe, context) {
+                return context.inputAmount > 0;
+            }));
+            Harness.captureImportedFactory(MaceratorRecipePool.create("import_factory:macerator", "title", "v1"));
+            Harness.captureImportedFactory(AlloyFurnaceRecipePool.create("import_factory:alloy", "title", "v1", function(recipe, context) {
+                return context.radiation == 0;
+            }));
+            Harness.captureImportedFactory(InfuserRecipePool.create("import_factory:infuser", "title", "v1"));
+            Harness.captureImportedFactory(ChemicalReactorRecipePool.create("import_factory:chemical", "title", "v1"));
+            Harness.captureImportedFactory(MelterRecipePool.create("import_factory:melter", "title", "v1"));
+            Harness.captureImportedFactory(MeltingRecipePool.create("import_factory:melting", "title", "v1", function(recipe, context) {
+                return context.temperature < 1000;
+            }));
+            Harness.captureImportedFactory(AlloyRecipePool.create("import_factory:smeltery_alloy", "title", "v1", function(recipe) {
+                return recipe.duration > 0;
+            }));
+            Harness.captureImportedFactory(InfusionRecipePool.create("import_factory:infusion", "title", "v1", function(recipe, context) {
+                return context.aspectAmount("aer") < 100;
+            }));
+            Harness.captureImportedFactory(InsolatorRecipePool.create("import_factory:insolator", "title", "v1", function(recipe, context) {
+                return context.water > 0;
+            }));
+            Harness.captureImportedFactory(InsolatorTreeRecipePool.create("import_factory:tree", "title", "v1"));
+            """, "import_factories.zs");
+        assertEquals("", compiled.diagnostics());
+        Objects.requireNonNull(compiled.module().getMain()).run();
+        var expected = List.of(ZenFurnaceRecipePool.class, ZenCompressorRecipePool.class, ZenMaceratorRecipePool.class,
+            ZenAlloyFurnaceRecipePool.class, ZenInfuserRecipePool.class, ZenChemicalReactorRecipePool.class, ZenMelterRecipePool.class,
+            ZenMeltingRecipePool.class, ZenAlloyRecipePool.class, ZenInfusionRecipePool.class,
+            ZenInsolatorRecipePool.class, ZenInsolatorTreeRecipePool.class);
+        assertEquals(expected, Harness.importedFactories.stream().map(Object::getClass).toList());
+        for (var pool : Harness.importedFactories) {
+            assertTrue(pool.deferred());
+            assertEquals("title", pool.value().translationKey());
+        }
+        assertNotNull(Harness.configuredFactory);
+        assertEquals("import_factory:furnace", Harness.configuredFactory.id());
+        assertEquals("minecraft:smelting", Harness.configuredFactory.value().existingJeiPageId());
+        assertTrue(Harness.configuredFactory.deferred());
+        assertInstanceOf(ZenFurnaceRecipePool.class, Harness.secondImportedFactory);
+        assertNotSame(Harness.importedFactories.getFirst(), Harness.secondImportedFactory);
+        assertNotSame(Harness.importedFactories.getFirst().value(), Harness.secondImportedFactory.value());
+    }
+
+    @Test
+    void realZenDeferredFiltersCommonConfigurationEventsAndBindingRegistrationShareCanonicalRecipes() throws Exception {
+        try (var registration = new IsolatedRecipeRegistration()) {
+        Harness.importReads = 0;
+        Harness.importCalls = 0;
+        Harness.eventCommits = 0;
+        Harness.eventRollbacks = 0;
+        var compiled = compile("""
+            import mods.prototype_eng.recipe.Bindings;
+            import mods.prototype_eng.recipe.Pool;
+            import mods.prototype_eng.recipe.EventTransaction;
+            import tests.prototype_eng.Harness;
+            var pool = Harness.imported(function(recipe) {
+                Harness.importCalled();
+                recipe.durationTicks(7);
+                return recipe.id == "deferred_bridge:accepted";
+            }).durationTicks(1).maxThreads(3).groups(["deferred_bridge:group"])
+              .event("deferred_bridge:event", "END", function(context) {
+                  return EventTransaction.create(function() { Harness.commitEvent(); }, function() { Harness.rollbackEvent(); });
+              });
+            var combined = Pool.combine("deferred_bridge:combined", "title", [pool]);
+            var names = Bindings.create();
+            Harness.captureDeferred(names, combined);
+            names.registerPools([combined], []);
+            """, "deferred_import.zs");
+        assertEquals("", compiled.diagnostics());
+        Objects.requireNonNull(compiled.module().getMain()).run();
+        assertEquals(0, Harness.importReads);
+        assertEquals(0, Harness.importCalls);
+        var registry = new RecipeRegistry();
+        registration.dispatch(registry);
+        registry.freeze();
+        assertEquals(1, Harness.importReads);
+        assertEquals(2, Harness.importCalls);
+        var recipe = registry.catalog().recipes().getFirst();
+        assertEquals(1, registry.catalog().recipes().size());
+        assertEquals(1, recipe.durationTicks());
+        assertEquals(3, recipe.maxConcurrentThreads());
+        assertEquals(Set.of(new ResourceLocation("deferred_bridge", "group")), recipe.recipeGroups());
+        var codec = Objects.requireNonNull(registry.processCodecs()).snapshot().require(recipe);
+        assertSame(recipe, codec.recipe());
+        var owner = new MachineInstance();
+        var process = new RecipeProcess(owner, recipe, 13);
+        assertSame(ProcessResult.SUCCESS, process.tick());
+        assertEquals(1, Harness.eventCommits);
+        assertEquals(0, Harness.eventRollbacks);
+        var restored = codec.decode(owner, codec.encode(process));
+        assertEquals(RecipeProcess.Lifecycle.COMPLETED, restored.state().lifecycle());
+        restored.tick();
+        assertEquals(1, Harness.eventCommits);
+        assertSame(recipe, Objects.requireNonNull(Harness.deferredPool).recipes().getFirst().recipe());
+        }
+    }
+
+    private static final class IsolatedRecipeRegistration implements AutoCloseable {
+        private final Object phase;
+        private final Field declarations;
+        private final Field sealed;
+        private final Object previousDeclarations;
+        private final boolean previousSealed;
+
+        private IsolatedRecipeRegistration() throws ReflectiveOperationException {
+            var field = DefinitionRegistrations.class.getDeclaredField("RECIPES");
+            field.setAccessible(true);
+            phase = field.get(null);
+            declarations = phase.getClass().getDeclaredField("declarations");
+            sealed = phase.getClass().getDeclaredField("sealed");
+            declarations.setAccessible(true);
+            sealed.setAccessible(true);
+            previousDeclarations = declarations.get(phase);
+            previousSealed = sealed.getBoolean(phase);
+            declarations.set(phase, new ObjectArrayList<>());
+            sealed.setBoolean(phase, false);
+        }
+
+        private void dispatch(RecipeRegistry registry) {
+            DefinitionRegistrations.dispatch(new RecipeRegistrationEvent(registry, new NetworkRecipeExtensions()));
+        }
+
+        @Override
+        public void close() throws IllegalAccessException {
+            declarations.set(phase, previousDeclarations);
+            sealed.setBoolean(phase, previousSealed);
+        }
     }
 
     @Test
@@ -650,6 +845,60 @@ class ZenRecipeBridgeTest {
         private static ZenRecipe combinedFirst;
         private static ZenRecipe combinedSecond;
         private static AuxiliaryPools auxiliary;
+        private static int importReads;
+        private static int importCalls;
+        private static int eventCommits;
+        private static int eventRollbacks;
+        private static ZenRecipePool deferredPool;
+        private static final ObjectArrayList<ZenRecipePool> importedFactories = new ObjectArrayList<>();
+        private static ZenRecipePool configuredFactory;
+        private static ZenRecipePool secondImportedFactory;
+
+        @ZenMethod
+        public static void captureImportedFactory(ZenRecipePool pool) {
+            importedFactories.add(pool);
+        }
+
+        @ZenMethod
+        public static void captureConfiguredFactory(ZenRecipePool pool) {
+            configuredFactory = pool;
+        }
+
+        @ZenMethod
+        public static void captureSecondImportedFactory(ZenRecipePool pool) {
+            secondImportedFactory = pool;
+        }
+
+        @ZenMethod
+        public static ZenRecipePool imported(ZenRecipeCreateCallback onCreate) {
+            var pool = ImportedRecipePool.withoutContext(new ResourceLocation("deferred_bridge", "source"), "title", () -> {
+                importReads++;
+                return List.of(new RecipeBuilder(new ResourceLocation("deferred_bridge", "accepted"), 2),
+                    new RecipeBuilder(new ResourceLocation("deferred_bridge", "rejected"), 2));
+            }, recipe -> onCreate.create(new ZenRecipeBuilder(recipe)));
+            return ZenRecipePool.imported(pool, "v1");
+        }
+
+        @ZenMethod
+        public static void importCalled() {
+            importCalls++;
+        }
+
+        @ZenMethod
+        public static void commitEvent() {
+            eventCommits++;
+        }
+
+        @ZenMethod
+        public static void rollbackEvent() {
+            eventRollbacks++;
+        }
+
+        @ZenMethod
+        public static void captureDeferred(ZenRecipeBindings names, ZenRecipePool pool) {
+            earlyNames = names;
+            deferredPool = pool;
+        }
 
         @ZenMethod
         public static void captureEarly(ZenRecipeBindings names) {

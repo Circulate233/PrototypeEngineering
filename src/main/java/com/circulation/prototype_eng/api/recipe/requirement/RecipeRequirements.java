@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.recipe.requirement.AttributeRequirementSyst
 import com.circulation.prototype_eng.recipe.requirement.CheckpointRequirementSystem;
 import com.circulation.prototype_eng.recipe.requirement.EnergyRequirementSystem;
 import com.circulation.prototype_eng.recipe.requirement.ResourceRequirementSystem;
+import com.circulation.prototype_eng.recipe.requirement.RecipeEventRequirementSystem;
 import com.circulation.prototype_eng.recipe.requirement.SelectiveRequirementSystem;
 import net.minecraft.util.ResourceLocation;
 
@@ -12,6 +13,8 @@ import net.minecraft.util.ResourceLocation;
  * Built-in execution responsibilities; downstream types use the same public registration path.
  */
 public final class RecipeRequirements {
+    public static final RecipeRequirementType<RecipeEventRequirement> EVENTS =
+        new RecipeRequirementType<>(new ResourceLocation(Tags.MOD_ID, "event"), new RecipeEventRequirementSystem());
     public static final RecipeRequirementType<AttributeRequirement> ATTRIBUTES =
         new RecipeRequirementType<>(new ResourceLocation(Tags.MOD_ID, "attribute_modifier"), new AttributeRequirementSystem());
     public static final RecipeRequirementType<CheckpointRequirement> CHECKPOINT =

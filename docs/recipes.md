@@ -368,6 +368,8 @@ scanner 的同步 startIn 与 bounded beginAdmission 均把准确 `RecipeCatalog
 
 ## 配方池接口与简单配方索引
 
+所有 `RecipePool` 均可通过 `withConfiguration/withRequirements/withAuxiliaryInputs/withEvent` 添加公共材料、完整需求、阶段事件及配方设置。普通池、组合池和独立惰性模组导入池共用该接口，具体创建方法、来源组、回调和保存要求见[配方池公共配置与模组配方导入](recipe-imports.md)。下述 Simple 原始 Entry 的限制只约束基础索引定义，公共完整需求由通用配置添加。
+
 混合提供者使用[CompositeRecipePool与异步发现](recipe-execution-policy.md#多个提供者的组合配方池)。新增纯库存预算游标`beginMatch`供Default/Simple/组合复用，实际多池Selection已走组合策略入口；异步`CandidatePass`只产生候选，main收据和freshness后才建进程并准入。组合16项、单项重试64项缓存有界；首次冷组合在发现worker编译，主线程只捕获provider引用。
 
 `RecipePool` 现在是公开接口，保留 `id/translationKey/recipes/machines`，`prepareRecipe(recipe)` 用于注册前应用池的公共声明，默认返回原对象；实现必须保留 ID，并原样返回已准备的配方。默认通用实现为 `DefaultRecipePool`；`registerPool` 仍创建通用池。独立外部实现通过自己的 `freeze(recipes, machines)` 保留策略与配置，返回完整不可变 canonical 实例。注册表先校验 ID、标题、全部配方及静态机器的准确对象与顺序，再统一发布目录和反查；不会把自定义池改成通用具体类。当前注册仍是一次冻结，没有新增运行时配方重载协议。

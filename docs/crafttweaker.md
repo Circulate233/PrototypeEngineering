@@ -4,6 +4,8 @@ CT2 4.1.20.718为可选脚本桥；公开Java API及Forge注册subscriber不链�
 
 ## 声明与运行
 
+`mods.prototype_eng.recipe.importing.<modid>` 为每种来源提供独立池类。公共材料、完整需求、阶段事件和配方配置通过所有 `Pool` 共用的方法添加。构造及配置不读取来源，`registerPools` 在实际配方事件内初始化导入并建立准确 codec 绑定，支持同来源多实例筛选与修改。类型及可复制用例见[配方池公共配置与导入](recipe-imports.md)。
+
 注册入口排入DefinitionRegistrations的对应event，按实际阶段dispatch；结构predicate先注册再freeze/解析JSON。名称解析得到具体不可变定义和闭包；旧进程使用准确定义、descriptor及历史codec，不能运行时按名称取最新回调。机器声明及装配配置各自安装同一组件/codec；服务器更新、仓室配置和客户端manifest沿既有准确session/owner边界，pending或拒绝不冒充成功。
 
 控制器创建声明可用`.executionPolicy("FULL_ASYNC")`（新逻辑控制器默认），或`ASYNC_SCAN`、`ASYNC_WORK`、`SYNCHRONOUS`显式控制发现/工作位置；内部owner-only需求按声明回退。`Pool.combine(id, titleKey, [simplePool, generalPool])`组合混合provider，保原准确recipe/codec/revision，不隐式注册child，也不把它们改成普通池。两接口均有真实718 Compiler行为回归；完整线程语义、组合声明时点和例子见[配方执行策略](recipe-execution-policy.md)。

@@ -1,5 +1,19 @@
 # 实施进度
 
+## 2026-11-22 通用配方池配置与独立模组导入池
+
+`RecipePool` 接口新增公共完整需求、辅助材料、START/TICK/END 事件、时长、分组、线程上限和最终并行选择配置，单个 `RecipeBuilder` 共用同一需求与事件接口。配置返回新声明，应用于初始及追加注册配方，保留准确 canonical、revision 和 codec。纯材料/能量配置沿原提供者候选策略，单输入辅助材料仍只用原主输入查候选；任意回调、属性、选择器或最终并行选择无法保证输入下界时保留全池组兼容候选。事件使用原可逆事务，线程由机器 executionPolicy 决定，probe 不执行事件，改变准入前提需显式 preparation。
+
+按用户最后确认，每种来源各有独立公开 Java 池类与 ZS 类型，并按 minecraft、ic2、nuclearcraft、tconstruct、thaumcraft、thermalexpansion 分包，共十二类。Java 直接构造，ZS 使用各具体类 create；实例 ID 只标识本池，没有来源 ID 索引适配器的注册表。构造及元数据/公共配置不读取来源，首次实际访问才转换并逐配方调用该池专有创建回调；可编辑配方及具体上下文、boolean 拒绝、无额外上下文的单参数回调均已接入。多个实例独立筛选、配置和保存结果，失败记录日志且不重跑已发生回调。冻结后保留各具体类型、准确配方和机器绑定，复制目录不重读来源或重放回调。
+
+来源保留真实材料与匹配：IC2 输入备选、数量、元数据和全部输出；NCO 物品/流体不同数量备选、时长/功率倍率、最小概率产量及流体步长；匠魂 amountNeeded/真实 matches 与全量合金流体；TC6 每个主输入只生成对应 NBT 产物；Thermal 两组保留肥料、水、全部来源与独立概率副产物，精确支付总 FE。IC2 和 Thermal 的无序来源集合先按明确 IO/数量/元数据稳定排序再编号，集合反序不改变 ID 对应内容。NC 概率输入无法按普通需求保留单槽选键及随机实际扣量，明确记录错误并拒绝；TC6 本质、研究资格及匠魂温度保留在上下文，机器通过回调添加实际规则。具体映射见 [recipe-imports.md](recipe-imports.md)。
+
+可选 SDK 仅 compileOnly、非传递依赖，不打包或自动安装来源模组。声明可选 after 加载顺序，使正常配方事件位于来源 post-init 之后。新增依赖的访问变换器会公开 GuiContainer.drawSlot，四处 GUI 重写同步公开。ZS 普通池、组合池和导入池统一支持公共配置，并在实际注册事件中建立延迟导入的准确 codec。JEI 不展示阶段事件的内部类型 ID。
+
+验证：最终完整离线 Gradle `build`、全部 Spotless 与 1848 tests / 291 suites 通过，失败、错误、跳过均为零。相较前一检查点新增 31 项行为用例，覆盖公共需求/材料事务、幂等追加、预算候选、事件 probe/回滚、惰性与多实例、并发首次读取、失败缓存、具体类型冻结、真实 SDK 转换和来源重排，以及真实 ZS 编译和拒绝全部六类可选模组包的隔离加载。82 Java 本机 MCP `get_file_problems(errorsOnly:false)` 最终错误、警告、弱警告均为零，IDEA 定向构建成功。首次 SDK 未同步的诊断与核心修复前失败保留为历史证据，最终全级复检已通过。新文档全级零诊断；既有功能文档诊断按修改前内容单独记录，不作为通过的源码检查。
+
+证据位于 `build/recipe-imports-20261122/`，最终日志为 `verified-build.log`、全量 Java 检查为 `idea-verified-java.json`；源码读回、哈希及来源检查补充证据位于 `build/reports/recipe-imports/` 和 `build/pool-configuration-restored*`。同步更新开发规范、Java/ZS/API 和使用文档。阶段完成本地英文提交，不推送；保留 AGENTS.md 用户修改，未启动 Minecraft 客户端或服务端。
+
 ## 2026-11-22 单输入配方池公共辅助材料
 
 新增 Java `SimpleRecipePool.withAuxiliaryInputs(List<GenericStack>)` 和 ZS `.auxiliaryInputs(Resource[])`，在池上独立设置所有配方共用的普通 START 输入。例如每份配方配置 1 mB 水时，N 并行消耗 N mB。辅助材料追加到完整资源需求，按既有资源事务执行倍率、来源分配、同键累计、缺料等待及失败回滚；主输入不足、辅助材料不足或数量溢出均不会部分扣料。公共列表的再次设置替换旧配置，空列表清除，原始池和 Entry 不变。

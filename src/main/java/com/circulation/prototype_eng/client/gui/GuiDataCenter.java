@@ -298,7 +298,7 @@ public class GuiDataCenter extends AEBaseGui<ContainerDataCenter> {
     }
 
     @Override
-    protected void drawSlot(@NotNull Slot slot) {
+    public void drawSlot(@NotNull Slot slot) {
         super.drawSlot(slot);
         if (slot.slotNumber != 1 || slot.getHasStack() || container.preview == null) return;
         itemRender.renderItemAndEffectIntoGUI(previewItem, slot.xPos, slot.yPos);

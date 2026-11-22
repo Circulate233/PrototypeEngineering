@@ -13,6 +13,7 @@ import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.List;
+import java.util.Collections;
 
 /**
  * An author's declaration table. Same-name definitions affect subsequent lookups only; consumers
@@ -126,29 +127,22 @@ public final class ZenRecipeBindings {
     public synchronized void registerPools(ZenRecipePool[] pools, ZenRecipe[] historical) {
         requireDeclarations();
         var declarations = new ObjectArrayList<ZenRecipePool>(pools.length);
-        var current = new ObjectArrayList<ZenRecipe>();
         var history = new ObjectArrayList<ZenRecipe>(historical.length);
-        var codecs = new ObjectArrayList<RecipeProcessNbt>();
+        boolean deferred = false;
         for (var pool : pools) {
             declarations.add(pool);
-            current.addAll(pool.recipes());
+            deferred |= pool.deferred();
         }
-        for (int index2 = 0; index2 < current.size(); index2++) {
-            var recipe = current.get(index2);
-            codecs.add(recipe.codec());
-        }
-        for (var recipe : historical) {
-            history.add(recipe);
-            codecs.add(recipe.codec());
-        }
-        // Validate all version/identity conflicts before registering a callback or mutating names.
-        var prepared = resolver.prepare(resolver.snapshot(), codecs);
+        Collections.addAll(history, historical);
+        var initial = deferred ? null : currentRecipes(declarations);
+        if (initial != null) installCodecs(initial, history);
         for (int index = 0; index < declarations.size(); index++) {
             var pool = declarations.get(index);
             pool.declareClient();
         }
-        resolver.install(prepared);
         DefinitionRegistrations.recipes(event -> {
+            var current = initial == null ? currentRecipes(declarations) : initial;
+            if (initial == null) installCodecs(current, history);
             for (int index3 = 0; index3 < declarations.size(); index3++) {
                 var pool = declarations.get(index3);
                 event.registry().register(pool.value());
@@ -164,6 +158,19 @@ public final class ZenRecipeBindings {
             event.registry().bindProcessCodecs(resolver);
         });
         frozen = true;
+    }
+
+    private static List<ZenRecipe> currentRecipes(List<ZenRecipePool> pools) {
+        var result = new ObjectArrayList<ZenRecipe>();
+        for (int i = 0; i < pools.size(); i++) result.addAll(pools.get(i).recipes());
+        return result;
+    }
+
+    private void installCodecs(List<ZenRecipe> current, List<ZenRecipe> history) {
+        var codecs = new ObjectArrayList<RecipeProcessNbt>(current.size() + history.size());
+        for (int i = 0; i < current.size(); i++) codecs.add(current.get(i).codec());
+        for (int i = 0; i < history.size(); i++) codecs.add(history.get(i).codec());
+        resolver.install(resolver.prepare(resolver.snapshot(), codecs));
     }
 
     public RecipeProcessCodecs resolver() {

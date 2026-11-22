@@ -16,6 +16,17 @@ dependencies {
     modCompileOnly 'CraftTweaker2:CraftTweaker2-API:4.1.20.718'
     modCompileOnly 'CraftTweaker2:CraftTweaker2-MC1120-Main:1.12-4.1.20.718'
     modCompileOnly 'CraftTweaker2:ZenScript:4.1.20.718'
+    // Imported pools link optional source APIs only when their source mod is present.
+    modCompileOnly('curse.maven:industrialcraft-2-242638:3078604') { transitive = false }
+    modCompileOnly('curse.maven:nuclearcraft-overhauled-336895:6605808') { transitive = false }
+    modCompileOnly('curse.maven:tinkers-construct-74072:2902483') { transitive = false }
+    modCompileOnly('curse.maven:mantle-74924:2713386') { transitive = false }
+    modCompileOnly('curse.maven:thaumcraft-223628:2629023') { transitive = false }
+    modCompileOnly('curse.maven:baubles-227083:2518667') { transitive = false }
+    modCompileOnly('curse.maven:thermal-expansion-69163:2926431') { transitive = false }
+    modCompileOnly('curse.maven:thermal-foundation-222880:2926428') { transitive = false }
+    modCompileOnly('curse.maven:cofh-core-69162:2920433') { transitive = false }
+    modCompileOnly('curse.maven:RedstoneFlux-270789:2920436') { transitive = false }
     // Keep the original Gecko coordinate; this repository delivers a jar whose VERSION field is 3.0.30.
     modImplementation 'software.bernie.geckolib:geckolib-forge-1.12.2:3.0.31'
     modImplementation 'curse.maven:component-model-hider-940949:4885858'

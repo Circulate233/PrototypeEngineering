@@ -109,7 +109,7 @@ public final class GuiMEResourceHatch extends AEBaseGui<ContainerMEResourceHatch
     }
 
     @Override
-    protected void drawSlot(@NotNull Slot slot) {
+    public void drawSlot(@NotNull Slot slot) {
         if (!container.isResourceSlot(slot.slotNumber)) {
             try {
                 super.drawSlot(slot);

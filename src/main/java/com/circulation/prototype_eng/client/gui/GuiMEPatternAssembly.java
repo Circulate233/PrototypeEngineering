@@ -187,7 +187,7 @@ public final class GuiMEPatternAssembly extends AEBaseGui<ContainerMEPatternAsse
     }
 
     @Override
-    protected void drawSlot(@NotNull Slot slot) {
+    public void drawSlot(@NotNull Slot slot) {
         boolean clipped = container.isResourceSlot(slot.slotNumber);
         if (clipped) clip(container.kind(slot.slotNumber));
         try {
