@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.integration.recipeimport.thermalexpansion;
 
-import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.GenericStack;
 import cofh.thermalexpansion.util.managers.machine.InsolatorManager;
 import com.circulation.prototype_eng.PrototypeEngineering;
@@ -9,7 +8,6 @@ import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.importing.thermalexpansion.InsolatorRecipePool;
 import com.circulation.prototype_eng.api.recipe.importing.thermalexpansion.InsolatorTreeRecipePool;
 import org.jetbrains.annotations.Nullable;
-import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
@@ -119,7 +117,7 @@ public final class ThermalInsolatorSource {
         if (!source.getSecondaryOutput().isEmpty() && source.getSecondaryOutputChance() > 0) {
             var secondaryOutput = new ResourceRequirement(List.of(), List.of(), List.of(),
                 List.of(RecipeImportSupport.item(source.getSecondaryOutput())), false,
-                new ResourceChance(source.getSecondaryOutputChance(), null), null);
+                new ResourceChance(Math.min(200, source.getSecondaryOutputChance()), null), null);
             recipe.addRequirement(RecipeRequirements.RESOURCES.requirement(
                 RecipeImportSupport.id(id, "secondary_output"), secondaryOutput));
         }
@@ -127,13 +125,7 @@ public final class ThermalInsolatorSource {
     }
 
     private static DynamicInputGroup input(ResourceLocation id, String suffix, ItemStack stack) {
-        var displayed = RecipeImportSupport.item(stack);
-        var expected = InsolatorManager.convertInput(stack);
-        var matcher = new NamedResourceMatcher(RecipeImportSupport.id(id, suffix),
-            (candidate, _) -> candidate instanceof AEItemKey item
-                && expected.equals(InsolatorManager.convertInput(item.getReadOnlyStack())));
-        return new DynamicInputGroup(matcher, displayed.what(), displayed.amount(),
-            List.of(displayed.what()), Integer.MAX_VALUE);
+        return ThermalMachineSources.itemInput(id, suffix, stack, InsolatorManager::convertInput);
     }
 
     @FunctionalInterface

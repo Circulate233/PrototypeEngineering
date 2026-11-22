@@ -6,7 +6,7 @@ import com.circulation.prototype_eng.Tags;
 public enum JeiText implements LocalizationEnum {
     Duration, Start, Tick, End, Chance, ChanceAttribute, ComputerUnitResource, ComputerUnit,
     ResearchDownload, ResearchDatabaseImport, ResearchDownloadRequirement, ResearchImportIncrement, ResearchLevelConsumption, ResearchNoConsumption,
-    Consume, Produce, ConsumeAt, ProduceAt, ConsumeChance, ProduceChance,
+    Consume, Produce, ConsumeAt, ProduceAt, ConsumeChance, ProduceChance, NotConsumed, PresentAmount,
     Weighted, Alternative, Fuzzy, Dynamic, NoCandidates, CheckpointScaled, CheckpointUnscaled,
     Modifiers, AttributeAdded, AttributeRemoved, EnergyInput, EnergyOutput, EnergyInputPerTick, EnergyOutputPerTick, VoidExcess, CustomRequirement, UnsupportedIngredient, QueryIdentityConflict, MissingRenderer, Page, Previous, Next, PatternNoResources, PatternAmountOverflow, PatternCapacity, PatternStructureUnavailable, PatternStructureName;
 

@@ -75,6 +75,8 @@ var energy = RecipeRequirements.ENERGY.requirement(energyRequirementId,
 
 两个 payload 是可扩展配方模型中的内置需求，不限制外部 RecipeRequirementType。ResourceRequirement 的各列表使用不可变 GenericStack；物品、流体及其他 AEKey 类型共用算法，start 消费固定 inputs 并解析 fuzzyInputs/dynamicInputs、tick 消费/产出每刻列表、end 产出 outputs，另带 ResourceChance 和可选 END RandomOutputPool。EnergyRequirement 按 PM 的 start/tick/end 输入输出语义保存独立 long FE，不定义 FE key。两类需求都读取当前进程的 PROCESS_PARALLELISM；资源再按概率得到的执行次数缩放，FE 保持有效并行数量缩放。ENERGY_EFFICIENCY 目前仅声明扩展 ID，不能把数量倍率等同于机器并发槽位数或加工速度。
 
+`ResourcePresenceRequirement` 使用 `RecipeRequirements.RESOURCE_PRESENCE`，在 START 检查普通输入的存在数量，立即释放临时预留，不执行扣料、不按并行扩大。固定、fuzzy、dynamic 和来源分配共用正常输入解析，禁止输出、逐 tick 输入、概率或随机输出。JEI 显示非消耗条件，加工样板只保留实际消费材料。浇铸模具与 Extruder 流体门槛使用该需求，完整规则见[非消耗材料条件](machine-recipe-pools.md#非消耗材料条件)。
+
 资源同 key 条目先精确聚合，按声明和仓室顺序分配，别名通过真实 context 去重；快照/模拟和确切预留在同一个 context 锁内完成。FE 的单次需求分配也只遍历每个真实来源一次，按未预留余额/空间及当前单次限额取交集，不累计重复模拟同一余额。多个需求共享存储时，后续需求看到前面已经占用的数量/容量；任一需求阻塞会释放整个阶段的占用。
 
 `voidExcessOutputs` 对应 PM 的 ignore_output_full：只预留实际可接收量，允许丢弃放不下的剩余产物；没有任何有效目标时仍阻塞。未启用时必须预留完整产出。输出阻塞时不会留下部分写入，重试需要重新取得阶段令牌。内置原因统一由实现 LocalizationEnum 的 `RecipeText` 提供中英键，不在系统中拼接翻译键。
@@ -372,7 +374,7 @@ scanner 的同步 startIn 与 bounded beginAdmission 均把准确 `RecipeCatalog
 
 所有 `RecipePool` 均可通过 `withConfiguration/withRequirements/withAuxiliaryInputs/withEvent` 添加公共材料、完整需求、阶段事件及配方设置。普通池、组合池和独立惰性模组导入池共用该接口，具体创建方法、来源组、回调和保存要求见[配方池公共配置与模组配方导入](recipe-imports.md)。下述 Simple 原始 Entry 的限制只约束基础索引定义，公共完整需求由通用配置添加。
 
-每个导入池通过 `poolType(RecipePoolType.SINGLE_INPUT/GENERAL)` 选择真实底层池，ZS 使用 `.poolType("single_input"/"general")`。熔炉、IC2 压缩机与打粉机、匠魂熔炼及 NC 熔化机默认 `SINGLE_INPUT`，其余七类来源默认 `GENERAL`；设置和读取类型不初始化来源，首次初始化之后禁止修改。创建回调的首个参数为可编辑配方，其余参数由各池单独定义，例如熔炉的 `float experience`、匠魂熔炼的两个温度整数；匠魂合金只有配方参数。熔炉保留原生小数经验。省略回调时使用 `null`，不调用默认返回 true 的函数，也不转换仅供回调使用的数据。Java 自定义来源构造器接收惰性的 `Supplier<List<MachineRecipe>>`，`withoutContext` 接收 builder 列表和可选 `Predicate<RecipeBuilder>`，无回调时默认 `null`。
+每个导入池通过 `poolType(RecipePoolType.SINGLE_INPUT/GENERAL)` 选择真实底层池，ZS 使用 `.poolType("single_input"/"general")`。各来源按实际主输入形状设置默认类型，完整 70 池清单见[机器目录](machine-recipe-pools.md)；设置和读取类型不初始化来源，首次初始化之后禁止修改。创建回调的首个参数为可编辑配方，其余参数由各池单独定义，例如熔炉的 `float experience`、匠魂熔炼的两个温度整数；匠魂合金只有配方参数。熔炉保留原生小数经验。省略回调时使用 `null`，不调用默认返回 true 的函数，也不转换仅供回调使用的数据。Java 自定义来源构造器接收惰性的 `Supplier<List<MachineRecipe>>`，`withoutContext` 接收 builder 列表和可选 `Predicate<RecipeBuilder>`，无回调时默认 `null`。
 
 混合提供者使用[CompositeRecipePool与异步发现](recipe-execution-policy.md#多个提供者的组合配方池)。新增纯库存预算游标`beginMatch`供Default/Simple/组合复用，实际多池Selection已走组合策略入口；异步`CandidatePass`只产生候选，main收据和freshness后才建进程并准入。组合16项、单项重试64项缓存有界；首次冷组合在发现worker编译，主线程只捕获provider引用。
 

@@ -13,6 +13,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.RandomOutputPool;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.ResourcePresenceRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.SelectiveRequirement;
 import crafttweaker.annotations.ZenRegister;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -68,6 +69,13 @@ public final class ZenRequirement {
     @ZenMethod
     public static ZenRequirement resources(String id, ZenResource[] inputs, ZenResource[] outputs) {
         return resources(id, new ResourceRequirement(ZenRecipeSupport.stacks(inputs), ZenRecipeSupport.stacks(outputs)));
+    }
+
+    @ZenMethod
+    public static ZenRequirement presence(String id, ZenRequirement inputs) {
+        var requirement = RecipeRequirements.RESOURCE_PRESENCE.requirement(ZenRecipeSupport.id(id),
+            new ResourcePresenceRequirement(inputs.resource().payload()));
+        return new ZenRequirement(requirement);
     }
 
     @ZenMethod

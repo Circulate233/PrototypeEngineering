@@ -33,6 +33,12 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
         public Resource(GenericStack stack, Role role, List<Text> details) {
             this(stack, role, details, null, null);
         }
+
+        public boolean hasDetail(LocalizationEnum kind) {
+            for (int index = 0; index < details.size(); index++)
+                if (details.get(index).hasDetail(kind)) return true;
+            return false;
+        }
     }
 
     /**
@@ -80,6 +86,13 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
 
         public static Text of(LocalizationEnum text, Object... arguments) {
             return new Text(text, ObjectArrayList.of(arguments));
+        }
+
+        private boolean hasDetail(LocalizationEnum kind) {
+            if (text == kind) return true;
+            for (int index = 0; index < context.size(); index++)
+                if (context.get(index).hasDetail(kind)) return true;
+            return false;
         }
 
         public String local() {

@@ -23,6 +23,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementPreparation;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
 import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
@@ -40,6 +41,7 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
+import net.minecraft.util.ResourceLocation;
 
 import java.util.Iterator;
 import java.util.List;
@@ -48,6 +50,20 @@ import java.util.List;
  * PM's ordered multi-container resource IO, reserving actual quantities instead of simulating twice.
  */
 public final class ResourceRequirementSystem implements RecipeRequirementSystem<ResourceRequirement> {
+    static RequirementTransaction checkPresence(RecipeProcess process, ResourceLocation id, ResourceRequirement resources) {
+        var inputs = resources.inputs();
+        var hatches = process.hatches().resources();
+        if (!resources.fuzzyInputs().isEmpty() || !resources.dynamicInputs().isEmpty()) {
+            var selection = ResourceInputResolver.resolve(process, RecipeRequirements.RESOURCES.requirement(id, resources),
+                hatches, 1, scaled(inputs, 1));
+            if (selection.result() != ProcessResult.SUCCESS) return new ReservedRequirement(selection.result(), List.of());
+            inputs = selection.inputs();
+        }
+        var result = preflight(hatches, inputs, 1, resources.inputAllocation(), RecipeStage.START,
+            new AEKeyLinkedOpenHashMap(0), !inputs.isEmpty(), false, false, id.toString());
+        return new ReservedRequirement(result, List.of());
+    }
+
     private static RequirementTransaction acquire(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement,
                                                   RecipeStage stage, List<GenericStack> inputs, List<GenericStack> outputs) {
         var payload = batchResources(process, requirement.payload(), stage);

@@ -71,8 +71,7 @@ changed.register();
 ## 选择实际底层池
 
 Java 调用 `pool.poolType(RecipePoolType.SINGLE_INPUT)` 或 `pool.poolType(RecipePoolType.GENERAL)`，ZS 调用
-`.poolType("single_input")` 或 `.poolType("general")`。`minecraft.FurnaceRecipePool`、`ic2.CompressorRecipePool`、
-`ic2.MaceratorRecipePool`、`tconstruct.MeltingRecipePool` 和 `nuclearcraft.MelterRecipePool` 默认 `SINGLE_INPUT`，其余七类导入池默认 `GENERAL`。前者实际创建
+`.poolType("single_input")` 或 `.poolType("general")`。各来源按主输入形状确定默认类型，完整默认值见[机器目录](machine-recipe-pools.md)。前者实际创建
 `SimpleRecipePool`，后者实际创建 `DefaultRecipePool`。必须在首次初始化前设置，禁止在初始化执行中、已经成功或已经失败后修改，否则抛出异常。读取 Java `poolType()` 不触发初始化，`implementation()` 会触发初始化并返回实际底层池。
 
 切换方法直接修改所选导入实例的底层类型，返回当前对象，不枚举来源；共享同一来源池的配置链采用该实例最终设置。ZS 在 `.auxiliaryInputs(...)`、`.requirements(...)`、`.durationTicks(...)`
@@ -83,6 +82,8 @@ Java 调用 `pool.poolType(RecipePoolType.SINGLE_INPUT)` 或 `pool.poolType(Reci
 或其他不能证明固定输入下界的需求仍沿原匹配器及完整 START 准入处理。池类型不会改变材料实际消耗、来源分配、并行倍率或事务规则。
 
 ## 来源组与回调参数
+
+当前提供 70 个独立机器池，其中 44 个默认单输入，26 个默认通用池。本轮补入其他机器与独立工作模式，完整类名、各池默认底层、Java/ZS 回调签名和专有规则见[机器配方池目录](machine-recipe-pools.md)。下表保留基础来源的参数说明。
 
 Java 构造器参数为 `(ResourceLocation id, String titleKey)`，可加创建回调；ZS `create` 参数为
 `(String id, String titleKey, String revision)`，可加对应回调。Java 和 ZS 的公开池类名相同。Java 使用各具体池的嵌套
@@ -118,8 +119,7 @@ Java 构造器参数为 `(ResourceLocation id, String titleKey)`，可加创建�
 熔炉消耗一件匹配输入，保留输出数量，默认 200 tick。输入按原生物品及 metadata/通配规则匹配，不额外要求 NBT
 相等。经验值直接作为回调的 `float experience` 提供，由机器或回调决定如何使用。
 
-IC2 保留 `IRecipeInput.matches`、输入数量、全部输出和元数据，默认 300 tick、8 FE/t。NC 四组基准分别为合金炉 400 tick/10
-FE/t、灌注 600/10、化学反应 400/5、熔化 800/40，并应用来源配方的时长与功率倍率。不同数量的输入备选展开成独立转换配方，相同数量备选保留原
+IC2 保留 `IRecipeInput.matches`、输入数量、全部输出和元数据，压缩机与打粉机为 300 tick、8 FE/t，其他机器使用各自原生基础时长与功率。NC 普通加工机读取 SDK 容器信息中的配置后基础时长与功率，再应用来源配方的倍率。不同数量的输入备选展开成独立转换配方，相同数量备选保留原
 SDK 匹配。概率输出保留最小产量和逐步二项分布，流体保留原步长。NC 概率输入当前无法由普通需求准确保留单槽选键与随机实际扣量，会记录错误并拒绝整条来源配方。
 
 匠魂熔炼按 `amountNeeded` 消耗并调用原 `matches`，输出完整流体；时长为温度除以 10 四舍五入且至少一 tick。合金保留全部流体输入与输出，默认四

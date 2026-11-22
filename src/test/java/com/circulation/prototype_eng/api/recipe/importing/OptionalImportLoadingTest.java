@@ -11,6 +11,7 @@ import stanhebben.zenscript.type.ZenTypeNative;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.lang.reflect.Proxy;
+import java.util.Arrays;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -34,19 +35,14 @@ class OptionalImportLoadingTest {
         try (var loader = new WithoutSourceMods(new URL[]{production}, getClass().getClassLoader())) {
             assertThrows(ClassNotFoundException.class, () -> loader.loadClass("ic2.api.recipe.MachineRecipe"));
             loader.rejected.set(0);
-            var declarations = List.of(new PoolType("minecraft", "FurnaceRecipePool"),
-                new PoolType("ic2", "CompressorRecipePool"), new PoolType("ic2", "MaceratorRecipePool"),
-                new PoolType("nuclearcraft", "AlloyFurnaceRecipePool"), new PoolType("nuclearcraft", "InfuserRecipePool"),
-                new PoolType("nuclearcraft", "ChemicalReactorRecipePool"), new PoolType("nuclearcraft", "MelterRecipePool"),
-                new PoolType("tconstruct", "MeltingRecipePool"), new PoolType("tconstruct", "AlloyRecipePool"),
-                new PoolType("thaumcraft", "InfusionRecipePool"), new PoolType("thermalexpansion", "InsolatorRecipePool"),
-                new PoolType("thermalexpansion", "InsolatorTreeRecipePool"));
+            var declarations = ImportedPoolTestCatalog.types();
             var javaTypes = new HashSet<Class<?>>();
             var zenTypes = new HashSet<Class<?>>();
+            var scriptCallbacks = new HashSet<Class<?>>();
             for (var declaration : declarations) {
-                var suffix = declaration.modid + "." + declaration.name;
-                var id = new ResourceLocation("optional_import_loading", declaration.name.toLowerCase(Locale.ROOT));
-                var javaType = loader.loadClass("com.circulation.prototype_eng.api.recipe.importing." + suffix);
+                var suffix = declaration.modid() + "." + declaration.name();
+                var id = new ResourceLocation("optional_import_loading", suffix.toLowerCase(Locale.ROOT));
+                var javaType = loader.loadClass(declaration.javaClassName());
                 assertSame(loader, javaType.getClassLoader());
                 assertTrue(javaTypes.add(javaType));
                 var constructor = javaType.getConstructor(ResourceLocation.class, String.class);
@@ -61,7 +57,7 @@ class OptionalImportLoadingTest {
                 assertEquals(id, pool.getClass().getMethod("id").invoke(pool));
                 assertEquals("optional.pool.title", pool.getClass().getMethod("translationKey").invoke(pool));
                 assertTrue(((List<?>) pool.getClass().getMethod("machines").invoke(pool)).isEmpty());
-                var zenType = loader.loadClass(RECIPE_PACKAGE + "importing." + declaration.modid + ".Zen" + declaration.name);
+                var zenType = loader.loadClass(declaration.zenClassName());
                 assertTrue(zenTypes.add(zenType));
                 var factory = zenType.getMethod("create", String.class, String.class, String.class);
                 var zenPool = factory.invoke(null, id.toString(), "optional.pool.title", "v1");
@@ -70,21 +66,14 @@ class OptionalImportLoadingTest {
                 assertEquals(id.toString(), zenPool.getClass().getMethod("id").invoke(zenPool));
                 assertEquals(true, zenPool.getClass().getMethod("deferred").invoke(zenPool));
                 assertSame(javaType, zenPool.getClass().getMethod("value").invoke(zenPool).getClass());
-                var callbackName = switch (declaration.modid) {
-                    case "minecraft" -> RECIPE_PACKAGE + "importing.minecraft.ZenFurnaceImportCallback";
-                    case "ic2" -> RECIPE_PACKAGE + "importing.ic2.ZenIc2ImportCallback";
-                    case "nuclearcraft" -> RECIPE_PACKAGE + "importing.nuclearcraft.ZenNuclearImportCallback";
-                    case "tconstruct" -> RECIPE_PACKAGE + (declaration.name.equals("AlloyRecipePool")
-                        ? "ZenRecipeCreateCallback" : "importing.tconstruct.ZenMeltingImportCallback");
-                    case "thaumcraft" -> RECIPE_PACKAGE + "importing.thaumcraft.ZenInfusionImportCallback";
-                    case "thermalexpansion" -> RECIPE_PACKAGE + "importing.thermalexpansion.ZenInsolatorImportCallback";
-                    default -> throw new AssertionError("Unexpected import mod " + declaration.modid);
-                };
-                var scriptCallbackType = loader.loadClass(callbackName);
+                var callbackFactory = Arrays.stream(zenType.getDeclaredMethods())
+                    .filter(method -> method.getName().equals("create") && method.getParameterCount() == 4)
+                    .findFirst().orElseThrow();
+                var scriptCallbackType = callbackFactory.getParameterTypes()[3];
+                scriptCallbacks.add(scriptCallbackType);
                 var scriptCallback = Proxy.newProxyInstance(loader, new Class<?>[]{scriptCallbackType}, (_, method, _) -> {
                     throw new AssertionError("Creation callback invoked before first recipe access for " + suffix + ": " + method);
                 });
-                var callbackFactory = zenType.getMethod("create", String.class, String.class, String.class, scriptCallbackType);
                 var configured = callbackFactory.invoke(null, id.toString(), "optional.pool.title", "v1", scriptCallback);
                 assertSame(zenType, configured.getClass());
                 assertNotSame(zenPool, configured);
@@ -107,25 +96,18 @@ class OptionalImportLoadingTest {
             registry.getTypes().getTypeMap().put(dataClass, dataType);
             dataType.complete(registry.getTypes());
             registry.getRoot().put(dataType.getName(), new SymbolType(dataType), registry.getErrorLogger());
-            for (var simpleName : List.of("ZenRecipePool", "ZenRecipeBuilder", "ZenRecipeCreateCallback",
+            for (var simpleName : List.of("ZenRecipePool", "ZenRecipeBuilder",
                 "ZenRecipeEventContext", "ZenRecipeEventCallback", "ZenRecipeEventAction", "ZenRecipeEventTransaction",
                 "ZenRecipe", "ZenRequirement", "ZenResource", "ZenParallelismSelection", "ZenParallelismCallback")) {
                 registry.registerNativeClass(loader.loadClass(RECIPE_PACKAGE + simpleName));
             }
-            for (var suffix : List.of("minecraft.ZenFurnaceImportCallback",
-                "ic2.ZenIc2ImportCallback", "nuclearcraft.ZenNuclearImportCallback", "tconstruct.ZenMeltingImportCallback",
-                "thaumcraft.ZenInfusionImportCallback", "thermalexpansion.ZenInsolatorImportCallback")) {
-                registry.registerNativeClass(loader.loadClass(RECIPE_PACKAGE + "importing." + suffix));
-            }
+            for (var callback : scriptCallbacks) registry.registerNativeClass(callback);
             for (var declaration : declarations) {
-                registry.registerNativeClass(loader.loadClass(RECIPE_PACKAGE + "importing." + declaration.modid + ".Zen" + declaration.name));
+                registry.registerNativeClass(loader.loadClass(declaration.zenClassName()));
             }
             assertEquals("", diagnostics.toString(StandardCharsets.UTF_8));
             assertEquals(0, loader.rejected.get());
         }
-    }
-
-    private record PoolType(String modid, String name) {
     }
 
     private static final class WithoutSourceMods extends URLClassLoader {

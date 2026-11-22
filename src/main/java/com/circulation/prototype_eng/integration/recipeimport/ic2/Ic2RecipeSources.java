@@ -7,6 +7,13 @@ import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.recipe.RecipeBuilder;
 import com.circulation.prototype_eng.api.recipe.importing.ic2.CompressorRecipePool;
 import com.circulation.prototype_eng.api.recipe.importing.ic2.MaceratorRecipePool;
+import com.circulation.prototype_eng.api.recipe.importing.ic2.ExtractorRecipePool;
+import com.circulation.prototype_eng.api.recipe.importing.ic2.CentrifugeRecipePool;
+import com.circulation.prototype_eng.api.recipe.importing.ic2.BlockCutterRecipePool;
+import com.circulation.prototype_eng.api.recipe.importing.ic2.MetalFormerExtrudingRecipePool;
+import com.circulation.prototype_eng.api.recipe.importing.ic2.MetalFormerCuttingRecipePool;
+import com.circulation.prototype_eng.api.recipe.importing.ic2.MetalFormerRollingRecipePool;
+import com.circulation.prototype_eng.api.recipe.importing.ic2.OreWashingRecipePool;
 import org.jetbrains.annotations.Nullable;
 import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
@@ -22,6 +29,8 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.ResourceLocation;
+import net.minecraftforge.fluids.FluidRegistry;
+import net.minecraftforge.fluids.FluidStack;
 
 import java.util.Collection;
 import java.util.Comparator;
@@ -57,11 +66,72 @@ public final class Ic2RecipeSources {
             onCreate == null ? null : onCreate::create);
     }
 
+public static List<com.circulation.prototype_eng.api.recipe.MachineRecipe> readExtractor(ResourceLocation poolId,
+        @Nullable ExtractorRecipePool.OnCreate onCreate) {
+        RecipeImportSupport.requireMod("ic2");
+        return read(poolId, "extractor", Objects.requireNonNull(Recipes.extractor, "IC2 extractor recipes are not initialized"),
+            onCreate == null ? null : onCreate::create, 300, 8, false);
+    }
+
+
+    public static List<com.circulation.prototype_eng.api.recipe.MachineRecipe> readCentrifuge(ResourceLocation poolId,
+        @Nullable CentrifugeRecipePool.OnCreate onCreate) {
+        RecipeImportSupport.requireMod("ic2");
+        return read(poolId, "centrifuge", Objects.requireNonNull(Recipes.centrifuge, "IC2 centrifuge recipes are not initialized"),
+            onCreate == null ? null : onCreate::create, 500, 192, false);
+    }
+
+
+    public static List<com.circulation.prototype_eng.api.recipe.MachineRecipe> readBlockCutter(ResourceLocation poolId,
+        @Nullable BlockCutterRecipePool.OnCreate onCreate) {
+        RecipeImportSupport.requireMod("ic2");
+        return read(poolId, "blockcutter", Objects.requireNonNull(Recipes.blockcutter, "IC2 blockcutter recipes are not initialized"),
+            onCreate == null ? null : onCreate::create, 450, 16, false);
+    }
+
+
+    public static List<com.circulation.prototype_eng.api.recipe.MachineRecipe> readMetalFormerExtruding(ResourceLocation poolId,
+        @Nullable MetalFormerExtrudingRecipePool.OnCreate onCreate) {
+        RecipeImportSupport.requireMod("ic2");
+        return read(poolId, "metalformerExtruding", Objects.requireNonNull(Recipes.metalformerExtruding, "IC2 metalformerExtruding recipes are not initialized"),
+            onCreate == null ? null : onCreate::create, 200, 40, false);
+    }
+
+
+    public static List<com.circulation.prototype_eng.api.recipe.MachineRecipe> readMetalFormerCutting(ResourceLocation poolId,
+        @Nullable MetalFormerCuttingRecipePool.OnCreate onCreate) {
+        RecipeImportSupport.requireMod("ic2");
+        return read(poolId, "metalformerCutting", Objects.requireNonNull(Recipes.metalformerCutting, "IC2 metalformerCutting recipes are not initialized"),
+            onCreate == null ? null : onCreate::create, 200, 40, false);
+    }
+
+
+    public static List<com.circulation.prototype_eng.api.recipe.MachineRecipe> readMetalFormerRolling(ResourceLocation poolId,
+        @Nullable MetalFormerRollingRecipePool.OnCreate onCreate) {
+        RecipeImportSupport.requireMod("ic2");
+        return read(poolId, "metalformerRolling", Objects.requireNonNull(Recipes.metalformerRolling, "IC2 metalformerRolling recipes are not initialized"),
+            onCreate == null ? null : onCreate::create, 200, 40, false);
+    }
+
+
+    public static List<com.circulation.prototype_eng.api.recipe.MachineRecipe> readOreWashing(ResourceLocation poolId,
+        @Nullable OreWashingRecipePool.OnCreate onCreate) {
+        RecipeImportSupport.requireMod("ic2");
+        return read(poolId, "oreWashing", Objects.requireNonNull(Recipes.oreWashing, "IC2 oreWashing recipes are not initialized"),
+            onCreate == null ? null : onCreate::create, 500, 64, true);
+    }
+
     private static List<com.circulation.prototype_eng.api.recipe.MachineRecipe> read(ResourceLocation poolId, String group,
                                                                IBasicMachineRecipeManager manager, @Nullable BiPredicate<RecipeBuilder, NBTTagCompound> onCreate) {
+        return read(poolId, group, manager, onCreate, 300, 8, false);
+    }
+
+    private static List<com.circulation.prototype_eng.api.recipe.MachineRecipe> read(ResourceLocation poolId, String group,
+        IBasicMachineRecipeManager manager, @Nullable BiPredicate<RecipeBuilder, NBTTagCompound> onCreate,
+        int durationTicks, long energyPerTick, boolean needsWater) {
         if (!manager.isIterable())
             throw new IllegalStateException("IC2 " + group + " recipe manager does not expose its recipes");
-        return convertAll(poolId, group, manager.getRecipes(), onCreate);
+        return convertAll(poolId, group, manager.getRecipes(), onCreate, durationTicks, energyPerTick, needsWater);
     }
 
     @SuppressWarnings("SameParameterValue")
@@ -73,6 +143,12 @@ public final class Ic2RecipeSources {
     static List<com.circulation.prototype_eng.api.recipe.MachineRecipe> convertAll(ResourceLocation poolId, String group,
         Iterable<? extends MachineRecipe<IRecipeInput, Collection<ItemStack>>> sources,
         @Nullable BiPredicate<RecipeBuilder, NBTTagCompound> onCreate) {
+        return convertAll(poolId, group, sources, onCreate, 300, 8, false);
+    }
+
+    static List<com.circulation.prototype_eng.api.recipe.MachineRecipe> convertAll(ResourceLocation poolId, String group,
+        Iterable<? extends MachineRecipe<IRecipeInput, Collection<ItemStack>>> sources,
+        @Nullable BiPredicate<RecipeBuilder, NBTTagCompound> onCreate, int durationTicks, long energyPerTick, boolean needsWater) {
         var ordered = new ObjectArrayList<OrderedSource>();
         for (var source : sources) {
             try {
@@ -93,7 +169,7 @@ public final class Ic2RecipeSources {
             var source = ordered.get(index).source();
             RecipeBuilder recipe;
             try {
-                recipe = draft(poolId, group, index, source);
+                recipe = draft(poolId, group, index, source, durationTicks, energyPerTick, needsWater);
             } catch (RuntimeException failure) {
                 PrototypeEngineering.LOGGER.error("Rejected IC2 recipe {}[{}] while importing pool {}", group, index, poolId, failure);
                 continue;
@@ -124,12 +200,34 @@ public final class Ic2RecipeSources {
     @SuppressWarnings("SameParameterValue")
     static com.circulation.prototype_eng.api.recipe.MachineRecipe convert(ResourceLocation poolId, String group, int index,
         MachineRecipe<IRecipeInput, Collection<ItemStack>> source) {
-        return draft(poolId, group, index, source).build();
+        return draft(poolId, group, index, source, 300, 8, false).build();
     }
 
     private static RecipeBuilder draft(ResourceLocation poolId, String group, int index,
-        MachineRecipe<IRecipeInput, Collection<ItemStack>> source) {
+        MachineRecipe<IRecipeInput, Collection<ItemStack>> source, int durationTicks, long energyPerTick, boolean needsWater) {
         var input = source.getInput();
+        var recipeId = RecipeImportSupport.id(poolId, "ic2/" + group + "/" + index);
+        var recipe = new RecipeBuilder(recipeId, durationTicks);
+        var dynamic = input(recipeId, "input_matcher", input);
+        var outputs = new ObjectArrayList<GenericStack>();
+        for (var output : source.getOutput()) outputs.add(RecipeImportSupport.item(output));
+        if (outputs.isEmpty()) throw new IllegalArgumentException("IC2 recipe has no output");
+        List<GenericStack> fixedInputs = List.of();
+        if (needsWater) {
+            var metadata = Objects.requireNonNull(source.getMetaData(), "IC2 ore washing metadata");
+            int amountWater = metadata.getInteger("amount");
+            if (amountWater <= 0) throw new IllegalArgumentException("IC2 ore washing water amount must be positive");
+            fixedInputs = List.of(RecipeImportSupport.fluid(new FluidStack(FluidRegistry.WATER, amountWater)));
+        }
+        var resources = new ResourceRequirement(fixedInputs, List.of(), List.of(), List.copyOf(outputs), false,
+            ResourceChance.ALWAYS, null, List.of(), List.of(dynamic));
+        recipe.addRequirement(RecipeRequirements.RESOURCES.requirement(
+            RecipeImportSupport.requirementId(recipe, "resources"), resources));
+        RecipeImportSupport.energy(recipe, energyPerTick);
+        return recipe;
+    }
+
+    static DynamicInputGroup input(ResourceLocation recipeId, String name, IRecipeInput input) {
         int amount = input.getAmount();
         if (amount < 1) throw new IllegalArgumentException("IC2 input amount must be positive");
         var displayed = new ObjectArrayList<AEKey>();
@@ -139,21 +237,10 @@ public final class Ic2RecipeSources {
             if (key != null && !displayed.contains(key)) displayed.add(key);
         }
         if (displayed.isEmpty()) throw new IllegalArgumentException("IC2 input has no displayable candidate");
-        var recipeId = RecipeImportSupport.id(poolId, "ic2/" + group + "/" + index);
-        var recipe = new RecipeBuilder(recipeId, 300);
-        var matcher = new NamedResourceMatcher(RecipeImportSupport.id(recipeId, "input_matcher"),
+        var matcher = new NamedResourceMatcher(RecipeImportSupport.id(recipeId, name),
             (candidate, _) -> candidate instanceof AEItemKey key && input.matches(key.toStack(amount)));
-        var dynamic = new DynamicInputGroup(matcher, displayed.getFirst(), amount,
+        return new DynamicInputGroup(matcher, displayed.getFirst(), amount,
             List.copyOf(displayed), Integer.MAX_VALUE);
-        var outputs = new ObjectArrayList<GenericStack>();
-        for (var output : source.getOutput()) outputs.add(RecipeImportSupport.item(output));
-        if (outputs.isEmpty()) throw new IllegalArgumentException("IC2 recipe has no output");
-        var resources = new ResourceRequirement(List.of(), List.of(), List.of(), List.copyOf(outputs), false,
-            ResourceChance.ALWAYS, null, List.of(), List.of(dynamic));
-        recipe.addRequirement(RecipeRequirements.RESOURCES.requirement(
-            RecipeImportSupport.requirementId(recipe, "resources"), resources));
-        RecipeImportSupport.energy(recipe, 8);
-        return recipe;
     }
     private static NBTTagCompound metadata(MachineRecipe<IRecipeInput, Collection<ItemStack>> source) {
         var metadata = source.getMetaData();

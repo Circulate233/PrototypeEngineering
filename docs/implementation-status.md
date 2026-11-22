@@ -1,5 +1,19 @@
 # 实施进度
 
+## 2026-11-22 其他机器独立配方池扩展
+
+新增 58 个独立 Java/ZS 池：IC2 12 个、NuclearCraft Overhauled 19 个、TConstruct 3 个、Thaumcraft 6 一个、Thermal Expansion 23 个。连同原有来源共 70 个，按 modid 分包，每种机器或工作模式有公开具体池类，允许同源创建不同实例。构造、类型设置和公共配置不枚举来源，首次实际读取才转换；各池保留直接 OnCreate 参数、省略或显式 null 跳过回调、false 拒绝配方、异常记录并传播。默认依据主输入数量和阶段设置为 44 个 SINGLE_INPUT、26 个 GENERAL，首次读取前可双向切换，最终定义仍按实际单输入规则验证。冻结保留具体类、准确配方与机器绑定，已初始化池复制不重新读取来源或执行回调。
+
+IC2 补提取、离心、切块、金属成形三模式、洗矿、罐装两模式、电解、发酵和高炉。洗矿水量、逐 tick 高炉空气、电解时长及 EU 使用原来源数据，4 FE/EU；热量、硬度和发酵跨配方肥料累计通过直接参数交给宿主处理。NC 覆盖 20 个普通加工机与三种加工多方块，普通基准读取 SDK 容器中配置后的时长和功率，多方块读取其 Logic 配置，保留材料备选、概率产物和专有参数。ElectricFurnace 包含自定义及原版熔炉来源，自定义优先。
+
+匠魂补晾晒、浇铸台和浇铸盆，保留 RecipeMatch、数量、冷却时间及模具消耗规则；标准偏好产物在首次读取时生成快照。TC6 补坩埚，保留原催化材料和产物，本质支付及研究资格由宿主添加。Thermal 补酿造、普通/生物离心、充能、压缩四模式、熔融、附魔两模式、挤压两模式、电炉/热解、凝结、打粉、精炼两模式、锯木、感应炉及灌注/抽取。保持各 manager 原生匹配、通配 metadata、NBT 及稳定排序；经验流体、杂酚油、实际流体消耗和不同副产物分布按来源执行，不按主料删除其他副料配方。Compactor ALL 为独立来源表，不合并 Plate/Coin/Gear。
+
+新增公共 ResourcePresenceRequirement 与 ZS Requirement.presence。START 及其预检共用普通固定、fuzzy、dynamic 和来源分配，检查后释放临时预留，不扣料、不持有长期资源锁、不按并行放大。非消耗模具和 Extruder 冷热流体各 1000 mB 门槛使用该需求；相同资源的普通消耗量单独处理。JEI 显示存在数量与非消耗说明，样板转换递归检查 scoped 标记并排除这些输入，不产生空候选组，普通消耗及产物仍保留。
+
+完整离线 Gradle spotlessApply/build 通过，1925 tests / 303 suites，失败、错误和跳过均为零，相对上一检查点新增 52 项行为测试。84 项来源转换与事务专项、全部 70 个 ZS 工厂的真实编译执行、Java/ZS 非空回调缺可选模组隔离、动态材料与 NBT、非消耗临时预留释放、并行共享以及 JEI 到样板的真实转换均已验证。178 个修改或新增 Java 文件与 2 个语言文件逐文件 get_file_problems(errorsOnly:false) 最终错误、警告、弱警告均为零。IDEA 全量定向及整项目构建均超时且未返回错误，最终 JEI 三文件定向构建成功，完整编译以 Gradle 成功结果为据。文档 Java 用例使用真实项目 SDK 编译；新目录及来源说明全级零诊断，既有文档诊断按修改前内容对照记录。
+
+完整来源、默认底层、Java/ZS 直接参数、用例和无法静态导入的来源见 [机器配方池目录](machine-recipe-pools.md)。NC 核反应堆热量、通量、涡轮转速、世界辐射，IC2 动态回收/容器及专用 UU/HU，匠魂动态桶浇铸和 TC6 动态世界/玩家操作没有替换成不完整普通配方。证据位于 build/more-machine-pools-20261122/：verified-build.log、full-test-summary.json 与 full-results、targeted-summary-final.json、all-source-idea-final.json、idea-build-final.json、document-diagnostics-baseline.json、documentation-compile.log；各来源 manifest、excluded 和 javap 记录保留实际 SDK 审计。同步更新规范、API、ZS 参考及阅读索引，完成本地英文提交，不推送，保留 AGENTS.md 用户修改。未新增外部库，未启动 Minecraft 客户端或服务端。
+
 ## 2026-11-22 普通配方输入输出与能源编辑
 
 导入遍历回调、普通 Java 创建及 ZS Builder.create/from 共用 RecipeBuilder 的完整编辑方法。新增 addInput/addOutput/addInputPerTick/addOutputPerTick，按需求 ID 追加普通 START/END/TICK 资源，缺少 ID 时新建正常资源需求，已有 ID 的类型不符时明确失败。新增四类 remove 方法，START 索引按固定、fuzzy、dynamic 组排列，后两者删除完整逻辑输入；END 索引按固定输出和随机候选排列，保留剩余权重、pickCount 及空候选池。clearInputs/clearOutputs 提供指定 ID 与全顶层版本，清除相应方向的完整阶段数据，保留另一侧、能量、事件和嵌套容器，不自动递归修改独立时序。

@@ -129,13 +129,16 @@ public class JeiRecipeIngredients {
             if (isTiming(detail)) timing = detail;
         }
         boolean input = resource.role() == JeiRecipeDisplay.Role.INPUT;
-        lines.add(timing == null ? (input ? JeiText.Consume : JeiText.Produce).getLocal(amount)
+        boolean presence = input && resource.hasDetail(JeiText.NotConsumed);
+        lines.add(presence ? JeiText.PresentAmount.getLocal(amount)
+            : timing == null ? (input ? JeiText.Consume : JeiText.Produce).getLocal(amount)
             : (input ? JeiText.ConsumeAt : JeiText.ProduceAt).getLocal(timing.local(), amount));
         var elements16 = resource.details();
         for (int index16 = 0; index16 < elements16.size(); index16++) {
             var detail = elements16.get(index16);
             if (isTiming(detail)) continue;
             if (detail.text() == JeiText.Chance) {
+                if (presence) continue;
                 lines.add(new JeiRecipeDisplay.Text(input ? JeiText.ConsumeChance : JeiText.ProduceChance,
                     detail.arguments(), detail.context(), detail.energy()).local());
             } else lines.add(detail.local());

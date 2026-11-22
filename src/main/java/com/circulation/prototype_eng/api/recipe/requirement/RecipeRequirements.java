@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.recipe.requirement.AttributeRequirementSyst
 import com.circulation.prototype_eng.recipe.requirement.CheckpointRequirementSystem;
 import com.circulation.prototype_eng.recipe.requirement.EnergyRequirementSystem;
 import com.circulation.prototype_eng.recipe.requirement.ResourceRequirementSystem;
+import com.circulation.prototype_eng.recipe.requirement.ResourcePresenceRequirementSystem;
 import com.circulation.prototype_eng.recipe.requirement.RecipeEventRequirementSystem;
 import com.circulation.prototype_eng.recipe.requirement.SelectiveRequirementSystem;
 import net.minecraft.util.ResourceLocation;
@@ -21,6 +22,8 @@ public final class RecipeRequirements {
         new RecipeRequirementType<>(new ResourceLocation(Tags.MOD_ID, "checkpoint"), new CheckpointRequirementSystem());
     public static final RecipeRequirementType<ResourceRequirement> RESOURCES =
         new RecipeRequirementType<>(new ResourceLocation(Tags.MOD_ID, "resources"), new ResourceRequirementSystem());
+    public static final RecipeRequirementType<ResourcePresenceRequirement> RESOURCE_PRESENCE =
+        new RecipeRequirementType<>(new ResourceLocation(Tags.MOD_ID, "resource_presence"), new ResourcePresenceRequirementSystem());
     public static final RecipeRequirementType<EnergyRequirement> ENERGY =
         new RecipeRequirementType<>(new ResourceLocation(Tags.MOD_ID, "energy"), new EnergyRequirementSystem());
     public static final RecipeRequirementType<SelectiveRequirement> SELECTIVE =

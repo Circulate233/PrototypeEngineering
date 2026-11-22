@@ -11,6 +11,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.ResourcePresenceRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.SelectiveRequirement;
 import com.circulation.prototype_eng.localization.JeiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -55,6 +56,9 @@ public class DefaultRecipeDisplays {
         }
         if (requirement.type() == RecipeRequirements.RESOURCES) {
             resources(requirement, (ResourceRequirement) requirement.payload(), display, inputStage);
+        } else if (requirement.type() == RecipeRequirements.RESOURCE_PRESENCE) {
+            resources(requirement, ((ResourcePresenceRequirement) requirement.payload()).resources(),
+                display.scoped(of(JeiText.NotConsumed)), inputStage, false);
         } else if (requirement.type() == RecipeRequirements.ENERGY) {
             energy((EnergyRequirement) requirement.payload(), display, inputStage);
         } else if (requirement.type() == ComputerInputRecipe.END_INPUT) {
@@ -131,6 +135,11 @@ public class DefaultRecipeDisplays {
     }
 
     private static void resources(RecipeRequirement<?> requirement, ResourceRequirement resource, JeiRecipeDisplay.Builder display, JeiText inputStage) {
+        resources(requirement, resource, display, inputStage, true);
+    }
+
+    private static void resources(RecipeRequirement<?> requirement, ResourceRequirement resource, JeiRecipeDisplay.Builder display,
+                                  JeiText inputStage, boolean consumed) {
         var declared = display.chance(resource.chance().percent(), resource.chance().attribute() != null)
                               .scoped(of(JeiText.Chance, resource.chance().percent()));
         if (resource.chance().attribute() != null) {
@@ -179,7 +188,7 @@ public class DefaultRecipeDisplays {
             var groupId = requirement.id() + "/dynamic/" + groupIndex++;
             var dynamic = declared.candidates(new JeiRecipeDisplay.CandidateGroup(groupId))
                                   .scoped(of(JeiText.Dynamic, groupId, group.matcher().id()));
-            dynamic.information(of(JeiText.Consume, group.amount()));
+            dynamic.information(of(consumed ? JeiText.Consume : JeiText.PresentAmount, group.amount()));
             // Only explicitly supplied examples are indexed; pattern and callbacks are not inferred outputs.
             var elements7 = group.displayedCandidates();
             for (int index7 = 0; index7 < elements7.size(); index7++) {
