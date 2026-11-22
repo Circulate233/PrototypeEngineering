@@ -82,6 +82,8 @@ machine.register("v1");
 
 ### 选择配方池
 
+普通 `Builder.create/from` 和模组导入回调共用同一编辑 API。`addInput/addOutput/addInputPerTick/addOutputPerTick(id, Resource)` 追加材料；`removeInput/removeOutput/removeInputPerTick/removeOutputPerTick(id, index)` 删除一个逻辑槽；`clearInputs/clearOutputs(id)` 或无参版本清空指定或全部顶层材料。`energy(id, input, inputPerTick, outputPerTick, output)` 修改四阶段 FE。`requirement(id)` 查询需求快照，`replaceRequirement/removeRequirement` 替换或删除整项需求。可用 `isResource/isEnergy` 判断类型，`inputCount/outputCount/inputCandidates(index)/output(index)` 查看材料，`inputsPerTick/outputsPerTick` 查看 TICK 材料，`energyInput/energyInputPerTick/energyOutputPerTick/energyOutput` 查看 FE。索引从零开始，模糊或动态输入按整组删除，动态展示候选不代表实际可匹配资源。编辑保留未改方向、概率、来源分配及事件，缺失需求或错误类型明确报错。完整行为与脚本见[普通配方编辑](docs/recipe-imports.md#编辑普通配方)。
+
 `Pool.create(id, titleKey, recipes)` 创建普通池，适用于有多个输入、FE、逐 tick IO 或复杂输出的配方。`Pool.simple(...)` 建立只有一个固定开始输入的索引池，结束输出数量不限；输入以外的需求不能放入该池。`Pool.combine(...)` 把多个池组成一个机器扫描入口，保留每个子池的匹配规则，但不会自动注册子池。
 
 所有池均可调用 `.auxiliaryInputs(Resource[])` 设置整池公共 START 辅助输入。例如 `Pool.simple("example:washing", "pool.example.washing", recipes).auxiliaryInputs([Resource.fluid(<liquid:water>, 1)])` 为每份配方增加 1 mB 水，N 并行按 N 倍支付。材料类型、数量、倍率、来源分配、缺料与事务处理均沿普通固定输入，主辅同键累加。普通材料配置保留原候选策略，单输入池仍只看原主输入。方法返回新池，重复设置替换列表，传 `[]` 清除，必须使用返回值注册。新池自动把原 codec 重绑到完整配方，保留 revision、自定义组件、overlay 和校验函数；更改需求后必须更新 revision，按准确配方对象登记的行为须使用新池实际配方。

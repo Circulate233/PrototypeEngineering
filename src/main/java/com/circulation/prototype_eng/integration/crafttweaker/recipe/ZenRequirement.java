@@ -22,6 +22,7 @@ import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Each factory produces the existing immutable, typed Java requirement.
@@ -205,6 +206,97 @@ public final class ZenRequirement {
     @ZenGetter("id")
     public String id() {
         return value.id().toString();
+    }
+
+    @ZenGetter("isResource")
+    public boolean isResource() {
+        return resource != null;
+    }
+
+    @ZenGetter("isEnergy")
+    public boolean isEnergy() {
+        return energy != null;
+    }
+
+    @ZenGetter("inputCount")
+    public int inputCount() {
+        var payload = resource().payload();
+        return payload.inputs().size() + payload.fuzzyInputs().size() + payload.dynamicInputs().size();
+    }
+
+    @ZenMethod
+    public ZenResource[] inputCandidates(int index) {
+        var payload = resource().payload();
+        Objects.checkIndex(index, inputCount());
+        if (index < payload.inputs().size()) {
+            var input = payload.inputs().get(index);
+            return new ZenResource[]{new ZenResource(input.what(), input.amount())};
+        }
+        index -= payload.inputs().size();
+        if (index < payload.fuzzyInputs().size()) {
+            var group = payload.fuzzyInputs().get(index);
+            var result = new ZenResource[group.candidates().size()];
+            for (int i = 0; i < result.length; i++) result[i] = new ZenResource(group.candidates().get(i), group.amount());
+            return result;
+        }
+        var group = payload.dynamicInputs().get(index - payload.fuzzyInputs().size());
+        var result = new ZenResource[group.displayedCandidates().size()];
+        for (int i = 0; i < result.length; i++) result[i] = new ZenResource(group.displayedCandidates().get(i), group.amount());
+        return result;
+    }
+
+    @ZenGetter("outputCount")
+    public int outputCount() {
+        var payload = resource().payload();
+        return payload.outputs().size() + (payload.randomOutputs() == null ? 0 : payload.randomOutputs().candidates().size());
+    }
+
+    @ZenMethod
+    public ZenResource output(int index) {
+        var payload = resource().payload();
+        Objects.checkIndex(index, outputCount());
+        var output = index < payload.outputs().size() ? payload.outputs().get(index)
+            : Objects.requireNonNull(payload.randomOutputs()).candidates().get(index - payload.outputs().size()).value();
+        return new ZenResource(output.what(), output.amount());
+    }
+
+    @ZenGetter("inputsPerTick")
+    public ZenResource[] inputsPerTick() {
+        return resources(resource().payload().inputsPerTick());
+    }
+
+    @ZenGetter("outputsPerTick")
+    public ZenResource[] outputsPerTick() {
+        return resources(resource().payload().outputsPerTick());
+    }
+
+    private static ZenResource[] resources(List<GenericStack> stacks) {
+        var result = new ZenResource[stacks.size()];
+        for (int i = 0; i < result.length; i++) {
+            var stack = stacks.get(i);
+            result[i] = new ZenResource(stack.what(), stack.amount());
+        }
+        return result;
+    }
+
+    @ZenGetter("energyInput")
+    public long energyInput() {
+        return energy().payload().input();
+    }
+
+    @ZenGetter("energyInputPerTick")
+    public long energyInputPerTick() {
+        return energy().payload().inputPerTick();
+    }
+
+    @ZenGetter("energyOutputPerTick")
+    public long energyOutputPerTick() {
+        return energy().payload().outputPerTick();
+    }
+
+    @ZenGetter("energyOutput")
+    public long energyOutput() {
+        return energy().payload().output();
     }
 
     public RecipeRequirement<?> value() {

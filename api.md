@@ -184,6 +184,8 @@ var recipe = new MachineRecipe(
 
 ### 配方池与库存匹配
 
+导入回调和普通配方创建共用可编辑的 `RecipeBuilder`，通过正常资源需求追加或删除材料，并调整四阶段 FE。材料入口为 `addInput/addOutput/addInputPerTick/addOutputPerTick(requirementId, GenericStack)`，删除为对应的 `remove*(requirementId, index)`，`clearInputs/clearOutputs` 可清空指定或全部顶层材料需求。`energy(id, input, inputPerTick, outputPerTick, output)` 保留既有来源分配与溢出参数。`requirement/resources/energy(id)` 查询当前定义，`replaceRequirement/removeRequirement` 编辑整项需求。输入索引包含完整 fuzzy/dynamic 组，输出索引包含随机候选；编辑不会改变原来源或此前创建的配方。完整签名、索引与错误规则见[普通配方编辑](docs/recipe-imports.md#编辑普通配方)。
+
 所有 `RecipePool` 均支持公共配置：`withConfiguration`、`withRequirements`、`withAuxiliaryInputs`、`withEvent`。`RecipeBuilder` 让单个配方与池配置复用完整需求和阶段事件。十二种来源分别提供独立公开池类，Java 位于 `api.recipe.importing.<modid>`，ZS 位于 `mods.prototype_eng.recipe.importing.<modid>`。Java 直接构造，ZS 由各类型的 `create` 创建；构造不读取来源，首次读取才转换。创建回调返回 boolean，首个参数是可编辑配方，额外参数由各池直接定义，例如熔炉为 `(recipe, float experience)`，匠魂合金只有 `(recipe)`。熔炉保留原生小数经验。未配置的回调使用 `null`，跳过回调及专属参数转换。完整签名、执行映射、保存及 Java/ZS 用例见[配方池公共配置与模组导入](docs/recipe-imports.md)。
 
 导入池的 `poolType(RecipePoolType.SINGLE_INPUT/GENERAL)` 选择实际的 `SimpleRecipePool/DefaultRecipePool`，必须在首次初始化前调用；设置类型和读取 `poolType()` 都不枚举来源。熔炉、IC2 压缩机与打粉机、匠魂熔炼及 NC 熔化机默认 `SINGLE_INPUT`，其余七类来源默认 `GENERAL`。可以把熔炉改为通用池后增加普通输入，也可以把其他来源改成单输入池；后者要求转换结果恰好含一个平铺的固定、fuzzy 或 dynamic START 主输入，拒绝多个主输入、TICK 资源输入及 `SELECTIVE/CHECKPOINT`，错误时记录日志并抛出异常。公共辅助输入独立于主输入。自定义来源可用 `new ImportedRecipePool(id, titleKey, supplier)`，supplier 首次访问时返回 `List<MachineRecipe>`；`withoutContext(id, titleKey, draftSupplier[, predicate])` 接收 `RecipeBuilder` 列表和可选 `Predicate<RecipeBuilder>`，省略 predicate 时使用 `null`。

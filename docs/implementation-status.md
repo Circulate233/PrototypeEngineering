@@ -1,5 +1,17 @@
 # 实施进度
 
+## 2026-11-22 普通配方输入输出与能源编辑
+
+导入遍历回调、普通 Java 创建及 ZS Builder.create/from 共用 RecipeBuilder 的完整编辑方法。新增 addInput/addOutput/addInputPerTick/addOutputPerTick，按需求 ID 追加普通 START/END/TICK 资源，缺少 ID 时新建正常资源需求，已有 ID 的类型不符时明确失败。新增四类 remove 方法，START 索引按固定、fuzzy、dynamic 组排列，后两者删除完整逻辑输入；END 索引按固定输出和随机候选排列，保留剩余权重、pickCount 及空候选池。clearInputs/clearOutputs 提供指定 ID 与全顶层版本，清除相应方向的完整阶段数据，保留另一侧、能量、事件和嵌套容器，不自动递归修改独立时序。
+
+energy(id, input, inputPerTick, outputPerTick, output) 设置四阶段 FE，已有需求保留 voidExcessOutputs 与 InputAllocation，缺失时创建普通能量需求。requirement/resources/energy 查询正常定义，replaceRequirement 按同 ID 替换且保持列表位置，removeRequirement 删除整项需求。材料编辑复制变化列表，使用原类型和 ID 建立新需求 definition；替换普通定义保留准确实例，替换 effective view 时建立携带新 payload 的正常 definition。原来源、此前 build 和查询快照不受后续修改影响。缺失、类型错误、越界、负能量与无效材料必须在安装新定义前报错，需求集合整体设置也先验证再修改。
+
+ZS 提供对等方法。需求快照新增 isResource/isEnergy、inputCount/outputCount、inputCandidates/output、inputsPerTick/outputsPerTick 与四阶段 FE 查询。dynamic 返回声明的展示候选，允许空列表，实际 matcher、pattern、数量和候选排序保留。追加到已有资源需求时继承其概率与来源分配；需要独立处理的附加材料使用新需求 ID。完整签名与脚本见 [recipe-imports.md](recipe-imports.md#编辑普通配方)。
+
+验证：完整离线 Gradle spotlessApply/build、1873 tests / 294 suites 通过，失败、错误与跳过均为零。本轮新增 8 项行为测试，52 项专项通过：复杂 payload 字段保留、模糊/动态整槽删除、随机权重与空池、顶层清空不修改嵌套、四阶段 FE 修改、新 definition 与快照隔离、错误原子性，以及普通配方与真实 Furnace 导入共用同一 ZS 编辑函数。实际资源与 EnergyBuffer 事务验证缺 FE 时不扣材料，补足后只消费修改后的数量并生成修改后的产物；半程与完成后的 NBT 恢复不会重复支付或产出。5 个修改或新增 Java 文件本机 MCP get_file_problems(errorsOnly:false) 最终错误、警告与弱警告均为零，IDEA 定向构建成功。
+
+新导入编辑文档 IDEA 全级零诊断；API、ZS 参考、配方与开发规范中的已有诊断已按 HEAD 比对，新增诊断为零。证据位于 build/recipe-editing-20261122/，完整日志 build.log，测试统计 full-test-summary.json，专项原始结果 targeted-results，Java 检查 all-java-idea-final.json，IDEA 构建 idea-build-final.json，文档基线 document-diagnostics-baseline.json。同步维护规范、索引及 Java/ZS 文档，完成本地英文提交，不推送，保留 AGENTS.md 用户修改。未启动 Minecraft 客户端或服务端。
+
 ## 2026-11-22 导入池独立回调与底层类型选择
 
 十二类导入池各自公开嵌套 OnCreate 接口，参数直接按该来源定义，不再使用统一 ImportedRecipe 或来源 Context。熔炉为 recipe、float experience，IC2 为 recipe、NBT metadata，NC 为 recipe、时长、功率、辐射和 extras，匠魂熔炼为 recipe、两个温度，合金仅为 recipe，TC6 为 recipe、来源 ID、本质、不稳定度、研究键和具体主输入，Thermal 为 recipe、能量、水、副产物概率和肥料标记。ZS 对应转换为基础值、IData 和 IItemStack；熔炉保留原生小数经验。省略或显式传 null 都不创建默认返回 true 的函数，不复制仅供回调使用的元数据，不构造 ZS 桥接参数或执行回调。回调拒绝与来源转换失败分别处理，回调异常传播至初始化入口记录日志并保存失败，不重复执行。

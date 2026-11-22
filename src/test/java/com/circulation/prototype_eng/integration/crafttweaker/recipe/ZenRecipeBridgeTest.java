@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.integration.crafttweaker.recipe;
 
 import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
@@ -30,6 +31,7 @@ import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
 import com.circulation.prototype_eng.api.recipe.persistence.ProcessComponentCodec;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayPipeline;
@@ -40,6 +42,7 @@ import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
+import com.circulation.prototype_eng.energy.EnergyBuffer;
 import com.circulation.prototype_eng.integration.crafttweaker.ZenComponentData;
 import com.circulation.prototype_eng.integration.crafttweaker.ZenComponentDataType;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.importing.minecraft.ZenFurnaceImportCallback;
@@ -75,6 +78,8 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import it.unimi.dsi.fastutil.floats.FloatArrayList;
 import net.minecraft.init.Bootstrap;
+import net.minecraft.init.Items;
+import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.FurnaceRecipes;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
@@ -556,6 +561,139 @@ class ZenRecipeBridgeTest {
     }
 
     @Test
+    void realZenImportAndOrdinaryBuildersShareMaterialAndEnergyEditingThroughPaymentAndRestore() throws Exception {
+        Bootstrap.register();
+        Harness.importedFactories.clear();
+        Harness.importCalls = 0;
+        Harness.editedRecipe = null;
+        Harness.editQueriesPassed = false;
+        var compiled = compile("""
+            import mods.prototype_eng.recipe.Builder;
+            import mods.prototype_eng.recipe.importing.minecraft.FurnaceRecipePool;
+            import tests.prototype_eng.Harness;
+
+            function configure(recipe as Builder) as bool {
+                recipe.clearInputs().clearOutputs();
+                recipe.addInput("editing:materials", Harness.editInput().withAmount(2));
+                recipe.addInput("editing:materials", Harness.resource());
+                recipe.addOutput("editing:materials", Harness.editOutput().withAmount(3));
+                recipe.addOutput("editing:materials", Harness.resource());
+                var beforeRemoval = recipe.requirement("editing:materials");
+                recipe.removeInput("editing:materials", 1).removeOutput("editing:materials", 1);
+                recipe.addInputPerTick("editing:materials", Harness.resource());
+                recipe.addOutputPerTick("editing:materials", Harness.resource());
+                recipe.removeInputPerTick("editing:materials", 0).removeOutputPerTick("editing:materials", 0);
+                recipe.energy("editing:energy", 11, 13, 0, 0);
+                var beforeEnergyEdit = recipe.requirement("editing:energy");
+                recipe.energy("editing:energy", 3, 5, 0, 0).durationTicks(1);
+                var material = recipe.requirement("editing:materials");
+                var energy = recipe.requirement("editing:energy");
+                return beforeRemoval.inputCount == 2 && beforeRemoval.outputCount == 2
+                    && beforeEnergyEdit.energyInput == 11 && beforeEnergyEdit.energyInputPerTick == 13
+                    && material.isResource && material.inputCount == 1 && material.outputCount == 1
+                    && material.inputCandidates(0)[0].sameKey(Harness.editInput())
+                    && material.inputCandidates(0)[0].amount == 2
+                    && material.output(0).sameKey(Harness.editOutput()) && material.output(0).amount == 3
+                    && material.inputsPerTick.length == 0 && material.outputsPerTick.length == 0
+                    && energy.isEnergy && energy.energyInput == 3 && energy.energyInputPerTick == 5
+                    && energy.energyOutputPerTick == 0 && energy.energyOutput == 0;
+            }
+
+            var imported = FurnaceRecipePool.create("editing:furnace", "title", "edited-v1", function(recipe, experience) {
+                Harness.importCalled();
+                return configure(recipe);
+            });
+            Harness.captureImportedFactory(imported);
+            var ordinary = Builder.create("editing:ordinary", 1);
+            var configured = configure(ordinary);
+            Harness.captureEditedRecipe(ordinary.build("edited-v1"), configured);
+            """, "recipe_material_energy_edits.zs");
+        assertEquals("", compiled.diagnostics());
+        Objects.requireNonNull(compiled.module().getMain()).run();
+        assertTrue(Harness.editQueriesPassed);
+        assertEquals(0, Harness.importCalls);
+        var imported = Harness.importedFactories.getFirst();
+        var importedRecipes = imported.recipes();
+        assertFalse(importedRecipes.isEmpty());
+        assertEquals(FurnaceRecipes.instance().getSmeltingList().size(), importedRecipes.size());
+        assertEquals(importedRecipes.size(), Harness.importCalls);
+        var source = assertInstanceOf(ImportedRecipePool.class, imported.value());
+        assertInstanceOf(SimpleRecipePool.class, source.implementation());
+        var ordinary = Objects.requireNonNull(Harness.editedRecipe);
+        var bindings = new ObjectArrayList<>(importedRecipes);
+        bindings.add(ordinary);
+        var registry = new RecipeRegistry();
+        registry.register(imported.value());
+        registry.register(new DefaultRecipePool(new ResourceLocation("editing", "ordinary_pool"), "title", List.of(ordinary.recipe())));
+        registry.bindProcessCodecs(new RecipeProcessCodecs(bindings.stream().map(ZenRecipe::codec).toList()));
+        for (var recipe : bindings) registry.declareRevision(recipe.recipe(), recipe.revision());
+        registry.freeze();
+        for (var recipe : List.of(importedRecipes.getFirst(), ordinary)) {
+            assertSame(recipe.recipe(), recipe.codec().recipe());
+            assertSame(recipe.codec(), Objects.requireNonNull(registry.processCodecs()).snapshot().require(recipe.recipe()));
+            assertEditedPaymentAndRestore(recipe);
+        }
+        imported.recipes();
+        assertEquals(importedRecipes.size(), Harness.importCalls);
+    }
+
+    private static void assertEditedPaymentAndRestore(ZenRecipe recipe) {
+        var material = assertInstanceOf(ResourceRequirement.class, recipe.recipe().orderedRequirements().stream()
+            .filter(requirement -> requirement.id().equals(new ResourceLocation("editing", "materials")))
+            .findFirst().orElseThrow().payload());
+        var energyRequirement = assertInstanceOf(EnergyRequirement.class, recipe.recipe().orderedRequirements().stream()
+            .filter(requirement -> requirement.id().equals(new ResourceLocation("editing", "energy")))
+            .findFirst().orElseThrow().payload());
+        var input = material.inputs().getFirst();
+        var output = material.outputs().getFirst();
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(input.what().getType(), Long.MAX_VALUE);
+        var stock = new SlottedResourceBuffer(2, capacities, () -> {
+        });
+        assertEquals(input.amount(), stock.insert(input.what(), input.amount(), Actionable.MODULATE));
+        long totalEnergy = energyRequirement.input() + energyRequirement.inputPerTick();
+        var energy = new EnergyBuffer(totalEnergy, () -> {
+        });
+        long insufficientEnergy = energyRequirement.input() - 1;
+        assertEquals(insufficientEnergy, energy.receiveEnergy(insufficientEnergy, Actionable.MODULATE));
+        var machine = new MachineInstance();
+        machine.components().put(MachineHatches.TYPE, new MachineHatches(List.of(new ResourceHatch() {
+            @Override
+            public ResourceStorage input() {
+                return stock;
+            }
+
+            @Override
+            public ResourceStorage output() {
+                return stock;
+            }
+
+            @Override
+            public boolean isValid() {
+                return true;
+            }
+        }), List.of(energy), List.of()));
+        var process = new RecipeProcess(machine, recipe.recipe(), 29);
+        assertInstanceOf(ProcessResult.Blocked.class, process.tick());
+        assertEquals(input.amount(), stock.availableAmount(input.what()));
+        assertEquals(0, stock.availableAmount(output.what()));
+        assertEquals(insufficientEnergy, energy.storedEnergy());
+        var restored = recipe.codec().decode(machine, recipe.codec().encode(process));
+        assertSame(recipe.recipe(), restored.recipe());
+        long missingEnergy = totalEnergy - energy.storedEnergy();
+        assertEquals(missingEnergy, energy.receiveEnergy(missingEnergy, Actionable.MODULATE));
+        assertSame(ProcessResult.SUCCESS, restored.tick());
+        assertEquals(RecipeProcess.Lifecycle.COMPLETED, restored.state().lifecycle());
+        assertEquals(0, stock.availableAmount(input.what()));
+        assertEquals(output.amount(), stock.availableAmount(output.what()));
+        assertEquals(0, energy.storedEnergy());
+        var completed = recipe.codec().decode(machine, recipe.codec().encode(restored));
+        assertSame(ProcessResult.SUCCESS, completed.tick());
+        assertEquals(output.amount(), stock.availableAmount(output.what()));
+        assertEquals(0, energy.storedEnergy());
+    }
+
+    @Test
     void realZenDeferredFiltersCommonConfigurationEventsAndBindingRegistrationShareCanonicalRecipes() throws Exception {
         try (var registration = new IsolatedRecipeRegistration()) {
         Harness.importReads = 0;
@@ -905,6 +1043,24 @@ class ZenRecipeBridgeTest {
         private static ZenRecipePool configuredFactory;
         private static ZenRecipePool secondImportedFactory;
         private static final FloatArrayList experiences = new FloatArrayList();
+        private static ZenRecipe editedRecipe;
+        private static boolean editQueriesPassed;
+
+        @ZenMethod
+        public static ZenResource editInput() {
+            return new ZenResource(Objects.requireNonNull(AEItemKey.of(new ItemStack(Items.IRON_INGOT))), 1);
+        }
+
+        @ZenMethod
+        public static ZenResource editOutput() {
+            return new ZenResource(Objects.requireNonNull(AEItemKey.of(new ItemStack(Items.GOLD_INGOT))), 1);
+        }
+
+        @ZenMethod
+        public static void captureEditedRecipe(ZenRecipe recipe, boolean queriesPassed) {
+            editedRecipe = recipe;
+            editQueriesPassed = queriesPassed;
+        }
 
         @ZenMethod
         public static void captureExperience(float experience) {

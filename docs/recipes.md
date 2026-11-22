@@ -368,6 +368,8 @@ scanner 的同步 startIn 与 bounded beginAdmission 均把准确 `RecipeCatalog
 
 ## 配方池接口与简单配方索引
 
+普通配方创建和导入遍历回调共用 RecipeBuilder。材料可按需求 ID 通过 addInput/addOutput/addInputPerTick/addOutputPerTick 追加，通过对应 remove 方法按索引删除；START 输入索引按固定、fuzzy、dynamic 组排列，后两者整组删除，END 输出索引包含固定输出和随机候选。clearInputs/clearOutputs 清空指定或全部顶层材料，不递归改动独立嵌套时序。energy(id, input, inputPerTick, outputPerTick, output) 调整四阶段 FE，保留既有来源分配和溢出设置。requirement/resources/energy 查询当前定义，replaceRequirement/removeRequirement 编辑整项。每次编辑产生正常新需求定义，保留未改方向、概率、事件及准确绑定，源配方与此前构建结果不受后续编辑影响。Java/ZS 签名、查询与错误规则见[普通配方编辑](recipe-imports.md#编辑普通配方)。
+
 所有 `RecipePool` 均可通过 `withConfiguration/withRequirements/withAuxiliaryInputs/withEvent` 添加公共材料、完整需求、阶段事件及配方设置。普通池、组合池和独立惰性模组导入池共用该接口，具体创建方法、来源组、回调和保存要求见[配方池公共配置与模组配方导入](recipe-imports.md)。下述 Simple 原始 Entry 的限制只约束基础索引定义，公共完整需求由通用配置添加。
 
 每个导入池通过 `poolType(RecipePoolType.SINGLE_INPUT/GENERAL)` 选择真实底层池，ZS 使用 `.poolType("single_input"/"general")`。熔炉、IC2 压缩机与打粉机、匠魂熔炼及 NC 熔化机默认 `SINGLE_INPUT`，其余七类来源默认 `GENERAL`；设置和读取类型不初始化来源，首次初始化之后禁止修改。创建回调的首个参数为可编辑配方，其余参数由各池单独定义，例如熔炉的 `float experience`、匠魂熔炼的两个温度整数；匠魂合金只有配方参数。熔炉保留原生小数经验。省略回调时使用 `null`，不调用默认返回 true 的函数，也不转换仅供回调使用的数据。Java 自定义来源构造器接收惰性的 `Supplier<List<MachineRecipe>>`，`withoutContext` 接收 builder 列表和可选 `Predicate<RecipeBuilder>`，无回调时默认 `null`。

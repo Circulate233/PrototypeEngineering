@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-22 普通配方与导入回调共用材料和能量编辑：RecipeBuilder/ZS Builder 支持四阶段材料追加与删除、按需求 ID 或全部顶层清空、四阶段 FE 调整及需求查询/替换/删除。fuzzy/dynamic 按整槽删除，随机输出保留剩余权重和 pickCount，未编辑方向、来源分配及事件保持完整；新定义和旧快照独立。完整 build/Spotless、1873 tests / 294 suites、5 Java 本机 IDEA 全级零诊断与定向构建通过，52 项专项含真实 ZS、材料/FE 事务及 NBT 恢复；文档无新增诊断。入口：[编辑方法与脚本](recipe-imports.md#编辑普通配方)、[验证记录](implementation-status.md#2026-11-22-普通配方输入输出与能源编辑)。本轮实现完成，本地英文提交，不推送；下一步由使用方在回调中使用新接口并更新 revision，游戏由用户复验。
+
 - 2026-11-22 导入池创建回调与实际底层选择完成：各池直接定义参数，省略回调为 null，跳过回调专用数据构造及调用；熔炉保留原生 float 小数经验。熔炉、IC2 压缩/打粉、匠魂熔炼、NC 熔化默认 SINGLE_INPUT，其余七类 GENERAL，Java/ZS 的 poolType 方法允许首次读取前双向切换。单输入支持固定/模糊/动态主输入，辅助材料独立，冻结与 JEI 保留准确配方和外层池绑定。完整 build/Spotless、1865 tests / 293 suites、56 Java 本机 IDEA 全级零诊断及定向构建通过；真实 SDK 文档 Java 编译、非空回调缺可选模组隔离通过，既有文档诊断单独记录。入口：[回调签名与切换用例](recipe-imports.md)、[验证记录](implementation-status.md#2026-11-22-导入池独立回调与底层类型选择)。本轮实现完成，本地英文提交，不推送；下一步由用户按实际安装的来源模组复验配方注册与 JEI，未启动游戏。
 
 - 2026-11-22 通用池公共配置与模组导入完成：所有池支持公共完整需求、材料、事件及配方设置；十二种来源分别提供按 modid 分包的 Java 具体池类和 ZS create，实例独立、首次访问初始化、专有上下文与 boolean 筛选。冻结保留具体类型/准确配方/机器绑定，IC2/Thermal 稳定排序，ZS 注册延迟建立 codec。完整 build/Spotless、1848 tests / 291 suites、82 Java IDEA 全级零诊断及定向构建通过。入口：[独立池与用例](recipe-imports.md)、[接口](recipes.md#配方池接口与简单配方索引)、[验证记录](implementation-status.md#2026-11-22-通用配方池配置与独立模组导入池)。阶段已完成，使用方按来源映射配置温度/本质等实际需求并维护 revision；未启动游戏，本地英文提交，不推送。

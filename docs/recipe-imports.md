@@ -35,6 +35,39 @@ ID 并拒绝，不生成缺材料或错误产物的配方。
 `requirements/addRequirement/addRequirements` 编辑需求，`build()` 创建独立定义。回调收到的来源数据和集合必须按只读数据使用，禁止修改全局来源配方。工厂产生的配方 ID 含本池 ID，避免不同适配实例互相覆盖；来源注册顺序或定义变更时，使用方必须更新保存
 revision。
 
+## 编辑普通配方
+
+导入回调和普通配方创建共用 `RecipeBuilder`，ZS 对应 `mods.prototype_eng.recipe.Builder`。回调可以使用正常需求、事件和材料接口编辑完整配方，返回 true 后才生成进入池的普通 `MachineRecipe`。Java 也可以用 `RecipeBuilder.from(recipe)` 编辑已有定义的副本；修改不会改变原定义或此前 build 的结果。
+
+`addInput(id, resource)`、`addOutput(id, resource)`、`addInputPerTick(id, resource)` 和 `addOutputPerTick(id, resource)` 分别追加 START 输入、END 输出及 TICK 输入/输出。Java 的 id 为 ResourceLocation、resource 为 GenericStack，ZS 分别使用 string 和 Resource。需求 ID 不存在时创建普通材料需求；已存在时必须是资源需求，并继承其概率、溢出和来源分配设置。必须使用独立 ID 添加需要独立概率和分配规则的材料，禁止把不同来源需求合并后改变概率。
+
+`removeInput(id, index)` 按固定输入、fuzzy 组、dynamic 组的顺序删除一个 START 逻辑输入槽，后两种会删除整个组。`removeOutput(id, index)` 按固定 END 输出、随机候选的顺序删除一个条目，随机输出的剩余权重和 pickCount 保留。`removeInputPerTick/removeOutputPerTick(id, index)` 按对应 TICK 列表删除。索引从零开始，每次删除后按当前定义重新计算；动态组的展示候选不会用作实际匹配条件。
+
+`clearInputs(id)` 清空一个资源需求的 START/TICK 输入及 fuzzy/dynamic 组，`clearOutputs(id)` 清空其 TICK/END 输出及随机输出池。无参版本处理当前配方的全部顶层资源需求，保留能量、事件和 SELECTIVE/CHECKPOINT 容器。必须显式重建并替换需要修改的嵌套需求，禁止自动递归改变独立时序。删除材料后保留原资源需求 ID 和另一侧的全部数据。
+
+`energy(id, input, inputPerTick, outputPerTick, output)` 设置四个阶段的 FE 数量，保留已有能量需求的溢出与来源分配参数；ID 不存在时创建普通能量需求。数量必须非负，零表示该阶段不消耗或产出。Java 的 `energy(id)` 和 `resources(id)` 返回当前普通 payload。`requirement(id)` 查询完整需求，`replaceRequirement(requirement)` 按同 ID 替换已有项并保留位置，`removeRequirement(id)` 删除整项需求，可用于删除能量或其他条件。查询、替换、删除的 ID 缺失，材料/能量类型不符或索引越界时明确抛出异常，失败操作不得部分修改配方。
+
+ZS 的 `recipe.requirements` 和 `recipe.requirement(id)` 返回当前需求快照。通过 `isResource/isEnergy` 判断类型，`inputCount/outputCount` 取得逻辑槽数，`inputCandidates(index)` 查看固定/fuzzy 候选或 dynamic 的声明展示候选，`output(index)` 查看固定或随机候选产物，`inputsPerTick/outputsPerTick` 查看 TICK 材料。dynamic 展示列表可以为空，实际匹配仍由原 matcher 决定。能量字段为 `energyInput/energyInputPerTick/energyOutputPerTick/energyOutput`，修改后需要重新查询取得新快照。
+
+```zenscript
+import mods.prototype_eng.recipe.importing.minecraft.FurnaceRecipePool;
+import mods.prototype_eng.recipe.Resource;
+
+var changed = FurnaceRecipePool.create("example:edited_smelting", "pool.example.edited_smelting", "v2",
+    function(recipe, experience) {
+        recipe.clearInputs().clearOutputs();
+        recipe.addInput("example:materials", Resource.item(<minecraft:iron_ingot>, 1));
+        recipe.addInput("example:materials", Resource.item(<minecraft:coal>, 1));
+        recipe.removeInput("example:materials", 1);
+        recipe.addOutput("example:materials", Resource.item(<minecraft:gold_ingot>, 1));
+        recipe.energy("example:power", 20, 8, 0, 0);
+        return true;
+    });
+changed.register();
+```
+
+该回调替换熔炉来源材料与产物，最终仍有一个主输入，默认单输入底层继续有效。保留两个主输入时必须在首次读取前选择 general。编辑材料、能源或回调逻辑后必须更新 revision。
+
 ## 选择实际底层池
 
 Java 调用 `pool.poolType(RecipePoolType.SINGLE_INPUT)` 或 `pool.poolType(RecipePoolType.GENERAL)`，ZS 调用
