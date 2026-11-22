@@ -184,7 +184,7 @@ var recipe = new MachineRecipe(
 
 ### 配方池与库存匹配
 
-配方池决定机器可以扫描哪些配方，也提供库存匹配策略。普通机器使用 `DefaultRecipePool` 即可。如果每条配方恰好只有一个固定的开始输入，并且只产生固定结束输出，可以使用 `SimpleRecipePool`；它按输入资源建立索引，输出数量不限。
+配方池决定机器可以扫描哪些配方，也提供库存匹配策略。普通机器使用 `DefaultRecipePool` 即可。如果每条配方恰好只有一个固定的开始输入，并且只产生固定结束输出，可以使用 `SimpleRecipePool`；它按主输入资源建立索引，输出数量不限。通过 `pool.withAuxiliaryInputs(List<GenericStack>)` 在池上配置公共辅助输入，例如 `pool.withAuxiliaryInputs(List.of(new GenericStack(AEFluidKey.of(new FluidStack(FluidRegistry.WATER, 1)), 1)))` 使每份配方额外消耗 1 mB 水。必须保留返回池，并对它的 `recipes()` 绑定 revision、codec 和按配方对象登记的行为。辅助材料按普通 START 输入支付和并行缩放，主辅同键累加；匹配候选及数量上界仍只看主输入。重复设置替换整份辅助列表，空列表清除。后续 `registry.registerRecipe(poolId, rawRecipe)` 自动应用池的公共输入；需要绑定保存及准确对象回调时，先调用 `pool.prepareRecipe(rawSingleInputRecipe)` 并使用返回配方，已准备的定义不会重复添加。定义替换也提交经此方法准备的完整配方。完整规则见[配方池接口](docs/recipes.md#配方池接口与简单配方索引)。
 
 `CompositeRecipePool` 把多个池合成一个入口，保留各子池的匹配方式。例如把简单池和 addon 提供的特殊池组合后，机器只需选择组合池。子池不会因为被组合而自动单独注册，是否需要独立 JEI 页面由作者决定。
 
@@ -365,7 +365,7 @@ ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, 
 
 `PackedVertexDataWriter.write(data, offset, length)` 必须在回调内同步读取指定跨度，禁止保留或修改数组，下一次输出会复用 scratch。独立实体可继承 `MachineControllerRenderer<T>` 并在客户端 `register()`；默认 renderer 已注册，普通调用只提交模型，库在原生 TESR `drawBatch` 后统一绘制。当前模型缓存只在创建新条目时选择资源，控制器24种朝向预先烘焙；Mixin 与资源读取依据见 [mixins.md](docs/mixins.md)。
 
-普通配方池由库提供 JEI 页面，单输入池使用专用单输入布局。配方池的 `withExistingJeiPage(uid)` 返回带外部分类入口的新池，必须保留并注册该返回值。目标分类实际存在时只补充控制器入口，不重复生成本池页面。
+普通配方池由库提供 JEI 页面。无辅助材料的单输入池使用专用单输入布局；有公共辅助材料时显示完整输入，并沿通用材料分页保留全部 JEI 查询与样板导入。配方池的 `withExistingJeiPage(uid)` 返回带外部分类入口的新池，必须保留并注册该返回值。目标分类实际存在时只补充控制器入口，不重复生成本池页面。
 
 `StructurePreviews.client().request(id, settings)` 从服务端已同步的目录请求预览，缺少条目时返回 null。非空请求分次 `advance(maxSteps)`，`READY` 后才能取得完整 `model()`；`STALE` 必须重新请求，`FAILED` 保存实际错误。已完成模型使用 `StructurePreviews.client().current(model)` 检查当前目录。`StructurePreviewScreens.open(...)` 打开预览，`StructurePreviewScreens.panel(...)` 为自定义 JEI 页面提供面板，`StructurePreviews.client().project(...)` 设置世界投影；这些入口仅限客户端。
 
@@ -374,6 +374,8 @@ ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, 
 ### 运行中替换配方与保存版本
 
 `RecipeProcessNbt` 负责保存和恢复配方进程。配方时长、需求行为或组件保存格式改变后，必须更新配方 revision，并保留仍要恢复的旧版 codec。机器装配的 revision 则标识机器组件布局和保存方式。
+
+`RecipeProcessNbt.withRecipe(preparedRecipe)` 把已有 codec 绑定到相同 ID 的新完整定义，保留其 revision、属性编解码、自定义组件、overlay 和校验函数。必须保证原校验函数接受新定义；需求行为变化后使用更新过的 revision 构造 codec，禁止仅靠相同 ID 判断保存兼容。
 
 本库存档与内部同步编解码必须直接处理业务字段，禁止附加固定 `Version`/`Schema` 数字及对应拒绝检查。NBT Map/Set 按键写入，集合唯一性由生产方负责；禁止为普通数据解码建立重复键检查集合。配方和机器定义的 `revision` 用于选择实际声明及恢复代码，网络增量序号用于识别新旧发布，继续按各自接口规则使用。
 
@@ -522,7 +524,7 @@ names.declareManifest("example:recipe_set", "v1");
 
 机器的 `processing` 必须使用与这里相同的 scope。仅调用 `pool.register()` 不会给机器的配方恢复器安装 codec；需要自动工作和存档恢复时必须使用共享 `Bindings.registerPools(...)`，禁止重复注册同一池。
 
-`Pool.simple` 用于单个固定开始输入和任意数量固定结束输出。`Pool.combine` 混合多个不同策略的池。`Requirement.resourceIO` 支持逐 tick 物料；`fuzzyInput` 列出可替代资源；`checkpoint` 在指定进度执行子需求；`chance` 和 `randomOutputs` 设置概率与随机输出。它们的数量、返回值和使用限制见 [ZS 使用参考](api-zs-reference.md)。
+`Pool.simple` 用于单个固定开始输入和任意数量固定结束输出，返回池的 `.auxiliaryInputs(Resource[])` 为全池设置普通 START 辅助输入，匹配仍只看原主输入。`Pool.combine` 混合多个不同策略的池。`Requirement.resourceIO` 支持逐 tick 物料；`fuzzyInput` 列出可替代资源；`checkpoint` 在指定进度执行子需求；`chance` 和 `randomOutputs` 设置概率与随机输出。它们的数量、返回值和使用限制见 [ZS 使用参考](api-zs-reference.md)。
 
 ### 声明结构与可变层数
 

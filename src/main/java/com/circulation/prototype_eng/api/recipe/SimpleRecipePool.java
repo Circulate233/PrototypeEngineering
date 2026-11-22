@@ -30,18 +30,16 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Predicate;
 
-/**
- * Single fixed START input to any number of fixed END outputs, with pool-local AEKey/long postings.
- */
 public final class SimpleRecipePool implements RecipePool {
     private final ResourceLocation id;
     private final String translationKey;
     private final List<MachineRecipe> recipes;
+    private final List<GenericStack> auxiliaryInputs;
     private final List<MachineType> machines;
     private final ResourceRecipeIndex inputIndex;
     private final Predicate<MachineInstance> stableInputs;
     private final @Nullable String existingJeiPageId;
-    private final Object2ObjectOpenHashMap<AEKey, List<Entry>> byInput;
+    private final Object2ObjectOpenHashMap<AEKey, List<IndexedEntry>> byInput;
     private final Reference2IntOpenHashMap<MachineRecipe> priority;
 
     /**
@@ -58,35 +56,46 @@ public final class SimpleRecipePool implements RecipePool {
      * callback must not manufacture a missing input. The index does not authorize acquisition.
      */
     public SimpleRecipePool(ResourceLocation id, String translationKey, List<Entry> entries, Predicate<MachineInstance> stableInputs) {
-        this(id, translationKey, entries, List.of(), stableInputs, null);
+        this(id, translationKey, definitions(entries), List.of(), List.of(), stableInputs, null);
     }
 
-    private SimpleRecipePool(ResourceLocation id, String translationKey, List<Entry> entries, List<MachineType> machines,
+    private static List<MachineRecipe> definitions(List<Entry> entries) {
+        var recipes = new ObjectArrayList<MachineRecipe>(entries.size());
+        for (int i = 0; i < entries.size(); i++) recipes.add(entries.get(i).recipe());
+        return recipes;
+    }
+
+    private SimpleRecipePool(ResourceLocation id, String translationKey, List<MachineRecipe> definitions,
+                             List<GenericStack> auxiliaryInputs, List<MachineType> machines,
                              Predicate<MachineInstance> stableInputs, @Nullable String existingJeiPageId) {
         this.id = id;
         if (translationKey == null || translationKey.isBlank())
             throw new IllegalArgumentException("Pool title is required");
         this.translationKey = translationKey;
+        ResourceRequirement.validateStacks(auxiliaryInputs);
+        this.auxiliaryInputs = auxiliaryInputs;
         this.stableInputs = stableInputs;
         byInput = new Object2ObjectOpenHashMap<>();
         priority = new Reference2IntOpenHashMap<>();
-        var ids = new ObjectOpenHashSet<ResourceLocation>(entries.size());
-        var rows = new ObjectArrayList<MachineRecipe>(entries.size());
-        var postings = new Object2ObjectOpenHashMap<AEKey, ObjectArrayList<Entry>>(entries.size());
-        for (int index5 = 0; index5 < entries.size(); index5++) {
-            var entry = entries.get(index5);
+        var ids = new ObjectOpenHashSet<ResourceLocation>(definitions.size());
+        var footprints = new ObjectArrayList<ResourceRecipeIndex.Footprint>(definitions.size());
+        var postings = new Object2ObjectOpenHashMap<AEKey, ObjectArrayList<IndexedEntry>>(definitions.size());
+        for (int index5 = 0; index5 < definitions.size(); index5++) {
+            var recipe = definitions.get(index5);
+            var resource = resource(recipe, auxiliaryInputs);
+            var entry = new IndexedEntry(recipe, resource.inputs().getFirst());
             if (!ids.add(entry.recipe.id()))
                 throw new IllegalArgumentException("Duplicate simple recipe: " + entry.recipe.id());
-            priority.put(entry.recipe, rows.size());
-            rows.add(entry.recipe);
+            priority.put(entry.recipe, index5);
+            footprints.add(new ResourceRecipeIndex.Footprint(recipe, List.of(entry.input)));
             postings.computeIfAbsent(entry.input.what(), _ -> new ObjectArrayList<>()).add(entry);
         }
         postings.forEach((key, values) -> {
             values.sort(Comparator.comparingLong(entry -> entry.input.amount()));
             byInput.put(key, values);
         });
-        recipes = rows;
-        inputIndex = ResourceRecipeIndex.forFixedInputs(recipes, _ -> true);
+        recipes = definitions;
+        inputIndex = new ResourceRecipeIndex(recipes, footprints);
         this.machines = machines;
         this.existingJeiPageId = existingJeiPageId;
     }
@@ -104,6 +113,59 @@ public final class SimpleRecipePool implements RecipePool {
     @Override
     public List<MachineRecipe> recipes() {
         return recipes;
+    }
+
+    public List<GenericStack> auxiliaryInputs() {
+        return auxiliaryInputs;
+    }
+
+    /**
+     * Returns a new declaration with shared START inputs. Bind revisions, codecs and callbacks to
+     * the returned pool's recipes; their identities change when the shared inputs change.
+     */
+    public SimpleRecipePool withAuxiliaryInputs(List<GenericStack> inputs) {
+        ResourceRequirement.validateStacks(inputs);
+        if (auxiliaryInputs.equals(inputs)) return this;
+        var updated = new ObjectArrayList<MachineRecipe>(recipes.size());
+        for (int i = 0; i < recipes.size(); i++) {
+            var recipe = recipes.get(i);
+            updated.add(withInputs(recipe, resource(recipe, auxiliaryInputs), inputs));
+        }
+        return new SimpleRecipePool(id, translationKey, updated, inputs, machines, stableInputs, existingJeiPageId);
+    }
+
+    @Override
+    public MachineRecipe prepareRecipe(MachineRecipe recipe) {
+        if (auxiliaryInputs.isEmpty()) return recipe;
+        var requirements = recipe.orderedRequirements();
+        if (requirements.size() == 1
+            && requirements.getFirst().payload() instanceof ResourceRequirement resource && resource.inputs().size() != 1) {
+            resource(recipe, auxiliaryInputs);
+            return recipe;
+        }
+        var resource = Entry.resource(recipe);
+        return withInputs(recipe, resource, auxiliaryInputs);
+    }
+
+    private static MachineRecipe withInputs(MachineRecipe recipe, ResourceRequirement resource, List<GenericStack> auxiliary) {
+        var inputs = new ObjectArrayList<GenericStack>(auxiliary.size() + 1);
+        inputs.add(resource.inputs().getFirst());
+        inputs.addAll(auxiliary);
+        var replacement = new ResourceRequirement(inputs, resource.inputsPerTick(), resource.outputsPerTick(), resource.outputs(),
+            resource.voidExcessOutputs(), resource.chance(), resource.randomOutputs(), resource.fuzzyInputs(),
+            resource.dynamicInputs(), resource.inputAllocation());
+        var requirement = recipe.orderedRequirements().getFirst();
+        return new MachineRecipe(recipe.id(), recipe.durationTicks(),
+            List.of(RecipeRequirements.RESOURCES.requirement(requirement.id(), replacement)), recipe.recipeGroups(),
+            recipe.maxConcurrentThreads(), recipe.parallelismSelection());
+    }
+
+    private static ResourceRequirement resource(MachineRecipe recipe, List<GenericStack> auxiliary) {
+        var resource = Entry.resource(recipe, auxiliary.size() + 1);
+        for (int i = 0; i < auxiliary.size(); i++)
+            if (!resource.inputs().get(i + 1).equals(auxiliary.get(i)))
+                throw new IllegalArgumentException("Simple recipe does not contain its pool's auxiliary inputs: " + recipe.id());
+        return resource;
     }
 
     @Override
@@ -142,6 +204,7 @@ public final class SimpleRecipePool implements RecipePool {
         id = source.id;
         translationKey = source.translationKey;
         recipes = source.recipes;
+        auxiliaryInputs = source.auxiliaryInputs;
         machines = source.machines;
         inputIndex = source.inputIndex;
         stableInputs = source.stableInputs;
@@ -152,12 +215,7 @@ public final class SimpleRecipePool implements RecipePool {
 
     @Override
     public SimpleRecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines) {
-        var entries = new ObjectArrayList<Entry>(recipes.size());
-        for (int index4 = 0; index4 < recipes.size(); index4++) {
-            var recipe = recipes.get(index4);
-            entries.add(Entry.of(recipe));
-        }
-        return new SimpleRecipePool(id, translationKey, entries, machines, stableInputs, existingJeiPageId);
+        return new SimpleRecipePool(id, translationKey, recipes, auxiliaryInputs, machines, stableInputs, existingJeiPageId);
     }
 
     @Override
@@ -195,16 +253,23 @@ public final class SimpleRecipePool implements RecipePool {
         }
 
         private static ResourceRequirement resource(MachineRecipe recipe) {
+            return resource(recipe, 1);
+        }
+
+        private static ResourceRequirement resource(MachineRecipe recipe, int inputCount) {
             var requirements = recipe.orderedRequirements();
             if (requirements.size() != 1 || requirements.getFirst().type() != RecipeRequirements.RESOURCES
                 || !(requirements.getFirst().payload() instanceof ResourceRequirement resource)
-                || resource.inputs().size() != 1
+                || resource.inputs().size() != inputCount
                 || !resource.inputsPerTick().isEmpty() || !resource.outputsPerTick().isEmpty()
                 || !resource.fuzzyInputs().isEmpty() || !resource.dynamicInputs().isEmpty()
                 || resource.randomOutputs() != null || resource.chance().percent() != 100 || resource.chance().attribute() != null)
-                throw new IllegalArgumentException("Simple pool needs one fixed START input and fixed END outputs: " + recipe.id());
+                throw new IllegalArgumentException("Simple pool needs one fixed START input, its shared inputs and fixed END outputs: " + recipe.id());
             return resource;
         }
+    }
+
+    private record IndexedEntry(MachineRecipe recipe, GenericStack input) {
     }
 
     private record Captured(ResourceHatch hatch, ResourceStorage storage, StorageContext context, Object identity,
@@ -250,7 +315,7 @@ public final class SimpleRecipePool implements RecipePool {
         private Iterator<Object2LongMap.Entry<AEKey>> quantities;
         private Iterator<Object2LongMap.Entry<AEKey>> totals;
         private Object2LongMap.Entry<AEKey> total;
-        private List<Entry> postings;
+        private List<IndexedEntry> postings;
         private int postingIndex;
         private int proofIndex;
         private boolean bindingsChecked;

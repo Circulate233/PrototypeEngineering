@@ -84,6 +84,8 @@ machine.register("v1");
 
 `Pool.create(id, titleKey, recipes)` 创建普通池，适用于有多个输入、FE、逐 tick IO 或复杂输出的配方。`Pool.simple(...)` 建立只有一个固定开始输入的索引池，结束输出数量不限；输入以外的需求不能放入该池。`Pool.combine(...)` 把多个池组成一个机器扫描入口，保留每个子池的匹配规则，但不会自动注册子池。
 
+单输入池可调用 `.auxiliaryInputs(Resource[])` 设置整池公共辅助输入。例如 `Pool.simple("example:washing", "pool.example.washing", recipes).auxiliaryInputs([Resource.fluid(<liquid:water>, 1)])` 为每份配方增加 1 mB 水，N 并行按 N 倍支付。材料类型、数量、倍率、来源分配、缺料与事务处理均沿普通固定输入；主辅相同资源累加。辅助材料独立在池上声明，候选匹配仍只看原主输入。方法返回新池，重复设置替换整份列表，传 `[]` 清除，必须使用返回值注册。新池自动把原 recipe codec 重绑到完整配方，保留 revision、自定义组件、overlay 和校验函数；更改需求后必须更新原配方声明的 revision，按对象绑定的外部行为须使用新池的实际配方。普通池调用该方法会拒绝。
+
 `existingJeiPage(uid)` 让该池沿用已经存在的 JEI 分类入口。`jeiOptions(options)` 设置概率提示和候选材料的显示方式。这些设置方法返回一个新池；必须把返回结果用于注册。`customJeiPage(Page.named(id))` 只引用 Java 页面，并不会自行创建 JEI 布局。
 
 ### 创建配方和资源需求

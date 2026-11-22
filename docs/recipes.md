@@ -370,7 +370,7 @@ scanner 的同步 startIn 与 bounded beginAdmission 均把准确 `RecipeCatalog
 
 混合提供者使用[CompositeRecipePool与异步发现](recipe-execution-policy.md#多个提供者的组合配方池)。新增纯库存预算游标`beginMatch`供Default/Simple/组合复用，实际多池Selection已走组合策略入口；异步`CandidatePass`只产生候选，main收据和freshness后才建进程并准入。组合16项、单项重试64项缓存有界；首次冷组合在发现worker编译，主线程只捕获provider引用。
 
-`RecipePool` 现在是公开接口，保留 `id/translationKey/recipes/machines`，默认通用实现为 `DefaultRecipePool`；`registerPool` 仍创建通用池。独立外部实现通过自己的 `freeze(recipes, machines)` 保留策略与配置，返回完整不可变 canonical 实例。注册表先校验 ID、标题、全部配方及静态机器的准确对象与顺序，再统一发布目录和反查；不会把自定义池改成通用具体类。当前注册仍是一次冻结，没有新增运行时配方重载协议。
+`RecipePool` 现在是公开接口，保留 `id/translationKey/recipes/machines`，`prepareRecipe(recipe)` 用于注册前应用池的公共声明，默认返回原对象；实现必须保留 ID，并原样返回已准备的配方。默认通用实现为 `DefaultRecipePool`；`registerPool` 仍创建通用池。独立外部实现通过自己的 `freeze(recipes, machines)` 保留策略与配置，返回完整不可变 canonical 实例。注册表先校验 ID、标题、全部配方及静态机器的准确对象与顺序，再统一发布目录和反查；不会把自定义池改成通用具体类。当前注册仍是一次冻结，没有新增运行时配方重载协议。
 
 2026-11-11新增两个只读库存匹配入口：`match(AEKey2LongMap inventory)`返回首个canonical库存候选或null，`match(AEKey2LongMap inventory, int parallelism)`返回按原priority排列的不可变`List<RecipeInventoryMatch>`。每项包含准确配方对象与正int的`maximumParallelism`，表示该配方单独使用此库存时的canonical固定输入数量上界；各项不预留/分摊共享材料，也不证明FE、条件、权限和完整START可行。普通对象结果列表允许JDK接口，数量表和索引计数仍严格使用AEKey2LongMap/fastutil primitive映射。
 
@@ -381,6 +381,10 @@ Default/Simple两种池缓存同一固定输入索引供公开库存API复用；
 `beginCandidates(machine, groups)` 是实际扫描调用的公开策略入口，返回原 `RecipeCandidateIndex.Cursor`。null（包括 cursor 的 null result）只回退本池完整且组兼容的配方，empty 表示本池无候选；外部结果须是本池 canonical 子集，且不得漏掉其职责下仍可能成功的配方。目录冻结时保存成员、组与原 priority；每个 pass 只采样所选 canonical 池，不先枚举它们的全量配方。各池意见先 union、准确去重并按原 priority 排序，再经过现有 external index intersection；只访问本池 fallback 或实际返回结果，不扫描全目录造 scope。`Selection.accepts` 保留目录、机器和准确配方成员约束；预算 yield 保留游标，`restartLiveIndexes` 同时重取池策略与外部索引的 live 观察。
 
 `SimpleRecipePool.Entry.create(id, durationTicks, input, outputs, groups)` 声明单个固定 START 输入和任意数量固定 END 输出，`outputs` 为只读冻结的 `List<GenericStack>`，可为空；单输出的 `GenericStack` 便捷重载保留。`Entry.outputs()` 返回全部输出，`Entry.of`、canonical freeze、外部JEI页绑定及CT `Pool.simple` 均保留完整列表。一个输入条目不等于只消耗一个物品，输入/输出仍使用原AEKey与long数量。该池不接受 TICK IO、概率/属性概率、随机输出、fuzzy/dynamic、checkpoint、selector 或其他需求；这些能力继续使用通用池。相同AEKey的配方保留原priority；索引只按固定输入的真实库存键和数量阈值访问postings，输出数量不影响匹配。最后仍进入原factory、要求/事务、共享并行、研究/计算与START准入，索引不消费材料或授予执行权限。默认选择[单输入专用JEI页](jei.md#2026-11-12-单输入多输出与动态材料布局)，有效外部页面或自定义页仍优先。
+
+`SimpleRecipePool.withAuxiliaryInputs(List<GenericStack>)` 在池上独立声明公共辅助输入，返回新池，所有现有配方均在 START 消耗这些材料。例如声明 1 mB 水后，每执行一份配方都另需 1 mB 水；N 并行消耗 N mB。辅助材料支持任意已注册 AEKey 类型，与普通固定输入使用相同的倍率、来源分配、缺料等待和事务；相同键的主输入与辅助材料累加，材料不足或数量溢出时禁止部分付款。`match`、`beginMatch`、实际稀疏候选发现及其数量上界只看原主输入，辅助材料的完整可行性在 START 检查。重复调用替换整份辅助列表，传空列表清除辅助材料，不会层层追加。
+
+必须先设置辅助材料，再使用返回池的 `recipes()` 绑定 revision、codec、网络要求或其他按准确配方对象登记的行为；辅助材料变化会生成新的完整配方对象，原池和原始 Entry 不变。通过 `registerRecipe` 后续追加的原始单输入定义，会由注册表自动调用池的 `prepareRecipe` 并应用公共辅助材料。需要为追加定义绑定 revision、codec 或准确对象回调时，先显式调用 `pool.prepareRecipe(rawSingleInputRecipe)`，将返回对象用于绑定和注册；已经准备的完整定义原样返回，不重复追加。准备运行时替换定义也必须先调用该方法，再提交完整定义与对应 codec。`freeze` 保留传入完整配方的准确对象并校验辅助列表，禁止通过缺少辅助材料的定义绕过全池费用。`Entry.of` 继续用于原始单输入声明。更改辅助配置后必须按既有保存规则更新 revision 并保留所需旧 codec；ZS `.auxiliaryInputs(Resource[])` 自动为返回池重绑原 codec，保留自定义组件和校验函数。
 
 正常公开使用为 `registry.register(new SimpleRecipePool(poolId, titleKey, entries))`，并在原 `MachineAssembly.instanceFactory` 选择 `MultithreadController::new` 或 `CrossRecipeController::new`。三参池沿 owner 的 `supportsStableFixedInputLowerBounds()` 查询全部实际 registered scanner/输入路径：新默认控制器的已知标准安全配置可以启用索引；未知 factory、preparation、输入 provider/overlay 或可改变输入的 local callback 自动保留本池候选。四参 `Predicate<MachineInstance>` 供外部作者显式承担完整固定输入下界保证，必须覆盖 factory、概率、modifier、preparation、overlay 与先行 START 效果，不能只根据需求形状推断。事件和输入变换能力保持可用；不能证明稳定时走正常 fallback，缺失输入被实际 factory 改成 optional 的配方仍可准入。
 

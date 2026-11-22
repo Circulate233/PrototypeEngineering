@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.client.jei;
 
 import ae2.api.integrations.hei.IngredientConverter;
+import ae2.api.stacks.AEKey;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
@@ -16,6 +17,7 @@ import com.circulation.prototype_eng.localization.JeiText;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import mcp.MethodsReturnNonnullByDefault;
 import mezz.jei.api.gui.IDrawable;
 import mezz.jei.api.gui.IRecipeLayout;
@@ -452,6 +454,113 @@ class JeiRecipeIntegrationTest {
         assertTrue(wrapper.handleMouseScroll(10, oldHeight - 1, 1));
         assertEquals(25, layout.group(ITEM_INGREDIENT).getGuiIngredients().size());
         assertThrows(IllegalStateException.class, prepared::apply);
+    }
+
+    @Test
+    void auxiliaryInputsRemainVisibleAcrossPagesAndCompleteInQueriesAndPatterns() {
+        var input = stack(ITEM, "auxiliary_main", 5);
+        var auxiliary = new ObjectArrayList<GenericStack>();
+        auxiliary.add(stack(FLUID, "water", 1));
+        for (int i = 0; i < RecipePanelLayout.RESOURCE_CAPACITY * 2; i++)
+            auxiliary.add(stack(i % 2 == 0 ? ITEM : FLUID, "auxiliary_" + i, i + 2));
+        var outputs = new ObjectArrayList<GenericStack>();
+        for (int i = 0; i < RecipePanelLayout.RESOURCE_CAPACITY + 3; i++)
+            outputs.add(stack(i % 2 == 0 ? ITEM : FLUID, "auxiliary_output_" + i, i + 1));
+        var entry = SimpleRecipePool.Entry.create(id("auxiliary"), 10, input, outputs, Set.of());
+        var pool = new SimpleRecipePool(id("auxiliary_pool"), "pool.title", List.of(entry)).withAuxiliaryInputs(auxiliary);
+        var recipe = pool.recipes().getFirst();
+        var displays = displays();
+        var display = displays.describe(recipe);
+        var page = new SingleInputRecipePage(pool, new JeiTestViews.Helper(), displays, JeiRenderOptions.defaults(), JeiTestViews.FONT);
+        var wrapper = page.createRecipe(recipe, display, ingredients(display));
+        var indexed = new JeiTestViews.Ingredients();
+        wrapper.getIngredients(indexed);
+        assertEquals(auxiliary.size() + 1,
+            indexed.getInputs(ITEM_INGREDIENT).size() + indexed.getInputs(FLUID_INGREDIENT).size());
+        assertEquals(outputs.size(), indexed.getOutputs(ITEM_INGREDIENT).size() + indexed.getOutputs(FLUID_INGREDIENT).size());
+        var expectedInputs = new ObjectArrayList<GenericStack>();
+        expectedInputs.add(input);
+        expectedInputs.addAll(auxiliary);
+        var pattern = Objects.requireNonNull(wrapper.patternRecipe());
+        assertEquals(expectedInputs, pattern.inputs().stream().map(List::getFirst).toList());
+        assertEquals(outputs, pattern.outputs().stream().map(List::getFirst).toList());
+
+        var layout = new JeiTestViews.Layout();
+        page.setRecipe(layout, wrapper, indexed);
+        var visibleInputs = new ObjectOpenHashSet<AEKey>();
+        var visibleOutputs = new ObjectOpenHashSet<AEKey>();
+        int count = (expectedInputs.size() + RecipePanelLayout.RESOURCE_CAPACITY - 1) / RecipePanelLayout.RESOURCE_CAPACITY;
+        for (int i = 0; i < count; i++) {
+            visibleInputs.addAll(visibleKeys(layout, true));
+            visibleOutputs.addAll(visibleKeys(layout, false));
+            assertTrue(wrapper.handleMouseScroll(10, page.getBackground().getHeight() - 1, -1));
+        }
+        assertEquals(new ObjectOpenHashSet<>(expectedInputs.stream().map(GenericStack::what).toList()), visibleInputs);
+        assertEquals(new ObjectOpenHashSet<>(outputs.stream().map(GenericStack::what).toList()), visibleOutputs);
+        assertTrue(visibleKeys(layout, true).contains(input.what()));
+    }
+
+    @Test
+    void preparedSingleInputPagesSwitchAuxiliaryLayoutBothWaysWithoutChangingOlderWrappers() {
+        var input = stack(ITEM, "prepared_main", 7);
+        var outputs = new ObjectArrayList<GenericStack>();
+        for (int i = 0; i < RecipePanelLayout.RESOURCE_CAPACITY * 2 + 1; i++)
+            outputs.add(stack(ITEM, "prepared_output_" + i, i + 1));
+        var entry = SimpleRecipePool.Entry.create(id("prepared_auxiliary"), 10, input, outputs, Set.of());
+        var original = new SimpleRecipePool(id("prepared_auxiliary_pool"), "pool.title", List.of(entry));
+        var displays = displays();
+        var originalDisplay = displays.describe(entry.recipe());
+        var page = new SingleInputRecipePage(original, new JeiTestViews.Helper(), displays, JeiRenderOptions.defaults(), JeiTestViews.FONT);
+        var originalWrapper = page.createRecipe(entry.recipe(), originalDisplay, ingredients(originalDisplay));
+        var originalLayout = new JeiTestViews.Layout();
+        page.setRecipe(originalLayout, originalWrapper, new JeiTestViews.Ingredients());
+        int originalHeight = page.getBackground().getHeight();
+
+        var auxiliary = new ObjectArrayList<GenericStack>();
+        for (int i = 0; i < RecipePanelLayout.RESOURCE_CAPACITY + 1; i++)
+            auxiliary.add(stack(FLUID, "prepared_auxiliary_" + i, i + 1));
+        var augmented = original.withAuxiliaryInputs(auxiliary);
+        var snapshot = displays.capture(augmented.recipes());
+        var augmentedRecipe = augmented.recipes().getFirst();
+        var augmentedDisplay = snapshot.describe(augmentedRecipe);
+        var prepared = Objects.requireNonNull(page.prepareUpdate(augmented, snapshot));
+        var augmentedWrapper = prepared.createRecipe(augmentedRecipe, augmentedDisplay, ingredients(augmentedDisplay));
+        prepared.apply();
+        var augmentedLayout = new JeiTestViews.Layout();
+        page.setRecipe(augmentedLayout, augmentedWrapper, new JeiTestViews.Ingredients());
+        assertEquals(RecipePanelLayout.RESOURCE_CAPACITY, page.inputLayout().size());
+        assertEquals(RecipePanelLayout.RESOURCE_CAPACITY, page.outputLayout().size());
+        int augmentedHeight = page.getBackground().getHeight();
+        assertTrue(augmentedWrapper.handleMouseScroll(10, augmentedHeight - 1, -1));
+        assertFalse(visibleKeys(augmentedLayout, true).contains(input.what()));
+        assertTrue(originalWrapper.handleMouseScroll(10, originalHeight - 1, -1));
+        assertTrue(visibleKeys(originalLayout, true).contains(input.what()));
+
+        var restoredSnapshot = displays.capture(original.recipes());
+        var restoredDisplay = restoredSnapshot.describe(entry.recipe());
+        var restore = Objects.requireNonNull(page.prepareUpdate(original, restoredSnapshot));
+        var restored = restore.createRecipe(entry.recipe(), restoredDisplay, ingredients(restoredDisplay));
+        restore.apply();
+        var restoredLayout = new JeiTestViews.Layout();
+        page.setRecipe(restoredLayout, restored, new JeiTestViews.Ingredients());
+        assertEquals(1, page.inputLayout().size());
+        assertTrue(restored.handleMouseScroll(10, page.getBackground().getHeight() - 1, -1));
+        assertTrue(visibleKeys(restoredLayout, true).contains(input.what()));
+        assertEquals(List.of(List.of(input)), Objects.requireNonNull(restored.patternRecipe()).inputs());
+        assertTrue(augmentedWrapper.handleMouseScroll(10, augmentedHeight - 1, -1));
+        assertTrue(visibleKeys(augmentedLayout, true).isEmpty());
+    }
+
+    private static Set<AEKey> visibleKeys(JeiTestViews.Layout layout, boolean input) {
+        var result = new ObjectOpenHashSet<AEKey>();
+        for (var type : List.of(ITEM_INGREDIENT, FLUID_INGREDIENT)) {
+            var group = layout.group(type);
+            for (var entry : group.values.int2ObjectEntrySet()) {
+                if (group.roles.get(entry.getIntKey()) == input)
+                    for (var stack : entry.getValue()) result.add(stack.what());
+            }
+        }
+        return result;
     }
 
     @Test

@@ -25,6 +25,14 @@ public interface RecipePool {
     List<MachineType> machines();
 
     /**
+     * Applies pool-wide declarations to an appended recipe before registration. Retain its ID and
+     * return an already prepared definition unchanged. Bind revisions and codecs to this result.
+     */
+    default MachineRecipe prepareRecipe(MachineRecipe recipe) {
+        return recipe;
+    }
+
+    /**
      * First canonical inventory candidate; the scanner still checks FE, conditions and START.
      */
     default @Nullable MachineRecipe match(AEKey2LongMap inventory) {

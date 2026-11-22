@@ -86,6 +86,26 @@ public final class RecipeProcessNbt {
         bindings = components;
     }
 
+    private RecipeProcessNbt(RecipeProcessNbt source, MachineRecipe recipe) {
+        if (!source.recipe.id().equals(recipe.id()))
+            throw new IllegalArgumentException("Replacement codec recipe has a different ID: " + recipe.id());
+        this.recipe = recipe;
+        revision = source.revision;
+        attributes = source.attributes;
+        bindings = source.bindings;
+        validators = source.validators;
+        stableResourceGroups = source.stableResourceGroups;
+        stableStructure = source.stableStructure;
+    }
+
+    /**
+     * Rebinds frozen codecs to an updated definition of the same recipe. Custom validators must
+     * accept the new definition; their captured callbacks are retained unchanged.
+     */
+    public RecipeProcessNbt withRecipe(MachineRecipe recipe) {
+        return recipe == this.recipe ? this : new RecipeProcessNbt(this, recipe);
+    }
+
     public static Builder builder(MachineRecipe recipe, String revision) {
         return new Builder(recipe, revision);
     }

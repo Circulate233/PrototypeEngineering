@@ -43,7 +43,6 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
     private static final JeiVisuals.Texture EMPTY_SLOT = new JeiVisuals.Texture(JeiVisuals.texture("item_module/plaid_base"), 18, 18);
     private final RecipeInformationLayout.Font font;
     private final JeiRenderOptions options;
-    private final boolean singleInput;
     private final boolean showArrow;
     private Data data;
 
@@ -90,9 +89,8 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
                          JeiRenderOptions options, RecipeInformationLayout.Font font, boolean singleInput, boolean showArrow) {
         this.font = font;
         this.options = options;
-        this.singleInput = singleInput;
         this.showArrow = showArrow;
-        data = measure(pool, describe);
+        data = measure(pool, describe, singleInput);
     }
 
     static RecipeInformationLayout.Font minecraftFont() {
@@ -116,15 +114,15 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
         return count == 0 ? 0 : (count + columns - 1) / columns;
     }
 
-    private int inputCapacity() {
+    private static int inputCapacity(boolean singleInput) {
         return singleInput ? 1 : RecipePanelLayout.RESOURCE_CAPACITY;
     }
 
-    private int outputCapacity() {
+    private static int outputCapacity(boolean singleInput) {
         return singleInput ? 24 : RecipePanelLayout.RESOURCE_CAPACITY;
     }
 
-    private Data measure(RecipePool pool, Function<MachineRecipe, JeiRecipeDisplay> describe) {
+    private Data measure(RecipePool pool, Function<MachineRecipe, JeiRecipeDisplay> describe, boolean singleInput) {
         var information = new Reference2ObjectOpenHashMap<JeiRecipeDisplay, RecipeInformationLayout>();
         int contentBottom = 21;
         int maximumInputs = 0;
@@ -138,15 +136,15 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
             information.put(display, measured);
             int inputs = RecipePanelLayout.maximumSlots(display, JeiRecipeDisplay.Role.INPUT, options, Integer.MAX_VALUE);
             int outputs = RecipePanelLayout.maximumSlots(display, JeiRecipeDisplay.Role.OUTPUT, options, Integer.MAX_VALUE);
-            maximumInputs = Math.clamp(inputs, maximumInputs, inputCapacity());
-            maximumOutputs = Math.clamp(outputs, maximumOutputs, outputCapacity());
-            var geometry = geometry(Math.min(inputs, inputCapacity()), Math.min(outputs, outputCapacity()));
+            maximumInputs = Math.clamp(inputs, maximumInputs, inputCapacity(singleInput));
+            maximumOutputs = Math.clamp(outputs, maximumOutputs, outputCapacity(singleInput));
+            var geometry = geometry(Math.min(inputs, inputCapacity(singleInput)), Math.min(outputs, outputCapacity(singleInput)), singleInput);
             contentBottom = Math.max(contentBottom, geometry.informationY + measured.height());
-            paginated |= inputs > inputCapacity() || outputs > outputCapacity();
+            paginated |= inputs > inputCapacity(singleInput) || outputs > outputCapacity(singleInput);
         }
         int height = contentBottom + (paginated ? 26 : 6);
         var background = new JeiVisuals.NineSlice(new JeiVisuals.Texture(JeiVisuals.texture("jei_base"), 184, 220), WIDTH, height, 2, false, 0xffffffff);
-        return new Data(pool, height, height - 20, background, information, geometry(maximumInputs, maximumOutputs));
+        return new Data(pool, height, height - 20, background, information, geometry(maximumInputs, maximumOutputs, singleInput), singleInput);
     }
 
     @Override
@@ -157,12 +155,16 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
     }
 
     protected final PreparedUpdate prepareLayoutUpdate(RecipePool target, RecipeJeiDisplays.Snapshot displays) {
+        return prepareLayoutUpdate(target, displays, data.singleInput);
+    }
+
+    protected final PreparedUpdate prepareLayoutUpdate(RecipePool target, RecipeJeiDisplays.Snapshot displays, boolean singleInput) {
         var expected = data;
-        var prepared = measure(target, displays::describe);
+        var prepared = measure(target, displays::describe, singleInput);
         return new Update(this, expected, prepared);
     }
 
-    private Geometry geometry(int inputCount, int outputCount) {
+    private Geometry geometry(int inputCount, int outputCount, boolean singleInput) {
         int inputColumns = columns(inputCount, singleInput ? 1 : 4);
         int outputColumns = columns(outputCount, singleInput ? 6 : 4);
         int inputHeight = rows(inputCount, inputColumns) * STRIDE;
@@ -250,7 +252,7 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
 
     private record Data(RecipePool pool, int height, int footerTop, IDrawable background,
                         Reference2ObjectOpenHashMap<JeiRecipeDisplay, RecipeInformationLayout> information,
-                        Geometry maximum) {
+                        Geometry maximum, boolean singleInput) {
     }
 
     private record Geometry(List<JeiSlot> inputs, List<JeiSlot> outputs,
@@ -280,10 +282,11 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
             super(owner, captured.pool, recipe, display, ingredients);
             this.owner = owner;
             this.captured = captured;
-            panels = new RecipePanelLayout(display, owner.renderOptions(), ingredients, owner.inputCapacity(), owner.outputCapacity(), owner.singleInput);
+            panels = new RecipePanelLayout(display, owner.renderOptions(), ingredients, inputCapacity(captured.singleInput),
+                outputCapacity(captured.singleInput), captured.singleInput);
             geometries = new ObjectArrayList<>(panels.pageCount());
             for (int i = 0; i < panels.pageCount(); i++)
-                geometries.add(owner.geometry(panels.inputGroups(i).size(), panels.outputGroups(i).size()));
+                geometries.add(owner.geometry(panels.inputGroups(i).size(), panels.outputGroups(i).size(), captured.singleInput));
             geometry = geometries.getFirst();
             explanation = captured.information.get(display);
         }

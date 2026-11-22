@@ -2,11 +2,17 @@ package com.circulation.prototype_eng.integration.crafttweaker.recipe;
 
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKeyType;
+import ae2.api.stacks.AEKey2LongMap;
+import ae2.api.stacks.GenericStack;
+import ae2.api.config.Actionable;
+import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.client.jei.ClientRecipeDeclarationRegistrationEvent;
 import com.circulation.prototype_eng.api.client.jei.ClientRecipeDeclarations;
 import com.circulation.prototype_eng.api.client.jei.RecipeJeiDisplays;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
+import com.circulation.prototype_eng.api.machine.component.MachineHatches;
+import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
 import com.circulation.prototype_eng.api.recipe.CompositeRecipePool;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
@@ -18,6 +24,11 @@ import com.circulation.prototype_eng.api.recipe.RecipeDefinitionUpdates;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
+import com.circulation.prototype_eng.api.recipe.persistence.ProcessComponentCodec;
+import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
+import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.api.storage.ResourceHatch;
+import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayPipeline;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessCodecs;
@@ -31,6 +42,7 @@ import com.circulation.prototype_eng.integration.crafttweaker.ZenComponentDataTy
 import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
 import com.circulation.prototype_eng.recipe.RecipeDefinitionManifestCodec;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
+import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import crafttweaker.api.data.IData;
 import crafttweaker.zenscript.expand.ExpandAnyDict;
 import crafttweaker.zenscript.expand.ExpandBool;
@@ -39,6 +51,7 @@ import crafttweaker.zenscript.expand.ExpandInt;
 import crafttweaker.zenscript.expand.ExpandString;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
@@ -65,6 +78,7 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -80,6 +94,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ZenRecipeBridgeTest {
     private static final TestKeyType KEY_TYPE = new TestKeyType();
     private static final AEKey KEY = new TestKey();
+    private static final ComponentType<RecipeProcess, int[]> AUXILIARY_DATA = new ComponentType<>(
+        new ResourceLocation("auxiliary_bridge", "saved_data"), _ -> new int[1], List.of());
 
     private static long effectiveEnergy(RecipeProcess process, ZenRequirement target) {
         return RecipeOverlays.getOrCreate(process).resolve(target.energy(), target.value().path(null)).payload().inputPerTick();
@@ -283,6 +299,100 @@ class ZenRecipeBridgeTest {
             });
             """, "bad_matcher.zs");
         assertFalse(compiled.diagnostics().isEmpty());
+    }
+
+    @Test
+    void realZenAuxiliaryInputsReplaceSharedMaterialsAndRetainCanonicalCodecsThroughPaymentAndRestore() throws Exception {
+        Harness.auxiliary = null;
+        var compiled = compile("""
+            import mods.prototype_eng.recipe.Pool;
+            import tests.prototype_eng.Harness;
+            var original = Pool.simple("auxiliary_bridge:pool", "pool.title", [Harness.auxiliaryRecipe()]);
+            var added = original.auxiliaryInputs([Harness.resource().withAmount(2)]);
+            var replaced = added.auxiliaryInputs([Harness.resource().withAmount(5)]);
+            var cleared = replaced.auxiliaryInputs([]);
+            Harness.captureAuxiliary(original, added, replaced, cleared);
+            """, "auxiliary_inputs.zs");
+        assertEquals("", compiled.diagnostics());
+        Objects.requireNonNull(compiled.module().getMain()).run();
+        var captured = Objects.requireNonNull(Harness.auxiliary);
+        var original = captured.original().recipes().getFirst();
+        var added = captured.added().recipes().getFirst();
+        var replaced = captured.replaced().recipes().getFirst();
+        var cleared = captured.cleared().recipes().getFirst();
+        var originalInputs = assertInstanceOf(ResourceRequirement.class, original.recipe().orderedRequirements().getFirst().payload()).inputs();
+        var addedInputs = assertInstanceOf(ResourceRequirement.class, added.recipe().orderedRequirements().getFirst().payload()).inputs();
+        var replacedInputs = assertInstanceOf(ResourceRequirement.class, replaced.recipe().orderedRequirements().getFirst().payload()).inputs();
+        assertEquals(List.of(new GenericStack(KEY, 1), new GenericStack(KEY, 2)), addedInputs);
+        assertEquals(List.of(new GenericStack(KEY, 1), new GenericStack(KEY, 5)), replacedInputs);
+        assertEquals(originalInputs, assertInstanceOf(ResourceRequirement.class, cleared.recipe().orderedRequirements().getFirst().payload()).inputs());
+        assertEquals(List.of(new GenericStack(KEY, 1)), originalInputs);
+        assertNotSame(original.recipe(), replaced.recipe());
+        assertNotSame(original.codec(), replaced.codec());
+        assertSame(original.recipe(), original.codec().recipe());
+
+        var registry = new RecipeRegistry();
+        registry.register(captured.replaced().value());
+        registry.bindProcessCodecs(new RecipeProcessCodecs(List.of(replaced.codec())));
+        registry.declareRevision(replaced.recipe(), replaced.revision());
+        registry.freeze();
+        assertSame(replaced.recipe(), registry.catalog().recipes().getFirst());
+        assertSame(replaced.codec(), Objects.requireNonNull(registry.processCodecs()).snapshot().require(replaced.recipe()));
+        var inventory = new AEKey2LongMap.OpenHashMap();
+        inventory.put(KEY, originalInputs.getFirst().amount());
+        assertSame(replaced.recipe(), Objects.requireNonNull(registry.get(captured.replaced().value().id())).match(inventory));
+
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(KEY_TYPE, Long.MAX_VALUE);
+        var stock = new SlottedResourceBuffer(1, capacities, () -> {
+        });
+        stock.insert(KEY, originalInputs.getFirst().amount(), Actionable.MODULATE);
+        var machine = new MachineInstance();
+        machine.components().put(MachineHatches.TYPE, new MachineHatches(List.of(new ResourceHatch() {
+            @Override
+            public ResourceStorage input() {
+                return stock;
+            }
+
+            @Override
+            public ResourceStorage output() {
+                return null;
+            }
+
+            @Override
+            public boolean isValid() {
+                return true;
+            }
+        }), List.of(), List.of()));
+        var process = new RecipeProcess(machine, replaced.recipe(), 23);
+        var data = process.components().create(AUXILIARY_DATA, process);
+        data[0] = 47;
+        assertInstanceOf(ProcessResult.Blocked.class, process.tick());
+        assertEquals(originalInputs.getFirst().amount(), stock.availableAmount(KEY));
+        var restored = replaced.codec().decode(machine, replaced.codec().encode(process));
+        assertSame(replaced.recipe(), restored.recipe());
+        var restoredData = Objects.requireNonNull(restored.components().get(AUXILIARY_DATA));
+        assertEquals(data[0], restoredData[0]);
+        assertNotSame(data, restoredData);
+        data[0] = -1;
+        var invalid = replaced.codec().encode(process);
+        assertThrows(IllegalArgumentException.class, () -> replaced.codec().decode(machine, invalid));
+        stock.insert(KEY, replacedInputs.getLast().amount(), Actionable.MODULATE);
+        assertSame(ProcessResult.SUCCESS, restored.tick());
+        assertEquals(RecipeProcess.Lifecycle.COMPLETED, restored.state().lifecycle());
+        assertEquals(0, stock.availableAmount(KEY));
+    }
+
+    @Test
+    void sharedInputsRejectGeneralPoolsAndPreserveAnUnchangedSimplePool() {
+        var recipe = Harness.auxiliaryRecipe();
+        var general = ZenRecipePool.create("auxiliary_bridge:general", "pool.title", new ZenRecipe[]{recipe});
+        assertThrows(IllegalArgumentException.class,
+            () -> general.auxiliaryInputs(new ZenResource[]{Harness.resource()}));
+        assertSame(recipe.recipe(), general.value().recipes().getFirst());
+        var simple = ZenRecipePool.simple("auxiliary_bridge:empty", "pool.title", new ZenRecipe[]{recipe});
+        assertSame(simple, simple.auxiliaryInputs(new ZenResource[0]));
+        assertSame(recipe.recipe(), simple.value().recipes().getFirst());
     }
 
     @Test
@@ -499,6 +609,10 @@ class ZenRecipeBridgeTest {
                             ZenOverlayModifier oldOverlay, ZenOverlayModifier newOverlay) {
     }
 
+    private record AuxiliaryPools(ZenRecipePool original, ZenRecipePool added, ZenRecipePool replaced,
+                                  ZenRecipePool cleared) {
+    }
+
     /**
      * Protocol fixture acknowledges actual provider descriptions; it is not native HEI runtime QA.
      */
@@ -535,6 +649,7 @@ class ZenRecipeBridgeTest {
         private static ZenRecipePool combined;
         private static ZenRecipe combinedFirst;
         private static ZenRecipe combinedSecond;
+        private static AuxiliaryPools auxiliary;
 
         @ZenMethod
         public static void captureEarly(ZenRecipeBindings names) {
@@ -568,6 +683,37 @@ class ZenRecipeBridgeTest {
         @ZenMethod
         public static ZenResource resource() {
             return new ZenResource(KEY, 1);
+        }
+
+        @ZenMethod
+        public static ZenRecipe auxiliaryRecipe() {
+            var recipe = SimpleRecipePool.Entry.create(new ResourceLocation("auxiliary_bridge", "recipe"), 1,
+                new GenericStack(KEY, 1), List.of(), Set.of()).recipe();
+            var codec = RecipeProcessNbt.builder(recipe, "shared-input-v1")
+                                        .resources(new ResourceKeyNbt(id -> id.equals(KEY_TYPE.getId()) ? KEY_TYPE : null))
+                                        .component(AUXILIARY_DATA, new ProcessComponentCodec<>() {
+                                            @Override
+                                            public NBTTagCompound encode(RecipeProcess process, int[] component) {
+                                                var tag = new NBTTagCompound();
+                                                tag.setInteger("Value", component[0]);
+                                                return tag;
+                                            }
+
+                                            @Override
+                                            public void restore(RecipeProcess process, int[] component, NBTTagCompound data) {
+                                                component[0] = data.getInteger("Value");
+                                            }
+                                        })
+                                        .validator(process -> {
+                                            if (Objects.requireNonNull(process.components().get(AUXILIARY_DATA))[0] < 0)
+                                                throw new IllegalArgumentException("Invalid saved auxiliary component");
+                                        }).build();
+            return new ZenRecipe(codec);
+        }
+
+        @ZenMethod
+        public static void captureAuxiliary(ZenRecipePool original, ZenRecipePool added, ZenRecipePool replaced, ZenRecipePool cleared) {
+            auxiliary = new AuxiliaryPools(original, added, replaced, cleared);
         }
 
         @ZenMethod

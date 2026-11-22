@@ -57,7 +57,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         this(catalog.recipes(), footprints);
     }
 
-    private ResourceRecipeIndex(List<MachineRecipe> recipes, Collection<Footprint> footprints) {
+    public ResourceRecipeIndex(List<MachineRecipe> recipes, Collection<Footprint> footprints) {
         canonical = recipes;
         var ordinals = new Reference2IntOpenHashMap<MachineRecipe>(canonical.size());
         for (int index3 = 0; index3 < canonical.size(); index3++) {

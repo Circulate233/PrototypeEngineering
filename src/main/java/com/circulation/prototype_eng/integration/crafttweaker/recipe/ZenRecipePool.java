@@ -9,6 +9,7 @@ import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
 import com.circulation.prototype_eng.integration.crafttweaker.jei.ClientJeiDeclarations;
 import com.circulation.prototype_eng.integration.crafttweaker.jei.ZenJeiOptions;
 import com.circulation.prototype_eng.integration.crafttweaker.jei.ZenJeiPage;
+import ae2.api.stacks.GenericStack;
 import crafttweaker.annotations.ZenRegister;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
@@ -78,6 +79,20 @@ public final class ZenRecipePool {
         var entries = new ObjectArrayList<SimpleRecipePool.Entry>(recipes.length);
         for (var recipe : recipes) entries.add(SimpleRecipePool.Entry.of(recipe.recipe()));
         return of(new SimpleRecipePool(ZenRecipeSupport.id(id), translationKey, entries), recipes);
+    }
+
+    @ZenMethod
+    public ZenRecipePool auxiliaryInputs(ZenResource[] inputs) {
+        if (!(value instanceof SimpleRecipePool simple))
+            throw new IllegalArgumentException("Shared auxiliary inputs require a simple recipe pool");
+        var materials = new ObjectArrayList<GenericStack>(inputs.length);
+        for (var input : inputs) materials.add(input.stack());
+        var updated = simple.withAuxiliaryInputs(materials);
+        if (updated == simple) return this;
+        var bindings = new ObjectArrayList<ZenRecipe>(recipes.size());
+        for (int i = 0; i < recipes.size(); i++)
+            bindings.add(new ZenRecipe(recipes.get(i).codec().withRecipe(updated.recipes().get(i))));
+        return new ZenRecipePool(updated, bindings, options, page);
     }
 
     /**

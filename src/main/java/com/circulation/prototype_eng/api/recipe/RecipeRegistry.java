@@ -81,7 +81,10 @@ public final class RecipeRegistry {
         if (pool.recipes.containsKey(recipe.id())) {
             throw new IllegalArgumentException("Duplicate recipe in pool " + poolId + ": " + recipe.id());
         }
-        pool.recipes.put(recipe.id(), recipe);
+        var prepared = pool.source.prepareRecipe(recipe);
+        if (!prepared.id().equals(recipe.id()))
+            throw new IllegalArgumentException("Pool preparation changed recipe ID: " + recipe.id());
+        pool.recipes.put(recipe.id(), prepared);
     }
 
     /**

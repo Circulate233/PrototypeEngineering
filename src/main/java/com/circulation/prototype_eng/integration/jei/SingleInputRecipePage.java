@@ -10,22 +10,19 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * One persistent input beside a compact output grid of up to six columns and four rows per page.
- */
 @SideOnly(Side.CLIENT)
 public final class SingleInputRecipePage extends AutoLayoutRecipePage {
     public SingleInputRecipePage(SimpleRecipePool pool, IGuiHelper helper, RecipeJeiDisplays displays, JeiRenderOptions options,
                                  RecipeInformationLayout.Font font) {
-        super(pool, helper, displays::describe, options, font, true);
+        super(pool, helper, displays::describe, options, font, pool.auxiliaryInputs().isEmpty());
     }
 
     public SingleInputRecipePage(SimpleRecipePool pool, IGuiHelper helper, RecipeJeiDisplays.Snapshot displays, JeiRenderOptions options) {
-        super(pool, helper, displays::describe, options, minecraftFont(), true);
+        super(pool, helper, displays::describe, options, minecraftFont(), pool.auxiliaryInputs().isEmpty());
     }
 
     @Override
     public @Nullable PreparedUpdate prepareUpdate(@NotNull RecipePool target, RecipeJeiDisplays.@NotNull Snapshot displays) {
-        return target instanceof SimpleRecipePool ? prepareLayoutUpdate(target, displays) : null;
+        return target instanceof SimpleRecipePool simple ? prepareLayoutUpdate(target, displays, simple.auxiliaryInputs().isEmpty()) : null;
     }
 }

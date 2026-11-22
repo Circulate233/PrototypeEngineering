@@ -18,7 +18,7 @@
 
 最新规则替代下文历史记录中的固定4×4空框和最小148px：通用页每侧仍最多16组/页，但按当前配方及材料页的真实数量选择列数、行数，只画实际槽框。两侧紧凑排布后整体居中，加工箭头对齐材料区中心，说明紧接实际材料区；同池按最大材料与完整换行说明量测分类高度，只有材料溢出时预留分页控件。保留PM原背景、槽框、进度和能量纹理。
 
-`SimpleRecipePool` 自动绑定 `SingleInputRecipePage`：一个输入槽在输出分页时常驻，输出每页最多24组、六列四行，任意总输出数量通过分页可达；输入数量仍是GenericStack的long数量。自定义页和有效外部UID优先于自动选择，单输入页支持同一分类的prepareUpdate，旧wrapper仍捕获原Data，准备中的新wrapper只读取目标Data。
+`SimpleRecipePool` 自动绑定 `SingleInputRecipePage`：无公共辅助材料时，一个输入槽在输出分页时常驻，输出每页最多24组、六列四行，任意总输出数量通过分页可达；输入数量仍是GenericStack的long数量。有公共辅助材料时沿用通用双侧材料布局，每侧每页最多16组，主输入和全部辅助输入均可翻页查看；JEI 检索与样板导入始终使用完整材料，不限于当前页。自定义页和有效外部UID优先于自动选择，单输入页支持同一分类的prepareUpdate，旧wrapper仍捕获原Data，准备中的新wrapper只读取目标Data。
 
 每次翻页按实际几何撤销原生旧槽再初始化坐标，输入/输出offset随真实槽数调整；只保留一次tooltip回调，FE透明槽同步移动到当前说明位置。槽框、原生查询/书签、fallback及tooltip读取同一几何，不以渲染图标代替ingredient。完整索引与样板导入不受可见分页影响，候选轮播和原始long数量保留。参照本地MMCE `CategoryDynamicRecipe.buildRecipeComponents` 与 `RecipeLayoutPart.getMaxHorizontalCount` 的实际数量排布、箭头居中和说明量测原则，没有迁入其GUI/资源体系。
 
