@@ -192,6 +192,8 @@ var recipe = new MachineRecipe(
 
 导入池的 `poolType(RecipePoolType.SINGLE_INPUT/GENERAL)` 选择实际的 `SimpleRecipePool/DefaultRecipePool`，必须在首次初始化前调用；设置类型和读取 `poolType()` 都不枚举来源。各机器按实际主输入形状设置默认底层，完整类名、默认类型与直接回调参数见[机器目录](docs/machine-recipe-pools.md)。可以把熔炉改为通用池后增加普通输入，也可以把其他来源改成单输入池；后者要求转换结果恰好含一个平铺的固定、fuzzy 或 dynamic START 主输入，拒绝多个主输入、TICK 资源输入及 `SELECTIVE/CHECKPOINT`，错误时记录日志并抛出异常。公共辅助输入独立于主输入。自定义来源可用 `new ImportedRecipePool(id, titleKey, supplier)`，supplier 首次访问时返回 `List<MachineRecipe>`；`withoutContext(id, titleKey, draftSupplier[, predicate])` 接收 `RecipeBuilder` 列表和可选 `Predicate<RecipeBuilder>`，省略 predicate 时使用 `null`。
 
+`RecipePoolType.register(typeId, factory)` 注册外部底层工厂，factory 接收池 ID、标题和完整配方列表并返回自定义 RecipePool。Java 可直接使用返回类型或 `RecipePoolType.require(typeId)`；ZS `.poolType("addon:custom")` 查询同一注册表。内置短名使用 prototype_eng 命名空间。注册不创建底层，首次读取时才执行工厂，重复或未知 ID 明确失败，详见[底层类型注册](docs/recipe-imports.md#选择实际底层池)。
+
 配方池决定机器可以扫描哪些配方，也提供库存匹配策略。普通机器使用 `DefaultRecipePool` 即可。`SimpleRecipePool.Entry` 用于单个固定 START 输入和任意数量固定 END 输出；`SimpleRecipePool.forRecipes(id, titleKey, recipes)` 接收完整配方，支持上述单个固定、fuzzy 或 dynamic 主输入及其他非嵌套需求。通过 `pool.withAuxiliaryInputs(List<GenericStack>)` 在池上配置公共辅助输入，例如 `pool.withAuxiliaryInputs(List.of(new GenericStack(AEFluidKey.of(new FluidStack(FluidRegistry.WATER, 1)), 1)))` 使每份配方额外消耗 1 mB 水。必须保留返回池，并对它的 `recipes()` 绑定 revision、codec 和按配方对象登记的行为。辅助材料按普通 START 输入支付和并行缩放，主辅同键累加；匹配候选及数量上界仍只看主输入。重复设置替换整份辅助列表，空列表清除。后续 `registry.registerRecipe(poolId, rawRecipe)` 自动应用池的公共输入；需要绑定保存及准确对象回调时，先调用 `pool.prepareRecipe(rawSingleInputRecipe)` 并使用返回配方，已准备的定义不会重复添加。定义替换也提交经此方法准备的完整配方。完整规则见[配方池接口](docs/recipes.md#配方池接口与简单配方索引)。
 
 `CompositeRecipePool` 把多个池合成一个入口，保留各子池的匹配方式。例如把简单池和 addon 提供的特殊池组合后，机器只需选择组合池。子池不会因为被组合而自动单独注册，是否需要独立 JEI 页面由作者决定。

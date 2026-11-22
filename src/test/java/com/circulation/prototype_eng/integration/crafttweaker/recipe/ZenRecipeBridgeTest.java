@@ -108,6 +108,7 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Set;
 import java.util.UUID;
 
@@ -508,6 +509,46 @@ class ZenRecipeBridgeTest {
         assertInstanceOf(ZenFurnaceRecipePool.class, Harness.secondImportedFactory);
         assertNotSame(Harness.importedFactories.getFirst(), Harness.secondImportedFactory);
         assertNotSame(Harness.importedFactories.getFirst().value(), Harness.secondImportedFactory.value());
+    }
+
+    @Test
+    void realZenScriptSelectsRegisteredExternalFactoriesThroughConfiguredImportWrappers() throws Exception {
+        Harness.importReads = 0;
+        Harness.configuredFactory = null;
+        Harness.secondImportedFactory = null;
+        var creations = new AtomicInteger();
+        var type = RecipePoolType.register(new ResourceLocation("external_bridge", "custom"), (id, title, recipes) -> {
+            creations.incrementAndGet();
+            return new DefaultRecipePool(id, title, recipes);
+        });
+        var compiled = compile("""
+            import tests.prototype_eng.Harness;
+            var pool = Harness.imported(function(recipe) { return true; });
+            Harness.captureSecondImportedFactory(pool);
+            var configured = pool.durationTicks(1).maxThreads(3).auxiliaryInputs([Harness.resource()]);
+            Harness.captureConfiguredFactory(configured.poolType("external_bridge:custom"));
+            """, "external_pool_type.zs");
+        assertEquals("", compiled.diagnostics());
+        Objects.requireNonNull(compiled.module().getMain()).run();
+        assertEquals(0, Harness.importReads);
+        assertEquals(0, creations.get());
+        var wrapper = Objects.requireNonNull(Harness.configuredFactory);
+        var recipes = wrapper.recipes();
+        assertEquals(2, recipes.size());
+        assertSame(type, assertInstanceOf(ImportedRecipePool.class,
+            Objects.requireNonNull(Harness.secondImportedFactory).value()).poolType());
+        assertEquals(1, Harness.importReads);
+        assertEquals(1, creations.get());
+        for (var recipe : recipes) {
+            assertSame(recipe.recipe(), recipe.codec().recipe());
+            assertEquals(1, recipe.recipe().durationTicks());
+        }
+        assertThrows(IllegalStateException.class, () -> wrapper.poolType(type.id().toString()));
+        var fresh = Harness.imported(_ -> true);
+        assertThrows(IllegalArgumentException.class, () -> fresh.poolType("external_bridge:missing"));
+        assertSame(RecipePoolType.GENERAL, assertInstanceOf(ImportedRecipePool.class, fresh.value()).poolType());
+        assertThrows(IllegalStateException.class,
+            () -> ZenRecipePool.create("external_bridge:ordinary", "title", new ZenRecipe[0]).poolType(type.id().toString()));
     }
 
     @Test

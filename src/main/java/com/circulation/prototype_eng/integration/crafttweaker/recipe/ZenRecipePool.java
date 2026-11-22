@@ -126,11 +126,7 @@ public class ZenRecipePool {
     @ZenMethod
     public ZenRecipePool poolType(String type) {
         if (importedSource == null) throw new IllegalStateException("Only imported recipe pools have a selectable implementation");
-        importedSource.poolType(switch (type) {
-            case "single_input" -> RecipePoolType.SINGLE_INPUT;
-            case "general" -> RecipePoolType.GENERAL;
-            default -> throw new IllegalArgumentException("Unknown recipe pool type: " + type);
-        });
+        importedSource.poolType(RecipePoolType.require(type));
         return this;
     }
 

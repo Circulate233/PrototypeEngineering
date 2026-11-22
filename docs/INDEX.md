@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-22 配方池底层类型开放注册：RecipePoolType 改为按 ResourceLocation 注册的工厂类型，Java register/require 与 ZS poolType 查询同一注册表，支持 addon:custom；内置短名统一使用 prototype_eng 命名空间。注册和选择不读取来源，首次初始化才创建实际底层，冻结保留外部策略与准确配方，重复/未知 ID 及无效工厂结果明确失败。完整 build/Spotless、1930 tests / 304 suites、24 项专项、6 Java 本机 IDEA 全级零诊断及定向构建通过，文档无新增诊断。入口：[工厂注册与选择](recipe-imports.md#选择实际底层池)、[验证记录](implementation-status.md#2026-11-22-配方池底层类型开放注册)。实现完成，本地英文提交，不推送；外部模组在脚本选择类型前注册自己的工厂，未启动游戏。
+
 - 2026-11-22 其他机器配方池扩展完成：新增 IC2 12 个、NC 19 个、匠魂 3 个、TC6 1 个和 Thermal 23 个独立 Java/ZS 池，总数 70，默认 44 个 SINGLE_INPUT、26 个 GENERAL，首次读取前均可切换。多工作模式分别建池，构造及配置不枚举来源，直接专有回调默认 null。新增非消耗存在条件用于模具和流体门槛，JEI 显示存在数量，样板只导入实际消耗；来源热量、本质、结构等条件按目录由宿主实现。完整 build/Spotless、1925 tests / 303 suites、178 Java 与 2 语言本机 IDEA 全级零诊断及定向构建通过；来源专项与全部 70 个 ZS 工厂、缺可选模组隔离通过。入口：[70 池目录与默认类型](machine-recipe-pools.md)、[非消耗材料](machine-recipe-pools.md#非消耗材料条件)、[验证记录](implementation-status.md#2026-11-22-其他机器独立配方池扩展)。本轮实现完成，本地英文提交，不推送；下一步由使用方按实际安装的来源模组绑定机器及专有条件，游戏注册与 JEI 由用户复验。
 
 - 2026-11-22 普通配方与导入回调共用材料和能量编辑：RecipeBuilder/ZS Builder 支持四阶段材料追加与删除、按需求 ID 或全部顶层清空、四阶段 FE 调整及需求查询/替换/删除。fuzzy/dynamic 按整槽删除，随机输出保留剩余权重和 pickCount，未编辑方向、来源分配及事件保持完整；新定义和旧快照独立。完整 build/Spotless、1873 tests / 294 suites、5 Java 本机 IDEA 全级零诊断与定向构建通过，52 项专项含真实 ZS、材料/FE 事务及 NBT 恢复；文档无新增诊断。入口：[编辑方法与脚本](recipe-imports.md#编辑普通配方)、[验证记录](implementation-status.md#2026-11-22-普通配方输入输出与能源编辑)。本轮实现完成，本地英文提交，不推送；下一步由使用方在回调中使用新接口并更新 revision，游戏由用户复验。

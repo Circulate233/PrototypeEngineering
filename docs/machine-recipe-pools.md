@@ -10,6 +10,8 @@ GENERAL，根据来源的消耗主输入数量决定，多模式机器分别提�
 `.poolType("general")` 可在首次读取前调整；也可改为 SINGLE_INPUT / `"single_input"`
 ，最终配方必须满足单主输入定义。公共辅助材料和非消耗存在条件独立于主输入。完整编辑与生命周期规则见 [配方导入](recipe-imports.md)。
 
+外部底层通过 `RecipePoolType.register(typeId, factory)` 注册，Java 传入返回类型，ZS 使用 `.poolType("addon:custom")`。内置常量也通过同一注册表提供，完整 ID 为 `prototype_eng:single_input` 和 `prototype_eng:general`。注册及查询不读取来源，全部 70 个导入池都可在首次初始化前选择外部工厂，详细签名与约束见[选择实际底层池](recipe-imports.md#选择实际底层池)。
+
 ## 原版熔炉
 
 | 池类                | 默认底层       | Java 回调附加参数  | ZS 回调附加参数    |

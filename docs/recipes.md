@@ -376,6 +376,8 @@ scanner 的同步 startIn 与 bounded beginAdmission 均把准确 `RecipeCatalog
 
 每个导入池通过 `poolType(RecipePoolType.SINGLE_INPUT/GENERAL)` 选择真实底层池，ZS 使用 `.poolType("single_input"/"general")`。各来源按实际主输入形状设置默认类型，完整 70 池清单见[机器目录](machine-recipe-pools.md)；设置和读取类型不初始化来源，首次初始化之后禁止修改。创建回调的首个参数为可编辑配方，其余参数由各池单独定义，例如熔炉的 `float experience`、匠魂熔炼的两个温度整数；匠魂合金只有配方参数。熔炉保留原生小数经验。省略回调时使用 `null`，不调用默认返回 true 的函数，也不转换仅供回调使用的数据。Java 自定义来源构造器接收惰性的 `Supplier<List<MachineRecipe>>`，`withoutContext` 接收 builder 列表和可选 `Predicate<RecipeBuilder>`，无回调时默认 `null`。
 
+底层策略允许外部通过 `RecipePoolType.register(ResourceLocation, Factory)` 注册。Factory 接收池 ID、标题、完整配方列表，返回自定义 RecipePool，必须保留定义实例及顺序。Java 通过注册返回值或 require 查询选择，ZS 按完整类型 ID 查询同一注册表；注册及查询不执行工厂，首次初始化才创建。冻结使用实际底层的 freeze，并保留注册类型。详细签名与错误规则见[类型注册](recipe-imports.md#选择实际底层池)。
+
 混合提供者使用[CompositeRecipePool与异步发现](recipe-execution-policy.md#多个提供者的组合配方池)。新增纯库存预算游标`beginMatch`供Default/Simple/组合复用，实际多池Selection已走组合策略入口；异步`CandidatePass`只产生候选，main收据和freshness后才建进程并准入。组合16项、单项重试64项缓存有界；首次冷组合在发现worker编译，主线程只捕获provider引用。
 
 `RecipePool` 现在是公开接口，保留 `id/translationKey/recipes/machines`，`prepareRecipe(recipe)` 用于注册前应用池的公共声明，默认返回原对象；实现必须保留 ID，并原样返回已准备的配方。默认通用实现为 `DefaultRecipePool`；`registerPool` 仍创建通用池。独立外部实现通过自己的 `freeze(recipes, machines)` 保留策略与配置，返回完整不可变 canonical 实例。注册表先校验 ID、标题、全部配方及静态机器的准确对象与顺序，再统一发布目录和反查；不会把自定义池改成通用具体类。当前注册仍是一次冻结，没有新增运行时配方重载协议。

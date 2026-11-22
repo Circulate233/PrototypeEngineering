@@ -81,9 +81,10 @@ class OptionalImportLoadingTest {
                 var configuredPool = configured.getClass().getMethod("value").invoke(configured);
                 assertSame(javaType, configuredPool.getClass());
                 assertTrue(((List<?>) configuredPool.getClass().getMethod("machines").invoke(configuredPool)).isEmpty());
-                var poolType = (Enum<?>) configuredPool.getClass().getMethod("poolType").invoke(configuredPool);
+                var typeGetter = configuredPool.getClass().getMethod("poolType");
+                var poolType = typeGetter.invoke(configuredPool);
                 assertSame(configuredPool,
-                    configuredPool.getClass().getMethod("poolType", poolType.getDeclaringClass()).invoke(configuredPool, poolType));
+                    configuredPool.getClass().getMethod("poolType", typeGetter.getReturnType()).invoke(configuredPool, poolType));
                 assertEquals(0, loader.rejected.get(), suffix);
             }
 

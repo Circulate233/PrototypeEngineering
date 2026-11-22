@@ -70,6 +70,10 @@ changed.register();
 
 ## 选择实际底层池
 
+`RecipePoolType` 为可注册的工厂类型。外部 Java 模组通过 `RecipePoolType.register(ResourceLocation typeId, RecipePoolType.Factory factory)` 注册，返回该类型的准确实例；factory 签名为 `(ResourceLocation poolId, String translationKey, List<MachineRecipe> recipes) -> RecipePool`，可以创建外部自行实现的 RecipePool。注册与查询不创建底层池、不枚举配方来源，工厂在导入池首次初始化时调用一次。必须在脚本选择该 ID 之前完成注册，重复 ID 或未知 ID 明确报错，禁止覆盖已有工厂或改用默认池。
+
+Java 可直接传入注册返回值，也可通过 `RecipePoolType.require(typeId)` 查询后传入。ZS `.poolType("addon:custom")` 使用同一注册表，不限于内置类型。未包含命名空间的字符串统一使用 `prototype_eng`，因此 `general` 与 `prototype_eng:general` 查询相同类型；`single_input` 同理。`type.id()` 返回完整注册 ID。底层工厂必须保留池 ID、标题和输入配方的准确实例及顺序，禁止在此筛选、重排定义或返回 null；需要筛选和修改配方时使用来源创建回调，自定义扫描优先级通过 RecipePool 的匹配接口实现。工厂失败记录池 ID 并保持失败状态，后续读取不重新调用来源或工厂。冻结调用实际底层的 freeze，保留原注册类型，不再次执行工厂。
+
 Java 调用 `pool.poolType(RecipePoolType.SINGLE_INPUT)` 或 `pool.poolType(RecipePoolType.GENERAL)`，ZS 调用
 `.poolType("single_input")` 或 `.poolType("general")`。各来源按主输入形状确定默认类型，完整默认值见[机器目录](machine-recipe-pools.md)。前者实际创建
 `SimpleRecipePool`，后者实际创建 `DefaultRecipePool`。必须在首次初始化前设置，禁止在初始化执行中、已经成功或已经失败后修改，否则抛出异常。读取 Java `poolType()` 不触发初始化，`implementation()` 会触发初始化并返回实际底层池。

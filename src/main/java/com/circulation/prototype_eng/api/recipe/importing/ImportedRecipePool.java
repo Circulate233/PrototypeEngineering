@@ -71,7 +71,7 @@ public class ImportedRecipePool implements RecipePool {
         source = original.source;
         var implementation = original.data();
         poolType = original.poolType;
-        initialized = implementation.freeze(recipes, machines);
+        initialized = Objects.requireNonNull(implementation.freeze(recipes, machines), "Frozen recipe pool");
     }
 
     private RecipePool data() {

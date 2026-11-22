@@ -94,6 +94,8 @@ machine.register("v1");
 
 导入池的 `.poolType("single_input")` 和 `.poolType("general")` 分别选择实际的 `SimpleRecipePool` 与 `DefaultRecipePool`。当前 70 个独立池按各来源实际输入形状设置默认类型，见[机器目录](docs/machine-recipe-pools.md)。必须在首次读取、匹配或注册事件初始化之前设置，设置本身不读取来源；经过辅助材料、公共需求、时长或 JEI 配置后仍可调用，修改同一导入实例并返回当前对象。熔炉创建回调增加其他普通输入时，先在初始化前设为 `general`；其他来源切成 `single_input` 后必须恰好保留一个平铺的固定、fuzzy 或 dynamic START 主输入。公共辅助材料独立追加，不参与主输入计数。多个主输入、TICK 资源输入或 `SELECTIVE/CHECKPOINT` 会明确报错，不自动改回通用池。两种切换及无额外参数回调的完整脚本见[ZS 用例](docs/recipe-imports.md#zs-用例)。
 
+`.poolType("addon:custom")` 支持 Java 模组通过 `RecipePoolType.register(typeId, factory)` 注册的任意底层工厂。字符串未包含命名空间时统一使用 prototype_eng，完整 ID 为 prototype_eng:single_input 和 prototype_eng:general 的内置类型也通过该注册表查询。必须在脚本选择前完成注册，未知 ID 明确报错，禁止改用默认池。完整接口见[底层类型注册](docs/recipe-imports.md#选择实际底层池)。
+
 `existingJeiPage(uid)` 让该池沿用已经存在的 JEI 分类入口。`jeiOptions(options)` 设置概率提示和候选材料的显示方式。这些设置方法返回一个新池；必须把返回结果用于注册。`customJeiPage(Page.named(id))` 只引用 Java 页面，并不会自行创建 JEI 布局。
 
 ### 创建配方和资源需求

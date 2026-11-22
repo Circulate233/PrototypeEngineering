@@ -1,5 +1,17 @@
 # 实施进度
 
+## 2026-11-22 配方池底层类型开放注册
+
+RecipePoolType 改为按 ResourceLocation 注册的不可变工厂类型，公开 register(id, factory)、require(ResourceLocation/String)、id() 和 create 方法。Factory 直接接收池 ID、标题和完整配方列表，返回外部实现的 RecipePool。内置 SINGLE_INPUT 和 GENERAL 也通过同一注册表建立，完整 ID 分别为 prototype_eng:single_input 和 prototype_eng:general。短名统一使用 prototype_eng 命名空间，禁止未知类型改用默认池；重复注册不会覆盖旧工厂。注册和查询只操作类型信息，不执行工厂或枚举任何可选模组来源。
+
+ZS ZenRecipePool.poolType 不再使用固定字符串分支，直接查询同一注册表，可选择 addon:custom。普通池仍明确拒绝切换，导入池及其公共配置、辅助材料和 JEI 包装继续修改同一惰性来源，首次访问后禁止改动。工厂仅在首次初始化时调用，必须保留池 ID、标题及配方的准确实例和顺序，null 或破坏定义的结果明确失败，由导入入口记录日志并保留失败状态，后续读取不重跑来源或工厂。冻结委托实际底层的 freeze，保留外部策略、类型、准确配方及机器绑定，并拒绝 null 冻结结果。
+
+新增五项行为测试：外部策略实际改变匹配优先级，注册及选择不提前读取，冻结替换准确配方并保留机器，重复与未知 ID 不执行工厂，创建异常和 null 结果保持失败，不同池身份、标题、成员、顺序或配方对象被错误更改时拒绝，以及真实 ZS 经公共配置和辅助材料包装后选择外部类型。既有缺可选模组隔离测试改用 getter 返回类型反射，保留全部 70 个工厂及非空回调的惰性加载验证。
+
+验证：完整离线 Gradle spotlessApply/build、1930 tests / 304 suites 通过，失败、错误、跳过均为零；24 项专项覆盖上述行为、原有单输入事务、全部 Java/ZS 工厂及可选来源隔离。6 个修改或新增 Java 文件逐文件本机 MCP get_file_problems(errorsOnly:false) 最终错误、警告、弱警告均为零，IDEA 六文件定向构建成功。首轮测试仅旧隔离夹具的 Enum 强转失败，已改为反射 getter 返回类型并完整复验；初次检查的一项不必要全限定类名已改为 import。文档新增诊断为零，既有诊断按修改前内容对照保存。
+
+证据位于 build/extensible-pool-types-20261122/：build.log、full-test-summary.json、targeted-tests-final.log、targeted-summary.json、targeted-results、all-java-idea-final.json、idea-build-final.json 和 document-diagnostics-baseline.json；首轮失败日志及 initial-results 保留。同步更新 API、ZS 参考、配方规范、机器目录和索引，完成本地英文提交，不推送，保留 AGENTS.md 用户修改。未新增外部库，未启动 Minecraft 客户端或服务端。
+
 ## 2026-11-22 其他机器独立配方池扩展
 
 新增 58 个独立 Java/ZS 池：IC2 12 个、NuclearCraft Overhauled 19 个、TConstruct 3 个、Thaumcraft 6 一个、Thermal Expansion 23 个。连同原有来源共 70 个，按 modid 分包，每种机器或工作模式有公开具体池类，允许同源创建不同实例。构造、类型设置和公共配置不枚举来源，首次实际读取才转换；各池保留直接 OnCreate 参数、省略或显式 null 跳过回调、false 拒绝配方、异常记录并传播。默认依据主输入数量和阶段设置为 44 个 SINGLE_INPUT、26 个 GENERAL，首次读取前可双向切换，最终定义仍按实际单输入规则验证。冻结保留具体类、准确配方与机器绑定，已初始化池复制不重新读取来源或执行回调。
