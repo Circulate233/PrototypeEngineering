@@ -3,8 +3,10 @@ package com.circulation.prototype_eng.api.client.structure;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
+import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
+import com.circulation.prototype_eng.api.structure.StructureConstructionRegistry;
 import com.circulation.prototype_eng.client.preview.StructurePreviewExpansion;
 import com.circulation.prototype_eng.proxy.ClientProxy;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -36,7 +38,9 @@ public final class StructurePreviews implements AutoCloseable {
         this.catalog = catalog;
         requests = new StructurePreviewCache<>(catalog, 32);
         subscription = catalog.onInvalidated(() -> {
-            if (catalog.view() == null) clearProjection();
+            var current = projection;
+            if (catalog.view() == null || current != null && current.external() != null && current.external().fixed()
+                && current.settings().orientation() != declaredOrientation(current.id())) clearProjection();
         });
     }
 
@@ -80,6 +84,13 @@ public final class StructurePreviews implements AutoCloseable {
         return catalog.view();
     }
 
+    public @Nullable BlockOrientation declaredOrientation(ResourceLocation id) {
+        var view = catalogView();
+        if (view == null) return null;
+        var entry = view.entries().get(id);
+        return entry == null ? null : view.nodes().get(entry.node()).orientation();
+    }
+
     public AutoCloseable onInvalidated(Runnable callback) {
         requireOpen();
         return catalog.onInvalidated(callback);
@@ -90,8 +101,22 @@ public final class StructurePreviews implements AutoCloseable {
      */
     public boolean project(ResourceLocation id, StructurePreviewSettings settings, BlockPos anchor,
                            StructureProjectionOptions options) {
+        return project(id, settings, anchor, options, null);
+    }
+
+    /** Starts an external anchor projection with the registration's orientation limits. */
+    public boolean project(ResourceLocation id, StructurePreviewSettings settings, BlockPos anchor,
+                           StructureProjectionOptions options, StructureConstructionRegistry.@Nullable Entry external) {
+        if (external != null) {
+            if (!external.structure().equals(id)) throw new IllegalArgumentException("Projection anchor does not reference the requested structure");
+            var rotation = external.rotation();
+            var orientation = external.fixed() ? declaredOrientation(id)
+                : rotation == null ? settings.orientation() : rotation.project(settings.orientation());
+            if (orientation == null) return false;
+            settings = settings.withOrientation(orientation);
+        }
         if (request(id, settings) == null) return false;
-        projection = new Projection(id, settings, anchor, options);
+        projection = new Projection(id, settings, anchor, options, external);
         projectionDurationNanos = 0;
         return true;
     }
@@ -99,11 +124,18 @@ public final class StructurePreviews implements AutoCloseable {
     /**
      * GUI projections may expire without closing their logical preview service.
      */
+    @SuppressWarnings("unused") // Public entry for timed standalone projections.
     public boolean projectFor(ResourceLocation id, StructurePreviewSettings settings, BlockPos anchor,
                               StructureProjectionOptions options, long durationMillis) {
+        return projectFor(id, settings, anchor, options, durationMillis, null);
+    }
+
+    public boolean projectFor(ResourceLocation id, StructurePreviewSettings settings, BlockPos anchor,
+                              StructureProjectionOptions options, long durationMillis,
+                              StructureConstructionRegistry.@Nullable Entry external) {
         if (durationMillis <= 0 || durationMillis > Long.MAX_VALUE / 1_000_000)
             throw new IllegalArgumentException("Invalid projection lifetime");
-        if (!project(id, settings, anchor, options)) return false;
+        if (!project(id, settings, anchor, options, external)) return false;
         projectionStartedNanos = System.nanoTime();
         projectionDurationNanos = durationMillis * 1_000_000;
         return true;
@@ -114,9 +146,17 @@ public final class StructurePreviews implements AutoCloseable {
      */
     public boolean replaceProjection(Projection expected, StructurePreviewSettings settings, StructureProjectionOptions options) {
         requireOpen();
-        if (projection() != expected || request(expected.id(), settings) == null || projection() != expected)
-            return false;
-        projection = new Projection(expected.id(), settings, expected.anchor(), options);
+        if (projection() != expected) return false;
+        var external = expected.external();
+        if (external != null && expected.settings().orientation() != settings.orientation()) {
+            var rotation = external.rotation();
+            if (rotation == null) return false;
+            var projected = rotation.project(settings.orientation());
+            if (projected == null) return false;
+            settings = settings.withOrientation(projected);
+        }
+        if (request(expected.id(), settings) == null || projection() != expected) return false;
+        projection = new Projection(expected.id(), settings, expected.anchor(), options, external);
         return true;
     }
 
@@ -125,7 +165,7 @@ public final class StructurePreviews implements AutoCloseable {
         requireOpen();
         var current = projection();
         if (current == null) return false;
-        projection = new Projection(current.id(), current.settings(), anchor, current.options());
+        projection = new Projection(current.id(), current.settings(), anchor, current.options(), current.external());
         return true;
     }
 
@@ -213,9 +253,18 @@ public final class StructurePreviews implements AutoCloseable {
     }
 
     public record Projection(ResourceLocation id, StructurePreviewSettings settings, BlockPos anchor,
-                             StructureProjectionOptions options) {
+                             StructureProjectionOptions options, StructureConstructionRegistry.@Nullable Entry external) {
+        public Projection(ResourceLocation id, StructurePreviewSettings settings, BlockPos anchor,
+                          StructureProjectionOptions options) {
+            this(id, settings, anchor, options, null);
+        }
+
         public Projection {
             anchor = anchor.toImmutable();
+        }
+
+        public boolean rotatable() {
+            return external == null || external.rotation() != null;
         }
     }
 

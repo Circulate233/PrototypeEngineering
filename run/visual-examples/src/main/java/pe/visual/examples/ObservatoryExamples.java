@@ -81,8 +81,7 @@ public final class ObservatoryExamples {
 
     @SubscribeEvent
     public static void construction(StructureConstructionRegistrationEvent event) {
-        event.registry().register(ANCHOR.getDefaultState(), SHAPE_ID, NAME, _ -> BlockOrientation.NORTH_UP,
-            ObservatoryExamples::formed);
+        event.registry().register(ANCHOR.getDefaultState(), SHAPE_ID, NAME, ObservatoryExamples::formed);
     }
 
     private static boolean formed(IBlockState state, TileEntity tile, World world, BlockPos origin) {

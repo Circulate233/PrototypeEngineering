@@ -6,19 +6,18 @@
 
 缺省关闭，开关保存在物品 NBT 的 `enabled` Boolean。潜行右键空气在服务端切换模式，发送本地化状态提示并播放原 UI_BUTTON_CLICK 音量/音调；不潜行时返回 PASS。新格式不解码 PM 的 `pm_orientation_tool_enabled`，无旧存档兼容承诺。
 
-开启时对控制器的操作保持 PM 规则，由独立 [OrientationToolOrientations](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/item/OrientationToolOrientations.java) 转换成 AE2 `BlockOrientation`：
+开启时，工具在目标方块被指向的面上绘制九宫格。普通和潜行右键都按点击位置选择目标方向，由 [OrientationToolOrientations](../src/main/java/com/circulation/prototype_eng/item/OrientationToolOrientations.java) 计算 AE2 `BlockOrientation`：
 
-| 操作 | 结果 |
-|---|---|
-| 普通点击当前 FRONT | front 不变，绕 front 顺时针旋转一档，四档循环 |
-| 普通点击其他面 | front 设为点击面，top 重置为该 front 的 PM canonical top |
-| 潜行点击 | 当前 front 的 twist 前进一档；回到 canonical 时转到下一 vanilla facing，遍历 24 向 |
+- 点击当前正面的中央，正面不变，绕正面顺时针转一档。
+- 点击其他面的中央，正面转向点击面，顶部随方块一起转动。
+- 点击上、下、左、右边格，正面转向相邻的面，顶部随方块一起转动。
+- 点击角格时方向不变。
 
-facing 顺序为 DOWN → UP → NORTH → SOUTH → WEST → EAST；每个 front 有四个 twist。水平 front 的 canonical top 为 UP，UP 的 top 为 NORTH，DOWN 的 top 为 SOUTH。DOWN 明确保留 PM 约定，不直接套用 AE2 的缺省 canonical top。顺时针结果由原 PM 的 front/top 数学表核对，测试从每一个起始方向覆盖完整循环。
+九宫格的上方在水平面和 `UP` 面分别为 `UP` 和 `NORTH`，在 `DOWN` 面为 `SOUTH`。四个边格以玩家从外侧看该面的方向为准。
 
-只有开启模式且目标是本项目控制器时物品接管交互；还要求 `world.isBlockModifiable` 和 `player.canPlayerEdit`。客户端返回交互结果，服务端提交纯相对变换至 TE 的 owner FIFO，执行到该边界才读取最新方向，因此连续点击按序复合。请求绑定当前 attachment epoch；TE 换代后旧请求失效。方向实际变化会失效旧结构/仓室、更新结构配置与完整 state，后续按既有刷新策略重配，详见[控制器接线](controller-integration.md#朝向与结构刷新)。
+只有开启模式时工具才接管控制器或已注册旋转回调的外部主方块的交互。服务端须通过 `world.isBlockModifiable` 和 `player.canPlayerEdit` 检查；控制器的相对变换继续在其任务队列执行时读取最新方向，接受旋转请求时消耗耐久。方向变化后的重配见[控制器接线](controller-integration.md#朝向与结构刷新)。
 
-服务端接受工具旋转交互时扣配置的旋转耐久。入队不是立即写 World，也不代表晚到或已脱离的请求必然变更状态。当前检查属于 vanilla 编辑权限；PN owner/team 等权限仍须迁移。
+外部主方块的客户端九宫格与服务端点击使用同一方向限制。四向只接受水平朝向。四向和六向在已对准的正面中央不显示滚转箭头，不可用的点击区域不高亮。二十四向支持绕正面滚转。服务端从当前方块状态和可空的方块实体读取朝向，再调用注册的旋转回调；回调返回 `true` 才消耗耐久。回调可以拒绝已成型结构的旋转，主方块转向时不会移动周围的已放置方块。默认固定的外部主方块不显示旋转九宫格，右键继续交给方块。注册方法见[外部主方块注册](structure-tools.md#外部主方块注册)。
 
 ## 武器、采掘、附魔与成就
 
@@ -51,6 +50,6 @@ facing 顺序为 DOWN → UP → NORTH → SOUTH → WEST → EAST；每个 fron
 
 客户端 `OrientationToolModels` 在 `ModelRegistryEvent` 安装 `enabled` predicate，切换 `wrench_off` / `wrench_on`，专服物品构造不安装客户端 predicate。三份模型 JSON 与两张 PNG 的来源、署名见[控制器资产](controller-assets.md)。
 
-`OrientationToolOrientationsTest` 以独立 PM top 表覆盖六 front 的四档旋转、每个起点的 24 向循环、其他面重置（包括垂直面）及相对操作复合。实际物品交互、World 方向写入、耐久/附魔/成就和模型渲染未进行游戏内验证；完整构建/MCP 证据由[实施进度](implementation-status.md)记录。
+`OrientationToolOrientationsTest` 验证原版六个面上的四档滚转、点击边格、相对变换以及外部主方块方向限制。游戏内复验时分别用四向、六向和二十四向锚点点击中央与边格，检查无效点击不消耗耐久、有效旋转后构建器读取新朝向，以及固定锚点的原右键交互。
 
 PM 的 [OrientationToolPreviewRenderHandler.kt](F:/clone/PrototypeMachinery/src/main/kotlin/client/impl/render/OrientationToolPreviewRenderHandler.kt) 自述为未默认注册的 UX 实验，源码检索也无注册调用；当前不把它列作已启用默认工具效果。正式结构投影、预览与复杂渲染仍属于后续迁移范围。

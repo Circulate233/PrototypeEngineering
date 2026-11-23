@@ -87,13 +87,16 @@ public final class StructurePreviewCommand extends CommandBase {
             });
             return;
         }
-        boolean opened = service.project(id, settings, StructurePreviewScreensAnchor.current(),
-            new StructureProjectionOptions(StructureProjectionOptions.Style.BLOCK_MODEL, false, null, 2048, 2048, 4096, 64));
+        var anchor = StructurePreviewScreensAnchor.current();
+        var target = StructurePreviewScreensAnchor.externalAt(id, anchor);
+        boolean opened = service.project(id, target == null ? settings : settings.withOrientation(target.orientation()), anchor,
+            new StructureProjectionOptions(StructureProjectionOptions.Style.BLOCK_MODEL, false, null, 2048, 2048, 4096, 64),
+            target == null ? null : target.external());
         if (!opened) {
             sender.sendMessage(new TextComponentString(StructurePreviewText.Unavailable.getLocal()));
             return;
         }
-        ProjectionInteractions.INSTANCE.follow();
+        ProjectionInteractions.INSTANCE.projectionStarted();
         sender.sendMessage(new TextComponentString(StructurePreviewText.Started.getLocal(id)));
     }
 

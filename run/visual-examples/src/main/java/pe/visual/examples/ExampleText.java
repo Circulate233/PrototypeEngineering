@@ -69,6 +69,7 @@ public enum ExampleText implements LocalizationEnum {
     @ZenProperty DemoLoad("pe_run_tests.machine.net_demo_load"),
     @ZenProperty DemoPool("pe_run_tests.pool.net_demo"),
     NetworkKit("pe_run_tests.network_demo.kit"), ResearchKit,
+    OrientationBeacon("pe_visual_examples.orientation_beacon"), OrientationKit("pe_visual_examples.orientation.kit"),
     @ZenProperty RenderComponent("pe_run_tests.machine.render_component"),
     @ZenProperty NetworkPool("pe_run_tests.pool.network"),
     @ZenProperty ClientCustomPool("pe_run_tests.pool.client_custom"),

@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.structure.tool;
 
 import ae2.api.config.Actionable;
+import ae2.api.orientation.BlockOrientation;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AmountFormat;
 import ae2.api.stacks.GenericStack;
@@ -423,6 +424,7 @@ public final class StructureBuildTasks {
         final NBTTagCompound settings;
         final EnumHand hand;
         final ConstructionTarget controller;
+        final BlockOrientation orientation;
         final String builderIdentity;
         final boolean dismantle, requireSpace, replaceFluids, requireMaterials, waitMaterials, autoCraft;
         final ConstructionPayment.Sources sources;
@@ -454,6 +456,7 @@ public final class StructureBuildTasks {
             settings.removeTag("Task");
             hand = slot == owner.inventory.getSizeInventory() - 1 ? EnumHand.OFF_HAND : EnumHand.MAIN_HAND;
             this.controller = controller;
+            orientation = controller.orientation(view);
             this.view = view;
             builderIdentity = BuilderState.identity(settings);
             this.dismantle = dismantle;
@@ -653,7 +656,7 @@ public final class StructureBuildTasks {
 
         Preparation(Task task, StructureCatalogView view) {
             this.task = task;
-            expansion = new StructureBuildPlan.Expansion(view, task.controller.structure(), task.controller.orientation(), BuilderState.sliceCounts(task.settings));
+            expansion = new StructureBuildPlan.Expansion(view, task.controller.structure(), task.orientation, BuilderState.sliceCounts(task.settings));
             ordered = new PriorityQueue<>(task.dismantle ? REMOVE_ORDER : BUILD_ORDER);
         }
 
@@ -704,7 +707,7 @@ public final class StructureBuildTasks {
             }
             var display = cell.display();
             if (display != null && display.complete()) {
-                var choice = BuilderState.choice(task.settings, display, cell.position(), task.controller.orientation());
+                var choice = BuilderState.choice(task.settings, display, cell.position(), task.orientation);
                 if (Block.REGISTRY.containsKey(choice.blockId())) {
                     var block = Block.REGISTRY.getObject(choice.blockId());
                     if (block != null) {

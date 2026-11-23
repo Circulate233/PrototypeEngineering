@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "pe_visual_examples:orientation_beacon" },
+    "facing=east": { "model": "pe_visual_examples:orientation_beacon", "y": 90 },
+    "facing=south": { "model": "pe_visual_examples:orientation_beacon", "y": 180 },
+    "facing=west": { "model": "pe_visual_examples:orientation_beacon", "y": 270 }
+  }
+}

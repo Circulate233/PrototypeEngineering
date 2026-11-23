@@ -12,12 +12,13 @@ import com.circulation.prototype_eng.client.preview.PreviewScreenTransitions;
 import com.circulation.prototype_eng.client.preview.StructurePreviewPanel;
 import com.circulation.prototype_eng.client.preview.StructurePreviewScreensAnchor;
 import com.circulation.prototype_eng.client.preview.StructurePreviewView;
-import com.circulation.prototype_eng.structure.tool.ConstructionTarget;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.inventory.GuiContainer;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Objects;
 
 /**
  * Java opens the same authoritative catalog viewer used by machines, commands and HEI.
@@ -42,11 +43,11 @@ public final class StructurePreviewScreens {
             return false;
         var service = StructurePreviews.client();
         var anchor = StructurePreviewScreensAnchor.current();
-        var target = machine == null ? ConstructionTarget.resolve(mc.world, anchor) : null;
-        var external = target != null && target.controller() == null && target.structure().equals(id) ? target : null;
-        if (service.request(id, settings) == null) return false;
+        var external = machine == null ? StructurePreviewScreensAnchor.externalAt(id, anchor) : null;
         var view = external == null ? new StructurePreviewView(service, id, settings, machine)
-            : new StructurePreviewView(service, id, settings, external.anchorState(), external.name());
+            : new StructurePreviewView(service, settings.withOrientation(external.orientation()), external.anchorState(),
+                Objects.requireNonNull(external.external()));
+        if (service.request(id, view.settings()) == null) return false;
         view.anchor(anchor);
         var navigation = PreviewScreenTransitions.capture(service);
         var screen = mc.currentScreen instanceof AEBaseGui<?> parent ? new GuiStructurePreview<>(parent, view, navigation)

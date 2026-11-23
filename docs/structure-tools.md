@@ -78,33 +78,42 @@ ME使用构建器自己的绑定和玩家ActionSource直接提取，按AE规则�
 
 ## 外部主方块注册
 
-普通外部方块可将准确的 `IBlockState` 关联到已注册结构。客户端和服务端在 `postInit` 解析结构后发布 `StructureConstructionRegistrationEvent`，之后冻结注册并检查结构 ID。重复状态和未知结构 ID 会报错。外部主方块占据原点，搭建和拆卸均保留它。结构必须提供完整的方块展示，子结构和动态分段沿正常施工流程展开。
+客户端和服务端在 `postInit` 解析结构后发布 `StructureConstructionRegistrationEvent`。可在此将外部主方块的准确 `IBlockState` 关联到已注册结构。主方块占据原点，搭建和拆卸均保留它。默认按当前结构定义的原朝向搭建和预览；方块即使带有 `facing` 也不会自动改变结构朝向，方向工具不接管该方块。
 
-外部主方块在构建器与 HEI 的结构预览中使用注册状态渲染，可以在原点点选查看。拥有对应物品的主方块可以用 R 或 U 打开结构页。完整结构样板以主方块物品为输出，输入排除原点。
+显式传入 `StructureAnchorRotation` 后，搭建和拆卸读取主方块的实际朝向。方向工具和预览使用同一套可选姿态：
 
-Java 模组可在 Forge 事件订阅者中同时注册成型检查。
+- `fourWay(facing)` 使用水平正面，顶部固定朝上。
+- `sixWay(facing)` 支持六个正面，每个正面使用 AE 的标准顶部，不改变绕正面的滚转。
+- `twentyFourWay(front, top, callback)` 预测两个互相垂直的方向属性，支持每个正面的四个顶部方向。可额外传入读取回调，把实际姿态读自方块实体。
 
 ```java
 @SubscribeEvent
 public static void construction(StructureConstructionRegistrationEvent event) {
-    event.registry().register(MyBlocks.ANCHOR.getDefaultState(),
+    var rotation = StructureAnchorRotation.fourWay(ReactorBlock.FACING);
+    event.registry().register(MyBlocks.REACTOR.getDefaultState(),
         new ResourceLocation("addon", "reactor"), () -> "addon.structure.reactor",
-        (state, tile) -> tile instanceof ReactorTile reactor && reactor.isFormed());
+        rotation, (state, tile) -> tile instanceof ReactorTile reactor && reactor.isFormed());
 }
 ```
 
-默认朝向读取名为 `facing` 的 `EnumFacing` 属性。无该属性时使用 `NORTH_UP`，垂直面的朝上方向使用北。`register` 可以接收自定义朝向函数，也可以同时接收朝向和成型检查。需要检查周围方块时，传入自定义朝向与 `(state, tile, world, position) -> boolean` 回调。
+预设保留其他属性，注册时自动关联同一主方块的朝向变体。每个其他属性组合需分别注册，例如主方块本身有成型属性时，应分别注册成型前后的状态。重复状态和未知结构 ID 会报错。构建器和 HEI 可在原点点选主方块；同一次注册的旋转变体共用一个 HEI 条目，样板输出仍是主方块物品。对准外部主方块打开独立投影时，先使用主方块当前朝向。已注册旋转的投影可主动按 `R` 跟随玩家方向，或按 `[`、`]` 在支持的姿态内调整。
 
-服务器在启动新任务时读取一次准确的方块状态和方块实体。没有方块实体时必须传入 `null` 并照常调用。返回 `true` 时拆卸，返回 `false` 或未注册检查时搭建。成型检查应只读取已加载的区块，执行异常会记录日志并取消本次启动。若成型会改变主方块自身的状态属性，应注册该属性的两种状态，并使它们关联同一个结构和朝向。
+可用 `withCallback((state, tile, world, pos, player, orientation) -> ...)` 替换预设的服务端写入。对由方块实体或其他属性保存朝向的主方块，还可给 `fourWay`、`sixWay`、`twentyFourWay` 传入读取、预测状态和实际旋转三个回调。读取和预测必须只读；读取在物品预览或缺失方块实体时接收 `null`，仍须返回合适的朝向。预测必须返回同一个方块的目标状态；纯方块实体存储可原样返回状态。实际旋转回调负责写入和同步，只有旋转成功才返回 `true`。只传入 `Function<IBlockState, BlockOrientation>` 的注册可读取当下朝向供搭建使用，也不会启用方向工具或预览旋转。
 
-CraftTweaker 脚本在结构声明后注册主方块。`registerBlock` 关联该方块的全部合法状态，`register` 接收准确的状态。这两个脚本入口提供搭建。
+四向和六向的属性预设使用原版状态更新，方向属性由主方块保存和同步。原版 1.12 的方块 metadata 只有四位，二十四向必须通过旋转回调写入并同步完整姿态。使用 AE 原生方块实体且支持全朝向时，`twentyFourWay(block)` 复用 AE 的方向策略、方块实体存储和客户端同步。外部结构需要限制已成型时转向的，可以在自定义回调中拒绝。
+
+成型检查可接收 `(state, tile)`，也可接收 `(state, tile, world, position)`。服务端启动施工时传入当前状态，方块实体缺失时传入 `null`。返回 `true` 时拆卸，否则搭建。成型检查应只读已加载区块。执行异常会记录日志并取消本次启动。
+
+CraftTweaker 脚本使用 `registerBlock` 关联所有合法状态，或用 `register` 注册一个准确状态，这两个入口都保持固定朝向。用 `registerFourWay` 或 `registerSixWay` 启用状态预设，最后一个参数为方向属性名。`registerTwentyFourWay` 使用支持完整朝向的 AE 方块实体预设，例如元件工作台。
 
 ```zenscript
 import mods.prototype_eng.structure.Construction;
-Construction.registerBlock("addon:reactor_controller", "addon:reactor", "addon.structure.reactor");
+Construction.registerBlock("addon:fixed_anchor", "addon:fixed_shape", "addon.structure.fixed_shape");
+// anchor 是已经取得的 crafttweaker.block.IBlockState。
+Construction.registerFourWay(anchor, "addon:reactor", "addon.structure.reactor", "facing");
+// aeAnchor 是支持完整方向的 AE 方块状态。
+Construction.registerTwentyFourWay(aeAnchor, "addon:workbench", "addon.structure.workbench");
 ```
-
-复验：准备足够物料与少半桶流体分别开工，检查报告/齐料门槛/本次跳过；允许覆盖液体与全部能放开关分别测试障碍、液体和越界；构建器在有效/离线状态分别取物品和流体，缺料确认后等CPU结束再开工；检查已放对格隐藏、隐藏层缺块时保留和全覆盖取消；从任意片层向样板导入3格流体应为3000mB；外部普通anchor绑定、候选及动态段数预览/建造沿同一工具。真实GL、World、网络供料及保护事件待用户游戏复验，验证证据见实施进度。
 
 ## 2026-11-11 视角放置与九宫格转向
 

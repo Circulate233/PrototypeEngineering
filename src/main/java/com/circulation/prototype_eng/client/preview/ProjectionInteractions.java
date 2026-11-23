@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
+import com.circulation.prototype_eng.api.structure.StructureConstructionRegistry;
 import com.circulation.prototype_eng.item.BuilderInstrumentItem;
 import com.circulation.prototype_eng.localization.StructurePreviewText;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -27,9 +28,6 @@ import org.lwjgl.input.Keyboard;
 
 import java.util.Objects;
 
-/**
- * Native world-only orientation controls and HUD; GUI/chat input never queues rotations.
- */
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
 public final class ProjectionInteractions {
     public static final ProjectionInteractions INSTANCE = new ProjectionInteractions();
@@ -62,24 +60,25 @@ public final class ProjectionInteractions {
         ClientRegistry.registerKeyBinding(negative);
     }
 
-    public void follow() {
+    public void projectionStarted() {
         builderProjection = null;
         intent = StructurePreviews.client().projection();
-        following = true;
+        following = intent != null && intent.external() == null;
     }
 
     /**
      * A controller-bound builder projection expires after thirty seconds, independently of its GUI.
      */
     public boolean projectBuilder(StructurePreviews service, ResourceLocation id, StructurePreviewSettings settings,
-                                  BlockPos anchor, StructureProjectionOptions options, ItemStack tool, NBTTagCompound binding) {
+                                  BlockPos anchor, StructureProjectionOptions options, ItemStack tool, NBTTagCompound binding,
+                                  StructureConstructionRegistry.@Nullable Entry external) {
         var mc = Minecraft.getMinecraft();
         var owner = BuilderBinding.read(binding);
         if (mc.player == null || mc.world == null || service != StructurePreviews.client()
             || !(tool.getItem() instanceof BuilderInstrumentItem item) || owner == null
             || owner.dimension != mc.world.provider.getDimension() || !owner.position.equals(anchor)
             || !owner.structure.equals(id.toString())) return false;
-        if (!service.projectFor(id, settings, anchor, options, 30_000)) return false;
+        if (!service.projectFor(id, settings, anchor, options, 30_000, external)) return false;
         var current = service.projection();
         if (current == null) return false;
         builderProjection = new BuilderProjection(service, current, mc, tool, item, owner);
@@ -164,6 +163,7 @@ public final class ProjectionInteractions {
             following = false;
             intent = current;
         }
+        if (!current.rotatable()) return;
         if (toggle) {
             following = !following;
             if (following) update(BlockOrientation.get(mc.player.getHorizontalFacing(), EnumFacing.UP));

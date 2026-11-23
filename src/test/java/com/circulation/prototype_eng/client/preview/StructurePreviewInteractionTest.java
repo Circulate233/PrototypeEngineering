@@ -8,7 +8,9 @@ import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettin
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
 import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.structure.StructureAnchorRotation;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
+import com.circulation.prototype_eng.api.structure.StructureConstructionRegistry;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.localization.StructurePreviewText;
@@ -21,10 +23,15 @@ import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
+import net.minecraft.block.BlockStairs;
+import net.minecraft.init.Blocks;
+import net.minecraft.init.Bootstrap;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -49,13 +56,22 @@ class StructurePreviewInteractionTest {
     private static final ResourceLocation CHILD = new ResourceLocation("preview_ui_test", "shared");
     private static final StructureDisplay A = display("a"), B = display("b");
 
+    @BeforeAll
+    static void bootstrap() {
+        Bootstrap.register();
+    }
+
     private static StructureDisplay display(String key) {
         return new StructureDisplay(key, List.of(new StructureDisplay.BlockOption(new ResourceLocation("preview_ui_test", key), 0, Map.of()),
             new StructureDisplay.BlockOption(new ResourceLocation("preview_ui_test", key + "_alternative"), 0, Map.of())), null);
     }
 
     private static StructureCatalogView view(UUID session, long sequence) {
-        var root = new StructureCatalogView.Node(ROOT, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE, BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.of(new BlockPos(1, 0, 0), new BlockPos(1, 1, 0)), IntList.of(1, 1));
+        return view(session, sequence, BlockOrientation.NORTH_UP);
+    }
+
+    private static StructureCatalogView view(UUID session, long sequence, BlockOrientation orientation) {
+        var root = new StructureCatalogView.Node(ROOT, orientation, false, StructurePreviewProvider.Kind.TEMPLATE, BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.of(new BlockPos(1, 0, 0), new BlockPos(1, 1, 0)), IntList.of(1, 1));
         var child = new StructureCatalogView.Node(CHILD, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.SLICE, new BlockPos(3, 0, 0), 0, 3, new BlockPos(0, 1, 0), List.of(new BlockPos(1, 0, 0)), IntList.of(2));
         var leafId = new ResourceLocation("preview_ui_test", "leaf");
         var leaf = new StructureCatalogView.Node(leafId, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE, new BlockPos(0, 0, 1), 1, 1, BlockPos.ORIGIN, List.of(new BlockPos(1, 0, 0)), IntList.of());
@@ -85,6 +101,69 @@ class StructurePreviewInteractionTest {
         first.advance(1000);
         second.advance(1000);
         return new Fixture(catalog, connection, session, service, first, second);
+    }
+
+    @Test
+    void fixedExternalPreviewAndProjectionFollowTheDeclaredRootAfterReload() {
+        try (var f = fixture()) {
+            var anchor = Blocks.OAK_STAIRS.getDefaultState().withProperty(BlockStairs.FACING, EnumFacing.NORTH);
+            var registry = new StructureConstructionRegistry();
+            registry.register(anchor, ROOT, StructurePreviewText.Title);
+            var binding = Objects.requireNonNull(registry.find(anchor));
+            var settings = f.first.settings();
+            var options = new StructureProjectionOptions();
+            deliver(f.catalog, f.connection, view(f.session, 1, BlockOrientation.EAST_UP));
+            var ui = new StructurePreviewView(f.service, settings, anchor, binding);
+            ui.advance(1000);
+            assertSame(BlockOrientation.EAST_UP, Objects.requireNonNull(ui.model()).settings().orientation());
+            assertSame(anchor, ui.externalMainBlock());
+
+            assertTrue(f.service.project(ROOT, settings, BlockPos.ORIGIN, options, binding));
+            var active = Objects.requireNonNull(f.service.projection());
+            assertFalse(active.rotatable());
+            assertSame(BlockOrientation.EAST_UP, active.settings().orientation());
+            assertFalse(f.service.replaceProjection(active, settings, options));
+            assertTrue(f.service.replaceProjection(active, active.settings(), options.withLayer(new StructurePreviewModel.Layer(1))));
+
+            deliver(f.catalog, f.connection, view(f.session, 2, BlockOrientation.WEST_UP));
+            ui.advance(1000);
+            assertSame(BlockOrientation.WEST_UP, Objects.requireNonNull(ui.model()).settings().orientation());
+            assertNull(f.service.projection());
+            assertTrue(f.service.project(ROOT, settings, BlockPos.ORIGIN, options, binding));
+            assertSame(BlockOrientation.WEST_UP, Objects.requireNonNull(f.service.projection()).settings().orientation());
+        }
+    }
+
+    @Test
+    void externalPreviewDisplaysThePredictedStateAndKeepsProjectedRotationsInRange() {
+        try (var f = fixture()) {
+            var anchor = Blocks.OAK_STAIRS.getDefaultState().withProperty(BlockStairs.FACING, EnumFacing.NORTH);
+            var registry = new StructureConstructionRegistry();
+            var rotation = StructureAnchorRotation.fourWay(BlockStairs.FACING).withCallback((_, _, _, _, _, _) -> {
+                throw new AssertionError("Client preview invoked the world rotation callback");
+            });
+            registry.register(anchor, ROOT, StructurePreviewText.Title, rotation);
+            var binding = Objects.requireNonNull(registry.find(anchor));
+            var settings = f.first.settings().withOrientation(BlockOrientation.EAST_UP);
+            var ui = new StructurePreviewView(f.service, settings, anchor, binding);
+            ui.advance(1000);
+            var expected = anchor.withProperty(BlockStairs.FACING, EnumFacing.EAST);
+            assertSame(expected, ui.externalMainBlock());
+            var cell = Objects.requireNonNull(ui.controllerCell());
+            assertTrue(ui.choose(new StructurePreviewView.Click(ui.token(), cell)));
+            var selected = Objects.requireNonNull(ui.selected());
+            assertEquals(StructureDisplay.BlockOption.of(expected, Map.of()), selected.options().getFirst());
+
+            var options = new StructureProjectionOptions();
+            assertTrue(f.service.project(ROOT, settings, BlockPos.ORIGIN, options, binding));
+            var active = Objects.requireNonNull(f.service.projection());
+            assertTrue(active.rotatable());
+            assertFalse(f.service.replaceProjection(active, settings.withOrientation(BlockOrientation.get(EnumFacing.UP)), options));
+            assertSame(active, f.service.projection());
+            var rolled = settings.withOrientation(BlockOrientation.get(EnumFacing.SOUTH, EnumFacing.EAST));
+            assertTrue(f.service.replaceProjection(active, rolled, options));
+            assertSame(BlockOrientation.SOUTH_UP, Objects.requireNonNull(f.service.projection()).settings().orientation());
+        }
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.item;
 
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
+import com.circulation.prototype_eng.api.structure.StructureAnchorRotation;
 import com.circulation.prototype_eng.machine.ControllerOrientation;
 import com.circulation.prototype_eng.util.ExternalEnumValues;
 import net.minecraft.util.EnumFacing;
@@ -16,6 +17,8 @@ import static com.circulation.prototype_eng.item.OrientationToolOrientations.Par
 import static com.circulation.prototype_eng.item.OrientationToolOrientations.Part.RIGHT;
 import static com.circulation.prototype_eng.item.OrientationToolOrientations.Part.TOP;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 class OrientationToolOrientationsTest {
@@ -90,6 +93,28 @@ class OrientationToolOrientationsTest {
         current = OrientationToolOrientations.apply(current, EnumFacing.EAST, TOP);
         assertEquals(EnumFacing.UP, current.getSide(RelativeSide.FRONT));
         assertEquals(EnumFacing.SOUTH, current.getSide(RelativeSide.TOP));
+    }
+
+    @Test
+    void externalClickTargetsRespectTheRegisteredDirections() {
+        var horizontal = StructureAnchorRotation.fourWay((_, _) -> BlockOrientation.NORTH_UP, (state, _) -> state,
+            (_, _, _, _, _, _) -> true);
+        var six = StructureAnchorRotation.sixWay((_, _) -> BlockOrientation.NORTH_UP, (state, _) -> state,
+            (_, _, _, _, _, _) -> true);
+        var full = StructureAnchorRotation.twentyFourWay((_, _) -> BlockOrientation.NORTH_UP, (state, _) -> state,
+            (_, _, _, _, _, _) -> true);
+
+        assertNull(OrientationToolOrientations.externalTarget(horizontal, BlockOrientation.NORTH_UP, EnumFacing.NORTH, TOP));
+        assertSame(BlockOrientation.WEST_UP,
+            OrientationToolOrientations.externalTarget(horizontal, BlockOrientation.NORTH_UP, EnumFacing.NORTH, RIGHT));
+        var vertical = OrientationToolOrientations.externalTarget(six, BlockOrientation.NORTH_UP, EnumFacing.NORTH, TOP);
+        assertNotNull(vertical);
+        assertEquals(EnumFacing.UP, vertical.getSide(RelativeSide.FRONT));
+        assertNull(OrientationToolOrientations.externalTarget(six, vertical, EnumFacing.UP, CENTER));
+
+        assertSame(BlockOrientation.NORTH_EAST,
+            OrientationToolOrientations.externalTarget(full, BlockOrientation.NORTH_UP, EnumFacing.NORTH, CENTER));
+        assertNull(OrientationToolOrientations.externalTarget(full, BlockOrientation.NORTH_UP, EnumFacing.NORTH, CORNER));
     }
 
     @Test

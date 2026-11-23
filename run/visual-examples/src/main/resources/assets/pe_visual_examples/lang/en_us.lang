@@ -168,3 +168,6 @@ pe_visual_examples.researchkit=Research showcase supplies given; open with R or 
 pe_visual_examples.observatory=Astral Observatory
 tile.pe_visual_examples.observatory_anchor.name=Astral Observatory Anchor
 pe_visual_examples.observatory.kit=Place the anchor on clear ground. Leave room to its south and on both sides. Sneak-right-click it with the Mechanical Builder.
+pe_visual_examples.orientation_beacon=Survey Beacon
+tile.pe_visual_examples.orientation_beacon.name=Survey Beacon Anchor
+pe_visual_examples.orientation.kit=Place the beacon in a clear area, turn the gold face with the Orientation Tool, then use the Mechanical Builder.

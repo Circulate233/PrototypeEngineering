@@ -477,15 +477,18 @@ public final class StructurePreviewScene implements AutoCloseable {
         if (model == null || pickWorld == null || access == null || !access.ready() || mc.player == null)
             return ItemStack.EMPTY;
         var picked = view.picked();
-        var position = picked != null && display.equals(picked.display()) ? picked.position()
-            : representativePositions.get(display);
+        boolean pickedDisplay = picked != null && display.equals(picked.display());
+        var position = pickedDisplay ? picked.position() : representativePositions.get(display);
         if (position == null) return ItemStack.EMPTY;
         var key = new ItemChoice(display, option, position);
         var cached = itemChoices.get(key);
         if (cached != null) return cached;
-        var root = model.generation().entries().get(model.structureId());
-        var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
-        var state = PreviewBlockStates.resolve(display.options().get(option), rotation);
+        var state = pickedDisplay && picked == view.controllerCell() ? view.externalMainBlock() : null;
+        if (state == null) {
+            var root = model.generation().entries().get(model.structureId());
+            var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
+            state = PreviewBlockStates.resolve(display.options().get(option), rotation);
+        }
         var result = state == null ? ItemStack.EMPTY : pickWorld.pick(state, position, mc.player, display.tileNbt());
         // Some native pick hooks become ready later; an empty first observation is not a stable icon.
         if (!result.isEmpty()) itemChoices.put(key, result);

@@ -25,6 +25,11 @@ class ZenConstructionTest {
         String script = """
             import mods.prototype_eng.structure.Construction;
             Construction.registerBlock("minecraft:gold_block", "builder_test:external", "builder.test.external");
+            function registerRotating(anchor as crafttweaker.block.IBlockState) {
+                Construction.registerFourWay(anchor, "builder_test:horizontal", "builder.test.horizontal", "facing");
+                Construction.registerSixWay(anchor, "builder_test:sides", "builder.test.sides", "facing");
+                Construction.registerTwentyFourWay(anchor, "builder_test:full", "builder.test.full");
+            }
             """;
         var output = new ByteArrayOutputStream();
         var environment = new GenericCompileEnvironment();

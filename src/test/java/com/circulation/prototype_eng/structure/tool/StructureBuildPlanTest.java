@@ -4,13 +4,21 @@ import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewPath;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
+import com.circulation.prototype_eng.api.structure.StructureAnchorRotation;
+import com.circulation.prototype_eng.api.structure.StructureCatalog;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
+import com.circulation.prototype_eng.api.structure.StructureConstructionRegistry;
+import com.circulation.prototype_eng.api.structure.StructureDefinitions;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
+import com.circulation.prototype_eng.api.structure.StructurePattern;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.client.preview.StructurePreviewExpansion;
 import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import net.minecraft.block.BlockFurnace;
+import net.minecraft.init.Blocks;
+import net.minecraft.init.Bootstrap;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -19,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -53,15 +62,43 @@ class StructureBuildPlanTest {
     @Test
     void constructionAndPreviewAgreeForZeroAndRepeatedSlicesInEveryOrientation() {
         var catalog = view();
-        for (var front : EnumFacing.VALUES)
+        for (var orientation : BlockOrientation.values())
             for (int count : List.of(0, 1, 4)) {
-                var orientation = BlockOrientation.get(front, front.getAxis() == EnumFacing.Axis.Y ? EnumFacing.NORTH : EnumFacing.UP);
                 var construction = StructureBuildPlan.expand(catalog, ROOT, orientation, Object2IntMaps.singleton("0", count));
                 var preview = new StructurePreviewExpansion(catalog, ROOT, new StructurePreviewSettings(orientation, Object2IntMaps.singleton(StructurePreviewPath.ROOT, count), 100, 1000));
                 while (preview.model() == null) preview.advance(32);
                 assertEquals(preview.model().cells().stream().map(StructurePreviewModel.Cell::position).toList(), construction.cells().stream().map(StructureBuildPlan.Cell::position).toList());
                 assertTrue(construction.cells().stream().noneMatch(cell -> cell.position().equals(BlockPos.ORIGIN)));
             }
+    }
+
+    @Test
+    void fixedAndRotatingAnchorsUseTheCurrentStructureBasisForPlacement() {
+        Bootstrap.register();
+        var anchor = Blocks.FURNACE.getDefaultState().withProperty(BlockFurnace.FACING, EnumFacing.EAST);
+        var registryCatalog = StructureCatalog.fromShapes(Map.of(ROOT, StructureDefinitions.template(ROOT,
+            BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false, new StructurePattern(BlockPos2ObjectMap.emptyMap()), List.of(), List.of())));
+        var declaredCell = BlockPos.ORIGIN.west();
+        var node = new StructureCatalogView.Node(ROOT, BlockOrientation.WEST_UP, false, StructurePreviewProvider.Kind.TEMPLATE,
+            BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.of(declaredCell), IntList.of());
+        var reloadedCatalog = new StructureCatalogView(UUID.randomUUID(), 1, List.of(node),
+            Map.of(ROOT, new StructureCatalogView.Entry(0, null, BlockPos2ObjectMap.emptyMap())));
+        var fixedRegistry = new StructureConstructionRegistry();
+        fixedRegistry.register(anchor, ROOT, () -> "test.fixed");
+        fixedRegistry.freeze(registryCatalog);
+        var rotatingRegistry = new StructureConstructionRegistry();
+        rotatingRegistry.register(anchor, ROOT, () -> "test.rotating", StructureAnchorRotation.fourWay(BlockFurnace.FACING));
+        rotatingRegistry.freeze(registryCatalog);
+
+        var fixed = Objects.requireNonNull(fixedRegistry.find(anchor));
+        var free = Objects.requireNonNull(rotatingRegistry.find(anchor));
+        var blockId = anchor.getBlock().getRegistryName();
+        var fixedTarget = new ConstructionTarget(null, BlockPos.ORIGIN, blockId, ROOT, fixed.name(), fixed.orientation(anchor, null), null, anchor, fixed);
+        var rotatingTarget = new ConstructionTarget(null, BlockPos.ORIGIN, blockId, ROOT, free.name(), free.orientation(anchor, null), null, anchor, free);
+        assertEquals(declaredCell, StructureBuildPlan.expand(reloadedCatalog, ROOT, fixedTarget.orientation(reloadedCatalog),
+            Object2IntMaps.emptyMap()).cells().getFirst().position());
+        assertEquals(BlockPos.ORIGIN.east(), StructureBuildPlan.expand(reloadedCatalog, ROOT, rotatingTarget.orientation(reloadedCatalog),
+            Object2IntMaps.emptyMap()).cells().getFirst().position());
     }
 
 }

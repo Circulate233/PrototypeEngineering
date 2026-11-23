@@ -309,12 +309,21 @@ public final class StructurePreviewPanel implements AutoCloseable {
     private void project() {
         var anchor = construction ? view.anchor() : StructurePreviewScreensAnchor.current();
         view.anchor(anchor);
+        var settings = view.settings();
+        var external = view.external();
+        if (!construction && view.machine() == null) {
+            var target = StructurePreviewScreensAnchor.externalAt(view.id(), anchor);
+            if (target != null) {
+                external = target.external();
+                settings = settings.withOrientation(target.orientation());
+            }
+        }
         var options = new StructureProjectionOptions(StructureProjectionOptions.Style.BLOCK_MODEL, true,
             view.threeDimensional ? null : new StructurePreviewModel.Layer(view.layer), 2048, 2048, 4096, 64);
         boolean projected = construction && !builderTool.isEmpty()
-            ? ProjectionInteractions.INSTANCE.projectBuilder(view.previews(), view.id(), view.settings(), anchor, options, builderTool, builderBinding.get())
-            : view.previews().projectFor(view.id(), view.settings(), anchor, options, 30_000);
-        if (projected && !construction) ProjectionInteractions.INSTANCE.follow();
+            ? ProjectionInteractions.INSTANCE.projectBuilder(view.previews(), view.id(), settings, anchor, options, builderTool, builderBinding.get(), external)
+            : view.previews().projectFor(view.id(), settings, anchor, options, 30_000, external);
+        if (projected && !construction) ProjectionInteractions.INSTANCE.projectionStarted();
     }
 
     private void toggleMaterials() {

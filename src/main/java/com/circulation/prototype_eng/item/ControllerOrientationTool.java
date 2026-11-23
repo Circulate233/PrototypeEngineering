@@ -2,8 +2,11 @@ package com.circulation.prototype_eng.item;
 
 import ae2.items.AEBaseItem;
 import com.circulation.prototype_eng.OrientationToolConfig;
+import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.api.structure.StructureConstructionRegistry;
+import com.circulation.prototype_eng.item.OrientationToolOrientations.Part;
 import com.circulation.prototype_eng.localization.OrientationToolText;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
@@ -113,20 +116,47 @@ public class ControllerOrientationTool extends AEBaseItem {
     public @NotNull EnumActionResult onItemUse(@NotNull EntityPlayer player, @NotNull World world, @NotNull BlockPos pos,
                                                @NotNull EnumHand hand, @NotNull EnumFacing side, float hitX, float hitY, float hitZ) {
         var stack = player.getHeldItem(hand);
-        if (!isEnabled(stack) || !world.isBlockLoaded(pos, false) || !(world.getTileEntity(pos) instanceof MachineControllerHost tile)) {
-            return EnumActionResult.PASS;
+        if (!isEnabled(stack) || !world.isBlockLoaded(pos, false)) return EnumActionResult.PASS;
+        var tile = world.getTileEntity(pos);
+        if (tile instanceof MachineControllerHost controller) {
+            if (!canRotate(player, world, pos, side, stack)) return EnumActionResult.FAIL;
+            if (!world.isRemote) {
+                var part = OrientationToolOrientations.part(side, hitX, hitY, hitZ);
+                if (part != Part.CORNER) {
+                    controller.transformOrientation(current -> OrientationToolOrientations.apply(current, side, part));
+                    damageForRotation(stack, player);
+                }
+            }
+            return EnumActionResult.SUCCESS;
         }
-        if (!world.isBlockModifiable(player, pos) || !player.canPlayerEdit(pos, side, stack)) {
+
+        var state = world.getBlockState(pos);
+        var anchor = StructureConstructionRegistry.INSTANCE.find(state);
+        var rotation = anchor == null ? null : anchor.rotation();
+        if (rotation == null) return EnumActionResult.PASS;
+        if (!canRotate(player, world, pos, side, stack)) return EnumActionResult.FAIL;
+        if (world.isRemote) return EnumActionResult.SUCCESS;
+        var part = OrientationToolOrientations.part(side, hitX, hitY, hitZ);
+        if (part == Part.CORNER) return EnumActionResult.SUCCESS;
+        try {
+            var target = OrientationToolOrientations.externalTarget(rotation, rotation.read(state, tile), side, part);
+            if (target == null) return EnumActionResult.SUCCESS;
+            if (!rotation.rotate(state, tile, world, pos, player, target)) return EnumActionResult.FAIL;
+        } catch (RuntimeException failure) {
+            PrototypeEngineering.LOGGER.error("Cannot rotate construction anchor {} at {}", state, pos, failure);
             return EnumActionResult.FAIL;
         }
-        var part = OrientationToolOrientations.part(side, hitX, hitY, hitZ);
-        if (!world.isRemote && part != OrientationToolOrientations.Part.CORNER) {
-            // Read current orientation only when this relative request reaches its owner FIFO boundary.
-            tile.transformOrientation(current -> OrientationToolOrientations.apply(current, side, part));
-            stack.damageItem(OrientationToolConfig.settings().durabilityCostRotateEnabled(), player);
-            player.inventory.markDirty();
-        }
+        damageForRotation(stack, player);
         return EnumActionResult.SUCCESS;
+    }
+
+    private static boolean canRotate(EntityPlayer player, World world, BlockPos pos, EnumFacing side, ItemStack stack) {
+        return world.isBlockModifiable(player, pos) && player.canPlayerEdit(pos.offset(side), side, stack);
+    }
+
+    private static void damageForRotation(ItemStack stack, EntityPlayer player) {
+        stack.damageItem(OrientationToolConfig.settings().durabilityCostRotateEnabled(), player);
+        player.inventory.markDirty();
     }
 
     @Override

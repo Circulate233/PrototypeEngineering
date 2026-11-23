@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.util.ExternalEnumValues;
 
 import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.HatchCapabilities;
+import com.circulation.prototype_eng.item.OrientationToolItems;
 import com.circulation.prototype_eng.item.StructureToolItems;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
@@ -67,7 +68,7 @@ public final class ExamplesCommand extends CommandBase {
 
     @Override
     public String getUsage(ICommandSender sender) {
-        return "/pe_examples kit [boundary|composite|me|network|observatory|research] | build <machine> <x> <y> <z> [orientation:NORTH_UP] [repeats:1-4] | structure-check <x> <y> <z> <repeats> <matched> | charge/drain <x> <y> <z> [FE] | stock <x> <y> <z> <recipe> [runs:1-16] [candidate:1-64]";
+        return "/pe_examples kit [boundary|composite|me|network|observatory|orientation|research] | build <machine> <x> <y> <z> [orientation:NORTH_UP] [repeats:1-4] | structure-check <x> <y> <z> <repeats> <matched> | charge/drain <x> <y> <z> [FE] | stock <x> <y> <z> <recipe> [runs:1-16] [candidate:1-64]";
     }
 
     @Override
@@ -77,6 +78,15 @@ public final class ExamplesCommand extends CommandBase {
 
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] arguments) throws CommandException {
+        if (arguments.length == 2 && arguments[0].equals("kit") && arguments[1].equals("orientation")) {
+            var player = getCommandSenderAsPlayer(sender);
+            give(player, OrientationExamples.anchorItem(), 1);
+            give(player, StructureToolItems.BUILDER, 1);
+            give(player, OrientationToolItems.TOOL, 1);
+            player.inventoryContainer.detectAndSendChanges();
+            player.sendMessage(ExampleText.OrientationKit.text());
+            return;
+        }
         if (arguments.length == 2 && arguments[0].equals("kit") && arguments[1].equals("observatory")) {
             var player = getCommandSenderAsPlayer(sender);
             give(player, ObservatoryExamples.anchorItem(), 1);
@@ -332,7 +342,7 @@ public final class ExamplesCommand extends CommandBase {
         if (arguments.length == 1)
             return getListOfStringsMatchingLastWord(arguments, "kit", "build", "stock", "charge", "drain", "structure-check");
         if (arguments.length == 2 && arguments[0].equals("kit"))
-            return getListOfStringsMatchingLastWord(arguments, "boundary", "composite", "me", "network", "observatory", "research");
+            return getListOfStringsMatchingLastWord(arguments, "boundary", "composite", "me", "network", "observatory", "orientation", "research");
         if (arguments.length == 2 && arguments[0].equals("build")) {
             var names = new ObjectArrayList<String>(List.of("press", "mixer", "sorter"));
             names.add(CtmGalleryExamples.TYPE.toString());

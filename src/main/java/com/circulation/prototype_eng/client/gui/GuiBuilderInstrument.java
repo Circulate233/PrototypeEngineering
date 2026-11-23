@@ -135,8 +135,8 @@ public final class GuiBuilderInstrument extends AEBaseGui<ContainerStructureTool
         var host = mc.world != null && mc.world.provider.getDimension() == tag.getInteger("BoundDim")
             ? ConstructionTarget.resolve(mc.world, anchor) : null;
         if (host != null && (!host.binding().toString().equals(machineId) || !host.structure().equals(next))) host = null;
-        var external = host != null && host.controller() == null ? host : null;
-        var mainBlock = external == null ? null : external.anchorState();
+        var external = host == null ? null : host.external();
+        var mainBlock = host == null || external == null ? null : host.anchorState();
         var nextOrientation = host == null ? BlockOrientation.NORTH_UP : host.orientation();
         if (preview != null && next.equals(id) && nextOrientation == orientation && mainBlock == externalMainBlock) {
             preview.view().anchor(anchor);
@@ -152,8 +152,8 @@ public final class GuiBuilderInstrument extends AEBaseGui<ContainerStructureTool
         if (machineType != null && !machineType.structureId().equals(id)) machineType = null;
         var service = StructurePreviews.client();
         var settings = new StructurePreviewSettings(orientation, BuilderState.previewSlices(tag), 65536, 1048576);
-        var view = external == null ? new StructurePreviewView(service, id, settings, machineType)
-            : new StructurePreviewView(service, id, settings, external.anchorState(), external.name());
+        var view = mainBlock == null || external == null ? new StructurePreviewView(service, id, settings, machineType)
+            : new StructurePreviewView(service, settings, mainBlock, external);
         view.anchor(anchor);
         view.wireframe = false;
         preview = new StructurePreviewPanel(view);

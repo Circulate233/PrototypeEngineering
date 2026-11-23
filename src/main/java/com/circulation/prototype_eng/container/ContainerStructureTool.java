@@ -213,13 +213,14 @@ public final class ContainerStructureTool extends AEBaseContainer {
                 || !current.getString("BoundMachineId").equals(host.binding().toString())
                 || !current.getString("BoundStructureId").equals(host.structure().toString())
                 || !current.getString("BoundMachineId").equals(binding.getString("BoundMachineId"))
-                || !current.getString("BoundStructureId").equals(binding.getString("BoundStructureId"))
-                || expectedOrientation != null && !expectedOrientation.equals(host.orientation().name())) return;
+                || !current.getString("BoundStructureId").equals(binding.getString("BoundStructureId"))) return;
             var server = getPlayer().getServer();
             if (server == null) return;
             var catalog = ServerStructureReloads.view(server, MachineTypeRegistry.INSTANCE.structureCatalog());
             if (catalog == null || !catalog.entries().containsKey(host.structure())) return;
-            var plan = StructureBuildPlan.expand(catalog, host.structure(), host.orientation(), BuilderState.sliceCounts(current));
+            var orientation = host.orientation(catalog);
+            if (expectedOrientation != null && !expectedOrientation.equals(orientation.name())) return;
+            var plan = StructureBuildPlan.expand(catalog, host.structure(), orientation, BuilderState.sliceCounts(current));
             if (kind.equals("slice")) {
                 int count = Integer.parseInt(selectedOption);
                 var elements3 = plan.nodes();
@@ -246,7 +247,7 @@ public final class ContainerStructureTool extends AEBaseContainer {
                     for (int index2 = 0; index2 < elements2.size(); index2++) {
                         var candidate = elements2.get(index2);
                         if (BuilderState.optionKey(candidate).equals(selectedOption)) {
-                            BuilderState.chooseCell(current, position, selectedMaterial, selectedOption, host.orientation());
+                            BuilderState.chooseCell(current, position, selectedMaterial, selectedOption, orientation);
                             synchronize();
                             return;
                         }

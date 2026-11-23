@@ -7,6 +7,7 @@ import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettin
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.structure.StructureBounds;
+import com.circulation.prototype_eng.api.structure.StructureConstructionRegistry;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
@@ -29,15 +30,12 @@ import java.util.Map;
 import java.util.Locale;
 import java.util.function.Function;
 
-/**
- * One viewer/wrapper's choices and bounded observations; all geometry is supplied by the C service.
- */
 public final class StructurePreviewView {
     private final StructurePreviews previews;
     private final ResourceLocation id;
     private final @Nullable MachineType machine;
     private final @Nullable IBlockState externalMainBlock;
-    private final @Nullable LocalizationEnum externalName;
+    private final StructureConstructionRegistry.@Nullable Entry external;
     private final Object2IntOpenHashMap<StructureDisplay> alternatives = new Object2IntOpenHashMap<>();
     private final Object2ObjectOpenHashMap<BlockPos, StructurePreviewModel.Cell> cells = new Object2ObjectOpenHashMap<>();
     private final Object2LongOpenHashMap<StructureDisplay> mismatchCounts = new Object2LongOpenHashMap<>();
@@ -84,24 +82,35 @@ public final class StructurePreviewView {
         this(previews, id, settings, machine, null, null);
     }
 
-    public StructurePreviewView(StructurePreviews previews, ResourceLocation id, StructurePreviewSettings settings,
-                                IBlockState externalMainBlock, LocalizationEnum externalName) {
-        this(previews, id, settings, null, externalMainBlock, externalName);
-        var option = StructureDisplay.BlockOption.of(externalMainBlock, Map.of());
-        controllerDisplay(new StructureDisplay("state:" + option.blockId() + ":" + option.meta(), List.of(option), null));
+    public StructurePreviewView(StructurePreviews previews, StructurePreviewSettings settings, IBlockState anchorState,
+                                StructureConstructionRegistry.Entry external) {
+        this(previews, external.structure(), settings, null, anchorState, external);
     }
 
     private StructurePreviewView(StructurePreviews previews, ResourceLocation id, StructurePreviewSettings settings,
-                                 @Nullable MachineType machine, @Nullable IBlockState externalMainBlock, @Nullable LocalizationEnum externalName) {
+                                 @Nullable MachineType machine, @Nullable IBlockState anchorState,
+                                 StructureConstructionRegistry.@Nullable Entry external) {
         this.previews = previews;
         this.id = id;
         if (machine != null && !machine.structureId().equals(id))
             throw new IllegalArgumentException("Preview machine does not reference the requested structure");
         this.machine = machine;
-        this.externalMainBlock = externalMainBlock;
-        this.externalName = externalName;
+        this.external = external;
         this.settings = settings;
+        updateFixedOrientation();
+        var rotation = external == null ? null : external.rotation();
+        this.externalMainBlock = anchorState == null || rotation == null ? anchorState : rotation.preview(anchorState, settings.orientation());
+        if (externalMainBlock != null) {
+            var option = StructureDisplay.BlockOption.of(externalMainBlock, Map.of());
+            controllerDisplay(new StructureDisplay("state:" + option.blockId() + ":" + option.meta(), List.of(option), null));
+        }
         alternatives.putAll(settings.displayOptions());
+    }
+
+    private void updateFixedOrientation() {
+        if (external == null || !external.fixed()) return;
+        var declared = previews.declaredOrientation(id);
+        if (declared != null) settings = settings.withOrientation(declared);
     }
 
     private static void addCount(Object2LongOpenHashMap<StructureDisplay> counts, @Nullable StructureDisplay display, long delta) {
@@ -138,10 +147,14 @@ public final class StructurePreviewView {
         return externalMainBlock;
     }
 
+    StructureConstructionRegistry.@Nullable Entry external() {
+        return external;
+    }
+
     public @Nullable LocalizationEnum title() {
         var current = model();
         var declared = current == null ? null : current.title();
-        return declared != null ? declared : machine == null ? externalName : machine.displayName();
+        return declared != null ? declared : machine != null ? machine.displayName() : external == null ? null : external.name();
     }
 
     public boolean formedPreview() {
@@ -221,6 +234,7 @@ public final class StructurePreviewView {
             forgetModel();
             return;
         }
+        updateFixedOrientation();
         var next = previews.request(id, settings);
         if (next != request) {
             request = next;

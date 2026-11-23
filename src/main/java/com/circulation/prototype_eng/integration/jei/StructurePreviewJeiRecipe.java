@@ -70,7 +70,7 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
     private StructurePreviewView createView() {
         var service = StructurePreviews.client();
         if (binding != null && anchor != null)
-            return new StructurePreviewView(service, binding.structure(), new StructurePreviewSettings(binding.orientation().apply(anchor)), anchor, binding.name());
+            return new StructurePreviewView(service, new StructurePreviewSettings(binding.orientation(anchor, null)), anchor, binding);
         var type = Objects.requireNonNull(machine);
         return new StructurePreviewView(service, type.structureId(), new StructurePreviewSettings(BlockOrientation.NORTH_UP), type);
     }

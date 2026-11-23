@@ -2,13 +2,11 @@ package com.circulation.prototype_eng.item;
 
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
+import com.circulation.prototype_eng.api.structure.StructureAnchorRotation;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.Vec3d;
+import org.jetbrains.annotations.Nullable;
 
-
-/**
- * The same face frame and cell boundaries drive server clicks and the client nine-cell overlay.
- */
 public final class OrientationToolOrientations {
     public static final double EDGE = .2;
 
@@ -20,6 +18,13 @@ public final class OrientationToolOrientations {
         if (part == Part.CORNER) return current;
         if (part == Part.CENTER && clickedSide == front) return current.rotateClockwiseAround(front);
         return face(current, target(clickedSide, part));
+    }
+
+    public static @Nullable BlockOrientation externalTarget(StructureAnchorRotation rotation, BlockOrientation current,
+                                                            EnumFacing clickedSide, Part part) {
+        if (part == Part.CORNER) return null;
+        var target = rotation.project(apply(current, clickedSide, part));
+        return target == current ? null : target;
     }
 
     /**

@@ -1,8 +1,10 @@
 package com.circulation.prototype_eng.client;
 
 import ae2.api.orientation.RelativeSide;
+import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.api.structure.StructureConstructionRegistry;
 import com.circulation.prototype_eng.item.ControllerOrientationTool;
 import com.circulation.prototype_eng.item.OrientationToolOrientations;
 import com.circulation.prototype_eng.item.OrientationToolOrientations.Part;
@@ -20,9 +22,6 @@ import net.minecraftforge.fml.relauncher.Side;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL14;
 
-/**
- * Face-local 20/60/20 grid; its hit regions are the same ones used by the server tool.
- */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID, value = Side.CLIENT)
 public final class OrientationToolGridRenderer {
     private static final BufferBuilder BUFFER = new BufferBuilder(4096);
@@ -42,19 +41,40 @@ public final class OrientationToolGridRenderer {
             || hit == null || hit.typeOfHit != RayTraceResult.Type.BLOCK || hit.sideHit == null || hit.hitVec == null)
             return;
         var pos = hit.getBlockPos();
-        if (!mc.world.isBlockLoaded(pos, false) || !(mc.world.getTileEntity(pos) instanceof MachineControllerHost controller))
-            return;
+        if (!mc.world.isBlockLoaded(pos, false)) return;
+        var tile = mc.world.getTileEntity(pos);
         var face = hit.sideHit;
         var part = OrientationToolOrientations.part(face, (float) (hit.hitVec.x - pos.getX()),
             (float) (hit.hitVec.y - pos.getY()), (float) (hit.hitVec.z - pos.getZ()));
+        boolean front;
+        boolean centerEnabled = true;
+        if (tile instanceof MachineControllerHost controller) {
+            front = controller.orientation().getSide(RelativeSide.FRONT) == face;
+        } else {
+            var state = mc.world.getBlockState(pos);
+            var anchor = StructureConstructionRegistry.INSTANCE.find(state);
+            var rotation = anchor == null ? null : anchor.rotation();
+            if (rotation == null) return;
+            try {
+                var current = rotation.read(state, tile);
+                front = current.getSide(RelativeSide.FRONT) == face;
+                centerEnabled = OrientationToolOrientations.externalTarget(rotation, current, face, Part.CENTER) != null;
+                boolean selectable = part == Part.CENTER ? centerEnabled
+                    : OrientationToolOrientations.externalTarget(rotation, current, face, part) != null;
+                if (!selectable) part = Part.CORNER;
+            } catch (RuntimeException failure) {
+                PrototypeEngineering.LOGGER.error("Cannot read construction anchor orientation for {} at {}", state, pos, failure);
+                return;
+            }
+        }
         double partial = event.getPartialTicks();
         var origin = new Vec3d(pos.getX() - (camera.lastTickPosX + (camera.posX - camera.lastTickPosX) * partial) + .002 * face.getXOffset(),
             pos.getY() - (camera.lastTickPosY + (camera.posY - camera.lastTickPosY) * partial) + .002 * face.getYOffset(),
             pos.getZ() - (camera.lastTickPosZ + (camera.posZ - camera.lastTickPosZ) * partial) + .002 * face.getZOffset());
-        draw(face, part, controller.orientation().getSide(RelativeSide.FRONT) == face, origin);
+        draw(face, part, front, centerEnabled, origin);
     }
 
-    private static void draw(EnumFacing face, Part selected, boolean front, Vec3d origin) {
+    private static void draw(EnumFacing face, Part selected, boolean front, boolean centerEnabled, Vec3d origin) {
         double edge = OrientationToolOrientations.EDGE, far = 1 - edge;
         boolean building = false;
         GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_LINE_BIT | GL11.GL_CURRENT_BIT);
@@ -93,14 +113,13 @@ public final class OrientationToolGridRenderer {
             line(face, origin, far, 0, far, 1);
             line(face, origin, 0, edge, 1, edge);
             line(face, origin, 0, far, 1, far);
-            // A turning arrow on the front; a crosshair on other faces denotes setting the front here.
-            if (front) {
+            if (centerEnabled && front) {
                 line(face, origin, .43, .42, .58, .42);
                 line(face, origin, .58, .42, .58, .58);
                 line(face, origin, .58, .58, .43, .58);
                 line(face, origin, .43, .58, .48, .63);
                 line(face, origin, .43, .58, .48, .53);
-            } else {
+            } else if (centerEnabled) {
                 line(face, origin, .43, .5, .57, .5);
                 line(face, origin, .5, .43, .5, .57);
             }
