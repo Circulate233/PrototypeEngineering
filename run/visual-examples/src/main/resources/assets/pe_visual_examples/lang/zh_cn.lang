@@ -164,3 +164,7 @@ gui.prototype_eng.research_page.pe_showcase=研究万花筒
 pe_run_tests.research_showcase.station_2=示例二级研究站
 pe_run_tests.research_showcase.database_2=示例二级数据库
 pe_visual_examples.researchkit=研究展示物资已发放；按 R 或 /pe research edit 打开。
+
+pe_visual_examples.observatory=星穹观测站
+tile.pe_visual_examples.observatory_anchor.name=星穹观测站锚点
+pe_visual_examples.observatory.kit=在空地放下锚点，南面和左右留足空间。手持机械构建器潜行右键锚点即可打开界面。

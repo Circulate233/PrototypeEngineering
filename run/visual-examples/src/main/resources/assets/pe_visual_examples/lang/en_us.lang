@@ -164,3 +164,7 @@ gui.prototype_eng.research_page.pe_showcase=Research Showcase
 pe_run_tests.research_showcase.station_2=Showcase Tier 2 Research Station
 pe_run_tests.research_showcase.database_2=Showcase Tier 2 Data Center
 pe_visual_examples.researchkit=Research showcase supplies given; open with R or /pe research edit.
+
+pe_visual_examples.observatory=Astral Observatory
+tile.pe_visual_examples.observatory_anchor.name=Astral Observatory Anchor
+pe_visual_examples.observatory.kit=Place the anchor on clear ground. Leave room to its south and on both sides. Sneak-right-click it with the Mechanical Builder.
