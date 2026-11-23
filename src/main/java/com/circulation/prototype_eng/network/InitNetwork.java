@@ -1,12 +1,14 @@
 package com.circulation.prototype_eng.network;
 
 import com.circulation.prototype_eng.api.recipe.RecipeDefinitionManifest;
+import com.circulation.prototype_eng.network.clientbound.ConstructionEffectPacket;
 import com.circulation.prototype_eng.network.clientbound.HatchConfigurationPacket;
 import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
 import com.circulation.prototype_eng.network.clientbound.ResearchViewPacket;
 import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
 import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
 import com.circulation.prototype_eng.structure.reload.StructureReloadCoordinator;
+import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraftforge.fml.common.network.NetworkRegistry;
@@ -36,6 +38,7 @@ public final class InitNetwork {
         CHANNEL.registerMessage(ResearchOverviewOpenPacket.Handler.class, ResearchOverviewOpenPacket.class, nextPacketId++, Side.SERVER);
         registerClientbound(ResearchViewPacket.class);
         CHANNEL.registerMessage(ResearchOverviewEditPacket.Handler.class, ResearchOverviewEditPacket.class, nextPacketId++, Side.SERVER);
+        registerClientbound(ConstructionEffectPacket.class);
         registered = true;
     }
 
@@ -50,6 +53,10 @@ public final class InitNetwork {
 
     public static void editResearch(int window, Consumer<ByteBuf> encoder) {
         ResearchPayload.split(ResearchPayload.encode(encoder), part -> CHANNEL.sendToServer(new ResearchOverviewEditPacket(window, part)));
+    }
+
+    public static void sendConstructionEffect(EntityPlayerMP player, ConstructionEffectPayload payload) {
+        CHANNEL.sendTo(new ConstructionEffectPacket(payload), player);
     }
 
     private static <T extends ConnectionClientboundPacket> void registerClientbound(Class<T> packetClass) {

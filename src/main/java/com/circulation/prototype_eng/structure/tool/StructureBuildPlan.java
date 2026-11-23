@@ -13,56 +13,17 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Iterator;
 import java.util.List;
 
-/**
- * Common-side expansion for construction; unknown display requirements remain unbuildable.
- */
 public final class StructureBuildPlan {
     private StructureBuildPlan() {
     }
 
     public static Result expand(StructureCatalogView view, ResourceLocation id, BlockOrientation orientation, Object2IntMap<String> slices) {
-        var root = view.entries().get(id);
-        if (root == null) throw new IllegalArgumentException("Unknown construction structure");
-        var rotation = StructureTransform.between(view.nodes().get(root.node()).orientation(), orientation);
-        var byNode = new Int2ObjectOpenHashMap<StructureCatalogView.Entry>();
-        view.entries().values().forEach(entry -> byNode.put(entry.node(), entry));
-        var pending = new ObjectArrayList<Visit>();
-        pending.add(new Visit(root.node(), "0", BlockPos.ORIGIN));
-        var cells = new Object2ObjectLinkedOpenHashMap<BlockPos, Cell>();
-        var nodes = new ObjectArrayList<Node>();
-        int visits = 0;
-        while (!pending.isEmpty()) {
-            var visit = pending.removeLast();
-            var node = view.nodes().get(visit.node());
-            if (nodes.size() >= 65536) throw new IllegalArgumentException("Too many construction structure instances");
-            var origin = rotation.applyAt(visit.anchor(), node.offset());
-            int count = switch (node.kind()) {
-                case TEMPLATE -> 1;
-                case OPAQUE -> 0;
-                case SLICE ->
-                    Math.clamp(slices.getOrDefault(visit.path(), node.minCount()), node.minCount(), node.maxCount());
-            };
-            nodes.add(new Node(visit.path(), visit.node(), origin, count));
-            var entry = byNode.get(visit.node());
-            var step = rotation.apply(node.sliceOffset());
-            for (int slice = 0; slice < count && !node.cells().isEmpty(); slice++) {
-                var anchor = stepAt(origin, step, slice);
-                var elements = node.cells();
-                for (int index1 = 0; index1 < elements.size(); index1++) {
-                    var relative = elements.get(index1);
-                    if (++visits > 1000000) throw new IllegalArgumentException("Too many construction cells");
-                    var position = rotation.applyAt(anchor, relative);
-                    if (!position.equals(BlockPos.ORIGIN))
-                        cells.put(position, new Cell(position, entry == null ? node.displays().get(relative) : entry.displays().getOrDefault(relative, node.displays().get(relative)), visit.path()));
-                }
-            }
-            var childOrigin = node.kind() == StructurePreviewProvider.Kind.SLICE ? stepAt(origin, step, (long) count - 1) : origin;
-            for (int child = node.children().size() - 1; child >= 0; child--)
-                pending.add(new Visit(node.children().getInt(child), visit.path() + "/" + child, childOrigin));
-        }
-        return new Result(new ObjectArrayList<>(cells.values()), nodes);
+        var expansion = new Expansion(view, id, orientation, slices);
+        expansion.complete();
+        return new Result(new ObjectArrayList<>(expansion.cells.values()), expansion.nodes);
     }
 
     public static BlockPos add(BlockPos a, BlockPos b) {
@@ -81,12 +42,109 @@ public final class StructureBuildPlan {
     public record Node(String path, int index, BlockPos origin, int count) {
     }
 
-    /**
-     * Completed expansion lists are transferred to the result and must be treated as read-only.
-     */
     public record Result(List<Cell> cells, List<Node> nodes) {
     }
 
-    private record Visit(int node, String path, BlockPos anchor) {
+    static final class Expansion {
+        private final StructureCatalogView view;
+        private final Object2IntMap<String> slices;
+        final StructureTransform rotation;
+        private final Iterator<StructureCatalogView.Entry> entries;
+        private final Int2ObjectOpenHashMap<StructureCatalogView.Entry> byNode = new Int2ObjectOpenHashMap<>();
+        private final ObjectArrayList<Visit> pending = new ObjectArrayList<>();
+        private final Object2ObjectLinkedOpenHashMap<BlockPos, Cell> cells = new Object2ObjectLinkedOpenHashMap<>();
+        private final ObjectArrayList<Node> nodes = new ObjectArrayList<>();
+        private int visits;
+        private boolean complete;
+
+        Expansion(StructureCatalogView view, ResourceLocation id, BlockOrientation orientation, Object2IntMap<String> slices) {
+            this.view = view;
+            this.slices = slices;
+            var root = view.entries().get(id);
+            if (root == null) throw new IllegalArgumentException("Unknown construction structure " + id);
+            rotation = StructureTransform.between(view.nodes().get(root.node()).orientation(), orientation);
+            entries = view.entries().values().iterator();
+            pending.add(new Visit(root.node(), "0", BlockPos.ORIGIN));
+        }
+
+        void complete() {
+            boolean pending;
+            do {
+                pending = step();
+            } while (pending);
+        }
+
+        boolean step() {
+            if (entries.hasNext()) {
+                var entry = entries.next();
+                byNode.put(entry.node(), entry);
+                return true;
+            }
+            if (pending.isEmpty()) {
+                complete = true;
+                return false;
+            }
+            var visit = pending.getLast();
+            var node = view.nodes().get(visit.index);
+            if (visit.origin == null) {
+                if (nodes.size() >= 65536) throw new IllegalArgumentException("Too many construction structure instances");
+                visit.origin = rotation.applyAt(visit.anchor, node.offset());
+                visit.count = switch (node.kind()) {
+                    case TEMPLATE -> 1;
+                    case OPAQUE -> 0;
+                    case SLICE -> Math.clamp(slices.getOrDefault(visit.path, node.minCount()), node.minCount(), node.maxCount());
+                };
+                visit.step = rotation.apply(node.sliceOffset());
+                visit.sliceOrigin = visit.origin;
+                nodes.add(new Node(visit.path, visit.index, visit.origin, visit.count));
+                return true;
+            }
+            if (visit.slice < visit.count && !node.cells().isEmpty()) {
+                var relative = node.cells().get(visit.cell++);
+                if (++visits > 1000000) throw new IllegalArgumentException("Too many construction cells");
+                var position = rotation.applyAt(visit.sliceOrigin, relative);
+                if (!position.equals(BlockPos.ORIGIN)) {
+                    var entry = byNode.get(visit.index);
+                    var display = node.displays().get(relative);
+                    cells.put(position, new Cell(position, entry == null ? display : entry.displays().getOrDefault(relative, display), visit.path));
+                }
+                if (visit.cell == node.cells().size() && ++visit.slice < visit.count) {
+                    visit.cell = 0;
+                    visit.sliceOrigin = stepAt(visit.origin, visit.step, visit.slice);
+                }
+                return true;
+            }
+            if (visit.child < node.children().size()) {
+                int child = visit.child++;
+                var childOrigin = node.kind() == StructurePreviewProvider.Kind.SLICE
+                    ? stepAt(visit.origin, visit.step, (long) visit.count - 1) : visit.origin;
+                pending.add(new Visit(node.children().getInt(child), visit.path + "/" + child, childOrigin));
+            } else pending.removeLast();
+            return true;
+        }
+
+        Iterator<Cell> cells() {
+            if (!complete) throw new IllegalStateException("Construction expansion is incomplete");
+            return cells.values().iterator();
+        }
+    }
+
+    private static final class Visit {
+        final int index;
+        final String path;
+        final BlockPos anchor;
+        BlockPos origin;
+        BlockPos step;
+        BlockPos sliceOrigin;
+        int count;
+        int slice;
+        int cell;
+        int child;
+
+        Visit(int index, String path, BlockPos anchor) {
+            this.index = index;
+            this.path = path;
+            this.anchor = anchor;
+        }
     }
 }

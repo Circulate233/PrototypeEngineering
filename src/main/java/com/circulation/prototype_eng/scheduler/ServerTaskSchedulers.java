@@ -9,6 +9,7 @@ import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeWork;
 import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
 import com.circulation.prototype_eng.research.ServerResearch;
+import com.circulation.prototype_eng.structure.tool.StructureBuildTasks;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.fml.common.Mod;
@@ -155,6 +156,12 @@ public final class ServerTaskSchedulers {
                     // The scheduler has physically joined this tick's accepted workers before return.
                     markTickControllerDataDirty(current);
                 }
+            }
+            current.server.profiler.startSection("peConstruction");
+            try {
+                StructureBuildTasks.tick(current.server);
+            } finally {
+                current.server.profiler.endSection();
             }
         }
     }

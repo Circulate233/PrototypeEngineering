@@ -1,58 +1,71 @@
 package com.circulation.prototype_eng.structure.tool;
 
+import it.unimi.dsi.fastutil.ints.IntArrayFIFOQueue;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.function.IntFunction;
 import java.util.function.IntPredicate;
 
-/**
- * Tracks completed positions; ordinary positions wait until the priority phase completes.
- */
 final class ConstructionProgress {
-    private static final byte PENDING = 0, DEFERRED = 1, COMPLETE = 2;
-    private final byte[] positions;
-    private int firstRemaining;
-    private int cursor;
+    private final IntArrayFIFOQueue priority = new IntArrayFIFOQueue();
+    private final IntArrayFIFOQueue ordinary = new IntArrayFIFOQueue();
     private int done;
     private boolean waiting;
 
+    ConstructionProgress() {
+    }
+
     ConstructionProgress(int size) {
-        positions = new byte[size];
+        this(size, _ -> false);
     }
 
     ConstructionProgress(int size, IntPredicate first) {
-        this(size);
-        for (int index = 0; index < size; index++) {
-            if (first.test(index)) firstRemaining++;
-            else positions[index] = DEFERRED;
-        }
+        for (int index = 0; index < size; index++) add(index, first.test(index));
+    }
+
+    void add(int index, boolean first) {
+        (first ? priority : ordinary).enqueue(index);
     }
 
     boolean firstPass() {
-        return firstRemaining > 0;
+        return !priority.isEmpty();
     }
 
     void advance(int budget, IntFunction<Step> operation) {
+        advance(null, budget, operation);
+    }
+
+    void advance(ConstructionBudget.Slice slice, IntFunction<Step> operation) {
+        advance(slice, Integer.MAX_VALUE, operation);
+    }
+
+    private void advance(ConstructionBudget.@Nullable Slice slice, int budget, IntFunction<Step> operation) {
         waiting = false;
-        for (int visits = 0, attempts = 0; visits < positions.length && attempts < budget && done < positions.length; visits++) {
-            int index = cursor;
-            boolean first = firstPass();
-            if (positions[index] == PENDING || positions[index] == DEFERRED && !first) {
-                attempts++;
-                var result = operation.apply(index);
-                if (result == Step.WAIT) {
-                    waiting = true;
-                    break;
-                }
-                if (result == Step.COMPLETE) {
-                    positions[index] = COMPLETE;
-                    done++;
-                    if (first) firstRemaining--;
-                } else if (result == Step.DEFER) {
-                    positions[index] = DEFERRED;
-                    firstRemaining--;
-                }
-            }
-            if (++cursor == positions.length) cursor = 0;
+        if (firstPass()) {
+            budget -= advancePhase(priority, slice, budget, operation);
+            if (firstPass() || waiting || budget <= 0) return;
         }
+        advancePhase(ordinary, slice, budget, operation);
+    }
+
+    private int advancePhase(IntArrayFIFOQueue queue, ConstructionBudget.@Nullable Slice slice, int budget, IntFunction<Step> operation) {
+        int visits = Math.min(queue.size(), budget);
+        for (int visit = 0; visit < visits && (slice == null || slice.available()); visit++) {
+            int index = queue.firstInt();
+            var result = operation.apply(index);
+            if (result == Step.WAIT) {
+                waiting = true;
+                return visit + 1;
+            }
+            queue.dequeueInt();
+            switch (result) {
+                case COMPLETE -> done++;
+                case RETRY -> queue.enqueue(index);
+                case DEFER -> ordinary.enqueue(index);
+                case WAIT -> throw new IllegalStateException("Waiting must preserve the current position");
+            }
+        }
+        return visits;
     }
 
     int done() {
@@ -63,8 +76,5 @@ final class ConstructionProgress {
         return waiting;
     }
 
-    /**
-     * DEFER moves a priority position to the ordinary phase.
-     */
     enum Step {COMPLETE, RETRY, WAIT, DEFER}
 }

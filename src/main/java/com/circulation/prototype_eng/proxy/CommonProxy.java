@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.proxy;
 
 import com.circulation.prototype_eng.api.gui.ResearchGuiAccess;
 import com.circulation.prototype_eng.command.PECommand;
-import com.circulation.prototype_eng.BuilderConfig;
 import com.circulation.prototype_eng.ControllerConfig;
 import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.MEAssemblyConfig;
@@ -62,6 +61,8 @@ import com.circulation.prototype_eng.recipe.ServerRecipeManifests;
 import com.circulation.prototype_eng.research.ServerResearch;
 import com.circulation.prototype_eng.scheduler.SchedulerConfig;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
+import com.circulation.prototype_eng.structure.tool.StructureBuildTasks;
+import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload;
 import com.circulation.prototype_eng.storage.HatchCapabilityRegistration;
 import com.circulation.prototype_eng.storage.MEPatternAssemblyBlockEntity;
 import com.circulation.prototype_eng.storage.MEResourceHatchBlockEntity;
@@ -103,7 +104,6 @@ public class CommonProxy implements IGuiHandler {
     public void preInit(FMLPreInitializationEvent event) {
         configRoot = event.getModConfigurationDirectory().toPath();
         HatchConfig.load(event.getModConfigurationDirectory());
-        BuilderConfig.load(event.getModConfigurationDirectory());
         ControllerConfig.load(event.getModConfigurationDirectory());
         MEAssemblyConfig.load(event.getModConfigurationDirectory());
         ParallelControllerConfig.load(event.getModConfigurationDirectory());
@@ -181,6 +181,7 @@ public class CommonProxy implements IGuiHandler {
 
     public final void serverStopping() {
         try {
+            StructureBuildTasks.stop();
             ServerRecipeDefinitions.stopping();
             ServerRecipeManifests.stop();
             ServerResearch.stop();
@@ -216,6 +217,10 @@ public class CommonProxy implements IGuiHandler {
 
     public void receiveRecipeDefinitions(RecipeDefinitionManifestPacket packet, Object connection) {
         throw new IllegalStateException("Server proxy cannot receive client recipe declaration manifests");
+    }
+
+    public void receiveConstructionEffect(ConstructionEffectPayload payload, Object connection) {
+        throw new IllegalStateException("Server proxy cannot receive a client construction effect");
     }
 
     public void receiveResearchView(ResearchViewPacket packet, Object connection) {

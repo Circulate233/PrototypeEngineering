@@ -14,6 +14,8 @@ import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.IFluidBlock;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.function.Supplier;
+
 /**
  * The same per-position resource identity is used by previews, pattern imports and construction.
  */
@@ -29,18 +31,27 @@ public final class StructureMaterials {
         return fluid;
     }
 
-    @SuppressWarnings("DataFlowIssue") // AEFluidKey.of(Fluid) returns a key for the non-null fluid checked below.
     public static @Nullable GenericStack resource(World world, BlockPos position, IBlockState state,
                                                   EntityPlayer player, @Nullable String tileNbt) {
+        return resolve(state, () -> {
+            try (var picks = new StructurePickWorld(world, pos -> world.isBlockLoaded(pos, false)
+                ? world.getBlockState(pos) : Blocks.AIR.getDefaultState())) {
+                return AEItemKey.of(picks.pick(state, position, player, tileNbt));
+            }
+        });
+    }
+
+    public static @Nullable GenericStack resource(StructurePickWorld picks, IBlockState state, BlockPos position,
+                                                  EntityPlayer player, @Nullable String tileNbt) {
+        return resolve(state, () -> AEItemKey.of(picks.pick(state, position, player, tileNbt)));
+    }
+
+    @SuppressWarnings("DataFlowIssue")
+    private static @Nullable GenericStack resolve(IBlockState state, Supplier<@Nullable AEItemKey> pick) {
         var fluid = fluid(state);
-        if (fluid != null) {
-            return new GenericStack(AEFluidKey.of(fluid), Fluid.BUCKET_VOLUME);
-        }
+        if (fluid != null) return new GenericStack(AEFluidKey.of(fluid), Fluid.BUCKET_VOLUME);
         if (state.getMaterial().isLiquid() || state.getMaterial() == Material.AIR) return null;
-        try (var picks = new StructurePickWorld(world, pos -> world.isBlockLoaded(pos, false)
-            ? world.getBlockState(pos) : Blocks.AIR.getDefaultState())) {
-            var key = AEItemKey.of(picks.pick(state, position, player, tileNbt));
-            return key == null ? null : new GenericStack(key, 1);
-        }
+        var key = pick.get();
+        return key == null ? null : new GenericStack(key, 1);
     }
 }

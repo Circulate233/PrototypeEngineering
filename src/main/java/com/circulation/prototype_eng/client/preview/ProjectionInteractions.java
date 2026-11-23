@@ -91,6 +91,13 @@ public final class ProjectionInteractions {
         return true;
     }
 
+    public void constructionStarted(int dimension, BlockPos anchor) {
+        var builder = builderProjection;
+        if (builder == null || builder.binding.dimension() != dimension || !builder.binding.position().equals(anchor)) return;
+        builderProjection = null;
+        if (!builder.service.closed() && builder.service.projection() == builder.intent) builder.service.stopProjection();
+    }
+
     private void update(BlockOrientation orientation) {
         var service = StructurePreviews.client();
         var current = service.projection();

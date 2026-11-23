@@ -16,11 +16,13 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StructureBuildPlanTest {
@@ -31,6 +33,21 @@ class StructureBuildPlanTest {
         var nodes = List.of(new StructureCatalogView.Node(ROOT, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.SLICE, BlockPos.ORIGIN, 0, 5, new BlockPos(0, 2, 0), List.of(BlockPos.ORIGIN, new BlockPos(1, 0, 0)), IntList.of(1)),
             new StructureCatalogView.Node(CHILD, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE, new BlockPos(0, 0, 1), 1, 1, BlockPos.ORIGIN, List.of(new BlockPos(1, 0, 0)), IntList.of()));
         return new StructureCatalogView(UUID.randomUUID(), 0, nodes, Map.of(ROOT, new StructureCatalogView.Entry(0, null, new BlockPos2ObjectMap<>(Map.of(BlockPos.ORIGIN, display, new BlockPos(1, 0, 0), display))), CHILD, new StructureCatalogView.Entry(1, null, new BlockPos2ObjectMap<>(Map.of(new BlockPos(1, 0, 0), display)))));
+    }
+
+    @Test
+    void suspendingExpansionKeepsNestedVisitsInTheirOriginalOrderAndDoesNotExposePartialCells() {
+        var catalog = view();
+        var expansion = new StructureBuildPlan.Expansion(catalog, ROOT, BlockOrientation.NORTH_UP,
+            Object2IntMaps.singleton("0", 3));
+        assertTrue(expansion.step());
+        do {
+            assertThrows(IllegalStateException.class, expansion::cells);
+        } while (expansion.step());
+        var cells = new ArrayList<BlockPos>();
+        expansion.cells().forEachRemaining(cell -> cells.add(cell.position()));
+        assertEquals(List.of(new BlockPos(1, 0, 0), new BlockPos(0, 2, 0), new BlockPos(1, 2, 0),
+            new BlockPos(0, 4, 0), new BlockPos(1, 4, 0), new BlockPos(1, 4, 1)), cells);
     }
 
     @Test

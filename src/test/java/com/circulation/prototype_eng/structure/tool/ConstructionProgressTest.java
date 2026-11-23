@@ -4,6 +4,9 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -47,7 +50,7 @@ class ConstructionProgressTest {
             visits.add(index);
             return ConstructionProgress.Step.COMPLETE;
         });
-        assertEquals(IntList.of(2, 0, 1), visits);
+        assertEquals(IntList.of(0, 2, 1), visits);
         assertEquals(3, progress.done());
     }
 
@@ -99,6 +102,33 @@ class ConstructionProgressTest {
         });
         assertEquals(IntList.of(2, 3), visits);
         assertEquals(4, progress.done());
+    }
+
+    @Test
+    void expiredSlicePreservesTheNextPositionAndWaitingRechecksItInTheNextTick() {
+        var progress = new ConstructionProgress(3);
+        var budgetClock = new AtomicLong();
+        var budget = new ConstructionBudget(budgetClock::get);
+        var visits = new IntArrayList();
+        var work = List.of(progress);
+        budget.run(work, (queue, slice) -> queue.advance(slice, index -> {
+            visits.add(index);
+            budgetClock.addAndGet(slice.allowanceNanos());
+            return ConstructionProgress.Step.COMPLETE;
+        }));
+        assertEquals(IntList.of(0), visits);
+        budget.run(work, (queue, slice) -> queue.advance(slice, index -> {
+            visits.add(index);
+            return ConstructionProgress.Step.WAIT;
+        }));
+        assertEquals(IntList.of(0, 1), visits);
+        assertTrue(progress.waiting());
+        budget.run(work, (queue, slice) -> queue.advance(slice, index -> {
+            visits.add(index);
+            return ConstructionProgress.Step.COMPLETE;
+        }));
+        assertEquals(IntList.of(0, 1, 1, 2), visits);
+        assertEquals(3, progress.done());
     }
 
     @Test

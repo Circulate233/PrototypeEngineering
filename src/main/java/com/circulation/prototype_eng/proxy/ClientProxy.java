@@ -32,6 +32,7 @@ import com.circulation.prototype_eng.client.preview.PreviewEmbeddedInput;
 import com.circulation.prototype_eng.client.preview.PreviewGuiResources;
 import com.circulation.prototype_eng.client.preview.ProjectionInteractions;
 import com.circulation.prototype_eng.client.preview.WorldProjectionManager;
+import com.circulation.prototype_eng.client.render.construction.ConstructionEffectRenderer;
 import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
 import com.circulation.prototype_eng.client.render.BasicMachineControllerRenderer;
 import com.circulation.prototype_eng.client.render.ClientMachineRenderSnapshots;
@@ -63,6 +64,7 @@ import com.circulation.prototype_eng.network.clientbound.HatchConfigurationPacke
 import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
 import com.circulation.prototype_eng.network.clientbound.ResearchViewPacket;
 import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
+import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload;
 import com.circulation.prototype_eng.research.reward.RewardItemEntity;
 import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
 import net.minecraft.client.Minecraft;
@@ -427,6 +429,18 @@ public class ClientProxy extends CommonProxy {
     }
 
     @Override
+    public void receiveConstructionEffect(ConstructionEffectPayload payload, Object connection) {
+        var minecraft = packetOwner();
+        if (!(connection instanceof NetHandlerPlayClient handler) || minecraft.getConnection() != handler
+            || minecraft.world == null || minecraft.world.provider.getDimension() != payload.dimension()) return;
+        try {
+            ConstructionEffectRenderer.INSTANCE.receive(minecraft, payload);
+        } catch (RuntimeException failure) {
+            PrototypeEngineering.LOGGER.error("Cannot install construction effect for task {}", payload.taskId(), failure);
+        }
+    }
+
+    @Override
     public void receiveResearchView(ResearchViewPacket packet, Object connection) {
         var minecraft = packetOwner();
         if (!(connection instanceof NetHandlerPlayClient handler) || minecraft.getConnection() != handler) return;
@@ -480,6 +494,7 @@ public class ClientProxy extends CommonProxy {
         MinecraftForge.EVENT_BUS.register(PreviewGuiResources.INSTANCE);
         MinecraftForge.EVENT_BUS.register(PreviewEmbeddedInput.INSTANCE);
         MinecraftForge.EVENT_BUS.register(ProjectionInteractions.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(ConstructionEffectRenderer.INSTANCE);
         MinecraftForge.EVENT_BUS.register(PreviewClientOpenQueue.INSTANCE);
         ProjectionInteractions.INSTANCE.registerKeys();
         var command = new PEClientCommand();
@@ -493,6 +508,7 @@ public class ClientProxy extends CommonProxy {
                 retireModelBuilds();
                 if (renderSnapshots != null) renderSnapshots.invalidateResources();
                 if (projectionManager != null) projectionManager.invalidateResources();
+                ConstructionEffectRenderer.INSTANCE.invalidateResources();
                 recipeDefinitions().resourcesReloaded();
             });
     }
