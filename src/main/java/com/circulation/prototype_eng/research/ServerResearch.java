@@ -1616,7 +1616,7 @@ public final class ServerResearch {
                 var saved = visible ? progressByResearch.get(id) : null;
                 var progress = saved == null ? null : id.equals(requestedDetail) ? overviewProgress(definition, saved,
                     station.progress() != null && station.progress().target().equals(saved.target()) ? station : null)
-                    : new ResearchOverviewPacket.Progress(saved.target().level(), saved.elapsedTicks(), List.of(), List.of());
+                    : new ResearchOverviewPacket.Progress(saved.target().level(), overviewElapsed(definition, saved), List.of(), List.of());
                 states.add(new ResearchOverviewPacket.State(id, personal, completed, playerView.team().structuralTargets().getInt(id),
                     downloaded, downloadedTo, canStart, canDownload,
                     !playerView.savePending() && personal > 0 && !definition.specialOnly() && playerView.forgetPermission() == ResearchPermissionPolicy.Decision.ALLOWED && current.world.canForget(actor.getUniqueID(), id),
@@ -1703,11 +1703,19 @@ public final class ServerResearch {
             materials.add(new ResearchOverviewPacket.MaterialProgress(entry.getKey(), station == null ? 0
                 : Math.min(remaining, station.availableMaterials().getLong(entry.getKey())), remaining, entry.getLongValue()));
         }
-        var resources = new ObjectArrayList<ResearchOverviewPacket.ResourceProgress>();
-        for (var entry : stage.resourceDemandForLevel(saved.target().level()).reference2DoubleEntrySet())
+        var totals = stage.resourceDemandForLevel(saved.target().level());
+        var resources = new ObjectArrayList<ResearchOverviewPacket.ResourceProgress>(totals.size());
+        for (var entry : totals.reference2DoubleEntrySet())
             resources.add(new ResearchOverviewPacket.ResourceProgress(entry.getKey(), station == null ? 0 : station.occupiedResources().getDouble(entry.getKey()),
                 station == null ? 0 : station.capacity().getDouble(entry.getKey()), saved.resources().getDouble(entry.getKey()), entry.getDoubleValue()));
-        return new ResearchOverviewPacket.Progress(saved.target().level(), saved.elapsedTicks(), materials, resources);
+        long elapsed = ResearchProgress.supportedTicks(saved.elapsedTicks(), stage.durationTicks(), totals, saved.resources());
+        return new ResearchOverviewPacket.Progress(saved.target().level(), elapsed, materials, resources);
+    }
+
+    private static long overviewElapsed(ResearchDefinition definition, ResearchProgress.Snapshot saved) {
+        var stage = definition.stageForLevel(saved.target().level());
+        return ResearchProgress.supportedTicks(saved.elapsedTicks(), stage.durationTicks(),
+            stage.resourceDemandForLevel(saved.target().level()), saved.resources());
     }
 
     public static void requestPauseManual(EntityPlayerMP actor, String expectedTeam, long entryId,

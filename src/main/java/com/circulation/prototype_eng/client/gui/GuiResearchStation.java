@@ -1,12 +1,13 @@
 package com.circulation.prototype_eng.client.gui;
 
-import ae2.api.client.AEKeyRendering;
 import ae2.client.Point;
 import ae2.client.gui.AEBaseGui;
 import ae2.client.gui.Icon;
+import ae2.client.gui.StackWithBounds;
 import ae2.client.gui.widgets.AE2Button;
 import ae2.client.gui.widgets.Scrollbar;
 import com.circulation.prototype_eng.api.research.view.ResearchStationView;
+import com.circulation.prototype_eng.client.render.GuiItemLighting;
 import com.circulation.prototype_eng.container.ContainerResearchStation;
 import com.circulation.prototype_eng.client.research.ClientResearchContents;
 import com.circulation.prototype_eng.container.ResearchStationPacket;
@@ -15,12 +16,16 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.entity.player.InventoryPlayer;
+import net.minecraft.inventory.ClickType;
+import net.minecraft.inventory.Slot;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.text.ITextComponent;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.NotNull;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 
@@ -42,6 +47,7 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
     private static final String[] QUEUE_NUMBERS = {"1", "2", "3", "4", "5"};
     private final QueueButton[] actions = new QueueButton[4];
     private final Scrollbar scrollbar = new Scrollbar(Scrollbar.SMALL);
+    private final ResearchDisplaySlots materialSlots = new ResearchDisplaySlots();
     private final DecimalFormat percentFormat = new DecimalFormat("0.#'%'");
     private long selected, knownElapsed = -1;
     private int knownStations = -1, scaleFactor;
@@ -84,6 +90,8 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
         knownState = null;
         knownElapsed = -1;
         knownStations = -1;
+        materialSlots.beginFrame(1, guiLeft, guiTop);
+        hoveredSlot = null;
         title = container.getGuiTitle().getFormattedText();
         materialsLabel = ResearchStationGuiText.Resources.getLocal();
         materialHint = ResearchStationGuiText.AvailableRemaining.getLocal();
@@ -169,6 +177,47 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
         int height = contentHeight();
         scrollbar.setRange(0, Math.max(0, height - LIST_HEIGHT), 12);
         scrollbar.setVisible(height > LIST_HEIGHT);
+        updateMaterialSlots();
+    }
+
+    private void updateMaterialSlots() {
+        materialSlots.beginFrame(1, guiLeft, guiTop);
+        materialSlots.clip(LIST_X, LIST_Y, listWidth(), LIST_HEIGHT);
+        int top = LIST_Y - scrollbar.getCurrentScroll() + SECTION_HEIGHT;
+        var materials = container.view.materials;
+        int firstRow = Math.max(0, Math.floorDiv(LIST_Y - top, MATERIAL_HEIGHT));
+        int lastRow = Math.min(materialRows(), Math.floorDiv(LIST_Y + LIST_HEIGHT - top - 1, MATERIAL_HEIGHT) + 1);
+        for (int index = firstRow * MATERIAL_COLUMNS; index < Math.min(materials.size(), lastRow * MATERIAL_COLUMNS); index++) {
+            var material = materials.get(index);
+            int x = LIST_X + index % MATERIAL_COLUMNS * MATERIAL_WIDTH + 8;
+            int y = top + index / MATERIAL_COLUMNS * MATERIAL_HEIGHT + 1;
+            materialSlots.add(material.key, material.remaining, x, y, 16);
+        }
+    }
+
+    @Override
+    protected @Nullable Slot findSlot(int mouseX, int mouseY) {
+        return materialSlots.find(mouseX, mouseY);
+    }
+
+    @Override
+    public @Nullable StackWithBounds getStackUnderMouse(double mouseX, double mouseY) {
+        return materialSlots.stackAt(mouseX, mouseY);
+    }
+
+    @Override
+    protected boolean checkHotbarKeys(int code) {
+        return materialSlots.owns(getSlotUnderMouse()) || super.checkHotbarKeys(code);
+    }
+
+    @Override
+    public boolean MT_isIgnored(Slot slot) {
+        return materialSlots.owns(slot) || super.MT_isIgnored(slot);
+    }
+
+    @Override
+    protected void handleMouseClick(Slot slot, int id, int button, @NotNull ClickType type) {
+        if (!materialSlots.owns(slot)) super.handleMouseClick(slot, id, button, type);
     }
 
     @Override
@@ -286,11 +335,19 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
                 int cellX = LIST_X + index % MATERIAL_COLUMNS * MATERIAL_WIDTH;
                 int cellY = materialTop + index / MATERIAL_COLUMNS * MATERIAL_HEIGHT;
                 slot(cellX + 7, cellY);
-                AEKeyRendering.drawInGui(mc, cellX + 8, cellY + 1, material.key);
                 GuiLabel.drawCentered(fontRenderer, material.slotAmounts(), cellX, cellY + 20, MATERIAL_WIDTH, 8,
                     material.available < material.remaining ? BAD : TEXT, false);
             }
         }
+        int lighting = GuiItemLighting.capture();
+        try {
+            RenderHelper.enableGUIStandardItemLighting();
+            materialSlots.draw(this::drawSlot);
+        } finally {
+            GuiItemLighting.restore(lighting);
+        }
+        GlStateManager.disableLighting();
+        GlStateManager.disableDepth();
         int networkTop = materialTop + materialHeight() + SECTION_GAP;
         text(fontRenderer, networkLabel, LIST_X, networkTop, 70, TEXT);
         right(fontRenderer, networkHint, LIST_X + width, networkTop, width - 74, SOFT);
@@ -339,10 +396,13 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
         int mouseX = Mouse.getEventX() * width / mc.displayWidth, mouseY = height - Mouse.getEventY() * height / mc.displayHeight - 1;
         if (isPointInRegion(LIST_X, LIST_Y, LIST_SCROLL_X + 7 - LIST_X, LIST_HEIGHT, mouseX, mouseY))
             scrollbar.setCurrentScroll(scrollbar.getCurrentScroll() - Integer.signum(delta) * 17);
+        updateMaterialSlots();
+        hoveredSlot = findSlot(mouseX, mouseY);
     }
 
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
+        if (materialSlots.find(mouseX, mouseY) != null) return;
         int index = button == 0 ? queueIndex(mouseX, mouseY) : -1;
         if (index >= 0) {
             selected = container.view.queue.get(index).entryId();
@@ -354,6 +414,7 @@ public class GuiResearchStation extends AEBaseGui<ContainerResearchStation> {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         super.drawScreen(mouseX, mouseY, partialTicks);
+        if (materialSlots.find(mouseX, mouseY) != null) return;
         var tooltip = tooltip(mouseX, mouseY);
         if (tooltip != null) drawHoveringText(tooltip, mouseX, mouseY, fontRenderer);
     }

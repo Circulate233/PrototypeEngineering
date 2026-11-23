@@ -12,6 +12,8 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.math.BigInteger;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.UUID;
 
@@ -77,7 +79,7 @@ public final class ResearchProgress {
     }
 
     /**
-     * Input maps and stations must remain unchanged during this call. Material payments unlock independently accumulated network progress.
+     * Input maps and stations must remain unchanged during this call.
      */
     public @Nullable Step plan(List<StationRate> stations, Reference2DoubleMap<NetworkResourceType> available,
                                AEKey2LongMap materials) {
@@ -128,7 +130,6 @@ public final class ResearchProgress {
         }
         if (allPaid) materialFraction = 1;
         long allowedTime = allPaid ? stage.durationTicks() : allowedTime(remainingMaterials, materialFraction);
-        long timeGrant = Math.clamp(allowedTime - state.elapsedTicks(), 0, stations.size());
         for (var iterator = grants.reference2DoubleEntrySet().iterator(); iterator.hasNext(); ) {
             var entry = iterator.next();
             double allowed = Math.max(0, totals.getDouble(entry.getKey()) * materialFraction - state.resources().getDouble(entry.getKey()));
@@ -136,6 +137,14 @@ public final class ResearchProgress {
             if (amount == 0) iterator.remove();
             else entry.setValue(amount);
         }
+        Reference2DoubleMap<NetworkResourceType> accumulated = state.resources();
+        if (!grants.isEmpty()) {
+            var changed = new Reference2DoubleOpenHashMap<>(state.resources());
+            for (var entry : grants.reference2DoubleEntrySet()) changed.addTo(entry.getKey(), entry.getDoubleValue());
+            accumulated = changed;
+        }
+        allowedTime = supportedTicks(allowedTime, stage.durationTicks(), totals, accumulated);
+        long timeGrant = Math.clamp(allowedTime - state.elapsedTicks(), 0, stations.size());
         if (timeGrant == 0 && grants.isEmpty() && payments.isEmpty()) return null;
         var outstanding = new Reference2DoubleOpenHashMap<>(grants);
         var used = new ObjectArrayList<UUID>();
@@ -164,12 +173,6 @@ public final class ResearchProgress {
             for (var entry : limits.reference2DoubleEntrySet())
                 capacity.addTo(entry.getKey(), Math.min(entry.getDoubleValue(), station.rates().getDouble(entry.getKey())));
         }
-        Reference2DoubleMap<NetworkResourceType> accumulated = state.resources();
-        if (!grants.isEmpty()) {
-            var changed = new Reference2DoubleOpenHashMap<>(state.resources());
-            for (var entry : grants.reference2DoubleEntrySet()) changed.addTo(entry.getKey(), entry.getDoubleValue());
-            accumulated = changed;
-        }
         long elapsed = state.elapsedTicks() + timeGrant;
         boolean complete = elapsed == stage.durationTicks();
         for (var amounts = remainingMaterials.values().iterator(); amounts.hasNext(); )
@@ -177,6 +180,25 @@ public final class ResearchProgress {
         for (var entry : totals.reference2DoubleEntrySet())
             complete &= accumulated.getDouble(entry.getKey()) >= entry.getDoubleValue();
         return new Step(state, new Snapshot(target, elapsed, remainingMaterials, accumulated), payments, grants, capacity, used, complete);
+    }
+
+    public static long supportedTicks(long elapsedTicks, long durationTicks, Reference2DoubleMap<NetworkResourceType> totals,
+                                      Reference2DoubleMap<NetworkResourceType> accumulated) {
+        long supported = elapsedTicks;
+        for (var entry : totals.reference2DoubleEntrySet()) {
+            double total = entry.getDoubleValue();
+            if (total == 0) continue;
+            double amount = accumulated.getDouble(entry.getKey());
+            if (amount >= total) continue;
+            if (amount == 0) return 0;
+            double scaled = durationTicks * (amount / total);
+            long limit;
+            if (Math.abs(scaled - Math.rint(scaled)) > Math.ulp(scaled) * 4) limit = (long) Math.floor(scaled);
+            else limit = new BigDecimal(amount).multiply(BigDecimal.valueOf(durationTicks))
+                .divide(new BigDecimal(total), 0, RoundingMode.FLOOR).longValueExact();
+            supported = Math.min(supported, limit);
+        }
+        return supported;
     }
 
     private long allowedTime(AEKey2LongMap remainingMaterials, double materialFraction) {

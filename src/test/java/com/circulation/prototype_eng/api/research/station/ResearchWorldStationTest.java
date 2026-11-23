@@ -20,12 +20,17 @@ import com.circulation.prototype_eng.api.research.ResearchLevelStage;
 import com.circulation.prototype_eng.api.research.ResearchResourceFormula;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
+import com.circulation.prototype_eng.api.research.queue.ResearchProgress;
+import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.research.view.ResearchStationView;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
+import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectList;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -38,6 +43,47 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 @SuppressWarnings("DataFlowIssue") // Test setup establishes successful admission or capture before reading the result.
 class ResearchWorldStationTest {
+    @Test
+    void savedTimeAheadOfNetworkIsDisplayedAtSupportedProgressAndCompletesAfterSupplyCatchesUp() {
+        try (var fixture = new StationFixtures(1, 100, 2, ResearchStationWorkTest.definition(4, 40, 0))) {
+            fixture.poweredStation(0);
+            fixture.refresh();
+            var membership = OwnerTeamResolution.resolved(OWNER, "team", OwnerTeamType.SERVER, ObjectSets.singleton(OWNER), null);
+            var permission = new ResearchPermissionContext(OWNER, "team", null, "team", true, false, false);
+            var writes = new ObjectArrayList<ResearchWorldSnapshot>();
+            var world = new ResearchWorld(fixture.research, ResearchPermissionPolicy.DEFAULT, writes::add);
+            world.start(membership, permission, id("research"), 1, fixture.selector.admission("team").environment(), 0, Set.of(OWNER), () -> true);
+            var saved = world.snapshot();
+            var team = saved.teams().getFirst();
+            var queue = team.queue();
+            var ahead = new ResearchProgress.Snapshot(queue.activeHead().target(), 4, ImmutableResourceAmounts.empty(), Reference2DoubleMaps.emptyMap());
+            var restoredQueue = new TeamResearchQueue.Snapshot(queue.teamId(), queue.entries(), ObjectList.of(ahead), queue.nextEntryId(),
+                queue.epoch(), queue.updatedAtWorldTime(), queue.lastGrantedEntryId(), queue.lastGrantedWorldTime());
+            var restored = new ResearchWorld(fixture.research, ResearchPermissionPolicy.DEFAULT, writes::add);
+            restored.restore(new ResearchWorldSnapshot(saved.serverTime(), saved.players(), ObjectList.of(
+                new ResearchWorldSnapshot.Team(team.teamId(), team.knownMembers(), team.blacklist(), team.research(), restoredQueue, team.manualSessions()))));
+            int initialWrites = writes.size();
+            assertEquals(0, restored.stationView(permission, fixture.selector, 0).progress().elapsedTicks());
+            assertSame(ahead, restored.snapshot().teams().getFirst().queue().progress().getFirst());
+            assertEquals(initialWrites, writes.size());
+            for (int tick = 1; tick <= 4; tick++) {
+                fixture.nextTick();
+                var deadline = PlannedDeadline.after(Duration.ofSeconds(5));
+                assertTrue(restored.prepareTick(tick, Map.of(OWNER, membership), Set.of(OWNER), _ -> null, () -> true,
+                    fixture.selector, fixture::refresh, deadline).advance(deadline));
+                if (tick < 4) {
+                    var displayed = restored.stationView(permission, fixture.selector, tick).progress();
+                    assertEquals(tick, displayed.elapsedTicks());
+                    assertEquals(tick * 10, displayed.resources().getDouble(ComputingResourceFixtures.COMPUTE));
+                    assertEquals(4, restored.snapshot().teams().getFirst().queue().progress().getFirst().elapsedTicks());
+                }
+            }
+            restored.saveChanged(4);
+            assertTrue(writes.getLast().teams().getFirst().queue().entries().isEmpty());
+            assertEquals(1, writes.getLast().players().getFirst().completedLevels().getInt(id("research")));
+        }
+    }
+
     @Test
     void stationProgressBatchesUntilChangedWorldSaveAndCloseRetainsLaterProgress() {
         try (var fixture = new StationFixtures(1, 100, 2, ResearchStationWorkTest.definition(4, 40, 0))) {

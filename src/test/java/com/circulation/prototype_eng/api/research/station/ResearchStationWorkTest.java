@@ -144,4 +144,21 @@ class ResearchStationWorkTest {
             assertEquals(17, first.energy().storedEnergy() + second.energy().storedEnergy());
         }
     }
+
+    @Test
+    void missingNetworkSupplyDoesNotAdvanceTimeChargePowerOrRetainConcurrency() {
+        try (var fixture = new StationFixtures(1, 0, 2, definition(4, 40, 0))) {
+            var station = fixture.poweredStation(3);
+            fixture.refresh();
+            var queue = queue(fixture);
+            var result = work(fixture, queue).advance(Objects.requireNonNull(fixture.selector.capture("team", 2)),
+                new ResearchStationWork.Context(1, Set.of(OWNER), () -> true));
+            assertEquals(ResearchStationWork.Status.WAITING, result.status());
+            assertTrue(result.stations().isEmpty());
+            assertEquals(0, queue.activeProgress().snapshot().elapsedTicks());
+            assertTrue(queue.activeProgress().snapshot().resources().isEmpty());
+            assertEquals(10, station.energy().storedEnergy());
+            assertEquals(NetworkTeamBudget.LeaseStatus.GRANTED, fixture.roleOf(station.machine()).workPermit().requestLease());
+        }
+    }
 }

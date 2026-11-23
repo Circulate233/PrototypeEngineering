@@ -251,6 +251,7 @@ class ResearchOverviewDisplayTest {
             assertEquals(3, client.databases().getFirst().remaining());
             assertEquals(2, client.centerLevel());
             assertEquals(3, client.stationLevel());
+            assertEquals(2, client.effectiveStationLevel());
 
             var outage = display.capture(List.of(state(0, 0)), List.of(), databases, null, absent);
             assertNotNull(outage);
@@ -261,6 +262,7 @@ class ResearchOverviewDisplayTest {
             assertEquals(databases, client.databases());
             assertEquals(0, client.centerLevel());
             assertEquals(0, client.stationLevel());
+            assertEquals(0, client.effectiveStationLevel());
 
             var expanded = List.of(new ResearchOverviewPacket.Database(firstId, "Primary", 1, 4, stored),
                 new ResearchOverviewPacket.Database(secondId, "Standby", 1, 12, 4, stored));

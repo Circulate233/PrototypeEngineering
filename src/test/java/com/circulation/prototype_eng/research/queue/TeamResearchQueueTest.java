@@ -1,8 +1,5 @@
 package com.circulation.prototype_eng.research.queue;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
@@ -56,7 +53,7 @@ class TeamResearchQueueTest {
     }
 
     @Test
-    void independentlyAccumulatesScarceResourcesAfterTimeAndOtherResourcesFinish() {
+    void overallProgressWaitsForEveryNetworkResourceWhileFasterResourcesAccumulateIndependently() {
         var registry = registry(ResearchLevelStage.builder(1, 1).durationTicks(6).researchTier(1)
                                                   .resourceFormula(ResearchResourceFormula.builder().perTick(COMPUTE, 100).constant(QUBIT, 60).build()));
         var queue = new TeamResearchQueue(registry, "team");
@@ -68,11 +65,78 @@ class TeamResearchQueueTest {
             assertEquals(tick == 30, plan.completesResearch());
             commit(queue, plan);
             if (tick == 6) {
-                assertEquals(6, queue.activeProgress().snapshot().elapsedTicks());
+                assertEquals(1, queue.activeProgress().snapshot().elapsedTicks());
                 assertEquals(12, queue.activeProgress().snapshot().resources().getDouble(QUBIT));
             }
+            if (tick < 30) assertEquals(tick / 5, queue.activeProgress().snapshot().elapsedTicks());
         }
         assertEquals(0, queue.size());
+    }
+
+    @Test
+    void missingNetworkResourceStopsTimeWhileSuppliedResourcesRemainPaidAcrossReload() {
+        var registry = registry(ResearchLevelStage.builder(1, 1).durationTicks(4).researchTier(1).material(A, 4)
+                                                  .resourceFormula(ResearchResourceFormula.builder().perTick(COMPUTE, 10).perTick(QUBIT, 2).build()));
+        var queue = new TeamResearchQueue(registry, "team");
+        var head = queue.enqueue(ID, 1, PLAYER, 0);
+        var stations = List.of(new ResearchProgress.StationRate(STATION, resources(10, 2)));
+        for (int tick = 1; tick <= 4; tick++) {
+            var plan = queue.planSegment(head.key(), stations, resources(10, 0), ImmutableResourceAmounts.single(A, 1), tick);
+            assertFalse(plan.completesResearch());
+            commit(queue, plan);
+            assertEquals(0, queue.activeProgress().snapshot().elapsedTicks());
+        }
+        assertNull(queue.planSegment(head.key(), stations, resources(10, 0), ImmutableResourceAmounts.empty(), 5));
+        var codec = new ResearchQueueNbt(registry, new ResourceKeyNbt(_ -> TYPE));
+        var restored = TeamResearchQueue.restore(registry, codec.decode(codec.encode(queue.snapshot())));
+        assertEquals(0, restored.activeProgress().snapshot().remainingMaterials().getLong(A));
+        assertEquals(40, restored.activeProgress().snapshot().resources().getDouble(COMPUTE));
+        for (int tick = 6; tick <= 9; tick++) {
+            var plan = restored.planSegment(head.key(), stations, resources(0, 2), ImmutableResourceAmounts.empty(), tick);
+            assertTrue(plan.payments().isEmpty());
+            assertEquals(0, plan.grantedResources().getDouble(COMPUTE));
+            assertEquals(tick == 9, plan.completesResearch());
+            commit(restored, plan);
+            if (tick < 9) assertEquals(tick - 5, restored.activeProgress().snapshot().elapsedTicks());
+        }
+        assertEquals(0, restored.size());
+    }
+
+    @Test
+    void fractionalNetworkSupplyUnlocksWholeTicksAndFinishesWithoutAnExtraPayment() {
+        var registry = registry(ResearchLevelStage.builder(1, 1).durationTicks(5).researchTier(1)
+                                                  .resourceFormula(ResearchResourceFormula.builder().constant(COMPUTE, 0.5).build()));
+        var queue = new TeamResearchQueue(registry, "team");
+        var head = queue.enqueue(ID, 1, PLAYER, 0);
+        var stations = List.of(new ResearchProgress.StationRate(STATION, resources(0.1, 0)));
+        double consumed = 0;
+        for (int tick = 1; tick <= 5; tick++) {
+            var plan = queue.planSegment(head.key(), stations, resources(0.1, 0), ImmutableResourceAmounts.empty(), tick);
+            assertNotNull(plan);
+            consumed += plan.grantedResources().getDouble(COMPUTE);
+            assertEquals(tick == 5, plan.completesResearch());
+            commit(queue, plan);
+            if (tick < 5) assertEquals(tick, queue.activeProgress().snapshot().elapsedTicks());
+        }
+        assertEquals(0.5, consumed);
+        assertEquals(0, queue.size());
+    }
+
+    @Test
+    void roundedNetworkRatioCannotUnlockTimeBeyondTheAmountActuallyAccumulated() {
+        var registry = registry(ResearchLevelStage.builder(1, 1).durationTicks(Long.MAX_VALUE).researchTier(1)
+                                                  .resourceFormula(ResearchResourceFormula.builder().constant(COMPUTE, 1).build()));
+        var progress = new ResearchProgress(registry, new ResearchProgress.Target(ID, 1));
+        long supported = Long.MAX_VALUE - 1024;
+        progress.restore(new ResearchProgress.Snapshot(progress.target(), supported - 1, ImmutableResourceAmounts.empty(), resources(Math.nextDown(1D), 0)));
+        var stations = List.of(new ResearchProgress.StationRate(STATION, resources(0, 0)));
+        var plan = progress.plan(stations, resources(0, 0), ImmutableResourceAmounts.empty());
+        assertNotNull(plan);
+        assertEquals(supported, plan.after().elapsedTicks());
+        assertFalse(plan.complete());
+        assertTrue(plan.grants().isEmpty());
+        progress.restore(plan.after());
+        assertNull(progress.plan(stations, resources(0, 0), ImmutableResourceAmounts.empty()));
     }
 
     @Test
@@ -87,10 +151,12 @@ class TeamResearchQueueTest {
         assertEquals(1, first.payments().getLong(A));
         assertEquals(0, first.payments().getLong(B));
         commit(queue, first);
+        assertEquals(0, queue.activeProgress().snapshot().elapsedTicks());
         assertEquals(10, queue.activeProgress().snapshot().resources().getDouble(COMPUTE));
         var second = queue.planSegment(head.key(), stations, resources(10, 2), ImmutableResourceAmounts.single(B, 5), 2);
         assertEquals(5, second.payments().getLong(B));
         commit(queue, second);
+        assertEquals(0, queue.activeProgress().snapshot().elapsedTicks());
         assertEquals(1, queue.activeProgress().snapshot().remainingMaterials().getLong(A));
         assertEquals(5, queue.activeProgress().snapshot().remainingMaterials().getLong(B));
         assertEquals(100, queue.activeProgress().snapshot().remainingMaterials().getLong(C));

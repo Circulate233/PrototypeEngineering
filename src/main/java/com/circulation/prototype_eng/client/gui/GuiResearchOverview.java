@@ -1,12 +1,13 @@
 package com.circulation.prototype_eng.client.gui;
 
-import ae2.api.client.AEKeyRendering;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AmountFormat;
 import ae2.api.stacks.GenericStack;
 import ae2.client.gui.AEBaseGui;
 import ae2.client.gui.Icon;
+import ae2.client.gui.StackWithBounds;
 import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.client.render.GuiItemLighting;
 import com.circulation.prototype_eng.api.client.research.ResearchIcon;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
@@ -41,15 +42,19 @@ import net.minecraft.client.gui.GuiTextField;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.client.resources.Language;
 import net.minecraft.entity.player.InventoryPlayer;
+import net.minecraft.inventory.ClickType;
+import net.minecraft.inventory.Slot;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.fml.client.config.GuiUtils;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.NotNull;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
@@ -228,7 +233,7 @@ import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText
 import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.SpecialStart;
 import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Start;
 import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.StartConditions;
-import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Station;
+import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.EffectiveStation;
 import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.StationLow;
 import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.Stations;
 import static com.circulation.prototype_eng.localization.ResearchOverviewGuiText.SwitchAutomatic;
@@ -290,6 +295,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     private double panX = 340, panY = 120, zoom = 1, screenW, screenH, pixelScale, renderScale, leftTop = 62, leftBottom;
     private static final int DETAIL_CONTENT_WIDTH = 306;
     private double detailScroll, detailHeight, bodyTop, bodyBottom, footerTop;
+    private final ResearchDisplaySlots materialSlots = new ResearchDisplaySlots();
     private double pressX, pressY, lastX, lastY, nodeStartX, nodeStartY, dragX, dragY;
     private long pressedAt, toastUntil;
     private @Nullable ResourceLocation pressedNode, dragging;
@@ -342,6 +348,8 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         if (container.databaseMode())
             pickerRules.addAll(fontRenderer.listFormattedStringToWidth(tr(PickerRule), (int) (278 * 9 / 11D)));
         detailDirty = true;
+        materialSlots.beginFrame(renderScale, guiLeft, guiTop);
+        hoveredSlot = null;
     }
 
     @Override
@@ -487,7 +495,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     private boolean deviceShort(Entry entry) {
         int tier = entry.stage(target(entry)).tier();
         if (entry.specialOnly() || entry.teamLevel() >= entry.maxLevel() || tier == 0) return false;
-        return container.view.centerLevel() == 0 || container.view.stationLevel() < tier;
+        return container.view.effectiveStationLevel() < tier;
     }
 
     private void updateView() {
@@ -758,6 +766,8 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         if (Mouse.isButtonDown(0)) updateDrag();
         hits.clear();
         hoverText.clear();
+        materialSlots.beginFrame(renderScale, guiLeft, guiTop);
+        materialSlots.clip(0, 0, screenW, screenH);
         GlStateManager.pushMatrix();
         GlStateManager.scale(renderScale, renderScale, 1);
         GlStateManager.disableLighting();
@@ -778,7 +788,10 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         if (contextMenu != null) drawContextMenu();
         if (editorDialog != null) drawEditorDialog();
         GlStateManager.popMatrix();
-        if (!hoverText.isEmpty()) {
+        hoveredSlot = findSlot(actualMouseX, actualMouseY);
+        if (hoveredSlot != null) {
+            super.renderHoveredToolTip(actualMouseX, actualMouseY);
+        } else if (!hoverText.isEmpty()) {
             GuiUtils.drawHoveringText(hoverText, actualMouseX, actualMouseY, width, height, -1, fontRenderer);
         }
         GlStateManager.color(1, 1, 1, 1);
@@ -1000,6 +1013,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         if (current.manual()) contentHeight += 36;
         double top = leftTop + 54, height = 14 + contentHeight;
         frame(16, top, 296, height);
+        materialSlots.clip(23, top + 7, 282, contentHeight);
         clip.draw(23, (float) (top + 7), 282, (float) contentHeight, () -> drawCurrent(current, top));
         leftBottom = top + height;
     }
@@ -1028,7 +1042,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
                 long left = material.available();
                 long right = material.remaining();
                 box(x, y + 3, 24, 24, SLOT, LIGHT);
-                keyIcon(material.key(), x, y + 3, 24);
+                drawMaterialSlot(material.key(), right, x, y + 3, 24);
                 String amounts = amount(material.key(), left) + " / " + amount(material.key(), right);
                 double amountWidth = Math.min(w - 75, textWidth(amounts, 14));
                 double nameWidth = Math.min(w - 130, w - 44 - amountWidth);
@@ -1239,8 +1253,8 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             heading(tr(StartConditions), "Lv." + target);
             if (stage.tier() == 0) addParagraph(tr(ManualResources), 12, 20, SOFT);
             else {
-                required(tr(Center), container.view.centerLevel() > 0 ? "Lv." + container.view.centerLevel() : tr(None), container.view.centerLevel() < 1);
-                required(tr(Station) + " ≥ " + stage.tier(), container.view.stationLevel() == 0 ? tr(None) : "Lv." + container.view.stationLevel(), container.view.stationLevel() < stage.tier());
+                int effective = container.view.effectiveStationLevel();
+                required(tr(EffectiveStation), effective == 0 ? tr(None) : "Lv." + effective, effective < stage.tier());
             }
         }
         heading(tr(Prerequisites), "");
@@ -1437,6 +1451,7 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         detailHeight = 0;
         for (int i = 0; i < detail.size(); i++) detailHeight += detail.get(i).height;
         detailScroll = Math.clamp(detailScroll, 0, Math.max(0, detailHeight - (bodyBottom - bodyTop)));
+        materialSlots.clip(left + 11, bodyTop, DETAIL_CONTENT_WIDTH, Math.max(0, bodyBottom - bodyTop));
         clip.draw((float) (left + 11), (float) bodyTop, DETAIL_CONTENT_WIDTH, (float) Math.max(0, bodyBottom - bodyTop), () -> {
             double y = bodyTop - detailScroll;
             for (int i = 0; i < detail.size(); i++) {
@@ -1585,11 +1600,32 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
     private void drawRewardSlot(GenericStack item, double x, double y, double size) {
         double inset = size / 18;
         overviewSlot(x, y, size);
-        keyIcon(item.what(), x + inset, y + inset, size - 2 * inset);
-        aligned(item.what().formatAmount(item.amount(), AmountFormat.SLOT), x + size - inset / 2, y + size * (2D / 3), size - inset / 2,
-            Math.max(1, (int) Math.round(11 * size / 36)), LIGHT);
-        if (mouseY >= bodyTop && mouseY <= bodyBottom)
-            tooltip(x, y, size, size, List.of(item.what().getDisplayName().getFormattedText(), amount(item.what(), item.amount())));
+        drawMaterialSlot(item.what(), item.amount(), x + inset, y + inset, size - 2 * inset);
+    }
+
+    @Override
+    protected @Nullable Slot findSlot(int mouseX, int mouseY) {
+        return editorDialog == null && contextMenu == null ? materialSlots.find(mouseX, mouseY) : null;
+    }
+
+    @Override
+    public @Nullable StackWithBounds getStackUnderMouse(double mouseX, double mouseY) {
+        return editorDialog == null && contextMenu == null ? materialSlots.stackAt(mouseX, mouseY) : null;
+    }
+
+    @Override
+    protected boolean checkHotbarKeys(int code) {
+        return materialSlots.owns(getSlotUnderMouse()) || super.checkHotbarKeys(code);
+    }
+
+    @Override
+    public boolean MT_isIgnored(Slot slot) {
+        return materialSlots.owns(slot) || super.MT_isIgnored(slot);
+    }
+
+    @Override
+    protected void handleMouseClick(Slot slot, int id, int button, @NotNull ClickType type) {
+        if (!materialSlots.owns(slot)) super.handleMouseClick(slot, id, button, type);
     }
 
     private void drawSlots(List<GenericStack> stacks, double x, double y, double width) {
@@ -1769,9 +1805,9 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
             display.deviceReasons = List.of();
             return display.deviceReasons;
         }
-        var reasons = new ObjectArrayList<String>(2);
-        if (container.view.centerLevel() == 0) reasons.add(tr(NoCenter));
-        if (container.view.stationLevel() < tier) reasons.add(tr(StationLow, tier, container.view.stationLevel()));
+        var reasons = new ObjectArrayList<String>(1);
+        int effective = container.view.effectiveStationLevel();
+        if (effective < tier) reasons.add(tr(StationLow, tier, effective));
         display.deviceReasons = reasons.isEmpty() ? List.of() : reasons;
         return display.deviceReasons;
     }
@@ -2625,12 +2661,23 @@ public class GuiResearchOverview extends AEBaseGui<ContainerResearchOverview> {
         return ClientResearchContents.icon(id, knownLayout == null ? null : knownLayout.nodes().get(id));
     }
 
-    private void keyIcon(AEKey key, double x, double y, double size) {
+    private void drawMaterialSlot(AEKey key, long amount, double x, double y, double size) {
+        var slot = materialSlots.add(key, amount, x, y, size);
+        if (slot == null) return;
+        int lighting = GuiItemLighting.capture();
+        RenderHelper.enableGUIStandardItemLighting();
         GlStateManager.pushMatrix();
-        GlStateManager.translate(x, y, 0);
-        GlStateManager.scale(size / 16, size / 16, 1);
-        AEKeyRendering.drawInGui(mc, 0, 0, key);
-        GlStateManager.popMatrix();
+        try {
+            GlStateManager.translate(x, y, 0);
+            GlStateManager.scale(size / 16, size / 16, 1);
+            GlStateManager.translate(-slot.xPos, -slot.yPos, 0);
+            super.drawSlot(slot);
+            if (findSlot((int) (mouseX * renderScale), (int) (mouseY * renderScale)) == slot)
+                super.renderSlotHighlight(slot);
+        } finally {
+            GlStateManager.popMatrix();
+            GuiItemLighting.restore(lighting);
+        }
         GlStateManager.disableLighting();
         GlStateManager.disableDepth();
     }

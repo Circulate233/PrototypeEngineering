@@ -12,7 +12,7 @@ public enum ResearchOverviewGuiText implements LocalizationEnum {
     Materials, MaterialHint, NetworkResources, NetworkHint, Workload, ResearchTime, Stations, Contributor, Nobody,
     ConsumeInventory, ContributeHint, PauseHint, Paused, NoMaterials, NoResources, ManualResources,
     ResearchInfo, TeamLevel, PersonalLevel, TargetLevel, Tier, Duration, Delivery, ItemOnly, DatabaseAndItem,
-    ResearchId, Coordinates, StartConditions, Center, Station, None,
+    ResearchId, Coordinates, StartConditions, Center, EffectiveStation, None,
     Prerequisites, Mutex, RequiredLevel, Page, Rewards, RewardLevel, ChooseOne, Claimed, ClaimReward, ClaimLater,
     Start, Download, WriteDatabase, Remove, Current, Pick, Forget, ForgetFrom, ConfirmForget, Cancel,
     ForgetLevels, ForgetDependent, ForgetQueue, ForgetKeep, PersonalMissing, Reserved, Denied, SavePending,

@@ -201,6 +201,10 @@ public final class ResearchOverviewClientView {
         return environment.stationLevel();
     }
 
+    public int effectiveStationLevel() {
+        return Math.min(environment.centerLevel(), environment.stationLevel());
+    }
+
     public @Nullable UUID activeDatabase() {
         return environment.activeDatabase();
     }

@@ -427,11 +427,17 @@ public final class ResearchWorld {
             }
         }
         var current = work == null ? null : work.snapshot();
+        if (work != null) {
+            long supported = ResearchProgress.supportedTicks(current.elapsedTicks(), work.stage().durationTicks(), work.totals(), current.resources());
+            if (supported != current.elapsedTicks())
+                current = new ResearchProgress.Snapshot(current.target(), supported, current.remainingMaterials(), current.resources());
+        }
         var result = team == null ? null : team.station.result();
         boolean advanced = work != null && result != null && result.time() == time && result.key() != null
             && result.key().target().equals(work.target());
         var available = ImmutableResourceAmounts.empty();
         if (work != null) {
+            var remaining = work.snapshot().remainingMaterials();
             if (work.stage().researchTier() == 0) {
                 var head = team.queue.activeHead();
                 var manual = head == null ? null : team.manual.session(head.key().queueEntryId());
@@ -440,10 +446,10 @@ public final class ResearchWorld {
                     var contributor = manual.materialIntent() == null ? manual.contributor() : manual.materialIntent().contributor();
                     if (!inventory.playerId().equals(contributor))
                         throw new IllegalStateException("Research material view captured a different contributor");
-                    available = inventory.availableMaterials(current.remainingMaterials());
+                    available = inventory.availableMaterials(remaining);
                 }
             } else
-                available = stations.availableMaterials(id, work.stage().researchTier(), current.remainingMaterials());
+                available = stations.availableMaterials(id, work.stage().researchTier(), remaining);
         }
         return new ResearchStationView(id == null ? "" : id, visible, canManage,
             visible && team != null ? team.queue.queueSnapshot() : List.of(), current,

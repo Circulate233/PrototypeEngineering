@@ -1,5 +1,29 @@
 # 实施进度
 
+## 2026-11-23 研究材料采用 AE 原生显示槽位
+
+研究总览的当前材料、详情材料与物品奖励，以及研究站材料，统一采用客户端 AE InaccessibleSlot。AE GenericStackInv 与 ConfigGuiInventory 提供资源和原生包装，显示库存允许保存完整 long 数量及数量为零的资源身份；图标、数量标记、高亮与 tooltip 使用 AEBaseGui 原生方法。总览在恢复缩放矩阵后绘制原生 tooltip，研究站材料下方保留剩余可用/剩余需消耗，左侧可用量继续按剩余需求封顶。
+
+ResearchDisplaySlots 只管理可见槽位、坐标换算、裁剪边界与帧间复用。滚出正文的部分不参与命中，切换、关闭详情或改变窗口时清除旧槽位；编辑弹窗和右键菜单阻止读取底层材料。显示槽位不加入服务端容器，GUI 拦截库存点击和快捷栏交换，并明确让 Mouse Tweaks 忽略这些槽位。
+
+按实际 v1.1.1 AE 依赖的字节码核实，AE 自带 MixinGuiContainerWrapper 已调用 GenericIngredientHelper.unwrapWrappedIngredient，AEGuiHandler 也已通过 getStackUnderMouse 读取通用资源。此前新增的研究 GUI 专用 slot ingredient 注册已撤销，PrototypeJeiPlugin 与本轮开始时相同，总览原有 JEI 覆盖层设置保留。书签和配方查询直接使用 AE 自带处理，未新增转换器或外部依赖。
+
+验证：27 项专项通过，包含缩放与滚动裁剪、绘制顺序、帧间复用、零需求资源身份及完整 long 数量。完整离线 Gradle spotlessApply/build 和 1938 tests / 305 suites 通过，失败、错误和跳过均为零。4 个 Java 文件逐文件本机 MCP get_file_problems(errorsOnly:false) 错误、警告、弱警告均为零，IDEA 四文件定向构建成功。文档诊断按修改前内容核对，新增诊断为零；既有表格格式与本地路径解析诊断单独保留。
+
+证据目录为 build/research-material-slots-20261123/，包括 targeted-native.log、targeted-native-summary.json、targeted-native-results、build-native.log、full-native-summary.json、full-native-results、idea-files-final.json、idea-build-final.json、diagnostics-baseline.json 与 ae-display-native-bytecode.txt。同步维护需求规范、研究界面文档和索引，完成本地英文提交，不推送，保留 AGENTS.md 用户修改。未启动 Minecraft；原生图标、tooltip、游戏内 JEI 查询和书签仍需用户重启复验。
+
+## 2026-11-23 有效研究站需求与网络进度限制
+
+总览详情的设备开始条件合并为一行“有效研究站等级”，右侧显示服务端同步的实际等级，删除名称中的“≥ N”。有效等级取活动中心与最高授权研究站等级的较小值；按钮禁用、研究方块红框和设备不足提示使用同一规则。顶部中心与最高研究站的实际设备信息继续显示，手动研究仍显示原手动条件。中英文本同步调整。
+
+原研究站只按已支付材料限制时间，网络资源可以单独落后，导致总时间满而某项资源仍为零。现在先计算本次实际资源累计量，再按每项网络资源支持的完整 tick 限制总时间，同时保留材料种类等权平均开放比例和每台工作站至多贡献 1 tick 的上限。快资源可以先累计，达到总量后不再扣取；缺项为零时总时间停止，补足后继续。整数边界附近按实际 double 数量精确计算，防止舍入提前开放未支付的时间。材料、FE、网络和进度仍共同提交，无实际贡献的站不扣 FE 并释放并发。
+
+总览节点、详情、当前研究面板与研究站视图统一按资源支持量显示。已保存时间领先资源时保留原始时间和支付记录，视图只显示资源支持的部分；读取界面不修改进度或触发保存，资源补齐后正常完成。没有网络需求与手动研究不增加网络限制。
+
+验证：45 项研究专项通过，包含缺项停时、快慢资源独立支付、NBT 恢复后不重复扣料、小数供给、多站加速、long 时间边界、无供给时释放并发与不扣 FE，以及领先时间读档后的显示与完成。完整离线 Gradle spotlessApply/build 和 1935 tests / 304 suites 通过，失败、错误和跳过均为零。10 个 Java 与 2 个语言文件逐文件本机 get_file_problems(errorsOnly:false) 最终错误、警告和弱警告均为零，IDEA 十文件定向构建成功。首轮可空分析警告已按实际对象条件修正。7 份文档无新增诊断，原有表格格式和旧路径诊断按修改前内容对照单独记录。
+
+证据目录为 build/research-progress-gating-20261123/，包括 build-verified.log、targeted-summary.json、full-test-summary.json、targeted-results、full-results、all-source-idea-final.json、idea-build-final.json 和 document-diagnostics-baseline.json。首次 MCP 连接拒绝后，由用户打开 IDEA 恢复连接，未操作桌面或修改 IDE 设置。同步维护研究站、总览、Java/ZS API、需求规范和索引，完成本地英文提交，不推送，保留 AGENTS.md 用户修改。未启动 Minecraft，界面显示与实际网络供给仍需用户重启复验。
+
 ## 2026-11-22 配方池底层类型开放注册
 
 RecipePoolType 改为按 ResourceLocation 注册的不可变工厂类型，公开 register(id, factory)、require(ResourceLocation/String)、id() 和 create 方法。Factory 直接接收池 ID、标题和完整配方列表，返回外部实现的 RecipePool。内置 SINGLE_INPUT 和 GENERAL 也通过同一注册表建立，完整 ID 分别为 prototype_eng:single_input 和 prototype_eng:general。短名统一使用 prototype_eng 命名空间，禁止未知类型改用默认池；重复注册不会覆盖旧工厂。注册和查询只操作类型信息，不执行工厂或枚举任何可选模组来源。
