@@ -1,49 +1,47 @@
 package com.circulation.prototype_eng.client.render.construction;
 
 import com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.Slice;
-import net.minecraft.client.renderer.BufferBuilder;
-import net.minecraft.client.renderer.GLAllocation;
-import net.minecraft.client.renderer.GlStateManager;
-import net.minecraft.client.renderer.WorldVertexBufferUploader;
-import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
-import net.minecraft.client.renderer.vertex.VertexBuffer;
+import it.unimi.dsi.fastutil.ints.Int2IntAVLTreeMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import net.minecraft.client.renderer.OpenGlHelper;
+import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
-import org.lwjgl.opengl.GL11;
+import org.lwjgl.BufferUtils;
+import org.lwjgl.opengl.ARBVertexBufferObject;
+import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GLContext;
+
+import java.nio.ByteBuffer;
+import java.util.Objects;
 
 final class ConstructionMeshes {
     private static final int MAX_UPLOADS = 12;
     private static final int MAX_UPLOAD_BYTES = 1 << 20;
     private static final int STEP_BATCH = 16;
-    private static final int STRIDE = DefaultVertexFormats.POSITION.getSize();
+    static final int STRIDE = 3 * Float.BYTES;
+    static final int PAGE_BYTES = 1 << 19;
+    private static final int MAX_SECTION_VERTICES = 6 * ConstructionAnimation.SLICE_CELLS * 4;
     private final ConstructionSurface surface = new ConstructionSurface();
-    private final WorldVertexBufferUploader uploader = new WorldVertexBufferUploader();
-    private final BufferBuilder buffer = new BufferBuilder(96 * 1024);
-    private final ConstructionSurface.Vertex vertex = (x, y, z) -> buffer.pos(x, y, z).endVertex();
+    private final ByteBuffer buffer = BufferUtils.createByteBuffer(MAX_SECTION_VERTICES * STRIDE);
     private @Nullable Work work;
     private int uploads;
     private int uploadedBytes;
-    private int draws;
 
     void beginFrame() {
         uploads = 0;
         uploadedBytes = 0;
-        draws = 0;
     }
 
-    boolean preparingOutline() {
-        return work != null && work.material == 0 && work.slice.wireOpacity <= ConstructionAnimation.MIN_OPACITY;
+    boolean prefetching() {
+        return work != null && work.opacity() <= ConstructionAnimation.MIN_OPACITY;
     }
 
     boolean resume(int frame, long deadline, boolean vbo, boolean allowPrefetch) {
         var current = work;
         if (current == null) return true;
         var slice = current.slice;
-        double opacity = switch (current.material) {
-            case 0 -> slice.wireOpacity;
-            case ConstructionSurface.SOLID -> slice.solidMesh.opacity;
-            default -> slice.fluidMesh.opacity;
-        };
-        boolean needed = opacity > ConstructionAnimation.MIN_OPACITY || allowPrefetch && current.material == 0 && slice.prepareWire;
+        boolean needed = current.opacity() > ConstructionAnimation.MIN_OPACITY || allowPrefetch
+            && (current.material == 0 ? slice.prepareWire : current.material == ConstructionSurface.SOLID && slice.prepareShell);
         if (slice.seenFrame != frame || slice.version != current.version || !needed) {
             cancel();
             return true;
@@ -56,7 +54,7 @@ final class ConstructionMeshes {
         if ((material == 0 ? slice.wireVersion : part.version) == slice.version) return true;
         if (uploads >= MAX_UPLOADS || System.nanoTime() >= deadline) return false;
         var next = new Work(slice, material, part);
-        buffer.begin(next.mode, DefaultVertexFormats.POSITION);
+        buffer.clear();
         surface.reset();
         work = next;
         return advance(next, deadline, vbo);
@@ -67,18 +65,19 @@ final class ConstructionMeshes {
         if (!next.ready) {
             while (System.nanoTime() < deadline) {
                 for (int i = 0; i < STEP_BATCH; i++) {
-                    if (!surface.step(next.cells, next.material, vertex)) continue;
-                    output.finishDrawing();
+                    if (!surface.step(next.cells, next.material, next.vertex)) continue;
+                    output.flip();
                     next.ready = true;
                     break;
                 }
                 if (next.ready) break;
             }
         }
-        int bytes = output.getVertexCount() * STRIDE;
-        if (!next.ready || System.nanoTime() >= deadline || uploads >= MAX_UPLOADS || bytes > MAX_UPLOAD_BYTES - uploadedBytes) return false;
+        if (!next.ready || System.nanoTime() >= deadline || uploads >= MAX_UPLOADS) return false;
+        int bytes = output.remaining();
+        if (bytes > MAX_UPLOAD_BYTES - uploadedBytes) return false;
         try {
-            var created = bytes == 0 ? null : upload(output, next.mode, vbo);
+            var created = bytes == 0 ? null : next.slice.task.arena.store(output, vbo, next.material != 0);
             if (next.material == 0) {
                 if (next.slice.wire != null) next.slice.wire.delete();
                 next.slice.wire = created;
@@ -93,55 +92,21 @@ final class ConstructionMeshes {
                 uploadedBytes += bytes;
             }
         } finally {
-            output.reset();
             work = null;
         }
         return true;
     }
 
     void cancel() {
-        if (work == null) return;
-        if (!work.ready) buffer.finishDrawing();
-        buffer.reset();
         work = null;
     }
 
-    private Mesh upload(BufferBuilder output, int mode, boolean vbo) {
-        if (vbo) {
-            var vertices = new VertexBuffer(DefaultVertexFormats.POSITION);
-            try {
-                vertices.bufferData(output.getByteBuffer());
-            } catch (RuntimeException | Error failure) {
-                vertices.deleteGlBuffers();
-                throw failure;
-            }
-            return new Mesh(vertices, 0, mode);
-        }
-        int display = GLAllocation.generateDisplayLists(1);
-        try {
-            GlStateManager.glNewList(display, GL11.GL_COMPILE);
-            try {
-                uploader.draw(output);
-            } finally {
-                GlStateManager.glEndList();
-            }
-        } catch (RuntimeException | Error failure) {
-            GLAllocation.deleteDisplayLists(display);
-            throw failure;
-        }
-        return new Mesh(null, display, mode);
+    int uploads() {
+        return uploads;
     }
 
-    void draw(Mesh mesh) {
-        mesh.draw();
-        draws++;
-    }
-
-    Metrics metrics() {
-        return new Metrics(draws, uploads, uploadedBytes);
-    }
-
-    record Metrics(int draws, int uploads, int uploadedBytes) {
+    int uploadedBytes() {
+        return uploadedBytes;
     }
 
     static final class Part {
@@ -155,30 +120,133 @@ final class ConstructionMeshes {
         }
     }
 
-    record Mesh(@Nullable VertexBuffer vertices, int displayList, int mode) {
-        void draw() {
-            if (vertices == null) {
-                GlStateManager.callList(displayList);
-            } else {
-                vertices.bindBuffer();
-                GlStateManager.glVertexPointer(3, GL11.GL_FLOAT, STRIDE, 0);
-                vertices.drawArrays(mode);
-            }
-        }
-
+    record Mesh(Page page, int first, int count, int @Nullable [] vertices) {
         void delete() {
-            if (vertices == null) GLAllocation.deleteDisplayLists(displayList);
-            else vertices.deleteGlBuffers();
+            page.release(first, count);
         }
     }
 
-    private static final class Work {
+    static final class Arena {
+        final int x, y, z;
+        final ObjectArrayList<Page> pages = new ObjectArrayList<>();
+        int drawPasses;
+        float wireOpacity;
+        float fadeOpacity;
+        boolean mixedFade;
+
+        Arena(BlockPos origin) {
+            x = origin.getX();
+            y = origin.getY();
+            z = origin.getZ();
+        }
+
+        Mesh store(ByteBuffer source, boolean vbo, boolean shell) {
+            int count = source.remaining() / STRIDE;
+            for (int i = 0; i < pages.size(); i++) {
+                var page = pages.get(i);
+                int offset = page.reserve(count);
+                if (offset >= 0) return page.store(offset, count, source, shell);
+            }
+            var page = new Page(this, vbo);
+            pages.add(page);
+            return page.store(page.reserve(count), count, source, shell);
+        }
+    }
+
+    static final class Page {
+        private static final int CAPACITY = PAGE_BYTES / STRIDE;
+        final @Nullable ByteBuffer cpu;
+        final int id;
+        final ObjectArrayList<Mesh> solid = new ObjectArrayList<>();
+        final ObjectArrayList<Part> fading = new ObjectArrayList<>();
+        final ObjectArrayList<Mesh> wires = new ObjectArrayList<>();
+        private final Arena arena;
+        private final boolean coreVbo;
+        private final Int2IntAVLTreeMap free = new Int2IntAVLTreeMap();
+        private int live;
+
+        Page(Arena arena, boolean vbo) {
+            this.arena = arena;
+            cpu = vbo ? null : BufferUtils.createByteBuffer(CAPACITY * STRIDE);
+            coreVbo = vbo && GLContext.getCapabilities().OpenGL15;
+            id = vbo ? OpenGlHelper.glGenBuffers() : 0;
+            if (id != 0) {
+                try {
+                    OpenGlHelper.glBindBuffer(OpenGlHelper.GL_ARRAY_BUFFER, id);
+                    if (coreVbo)
+                        GL15.glBufferData(OpenGlHelper.GL_ARRAY_BUFFER, (long) CAPACITY * STRIDE, OpenGlHelper.GL_STATIC_DRAW);
+                    else
+                        ARBVertexBufferObject.glBufferDataARB(OpenGlHelper.GL_ARRAY_BUFFER, (long) CAPACITY * STRIDE, OpenGlHelper.GL_STATIC_DRAW);
+                } catch (RuntimeException | Error failure) {
+                    OpenGlHelper.glDeleteBuffers(id);
+                    throw failure;
+                }
+            }
+            free.put(0, CAPACITY);
+        }
+
+        int reserve(int count) {
+            for (var iterator = free.int2IntEntrySet().iterator(); iterator.hasNext(); ) {
+                var entry = iterator.next();
+                int offset = entry.getIntKey(), available = entry.getIntValue();
+                if (available < count) continue;
+                iterator.remove();
+                if (available > count) free.put(offset + count, available - count);
+                live++;
+                return offset;
+            }
+            return -1;
+        }
+
+        Mesh store(int offset, int count, ByteBuffer source, boolean shell) {
+            int byteOffset = offset * STRIDE;
+            try {
+                int[] vertices = null;
+                if (id != 0) {
+                    if (shell) {
+                        vertices = new int[count * 3];
+                        source.asIntBuffer().get(vertices);
+                    }
+                    OpenGlHelper.glBindBuffer(OpenGlHelper.GL_ARRAY_BUFFER, id);
+                    if (coreVbo) GL15.glBufferSubData(OpenGlHelper.GL_ARRAY_BUFFER, byteOffset, source);
+                    else ARBVertexBufferObject.glBufferSubDataARB(OpenGlHelper.GL_ARRAY_BUFFER, byteOffset, source);
+                } else {
+                    Objects.requireNonNull(cpu).put(byteOffset, source, 0, source.remaining());
+                }
+                return new Mesh(this, offset, count, vertices);
+            } catch (RuntimeException | Error failure) {
+                release(offset, count);
+                throw failure;
+            }
+        }
+
+        void release(int offset, int count) {
+            if (--live == 0) {
+                if (id != 0) OpenGlHelper.glDeleteBuffers(id);
+                arena.pages.remove(this);
+                return;
+            }
+            int end = offset + count;
+            var before = free.headMap(offset);
+            if (!before.isEmpty()) {
+                int previous = before.lastIntKey();
+                if (previous + free.get(previous) == offset) {
+                    offset = previous;
+                    free.remove(previous);
+                }
+            }
+            free.put(offset, end - offset + free.remove(end));
+        }
+    }
+
+    private final class Work {
         final Slice slice;
         final ConstructionSurface.Cells cells;
+        final ConstructionSurface.Vertex vertex = this::vertex;
         final int version;
         final byte material;
         final Part part;
-        final int mode;
+        final int x, y, z;
         boolean ready;
 
         Work(Slice slice, byte material, Part part) {
@@ -187,7 +255,18 @@ final class ConstructionMeshes {
             version = slice.version;
             this.material = material;
             this.part = part;
-            mode = material == 0 ? GL11.GL_LINES : GL11.GL_QUADS;
+            var arena = slice.task.arena;
+            x = (int) slice.view.minX - arena.x;
+            y = (int) slice.view.minY - arena.y;
+            z = (int) slice.view.minZ - arena.z;
+        }
+
+        double opacity() {
+            return material == 0 ? slice.wireOpacity : part.opacity;
+        }
+
+        private void vertex(int x, int y, int z) {
+            buffer.putFloat(this.x + x).putFloat(this.y + y).putFloat(this.z + z);
         }
     }
 }

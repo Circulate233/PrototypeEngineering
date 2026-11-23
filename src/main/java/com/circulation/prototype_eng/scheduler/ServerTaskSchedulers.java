@@ -1,8 +1,5 @@
 package com.circulation.prototype_eng.scheduler;
 
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import net.minecraftforge.fml.common.gameevent.TickEvent;
-
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeWork;
@@ -13,6 +10,8 @@ import com.circulation.prototype_eng.structure.tool.StructureBuildTasks;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -132,9 +131,11 @@ public final class ServerTaskSchedulers {
     @SubscribeEvent
     @SuppressWarnings("resource") // FML serverStopped owns closure of this session-wide scheduler.
     public static void onServerTick(TickEvent.ServerTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) return;
         var current = session;
-        if (current != null) {
+        if (current == null) return;
+        if (event.phase == TickEvent.Phase.START) {
+            StructureBuildTasks.tick(current.server);
+        } else {
             var network = ServerNetworkRuntime.forServer(current.server);
             long tick = current.nextTick;
             current.nextTick = Math.addExact(tick, 1);
@@ -154,15 +155,6 @@ public final class ServerTaskSchedulers {
                     // The scheduler has physically joined this tick's accepted workers before return.
                     markTickControllerDataDirty(current);
                 }
-            }
-            var profiler = current.server.profiler;
-            profiler.startSection("root");
-            profiler.startSection("peConstruction");
-            try {
-                StructureBuildTasks.tick(current.server);
-            } finally {
-                profiler.endSection();
-                profiler.endSection();
             }
         }
     }

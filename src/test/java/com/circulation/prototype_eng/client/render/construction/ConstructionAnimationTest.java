@@ -26,10 +26,10 @@ class ConstructionAnimationTest {
 
     @Test
     void regionProgressChangesOpacityWithoutInvalidatingGeometry() {
-        var animation = new ConstructionAnimation(false, START, AREA);
+        var animation = new ConstructionAnimation(false, START, WIRE, AREA);
         int upperCell = ConstructionAnimation.SLICE_CELLS;
         var cells = bits(0, upperCell, upperCell + 1);
-        animation.geometry(geometry(false, START, cells, bits(0, upperCell), List.of()), 0);
+        animation.geometry(geometry(START, cells, bits(0, upperCell), List.of()), 0);
         var lower = slice(animation, 4);
         var upper = slice(animation, 5);
         int lowerVersion = lower.version;
@@ -39,7 +39,7 @@ class ConstructionAnimationTest {
 
         long settle = START + WIRE + WHITE_TRANSITION_TICKS;
         long arrived = settle - START;
-        animation.geometry(geometry(false, settle, null, new BitSet(), List.of(new RegionTime(ConstructionEffectPayload.region(0, true), -1, settle))), arrived);
+        animation.geometry(geometry(settle, null, new BitSet(), List.of(new RegionTime(ConstructionEffectPayload.region(0, true), -1, settle))), arrived);
         assertEquals(lowerVersion, lower.version);
         assertEquals(upperVersion, upper.version);
         assertEquals(0, animation.wireOpacity(arrived));
@@ -52,11 +52,11 @@ class ConstructionAnimationTest {
 
     @Test
     void lateViewerUsesSettledRegionTimeWithoutReplayingTheIntro() {
-        var animation = new ConstructionAnimation(false, START, AREA);
+        var animation = new ConstructionAnimation(false, START, WIRE, AREA);
         long settle = START + WIRE + WHITE_TRANSITION_TICKS;
         long elapsed = REGION_FADE_TICKS / 2;
         long local = 3;
-        animation.geometry(geometry(false, settle + elapsed, bits(0), new BitSet(), List.of(new RegionTime(0, -1, settle))), local);
+        animation.geometry(geometry(settle + elapsed, bits(0), new BitSet(), List.of(new RegionTime(0, -1, settle))), local);
         assertEquals(0, animation.wireOpacity(local));
         assertEquals(.5, animation.shellOpacity(slice(animation, 4).solid, local));
         assertEquals(0, animation.shellOpacity(slice(animation, 4).solid, local + REGION_FADE_TICKS - elapsed));
@@ -64,9 +64,9 @@ class ConstructionAnimationTest {
 
     @Test
     void dismantleEndCrossFadesTheSettledWhiteShellWithoutRestartingOnDuplicateEnd() {
-        var animation = new ConstructionAnimation(true, START, AREA);
+        var animation = new ConstructionAnimation(true, START, WIRE, AREA);
         long local = 7;
-        animation.geometry(geometry(true, START, bits(0, 8 * 256), new BitSet(), List.of(new RegionTime(1, START, -1))), local);
+        animation.geometry(geometry(START, bits(0, 8 * 256), new BitSet(), List.of(new RegionTime(1, START, -1))), local);
         var lower = slice(animation, 4);
         var upper = slice(animation, 5);
         assertEquals(0, animation.shellOpacity(lower.solid, local + WHITE_TRANSITION_TICKS));
@@ -75,7 +75,7 @@ class ConstructionAnimationTest {
         assertEquals(0, animation.wireOpacity(local));
         long finished = START + WHITE_TRANSITION_TICKS + 2;
         long arrives = local + (finished - START);
-        animation.geometry(geometry(true, finished, null, new BitSet(), List.of(new RegionTime(1, START, finished))), arrives);
+        animation.geometry(geometry(finished, null, new BitSet(), List.of(new RegionTime(1, START, finished))), arrives);
         animation.finish(finished, arrives);
         assertEquals(1, animation.shellOpacity(upper.solid, arrives));
         assertEquals(0, animation.wireOpacity(arrives));
@@ -97,24 +97,24 @@ class ConstructionAnimationTest {
 
     @Test
     void lateBuildSnapshotAdvancesButCannotRestartTheGlobalIntro() {
-        var animation = new ConstructionAnimation(false, START, AREA);
-        animation.geometry(geometry(false, START, bits(0), new BitSet(), List.of()), 0);
+        var animation = new ConstructionAnimation(false, START, WIRE, AREA);
+        animation.geometry(geometry(START, bits(0), new BitSet(), List.of()), 0);
         assertTrue(animation.wireOpacity(1) > 0);
         long reveal = START + WIRE + WHITE_TRANSITION_TICKS;
-        animation.geometry(geometry(false, reveal, bits(0, 1), new BitSet(), List.of()), 1);
+        animation.geometry(geometry(reveal, bits(0, 1), new BitSet(), List.of()), 1);
         assertEquals(0, animation.wireOpacity(1));
         assertEquals(1, animation.shellOpacity(slice(animation, 4).solid, 1));
-        animation.geometry(geometry(false, reveal + 1, bits(0, 1), new BitSet(), List.of()), 10);
+        animation.geometry(geometry(reveal + 1, bits(0, 1), new BitSet(), List.of()), 10);
         assertEquals(0, animation.wireOpacity(10));
     }
 
     @Test
     void lateDismantleViewerJoinsTheRemainingOutlineFade() {
-        var animation = new ConstructionAnimation(true, START, AREA);
+        var animation = new ConstructionAnimation(true, START, WIRE, AREA);
         long end = START + WHITE_TRANSITION_TICKS;
         long elapsed = FINAL_WIRE_TICKS / 2;
         long local = 1;
-        animation.geometry(geometry(true, end + elapsed, bits(0), new BitSet(), List.of(new RegionTime(0, START, end))), local);
+        animation.geometry(geometry(end + elapsed, bits(0), new BitSet(), List.of(new RegionTime(0, START, end))), local);
         animation.finish(end, local);
         assertEquals(elapsed, animation.finishAge(local));
         assertTrue(animation.wireOpacity(local) > 0);
@@ -123,11 +123,11 @@ class ConstructionAnimationTest {
 
     @Test
     void terminalSnapshotCannotRestartACompletedShellFade() {
-        var animation = new ConstructionAnimation(true, START, AREA);
+        var animation = new ConstructionAnimation(true, START, WIRE, AREA);
         long end = START + WHITE_TRANSITION_TICKS;
         animation.finish(end, 0);
         long local = REGION_FADE_TICKS;
-        animation.geometry(geometry(true, end + 1, bits(0), new BitSet(), List.of(new RegionTime(0, START, end))), local);
+        animation.geometry(geometry(end + 1, bits(0), new BitSet(), List.of(new RegionTime(0, START, end))), local);
         animation.finish(end, local);
         assertEquals(0, animation.shellOpacity(slice(animation, 4).solid, local));
         assertEquals(local, animation.finishAge(local));
@@ -135,7 +135,7 @@ class ConstructionAnimationTest {
 
     @Test
     void changingAnAdjacentSnapshotInvalidatesOnlyItsTouchedBoundaries() {
-        var animation = new ConstructionAnimation(false, START, AREA);
+        var animation = new ConstructionAnimation(false, START, WIRE, AREA);
         var empty = new BitSet();
         animation.apply(-1, 4, 0, bits(ConstructionAnimation.index(15, 5, 2)), empty, empty);
         var west = animation.slices.get(ConstructionAnimation.key(-1, 4, 0));
@@ -153,12 +153,36 @@ class ConstructionAnimationTest {
         assertTrue(west.version > connected);
     }
 
+    @Test
+    void nativeChunkUnloadKeepsTheAdjacentChunkAndReturningGeometryContinuesTheFade() {
+        var animation = new ConstructionAnimation(false, START, WIRE, AREA);
+        int westEdge = ConstructionAnimation.index(15, 0, 2);
+        int eastEdge = ConstructionAnimation.index(0, 0, 2);
+        animation.apply(-1, 4, 0, bits(westEdge), new BitSet(), new BitSet());
+        var west = animation.slices.get(ConstructionAnimation.key(-1, 4, 0));
+        var east = bits(eastEdge, ConstructionAnimation.SLICE_CELLS + eastEdge);
+        animation.geometry(geometry(START, east, new BitSet(), List.of()), 0);
+        assertEquals(ConstructionSurface.SOLID, west.cell(16, 0, 2));
+
+        animation.forgetChunk(0, 0);
+        assertEquals(1, animation.slices.size());
+        assertEquals(0, west.cell(16, 0, 2));
+
+        long settled = START + WIRE + WHITE_TRANSITION_TICKS;
+        long elapsed = REGION_FADE_TICKS / 2;
+        long local = settled - START + elapsed;
+        animation.geometry(geometry(settled + elapsed, east, new BitSet(), List.of(new RegionTime(0, -1, settled))), local);
+        assertEquals(ConstructionSurface.SOLID, west.cell(16, 0, 2));
+        assertEquals(.5, animation.shellOpacity(slice(animation, 4).solid, local));
+        assertEquals(1, animation.shellOpacity(slice(animation, 5).solid, local));
+    }
+
     private static ConstructionAnimation.Slice slice(ConstructionAnimation animation, int y) {
         return animation.slices.get(ConstructionAnimation.key(0, y, 0));
     }
 
-    private static Geometry geometry(boolean dismantle, long serverTick, BitSet cells, BitSet fluids, List<RegionTime> times) {
-        return new Geometry(0, 1, 0, dismantle, START, serverTick, WIRE, SECTION, 0, cells == null ? null : AREA,
+    private static Geometry geometry(long serverTick, BitSet cells, BitSet fluids, List<RegionTime> times) {
+        return new Geometry(0, 1, serverTick, SECTION, 0, cells != null, null,
             cells == null ? new BitSet() : cells, fluids, new BitSet(), times);
     }
 

@@ -25,8 +25,10 @@ final class ConstructionAnimation {
     final boolean dismantle;
     final long startTick;
     final ConstructionArea area;
+    final ConstructionMeshes.Arena arena;
     final Long2ObjectLinkedOpenHashMap<Slice> slices = new Long2ObjectLinkedOpenHashMap<>();
     boolean owner;
+    boolean hidden;
     boolean complete;
     boolean paused;
     int missing, wrong, unloaded;
@@ -34,14 +36,16 @@ final class ConstructionAnimation {
 
     private long firstServerTick = UNSET;
     private long latestServerTick = UNSET;
-    private long introAt;
-    private int wireTicks;
+    private long introAt = UNSET;
+    private final int wireTicks;
     private long finishAt = UNSET;
 
-    ConstructionAnimation(boolean dismantle, long startTick, ConstructionArea area) {
+    ConstructionAnimation(boolean dismantle, long startTick, int wireTicks, ConstructionArea area) {
         this.dismantle = dismantle;
         this.startTick = startTick;
+        this.wireTicks = wireTicks;
         this.area = area;
+        arena = new ConstructionMeshes.Arena(area.min());
     }
 
     void sample(long serverTick) {
@@ -63,11 +67,15 @@ final class ConstructionAnimation {
             return after < 0 ? 0 : .92 * smooth(after, WHITE_TRANSITION_TICKS)
                 * (1 - smooth(after - WHITE_TRANSITION_TICKS, FINAL_WIRE_TICKS - WHITE_TRANSITION_TICKS));
         }
-        return finishAt == UNSET && wireTicks != 0 ? .92 * (1 - smooth(now - introAt - wireTicks, WHITE_TRANSITION_TICKS)) : 0;
+        return finishAt == UNSET && introAt != UNSET ? .92 * (1 - smooth(now - introAt - wireTicks, WHITE_TRANSITION_TICKS)) : 0;
     }
 
     boolean prepareOutline(double now) {
         return dismantle && finishAge(now) < WHITE_TRANSITION_TICKS;
+    }
+
+    boolean prepareShell(double now) {
+        return !dismantle && finishAt == UNSET && introAt != UNSET && now <= introAt + wireTicks;
     }
 
     double shellOpacity(Phase region, double now) {
@@ -89,11 +97,10 @@ final class ConstructionAnimation {
 
     void geometry(Geometry packet, long clientTick) {
         sample(packet.serverTick());
-        long startedAt = clientTick - (packet.serverTick() - startTick);
-        if (wireTicks == 0) {
-            wireTicks = packet.wireTicks();
-            introAt = startedAt;
-        } else if (!dismantle && packet.snapshot()) introAt = Math.min(introAt, startedAt);
+        if (packet.snapshot()) {
+            long startedAt = clientTick - (packet.serverTick() - startTick);
+            introAt = introAt == UNSET ? startedAt : Math.min(introAt, startedAt);
+        }
         var section = packet.section();
         int x = section.chunkX(packet.quadrant()), y = section.y() * LAYERS_PER_SECTION, z = section.chunkZ(packet.quadrant());
         for (int i = 0; i < LAYERS_PER_SECTION; i++) {
@@ -172,6 +179,14 @@ final class ConstructionAnimation {
         invalidateNeighbors(x, y, z, removed.cells);
     }
 
+    void forgetChunk(int x, int z) {
+        var min = area.min();
+        var max = area.max();
+        if (slices.isEmpty() || x < min.getX() >> 4 || x > max.getX() >> 4 || z < min.getZ() >> 4 || z > max.getZ() >> 4)
+            return;
+        for (int y = min.getY() >> 3; y <= max.getY() >> 3; y++) forget(x, y, z);
+    }
+
     private void invalidateNeighbors(int x, int y, int z, BitSet changed) {
         int neighbors = 0;
         for (int cell = changed.nextSetBit(0); cell >= 0; cell = changed.nextSetBit(cell + 1)) {
@@ -240,6 +255,7 @@ final class ConstructionAnimation {
         final ConstructionMeshes.Part fluidMesh = new ConstructionMeshes.Part();
         int seenFrame;
         boolean prepareWire;
+        boolean prepareShell;
         double wireOpacity;
 
         Slice(ConstructionAnimation task, int x, int y, int z) {

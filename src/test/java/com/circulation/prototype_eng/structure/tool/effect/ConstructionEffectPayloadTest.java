@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.structure.tool.effect;
 
+import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Layout;
+import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Status;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import net.minecraft.util.math.BlockPos;
@@ -25,13 +27,16 @@ class ConstructionEffectPayloadTest {
             int cell = ConstructionEffectPayload.Section.index(position);
             var cells = new BitSet();
             cells.set(cell);
-            var initial = new ConstructionEffectPayload.Geometry(-1, 1, position.toLong(), false, 90, 98, ConstructionEffectPayload.wireTicks(1),
-                section, quadrant, new ConstructionArea(position, position), cells, new BitSet(), new BitSet(), List.of());
-            var delta = new ConstructionEffectPayload.Geometry(-1, 1, position.toLong(), false, 90, 99, initial.wireTicks(),
-                section, quadrant, null, new BitSet(), new BitSet(), new BitSet(),
+            var layout = layout(position, false, 90, new ConstructionArea(position, position), 1);
+            var initial = new ConstructionEffectPayload.Geometry(-1, 1, 98, section, quadrant, true, layout,
+                cells, new BitSet(), new BitSet(), List.of());
+            var delta = new ConstructionEffectPayload.Geometry(-1, 1, 99, section, quadrant, false, null, new BitSet(), new BitSet(), new BitSet(),
                 List.of(new ConstructionEffectPayload.RegionTime(ConstructionEffectPayload.region(cell, false), -1, 98)));
             assertEquals(initial, roundTrip(initial));
             assertEquals(delta, roundTrip(delta));
+            var next = new ConstructionEffectPayload.Geometry(-1, 1, 100, section, quadrant, true, null,
+                cells, new BitSet(), new BitSet(), delta.regions());
+            assertEquals(next, roundTrip(next));
             assertEquals(position.getX() >> 4, section.chunkX(quadrant));
             assertEquals(position.getZ() >> 4, section.chunkZ(quadrant));
             int sectionCell = initial.sectionIndex(cell);
@@ -56,8 +61,8 @@ class ConstructionEffectPayloadTest {
             var subset = subsets[quadrant];
             if (subset.isEmpty()) continue;
             cells += subset.cardinality();
-            var payload = new ConstructionEffectPayload.Geometry(0, 7, origin.toLong(), true, 200, 260,
-                ConstructionEffectPayload.wireTicks(25 * 16 * 15), section, quadrant, area, subset, subset, new BitSet(),
+            var payload = new ConstructionEffectPayload.Geometry(0, 7, 260, section, quadrant, true,
+                layout(origin, true, 200, area, 25 * 16 * 15), subset, subset, new BitSet(),
                 List.of(new ConstructionEffectPayload.RegionTime(ConstructionEffectPayload.region(subset.nextSetBit(0), true), 251, 259)));
             assertEquals(payload, roundTrip(payload));
             encoded += ConstructionEffectPayload.bytes(payload);
@@ -86,8 +91,8 @@ class ConstructionEffectPayloadTest {
             }
         }
         var area = new ConstructionArea(origin, origin.add(1, 24, 0));
-        var snapshot = new ConstructionEffectPayload.Geometry(0, 1, origin.toLong(), false, start, tick,
-            ConstructionEffectPayload.wireTicks(cells.cardinality()), section, quadrant, area, cells, fluids, new BitSet(), times);
+        var snapshot = new ConstructionEffectPayload.Geometry(0, 1, tick, section, quadrant, true,
+            layout(origin, false, start, area, cells.cardinality()), cells, fluids, new BitSet(), times);
         assertEquals(snapshot, roundTrip(snapshot));
     }
 
@@ -100,11 +105,10 @@ class ConstructionEffectPayloadTest {
         var section = ConstructionEffectPayload.Section.at(position);
         int quadrant = ConstructionEffectPayload.Section.quadrant(position);
         var time = new ConstructionEffectPayload.RegionTime(ConstructionEffectPayload.region(cell, false), -1, 45);
-        int wireTicks = ConstructionEffectPayload.wireTicks(2);
-        assertThrows(IllegalArgumentException.class, () -> new ConstructionEffectPayload.Geometry(0, 9, position.toLong(), false, 40, 50,
-            wireTicks, section, quadrant, null, new BitSet(), new BitSet(), excluded, List.of(time, time)));
-        var payload = new ConstructionEffectPayload.Geometry(0, 9, position.toLong(), false, 40, 50, wireTicks,
-            section, quadrant, null, new BitSet(), new BitSet(), excluded, List.of(time));
+        assertThrows(IllegalArgumentException.class, () -> new ConstructionEffectPayload.Geometry(0, 9, 50,
+            section, quadrant, false, null, new BitSet(), new BitSet(), excluded, List.of(time, time)));
+        var payload = new ConstructionEffectPayload.Geometry(0, 9, 50, section, quadrant, false, null,
+            new BitSet(), new BitSet(), excluded, List.of(time));
         excluded.clear();
         var received = (ConstructionEffectPayload.Geometry) roundTrip(payload);
         assertEquals(List.of(time), received.regions());
@@ -115,11 +119,12 @@ class ConstructionEffectPayloadTest {
     void statusAndVisibilityMessagesRetainTaskIdentityAndRejectExtraBytes() {
         var anchor = new BlockPos(32, 80, -1);
         var area = new ConstructionArea(anchor, anchor.add(16, 12, 4));
-        var status = new ConstructionEffectPayload.Hud(1, 13, anchor.toLong(), true, 38, 86, area, 51, 2, 6, true, false);
-        var unwatch = new ConstructionEffectPayload.Forget(1, 13, ConstructionEffectPayload.Section.at(anchor),
-            ConstructionEffectPayload.Section.quadrant(anchor));
+        var status = new ConstructionEffectPayload.Hud(1, 13, layout(anchor, true, 38, area, 59), new Status(51, 2, 6, true));
+        var update = new ConstructionEffectPayload.Hud(1, 13, null, new Status(23, 2, 6, true));
+        var hide = new ConstructionEffectPayload.Visibility(1, 13, false);
+        var show = new ConstructionEffectPayload.Visibility(1, 13, true);
         var end = new ConstructionEffectPayload.End(1, 13, 100, true, false);
-        for (var packet : List.of(status, unwatch, end)) {
+        for (var packet : List.of(status, update, hide, show, end)) {
             assertEquals(packet, roundTrip(packet));
             ByteBuf buffer = Unpooled.buffer();
             try {
@@ -146,14 +151,15 @@ class ConstructionEffectPayloadTest {
 
         var cells = new BitSet();
         cells.set(ConstructionEffectPayload.Section.index(watchedCell));
-        var snapshot = new ConstructionEffectPayload.Geometry(0, 1, anchor.toLong(), false, 10, 13, ConstructionEffectPayload.wireTicks(1),
-            ConstructionEffectPayload.Section.at(watchedCell), ConstructionEffectPayload.Section.quadrant(watchedCell),
-            area, cells, new BitSet(), new BitSet(), List.of());
-        var status = new ConstructionEffectPayload.Hud(0, 1, anchor.toLong(), false, 10, 13, area, 1, 0, 0, false, false);
+        var layout = layout(anchor, false, 10, area, 1);
+        var snapshot = new ConstructionEffectPayload.Geometry(0, 1, 13,
+            ConstructionEffectPayload.Section.at(watchedCell), ConstructionEffectPayload.Section.quadrant(watchedCell), true,
+            layout, cells, new BitSet(), new BitSet(), List.of());
+        var status = new ConstructionEffectPayload.Hud(0, 1, layout, new Status(1, 0, 0, false));
         var observer = (ConstructionEffectPayload.Geometry) roundTrip(snapshot);
         var owner = (ConstructionEffectPayload.Hud) roundTrip(status);
-        var observerArea = Objects.requireNonNull(observer.area());
-        var ownerArea = owner.area();
+        var observerArea = Objects.requireNonNull(observer.layout()).area();
+        var ownerArea = Objects.requireNonNull(owner.layout()).area();
         assertEquals(area, observerArea);
         assertEquals(area, ownerArea);
         assertEquals(cells, observer.cells());
@@ -161,6 +167,10 @@ class ConstructionEffectPayloadTest {
             assertTrue(received.withinRenderDistance(48, 75, 4));
             assertFalse(received.withinRenderDistance(51, 75, 4));
         }
+    }
+
+    private static Layout layout(BlockPos anchor, boolean dismantle, long start, ConstructionArea area, int cells) {
+        return new Layout(anchor.toLong(), dismantle, start, ConstructionEffectPayload.wireTicks(cells), area);
     }
 
     @Test

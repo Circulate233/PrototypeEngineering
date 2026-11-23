@@ -3,11 +3,13 @@ package com.circulation.prototype_eng.structure.tool.effect;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.network.InitNetwork;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.End;
-import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Forget;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Geometry;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Hud;
+import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Layout;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.RegionTime;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Section;
+import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Status;
+import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Visibility;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
@@ -24,6 +26,7 @@ import net.minecraftforge.event.world.ChunkWatchEvent;
 import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.PlayerEvent;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
@@ -49,7 +52,9 @@ public final class ServerConstructionEffects {
         return new Effect(session, index, owner, anchor.toLong(), dismantle);
     }
 
-    /** Run after the native player chunk map, and before this tick's block changes. */
+    /**
+     * Publish after the previous native player chunk update, before starting new block changes.
+     */
     public static void tick(MinecraftServer server) {
         var active = current;
         if (active == null || active.server != server) return;
@@ -99,6 +104,19 @@ public final class ServerConstructionEffects {
         if (active != null && event.getWorld() instanceof WorldServer world) active.worlds.remove(world);
     }
 
+    @SubscribeEvent
+    public static void changedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
+        var active = current;
+        if (active == null) return;
+        var iterator = active.audiences.iterator();
+        while (iterator.hasNext()) {
+            var recipient = iterator.next();
+            if (recipient.player != event.player || recipient.effect.dimension != event.fromDim) continue;
+            iterator.remove();
+            recipient.detach();
+        }
+    }
+
     private enum WorkResult {DONE, CONTINUE, WAIT}
 
     @FunctionalInterface
@@ -109,6 +127,7 @@ public final class ServerConstructionEffects {
     private static final class Session {
         final MinecraftServer server;
         final Reference2ObjectOpenHashMap<WorldServer, WorldIndex> worlds = new Reference2ObjectOpenHashMap<>();
+        final ObjectOpenHashSet<Audience> audiences = new ObjectOpenHashSet<>();
         final ArrayDeque<Work> work = new ArrayDeque<>();
         long tick;
         long nextId;
@@ -124,6 +143,16 @@ public final class ServerConstructionEffects {
             tick = Integer.toUnsignedLong(server.getTickCounter());
             remainingBytes = BYTES_PER_TICK;
             remainingPackets = PACKETS_PER_TICK;
+            var viewers = audiences.iterator();
+            while (viewers.hasNext()) {
+                var recipient = viewers.next();
+                var effect = recipient.effect;
+                if (!effect.live() || !effect.connected(recipient.player, recipient.connection)) {
+                    viewers.remove();
+                    recipient.detach();
+                } else if (!effect.retiring && !effect.cancelled() && !recipient.viewers.isEmpty())
+                    recipient.updateDistance();
+            }
             int waiting = 0;
             while (!work.isEmpty() && waiting < work.size() && System.nanoTime() - started < SYNC_NANOS) {
                 var next = work.removeFirst();
@@ -187,7 +216,7 @@ public final class ServerConstructionEffects {
         private final boolean dismantle;
         private final int dimension;
         private final ConstructionArea.Builder areaBuilder = new ConstructionArea.Builder();
-        private @Nullable ConstructionArea area;
+        private @Nullable Layout layout;
         private final Long2ObjectLinkedOpenHashMap<Sector> sectors = new Long2ObjectLinkedOpenHashMap<>();
         private final Int2ObjectOpenHashMap<RemovalLayer> removalLayers = new Int2ObjectOpenHashMap<>();
         private final Reference2ObjectOpenHashMap<EntityPlayerMP, Audience> audience = new Reference2ObjectOpenHashMap<>();
@@ -200,10 +229,7 @@ public final class ServerConstructionEffects {
         private boolean endReady;
         private boolean retiring;
         private int pendingDeltas;
-        private int missing;
-        private int errors;
-        private int unloaded;
-        private boolean paused;
+        private Status status = new Status(0, 0, 0, false);
         private boolean hudQueued;
 
         private Effect(Session session, WorldIndex index, EntityPlayerMP owner, long anchor, boolean dismantle) {
@@ -241,9 +267,10 @@ public final class ServerConstructionEffects {
         /** Starts projection publication after preflight and the builder screen closes. */
         public void start() {
             if (startTick >= 0 || !live()) throw new IllegalStateException("Cannot start this construction projection");
-            area = areaBuilder.build();
+            var area = areaBuilder.build();
             startTick = currentTick();
             wireTicks = ConstructionEffectPayload.wireTicks(cellCount);
+            if (area != null) layout = new Layout(anchor, dismantle, startTick, wireTicks, area);
             queueHud();
             if (!sectors.isEmpty()) {
                 publishing = true;
@@ -294,16 +321,18 @@ public final class ServerConstructionEffects {
         }
 
         public boolean ownerWithinRenderDistance() {
-            var range = area;
-            return range != null && range.withinRenderDistance(owner.posX, owner.posY, owner.posZ);
+            return withinRange(owner);
+        }
+
+        private boolean withinRange(EntityPlayerMP player) {
+            var layout = this.layout;
+            return layout != null && layout.area().withinRenderDistance(player.posX, player.posY, player.posZ);
         }
 
         public void status(int missing, int errors, int unloaded, boolean paused) {
-            if (this.missing == missing && this.errors == errors && this.unloaded == unloaded && this.paused == paused) return;
-            this.missing = missing;
-            this.errors = errors;
-            this.unloaded = unloaded;
-            this.paused = paused;
+            if (status.missing() == missing && status.errors() == errors && status.unloaded() == unloaded && status.paused() == paused)
+                return;
+            status = new Status(missing, errors, unloaded, paused);
             if (startTick >= 0) queueHud();
         }
 
@@ -323,17 +352,19 @@ public final class ServerConstructionEffects {
         }
 
         private void queueHud() {
-            var range = area;
-            if (hudQueued || range == null) return;
+            var info = layout;
+            if (hudQueued || info == null) return;
             hudQueued = true;
             session.work.addLast(() -> {
                 var end = ending;
                 if (live() && (end == null || !end.cancelled()) && connected(owner, ownerConnection)) {
-                    if (end != null && pendingDeltas != 0) return WorkResult.WAIT;
-                    var message = new Hud(dimension, id, anchor, dismantle, startTick, session.tick, range, missing, errors, unloaded,
-                        paused, end != null && end.successful());
-                    if (!session.send(owner, message)) return WorkResult.WAIT;
-                    recipient(owner, ownerConnection).hud = true;
+                    var recipient = recipient(owner);
+                    if (!status.equals(recipient.lastStatus)) {
+                        var message = new Hud(dimension, id, recipient.known ? null : info, status);
+                        if (!session.send(owner, message)) return WorkResult.WAIT;
+                        recipient.known = true;
+                        recipient.lastStatus = status;
+                    }
                 }
                 hudQueued = false;
                 return WorkResult.DONE;
@@ -349,28 +380,35 @@ public final class ServerConstructionEffects {
                 && player.server.getPlayerList().getPlayerByUUID(player.getUniqueID()) == player;
         }
 
-        private Audience recipient(EntityPlayerMP player, NetHandlerPlayServer connection) {
+        private Audience recipient(EntityPlayerMP player) {
             var recipient = audience.get(player);
-            if (recipient != null && recipient.connection == connection) return recipient;
-            recipient = new Audience(player, connection);
+            if (recipient != null && recipient.connection == player.connection) return recipient;
+            if (recipient != null) {
+                session.audiences.remove(recipient);
+                recipient.detach();
+            }
+            recipient = new Audience(this, player);
             audience.put(player, recipient);
+            session.audiences.add(recipient);
             return recipient;
         }
 
         private boolean deliverEnd(Audience recipient, End end) {
-            if (recipient.endSent || audience.get(recipient.player) != recipient || !connected(recipient.player, recipient.connection)) return true;
+            if (!recipient.known || recipient.endSent || audience.get(recipient.player) != recipient) return true;
             if (!session.send(recipient.player, end)) return false;
             recipient.endSent = true;
             return true;
         }
 
-        private void release(Audience recipient) {
-            if (--recipient.sectors == 0 && !recipient.hud) audience.remove(recipient.player, recipient);
-        }
-
         private boolean cancelled() {
             var end = ending;
             return end != null && end.cancelled();
+        }
+
+        private boolean replayExpired() {
+            var end = endReady ? ending : null;
+            int ticks = dismantle ? ConstructionEffectPayload.FINAL_WIRE_TICKS : ConstructionEffectPayload.REGION_FADE_TICKS;
+            return end != null && session.tick - end.serverTick() >= ticks;
         }
 
         private static boolean inBounds(BlockPos pos) {
@@ -460,7 +498,11 @@ public final class ServerConstructionEffects {
                 effect.retiring = true;
                 sectors = retiringSectors = effect.sectors.values().iterator();
             }
-            if (!sectors.hasNext()) return WorkResult.DONE;
+            if (!sectors.hasNext()) {
+                effect.session.audiences.removeAll(effect.audience.values());
+                effect.audience.clear();
+                return WorkResult.DONE;
+            }
             sectors.next().detach();
             return WorkResult.CONTINUE;
         }
@@ -504,32 +546,25 @@ public final class ServerConstructionEffects {
 
         void watch(EntityPlayerMP player) {
             if (effect.retiring || effect.cancelled()) return;
-            var view = viewers.get(player);
-            if (view != null && view.connection == player.connection) return;
-            view = new Viewer(player, player.connection);
+            var recipient = effect.recipient(player);
+            if (viewers.containsKey(player)) return;
+            var view = new Viewer(this, recipient);
             viewers.put(player, view);
-            effect.session.work.addLast(new Replay(this, view));
+            recipient.viewers.add(view);
+            view.queueReplay();
         }
 
         void unwatch(EntityPlayerMP player) {
             var viewer = viewers.remove(player);
             if (viewer == null) return;
             var recipient = viewer.recipient;
-            if (recipient == null) return;
-            var message = new Forget(effect.dimension, effect.id, key.section, key.quadrant);
-            effect.session.work.addLast(() -> {
-                if (effect.live() && effect.connected(player, viewer.connection)) {
-                    var nowWatching = viewers.get(player);
-                    if ((nowWatching == null || nowWatching.recipient == null) && !effect.session.send(player, message)) return WorkResult.WAIT;
-                }
-                effect.release(recipient);
-                return WorkResult.DONE;
-            });
+            recipient.viewers.remove(viewer);
+            if (viewer.revision >= 0) recipient.sentSectors--;
+            recipient.discardIfUnused();
         }
 
         boolean watching(Viewer view) {
-            return viewers.get(view.player) == view && effect.connected(view.player, view.connection)
-                && effect.index.world.getPlayerChunkMap().isPlayerWatchingChunk(view.player, key.section.chunkX(key.quadrant), key.section.chunkZ(key.quadrant));
+            return view.recipient.near && viewers.get(view.recipient.player) == view;
         }
 
         void add(int cell, boolean fluid) {
@@ -579,16 +614,34 @@ public final class ServerConstructionEffects {
             effect.session.work.addLast(new Delta(this));
         }
 
-        Geometry geometry(boolean snapshot, BitSet removed, int mask) {
+        @Nullable Geometry snapshot(boolean includeLayout, boolean replacing) {
+            var visibleCells = (BitSet) cells.clone();
+            visibleCells.andNot(excluded);
+            if (visibleCells.isEmpty() && !replacing) return null;
+            var visibleFluids = (BitSet) fluids.clone();
+            visibleFluids.and(visibleCells);
+            int all = (1 << regions.length) - 1;
+            return new Geometry(effect.dimension, effect.id, effect.session.tick, key.section, key.quadrant, true,
+                includeLayout ? Objects.requireNonNull(effect.layout) : null, visibleCells, visibleFluids, new BitSet(), regionTimes(all, all));
+        }
+
+        Geometry delta(int activate, int settle) {
+            return new Geometry(effect.dimension, effect.id, effect.session.tick, key.section, key.quadrant, false, null,
+                new BitSet(), new BitSet(), pendingExclude, regionTimes(activate, settle));
+        }
+
+        private ArrayList<RegionTime> regionTimes(int activate, int settle) {
+            int mask = activate | settle;
             var times = new ArrayList<RegionTime>(Integer.bitCount(mask));
             for (int i = 0; i < regions.length; i++) {
                 var region = regions[i];
-                if ((mask & 1 << i) != 0 && region != null && (region.activatedTick >= 0 || region.settledTick >= 0))
-                    times.add(new RegionTime(i, region.activatedTick, region.settledTick));
+                int flag = 1 << i;
+                if ((mask & flag) == 0 || region == null) continue;
+                long activatedTick = (activate & flag) == 0 ? -1 : region.activatedTick;
+                long settledTick = (settle & flag) == 0 ? -1 : region.settledTick;
+                if (activatedTick >= 0 || settledTick >= 0) times.add(new RegionTime(i, activatedTick, settledTick));
             }
-            return new Geometry(effect.dimension, effect.id, effect.anchor, effect.dismantle, effect.startTick, effect.session.tick,
-                effect.wireTicks, key.section, key.quadrant, snapshot ? Objects.requireNonNull(effect.area) : null,
-                snapshot ? cells : new BitSet(), snapshot ? fluids : new BitSet(), removed, times);
+            return times;
         }
     }
 
@@ -606,45 +659,101 @@ public final class ServerConstructionEffects {
         }
     }
 
-    private static final class Viewer {
-        final EntityPlayerMP player;
-        final NetHandlerPlayServer connection;
+    private static final class Viewer implements Work {
+        final Sector sector;
+        final Audience recipient;
         int revision = -1;
-        @Nullable Audience recipient;
+        boolean replayQueued;
 
-        Viewer(EntityPlayerMP player, NetHandlerPlayServer connection) {
-            this.player = player;
-            this.connection = connection;
+        Viewer(Sector sector, Audience recipient) {
+            this.sector = sector;
+            this.recipient = recipient;
+        }
+
+        void queueReplay() {
+            if (revision == sector.revision || replayQueued || !recipient.near) return;
+            replayQueued = true;
+            recipient.pendingReplays++;
+            recipient.effect.session.work.addLast(this);
+        }
+
+        @Override
+        public WorkResult advance() {
+            var effect = recipient.effect;
+            if (!effect.live() || effect.retiring || effect.cancelled() || effect.replayExpired() || !sector.watching(this)) return done();
+            var end = effect.endReady ? effect.ending : null;
+            var after = recipient.endSent ? null : end;
+            if (effect.session.remainingPackets < (after == null ? 1 : 2)) return WorkResult.WAIT;
+            var snapshot = sector.snapshot(!recipient.known, revision >= 0);
+            if (snapshot == null) return done();
+            if (!effect.session.send(recipient.player, snapshot, after)) return WorkResult.WAIT;
+            if (revision < 0) recipient.sentSectors++;
+            revision = sector.revision;
+            recipient.known = true;
+            if (after != null) recipient.endSent = true;
+            return done();
+        }
+
+        private WorkResult done() {
+            replayQueued = false;
+            recipient.pendingReplays--;
+            return WorkResult.DONE;
         }
     }
 
     private static final class Audience {
+        final Effect effect;
         final EntityPlayerMP player;
         final NetHandlerPlayServer connection;
-        int sectors;
-        boolean hud;
+        final ObjectOpenHashSet<Viewer> viewers = new ObjectOpenHashSet<>();
+        @Nullable Status lastStatus;
+        int sentSectors;
+        int pendingReplays;
+        boolean near;
+        boolean hidden;
+        boolean visibilityQueued;
+        boolean known;
         boolean endSent;
 
-        Audience(EntityPlayerMP player, NetHandlerPlayServer connection) {
+        Audience(Effect effect, EntityPlayerMP player) {
+            this.effect = effect;
             this.player = player;
-            this.connection = connection;
+            connection = player.connection;
+            near = effect.withinRange(player);
         }
-    }
 
-    private record Replay(Sector sector, Viewer viewer) implements Work {
-        @Override
-        public WorkResult advance() {
-            var effect = sector.effect;
-            if (!effect.live() || effect.retiring || effect.cancelled() || !sector.watching(viewer)) return WorkResult.DONE;
-            var end = effect.endReady ? effect.ending : null;
-            if (end != null && effect.session.tick - end.serverTick() >= ConstructionEffectPayload.FINAL_WIRE_TICKS) return WorkResult.DONE;
-            if (effect.session.remainingPackets < (end == null ? 1 : 2)) return WorkResult.WAIT;
-            if (!effect.session.send(viewer.player, sector.geometry(true, sector.excluded, (1 << sector.regions.length) - 1), end)) return WorkResult.WAIT;
-            viewer.revision = sector.revision;
-            var recipient = viewer.recipient = effect.recipient(viewer.player, viewer.connection);
-            recipient.sectors++;
-            if (end != null) recipient.endSent = true;
+        void updateDistance() {
+            boolean withinRange = effect.withinRange(player);
+            if (near == withinRange) return;
+            near = withinRange;
+            if (near) for (var viewer : viewers) viewer.queueReplay();
+            if (!visibilityQueued && (near ? hidden : !hidden && sentSectors != 0)) {
+                visibilityQueued = true;
+                effect.session.work.addLast(this::syncVisibility);
+            }
+        }
+
+        private WorkResult syncVisibility() {
+            if (effect.live() && !effect.cancelled() && !effect.retiring && effect.audience.get(player) == this
+                && (near ? hidden && !effect.replayExpired() : !hidden && sentSectors != 0)) {
+                if (near && pendingReplays != 0) return WorkResult.WAIT;
+                if (!effect.session.send(player, new Visibility(effect.dimension, effect.id, near))) return WorkResult.WAIT;
+                hidden = !near;
+            }
+            visibilityQueued = false;
             return WorkResult.DONE;
+        }
+
+        void discardIfUnused() {
+            if (known || !viewers.isEmpty()) return;
+            effect.session.audiences.remove(this);
+            effect.audience.remove(player, this);
+        }
+
+        void detach() {
+            for (var viewer : viewers) viewer.sector.viewers.remove(player, viewer);
+            viewers.clear();
+            effect.audience.remove(player, this);
         }
     }
 
@@ -665,7 +774,7 @@ public final class ServerConstructionEffects {
             if (!effect.live() || effect.cancelled()) return finish();
             var players = audience;
             if (players == null) {
-                int mask = 0;
+                int settled = 0;
                 boolean waiting = false;
                 for (int i = 0; i < sector.regions.length; i++) {
                     var region = sector.regions[i];
@@ -674,32 +783,35 @@ public final class ServerConstructionEffects {
                         region.activating = false;
                         region.activatedTick = effect.session.tick;
                         activating |= 1 << i;
-                        mask |= 1 << i;
                     }
                     if (region.syncAfterTick >= 0) {
                         if (effect.session.tick > region.syncAfterTick) {
                             region.syncAfterTick = -1;
                             region.settledTick = effect.session.tick;
-                            mask |= 1 << i;
+                            settled |= 1 << i;
                         } else waiting = true;
                     }
                 }
-                if (mask == 0 && sector.pendingExclude.isEmpty()) return waiting ? WorkResult.WAIT : finish();
+                if ((activating | settled) == 0 && sector.pendingExclude.isEmpty())
+                    return waiting ? WorkResult.WAIT : finish();
                 sector.revision++;
                 sector.excluded.or(sector.pendingExclude);
                 players = new ObjectArrayList<>(sector.viewers.values());
                 audience = players;
-                if (!players.isEmpty()) packet = sector.geometry(false, sector.pendingExclude, mask);
+                if (!players.isEmpty()) packet = sector.delta(activating, settled);
                 sector.pendingExclude.clear();
                 cursor = 0;
             }
             if (cursor < players.size()) {
                 var viewer = players.get(cursor);
                 if (viewer.revision >= 0 && viewer.revision < sector.revision && sector.watching(viewer)) {
-                    var message = packet;
-                    if (message == null) throw new IllegalStateException("Missing construction geometry delta");
-                    if (!effect.session.send(viewer.player, message)) return WorkResult.WAIT;
-                    viewer.revision = sector.revision;
+                    if (viewer.revision != sector.revision - 1 || viewer.replayQueued) viewer.queueReplay();
+                    else {
+                        var message = packet;
+                        if (message == null) throw new IllegalStateException("Missing construction geometry delta");
+                        if (!effect.session.send(viewer.recipient.player, message)) return WorkResult.WAIT;
+                        viewer.revision = sector.revision;
+                    }
                 }
                 cursor++;
                 return WorkResult.CONTINUE;

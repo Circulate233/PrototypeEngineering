@@ -143,6 +143,18 @@ public final class StructureBuildTasks {
 
     public static void tick(MinecraftServer server) {
         var profiler = server.profiler;
+        profiler.startSection("root");
+        profiler.startSection("peConstruction");
+        try {
+            advanceQueues(server);
+        } finally {
+            profiler.endSection();
+            profiler.endSection();
+        }
+    }
+
+    private static void advanceQueues(MinecraftServer server) {
+        var profiler = server.profiler;
         profiler.startSection("effects");
         try {
             ServerConstructionEffects.tick(server);

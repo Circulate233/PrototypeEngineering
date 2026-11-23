@@ -46,68 +46,102 @@ public sealed interface ConstructionEffectPayload {
         }
     }
 
-    record Geometry(int dimension, long taskId, long anchor, boolean dismantle, long startTick, long serverTick, int wireTicks,
-                    Section section, int quadrant, @Nullable ConstructionArea area, BitSet cells, BitSet fluids,
-                    BitSet excluded, List<RegionTime> regions) implements ConstructionEffectPayload {
-        public Geometry {
-            requireTask(taskId);
-            if (startTick < 0 || serverTick < startTick || wireTicks < MIN_INITIAL_WIRE_TICKS || wireTicks > MAX_INITIAL_WIRE_TICKS
-                || quadrant < 0 || quadrant > 3
-                || cells.length() > CHUNK_CELL_COUNT || fluids.length() > CHUNK_CELL_COUNT || excluded.length() > CHUNK_CELL_COUNT)
-                throw new IllegalArgumentException("Invalid construction geometry bounds");
-            if (area != null) {
-                var unplanned = (BitSet) fluids.clone();
-                unplanned.or(excluded);
-                unplanned.andNot(cells);
-                if (cells.isEmpty() || !unplanned.isEmpty()) throw new IllegalArgumentException("Invalid construction geometry snapshot");
-            } else if (!cells.isEmpty() || !fluids.isEmpty() || regions.isEmpty() && excluded.isEmpty())
-                throw new IllegalArgumentException("Invalid construction geometry delta");
-            int seen = 0;
-            for (var time : regions) {
-                int mask = 1 << time.region();
-                if ((seen & mask) != 0 || time.activatedTick() > serverTick || time.settledTick() > serverTick
-                    || time.activatedTick() >= 0 && (!dismantle || time.activatedTick() < startTick)
-                    || time.settledTick() >= 0 && time.settledTick() < startTick)
-                    throw new IllegalArgumentException("Conflicting construction region time");
-                seen |= mask;
+    static void write(ByteBuf buffer, ConstructionEffectPayload payload) {
+        int start = buffer.writerIndex();
+        int kind = switch (payload) {
+            case Geometry geometry -> geometry.snapshot ? (geometry.layout != null ? 0 : 6) : 1;
+            case Visibility visibility -> visibility.visible ? 7 : 2;
+            case Hud hud -> hud.layout == null ? 3 : 5;
+            case End _ -> 4;
+        };
+        buffer.writeByte(kind).writeInt(payload.dimension()).writeLong(payload.taskId());
+        switch (payload) {
+            case Geometry geometry -> {
+                buffer.writeLong(geometry.serverTick);
+                writeSection(buffer, geometry.section, geometry.quadrant);
+                var layout = geometry.layout;
+                if (geometry.snapshot) {
+                    if (layout != null) writeLayout(buffer, layout);
+                    writeCells(buffer, geometry.cells);
+                    writeCells(buffer, geometry.fluids);
+                } else writeCells(buffer, geometry.excluded);
+                buffer.writeByte(geometry.regions.size());
+                for (var time : geometry.regions) {
+                    boolean activate = time.activatedTick() >= 0;
+                    boolean settle = time.settledTick() >= 0;
+                    buffer.writeByte(time.region() | (activate ? 8 : 0) | (settle ? 16 : 0));
+                    if (activate) buffer.writeLong(time.activatedTick());
+                    if (settle) buffer.writeLong(time.settledTick());
+                }
             }
-            cells = (BitSet) cells.clone();
-            fluids = (BitSet) fluids.clone();
-            excluded = (BitSet) excluded.clone();
-            regions = List.copyOf(regions);
+            case Visibility _ -> {
+            }
+            case Hud hud -> {
+                if (hud.layout != null) writeLayout(buffer, hud.layout);
+                var status = hud.status;
+                buffer.writeInt(status.missing).writeInt(status.errors).writeInt(status.unloaded).writeBoolean(status.paused);
+            }
+            case End end -> buffer.writeLong(end.serverTick).writeBoolean(end.cancelled).writeBoolean(end.successful);
         }
-
-        public boolean snapshot() {
-            return area != null;
-        }
-
-        public int sectionIndex(int index) {
-            return sectionIndex(quadrant, index);
-        }
-
-        public static int sectionIndex(int quadrant, int index) {
-            int x = (index & 15) | ((quadrant & 1) << 4);
-            int y = index >>> 8;
-            int z = ((index >>> 4) & 15) | ((quadrant & 2) << 3);
-            return x | (z << 5) | (y << 10);
-        }
+        if (buffer.writerIndex() - start > MAX_BYTES) throw new IllegalArgumentException("Construction geometry exceeds packet limit");
     }
 
-    record Forget(int dimension, long taskId, Section section, int quadrant) implements ConstructionEffectPayload {
-        public Forget {
-            requireTask(taskId);
-            if (quadrant < 0 || quadrant > 3) throw new IllegalArgumentException("Invalid construction geometry quadrant");
-        }
+    static ConstructionEffectPayload read(ByteBuf buffer) {
+        int bytes = buffer.readableBytes();
+        if (bytes < HEADER_BYTES || bytes > MAX_BYTES) throw new IllegalArgumentException("Invalid construction message length");
+        int kind = buffer.readUnsignedByte();
+        int dimension = buffer.readInt();
+        long task = buffer.readLong();
+        ConstructionEffectPayload result = switch (kind) {
+            case 0, 1, 6 -> {
+                long serverTick = buffer.readLong();
+                var section = readSection(buffer);
+                int quadrant = buffer.readUnsignedByte();
+                boolean snapshot = kind != 1;
+                var layout = kind == 0 ? readLayout(buffer) : null;
+                BitSet cells = snapshot ? readCells(buffer) : new BitSet();
+                BitSet fluids = snapshot ? readCells(buffer) : new BitSet();
+                var excluded = snapshot ? new BitSet() : readCells(buffer);
+                int count = buffer.readUnsignedByte();
+                if (count > REGION_COUNT) throw new IllegalArgumentException("Invalid construction region count");
+                var regions = new ArrayList<RegionTime>(count);
+                for (int i = 0; i < count; i++) {
+                    int flags = buffer.readUnsignedByte();
+                    if ((flags & ~31) != 0) throw new IllegalArgumentException("Invalid construction region flags");
+                    regions.add(new RegionTime(flags & 7, (flags & 8) == 0 ? -1 : buffer.readLong(), (flags & 16) == 0 ? -1 : buffer.readLong()));
+                }
+                yield new Geometry(dimension, task, serverTick, section, quadrant, snapshot, layout, cells, fluids, excluded, regions);
+            }
+            case 2, 7 -> new Visibility(dimension, task, kind == 7);
+            case 3, 5 -> new Hud(dimension, task, kind == 5 ? readLayout(buffer) : null,
+                new Status(buffer.readInt(), buffer.readInt(), buffer.readInt(), readBoolean(buffer)));
+            case 4 -> new End(dimension, task, buffer.readLong(), readBoolean(buffer), readBoolean(buffer));
+            default -> throw new IllegalArgumentException("Unknown construction message kind");
+        };
+        if (buffer.isReadable()) throw new IllegalArgumentException("Trailing construction message bytes");
+        return result;
     }
 
-    record Hud(int dimension, long taskId, long anchor, boolean dismantle, long startTick, long serverTick,
-               ConstructionArea area, int missing, int errors, int unloaded, boolean paused, boolean complete) implements ConstructionEffectPayload {
-        public Hud {
-            requireTask(taskId);
-            Objects.requireNonNull(area);
-            if (startTick < 0 || serverTick < 0 || missing < 0 || errors < 0 || unloaded < 0)
-                throw new IllegalArgumentException("Invalid construction status");
-        }
+    static int bytes(ConstructionEffectPayload payload) {
+        return HEADER_BYTES + switch (payload) {
+            case Geometry geometry -> geometryBytes(geometry);
+            case Visibility _ -> 0;
+            case Hud hud -> 13 + (hud.layout != null ? 18 + AREA_BYTES : 0);
+            case End _ -> 10;
+        };
+    }
+
+    private static int geometryBytes(Geometry geometry) {
+        int bytes = 19 + (geometry.snapshot ? cellBytes(geometry.cells) + cellBytes(geometry.fluids) : cellBytes(geometry.excluded));
+        if (geometry.layout != null) bytes += 18 + AREA_BYTES;
+        for (var time : geometry.regions)
+            bytes += 1 + (time.activatedTick() >= 0 ? Long.BYTES : 0) + (time.settledTick() >= 0 ? Long.BYTES : 0);
+        return bytes;
+    }
+
+    private static Layout readLayout(ByteBuf buffer) {
+        return new Layout(buffer.readLong(), readBoolean(buffer), buffer.readLong(), buffer.readUnsignedByte(),
+            new ConstructionArea(BlockPos.fromLong(buffer.readLong()), BlockPos.fromLong(buffer.readLong())));
     }
 
     record End(int dimension, long taskId, long serverTick, boolean cancelled,
@@ -145,85 +179,65 @@ public sealed interface ConstructionEffectPayload {
         }
     }
 
-    static void write(ByteBuf buffer, ConstructionEffectPayload payload) {
-        int start = buffer.writerIndex();
-        int kind = switch (payload) {
-            case Geometry geometry -> geometry.snapshot() ? 0 : 1;
-            case Forget _ -> 2;
-            case Hud _ -> 3;
-            case End _ -> 4;
-        };
-        buffer.writeByte(kind).writeInt(payload.dimension()).writeLong(payload.taskId());
-        switch (payload) {
-            case Geometry geometry -> {
-                buffer.writeLong(geometry.anchor).writeBoolean(geometry.dismantle).writeLong(geometry.startTick).writeLong(geometry.serverTick)
-                    .writeByte(geometry.wireTicks);
-                writeSection(buffer, geometry.section, geometry.quadrant);
-                if (geometry.area != null) {
-                    writeArea(buffer, geometry.area);
-                    writeCells(buffer, geometry.cells);
-                    writeCells(buffer, geometry.fluids);
-                }
-                writeCells(buffer, geometry.excluded);
-                buffer.writeByte(geometry.regions.size());
-                for (var time : geometry.regions)
-                    buffer.writeByte(time.region()).writeLong(time.activatedTick()).writeLong(time.settledTick());
-            }
-            case Forget forget -> writeSection(buffer, forget.section, forget.quadrant);
-            case Hud hud -> {
-                buffer.writeLong(hud.anchor).writeBoolean(hud.dismantle).writeLong(hud.startTick).writeLong(hud.serverTick);
-                writeArea(buffer, hud.area);
-                buffer.writeInt(hud.missing).writeInt(hud.errors).writeInt(hud.unloaded).writeBoolean(hud.paused).writeBoolean(hud.complete);
-            }
-            case End end -> buffer.writeLong(end.serverTick).writeBoolean(end.cancelled).writeBoolean(end.successful);
+    private static void writeLayout(ByteBuf buffer, Layout layout) {
+        buffer.writeLong(layout.anchor).writeBoolean(layout.dismantle).writeLong(layout.startTick).writeByte(layout.wireTicks);
+        buffer.writeLong(layout.area.min().toLong()).writeLong(layout.area.max().toLong());
+    }
+
+    record Layout(long anchor, boolean dismantle, long startTick, int wireTicks, ConstructionArea area) {
+        public Layout {
+            Objects.requireNonNull(area);
+            if (startTick < 0 || wireTicks < MIN_INITIAL_WIRE_TICKS || wireTicks > MAX_INITIAL_WIRE_TICKS)
+                throw new IllegalArgumentException("Invalid construction layout");
         }
-        if (buffer.writerIndex() - start > MAX_BYTES) throw new IllegalArgumentException("Construction geometry exceeds packet limit");
     }
 
-    static ConstructionEffectPayload read(ByteBuf buffer) {
-        int bytes = buffer.readableBytes();
-        if (bytes < HEADER_BYTES || bytes > MAX_BYTES) throw new IllegalArgumentException("Invalid construction message length");
-        int kind = buffer.readUnsignedByte();
-        int dimension = buffer.readInt();
-        long task = buffer.readLong();
-        ConstructionEffectPayload result = switch (kind) {
-            case 0, 1 -> {
-                long anchor = buffer.readLong();
-                boolean dismantle = readBoolean(buffer);
-                long startTick = buffer.readLong();
-                long serverTick = buffer.readLong();
-                int wireTicks = buffer.readUnsignedByte();
-                var section = readSection(buffer);
-                int quadrant = buffer.readUnsignedByte();
-                var area = kind == 0 ? readArea(buffer) : null;
-                BitSet cells = kind == 0 ? readCells(buffer) : new BitSet();
-                BitSet fluids = kind == 0 ? readCells(buffer) : new BitSet();
-                var excluded = readCells(buffer);
-                int count = buffer.readUnsignedByte();
-                if (count > REGION_COUNT) throw new IllegalArgumentException("Invalid construction region count");
-                var regions = new ArrayList<RegionTime>(count);
-                for (int i = 0; i < count; i++) regions.add(new RegionTime(buffer.readUnsignedByte(), buffer.readLong(), buffer.readLong()));
-                yield new Geometry(dimension, task, anchor, dismantle, startTick, serverTick, wireTicks, section, quadrant, area, cells, fluids,
-                    excluded, regions);
+    record Geometry(int dimension, long taskId, long serverTick, Section section, int quadrant, boolean snapshot,
+                    @Nullable Layout layout, BitSet cells, BitSet fluids,
+                    BitSet excluded, List<RegionTime> regions) implements ConstructionEffectPayload {
+        public Geometry {
+            requireTask(taskId);
+            if (serverTick < 0 || quadrant < 0 || quadrant > 3
+                || cells.length() > CHUNK_CELL_COUNT || fluids.length() > CHUNK_CELL_COUNT || excluded.length() > CHUNK_CELL_COUNT)
+                throw new IllegalArgumentException("Invalid construction geometry bounds");
+            if (snapshot) {
+                var unplanned = (BitSet) fluids.clone();
+                unplanned.andNot(cells);
+                if (layout != null && (serverTick < layout.startTick || cells.isEmpty()) || !unplanned.isEmpty() || !excluded.isEmpty())
+                    throw new IllegalArgumentException("Invalid construction geometry snapshot");
+            } else if (layout != null || !cells.isEmpty() || !fluids.isEmpty() || regions.isEmpty() && excluded.isEmpty())
+                throw new IllegalArgumentException("Invalid construction geometry delta");
+            int seen = 0;
+            for (var time : regions) {
+                int mask = 1 << time.region();
+                if ((seen & mask) != 0 || time.activatedTick() > serverTick || time.settledTick() > serverTick
+                    || layout != null && (time.activatedTick() >= 0 && (!layout.dismantle || time.activatedTick() < layout.startTick)
+                    || time.settledTick() >= 0 && time.settledTick() < layout.startTick))
+                    throw new IllegalArgumentException("Conflicting construction region time");
+                seen |= mask;
             }
-            case 2 -> new Forget(dimension, task, readSection(buffer), buffer.readUnsignedByte());
-            case 3 -> new Hud(dimension, task, buffer.readLong(), readBoolean(buffer), buffer.readLong(), buffer.readLong(),
-                readArea(buffer), buffer.readInt(), buffer.readInt(), buffer.readInt(), readBoolean(buffer), readBoolean(buffer));
-            case 4 -> new End(dimension, task, buffer.readLong(), readBoolean(buffer), readBoolean(buffer));
-            default -> throw new IllegalArgumentException("Unknown construction message kind");
-        };
-        if (buffer.isReadable()) throw new IllegalArgumentException("Trailing construction message bytes");
-        return result;
+            cells = (BitSet) cells.clone();
+            fluids = (BitSet) fluids.clone();
+            excluded = (BitSet) excluded.clone();
+            regions = List.copyOf(regions);
+        }
+
+        public int sectionIndex(int index) {
+            return sectionIndex(quadrant, index);
+        }
+
+        public static int sectionIndex(int quadrant, int index) {
+            int x = (index & 15) | ((quadrant & 1) << 4);
+            int y = index >>> 8;
+            int z = ((index >>> 4) & 15) | ((quadrant & 2) << 3);
+            return x | (z << 5) | (y << 10);
+        }
     }
 
-    static int bytes(ConstructionEffectPayload payload) {
-        return HEADER_BYTES + switch (payload) {
-            case Geometry geometry -> 37 + (geometry.snapshot() ? AREA_BYTES + cellBytes(geometry.cells) + cellBytes(geometry.fluids) : 0)
-                + cellBytes(geometry.excluded) + geometry.regions.size() * (1 + 2 * Long.BYTES);
-            case Forget _ -> 10;
-            case Hud _ -> 39 + AREA_BYTES;
-            case End _ -> 10;
-        };
+    record Visibility(int dimension, long taskId, boolean visible) implements ConstructionEffectPayload {
+        public Visibility {
+            requireTask(taskId);
+        }
     }
 
     private static void requireTask(long taskId) {
@@ -236,12 +250,19 @@ public sealed interface ConstructionEffectPayload {
         return value != 0;
     }
 
-    private static ConstructionArea readArea(ByteBuf buffer) {
-        return new ConstructionArea(BlockPos.fromLong(buffer.readLong()), BlockPos.fromLong(buffer.readLong()));
+    record Status(int missing, int errors, int unloaded, boolean paused) {
+        public Status {
+            if (missing < 0 || errors < 0 || unloaded < 0)
+                throw new IllegalArgumentException("Invalid construction status");
+        }
     }
 
-    private static void writeArea(ByteBuf buffer, ConstructionArea area) {
-        buffer.writeLong(area.min().toLong()).writeLong(area.max().toLong());
+    record Hud(int dimension, long taskId, @Nullable Layout layout,
+               Status status) implements ConstructionEffectPayload {
+        public Hud {
+            requireTask(taskId);
+            Objects.requireNonNull(status);
+        }
     }
 
     private static Section readSection(ByteBuf buffer) {

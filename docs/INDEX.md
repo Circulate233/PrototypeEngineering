@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-24 施工白壳合批，星穹观测站离屏满白由 76 次提交降至 1 次；施工改到 `START`，计入 `/forge tps` 的 `Overall`。服务端按 32 格和原版区块观看关系发送几何，返回只补变化区段，晚到旁观者只接收一次结束消息。Java 25 离线全量构建及本机 IDEA 检查通过。入口：[施工与复验](structure-tools.md#2026-11-23-施工动画与全服预算)、[渲染与发包实测](implementation-status.md#2026-11-24-施工渲染合批刻时与特效发包)。
+
 - 2026-11-23 施工开场白线延长至 6–28 tick，拆卸收尾白线延长至 20 tick，施工结束提示独立显示 3 秒。入口：[施工动画](structure-tools.md#2026-11-23-施工动画与全服预算)、[验证记录](implementation-status.md#2026-11-23-施工线框与结束提示时长)。
 
 - 2026-11-23 施工预算移入 `builder.cfg`，默认 10 ms，移除原批量格数和间隔。管理员可用 `/pe builder budget <毫秒>` 写入新值，或修改文件后用 `/pe builder reload`；执行中的队列从下一 tick 应用。星穹观测站锚点已注册水平四向，示例套装新增转向工具。入口：[预算与命令](structure-tools.md#2026-11-23-施工动画与全服预算)、[观测站复验](../run/README.md#星穹观测站)、[验证记录](implementation-status.md#2026-11-23-施工预算热修改与观测站转向)。
@@ -248,6 +250,8 @@
 - 后继 Java 工作为局部配方/命名matcher及modifier定义替换，再接CraftTweaker；纯结构计划和安全仓室重配置已完成本批。`definition_replacement_audit` 正把既有独立方案收束为实际scanner/codec/JEI和远端本地声明边界，入口 `build/staging/definition-replacement/`。Applied-Flux继续暂缓。
 
 ## 下一步
+
+- 施工：用同一存档复验星穹观测站满白时的绘制次数、帧时和 `/forge tps` 的 `Overall` 刻时；联机时双方用同一版模组，一人在原版区块观看距离内跨越施工范围的 32 格边界，检查返回后的阶段和晚到旁观者的拆卸收尾。见[游戏内复验](structure-tools.md#游戏内复验)。
 
 - GUI：处理已登记的网络中心“每格”说明和计算机更换组件后的 FE 状态反馈；由用户完整重启复验现有正式界面。数据库按最新下载/导入预览审核后实现专用容器、界面和研究总览选择入口，其余研究页面继续延缓。当前范围和验证限制见[核对表](implementation-status.md#2026-11-15-gui-文档与源码核对)。
 

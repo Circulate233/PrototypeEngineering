@@ -2,12 +2,12 @@ package com.circulation.prototype_eng.client.render.construction;
 
 import com.circulation.prototype_eng.client.preview.ProjectionInteractions;
 import com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.Slice;
-import com.circulation.prototype_eng.structure.tool.effect.ConstructionArea;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.End;
-import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Forget;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Geometry;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Hud;
+import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Layout;
+import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Visibility;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.Minecraft;
@@ -18,9 +18,11 @@ import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.entity.Entity;
+import net.minecraft.profiler.Profiler;
 import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
+import net.minecraftforge.event.world.ChunkEvent;
 import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -35,7 +37,6 @@ import java.util.Locale;
 import static com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.MIN_OPACITY;
 import static com.circulation.prototype_eng.client.render.construction.ConstructionSurface.FLUID;
 import static com.circulation.prototype_eng.client.render.construction.ConstructionSurface.SOLID;
-import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.LAYERS_PER_SECTION;
 
 public final class ConstructionEffectRenderer {
     public static final ConstructionEffectRenderer INSTANCE = new ConstructionEffectRenderer();
@@ -49,6 +50,7 @@ public final class ConstructionEffectRenderer {
     private final Long2ObjectLinkedOpenHashMap<ConstructionAnimation> tasks = new Long2ObjectLinkedOpenHashMap<>();
     private final ObjectArrayList<Slice> visible = new ObjectArrayList<>();
     private final ConstructionMeshes meshes = new ConstructionMeshes();
+    private final ConstructionBatches batches = new ConstructionBatches();
     private final FloatBuffer color = BufferUtils.createFloatBuffer(4);
     private final long[] frameSamples = new long[240];
     private @Nullable WorldClient world;
@@ -68,7 +70,10 @@ public final class ConstructionEffectRenderer {
         useWorld(mc.world, mc.player);
         switch (payload) {
             case Geometry geometry -> geometry(geometry);
-            case Forget forget -> forget(forget);
+            case Visibility visibility -> {
+                var task = tasks.get(visibility.taskId());
+                if (task != null) task.hidden = !visibility.visible();
+            }
             case Hud hud -> status(hud);
             case End end -> end(end);
         }
@@ -77,37 +82,30 @@ public final class ConstructionEffectRenderer {
     private void geometry(Geometry packet) {
         var task = tasks.get(packet.taskId());
         if (task == null) {
-            var area = packet.area();
-            if (area == null) return;
-            task = begin(packet, packet.anchor(), packet.dismantle(), packet.startTick(), area);
+            var layout = packet.layout();
+            if (layout == null) return;
+            task = begin(packet, layout);
         }
         task.geometry(packet, tick);
     }
 
-    private void forget(Forget packet) {
-        var task = tasks.get(packet.taskId());
-        if (task == null) return;
-        var section = packet.section();
-        int x = section.chunkX(packet.quadrant()), y = section.y() * LAYERS_PER_SECTION, z = section.chunkZ(packet.quadrant());
-        for (int i = 0; i < LAYERS_PER_SECTION; i++) task.forget(x, y + i, z);
-        if (!task.owner && task.slices.isEmpty()) drop(packet.taskId());
-    }
-
     private void status(Hud packet) {
         var task = tasks.get(packet.taskId());
-        if (task == null) task = begin(packet, packet.anchor(), packet.dismantle(), packet.startTick(), packet.area());
-        if (task.complete != packet.complete()) task.hudText = null;
+        if (task == null) {
+            var layout = packet.layout();
+            if (layout == null) return;
+            task = begin(packet, layout);
+        }
         task.owner = true;
-        task.complete = packet.complete();
-        task.sample(packet.serverTick());
-        task.metrics(packet.missing(), packet.errors(), packet.unloaded(), packet.paused());
+        var status = packet.status();
+        task.metrics(status.missing(), status.errors(), status.unloaded(), status.paused());
         hudTask = Math.max(hudTask, packet.taskId());
     }
 
-    private ConstructionAnimation begin(ConstructionEffectPayload packet, long anchor, boolean dismantle, long startTick, ConstructionArea area) {
-        var task = new ConstructionAnimation(dismantle, startTick, area);
+    private ConstructionAnimation begin(ConstructionEffectPayload packet, Layout layout) {
+        var task = new ConstructionAnimation(layout.dismantle(), layout.startTick(), layout.wireTicks(), layout.area());
         tasks.put(packet.taskId(), task);
-        ProjectionInteractions.INSTANCE.constructionStarted(packet.dimension(), BlockPos.fromLong(anchor));
+        ProjectionInteractions.INSTANCE.constructionStarted(packet.dimension(), BlockPos.fromLong(layout.anchor()));
         return task;
     }
 
@@ -115,7 +113,11 @@ public final class ConstructionEffectRenderer {
         var task = tasks.get(packet.taskId());
         if (task == null) return;
         if (packet.cancelled()) drop(packet.taskId());
-        else task.finish(packet.serverTick(), tick);
+        else {
+            task.complete = packet.successful();
+            task.hudText = null;
+            task.finish(packet.serverTick(), tick);
+        }
     }
 
     private void drop(long id) {
@@ -150,6 +152,13 @@ public final class ConstructionEffectRenderer {
         Minecraft.getMinecraft().addScheduledTask(() -> {
             if (world == unloaded) clear();
         });
+    }
+
+    @SubscribeEvent
+    public void chunkUnload(ChunkEvent.Unload event) {
+        var chunk = event.getChunk();
+        if (chunk.getWorld() != world) return;
+        for (var task : tasks.values()) task.forgetChunk(chunk.x, chunk.z);
     }
 
     @SubscribeEvent
@@ -198,8 +207,7 @@ public final class ConstructionEffectRenderer {
     public void debugText(RenderGameOverlayEvent.Text event) {
         var mc = Minecraft.getMinecraft();
         if (tasks.isEmpty() || !mc.gameSettings.showDebugInfo) return;
-        var counters = meshes.metrics();
-        event.getRight().add(I18n.format("structure_tool.prototype_eng.ConstructionRenderStats", counters.draws(), counters.uploads(), counters.uploadedBytes()));
+        event.getRight().add(I18n.format("structure_tool.prototype_eng.ConstructionRenderStats", batches.draws(), meshes.uploads(), meshes.uploadedBytes()));
         if (frameStats == null || tick - lastFrameStatsTick >= 20) {
             int count = 0;
             for (long sample : mc.getFrameTimer().getFrames()) {
@@ -225,15 +233,17 @@ public final class ConstructionEffectRenderer {
         if (tasks.isEmpty() || mc.world != world || camera == null || viewer == null || viewer != player) return;
         mc.profiler.startSection("peConstruction");
         try {
-            renderScene(camera, viewer, event.getPartialTicks());
+            renderScene(camera, viewer, event.getPartialTicks(), mc.profiler);
         } finally {
+            batches.clear();
             visible.clear();
             mc.profiler.endSection();
         }
     }
 
-    private void renderScene(Entity camera, EntityPlayerSP viewer, float partial) {
+    private void renderScene(Entity camera, EntityPlayerSP viewer, float partial, Profiler profiler) {
         meshes.beginFrame();
+        batches.beginFrame();
         frame++;
         double viewerX = interpolate(partial, viewer.lastTickPosX, viewer.posX);
         double viewerY = interpolate(partial, viewer.lastTickPosY, viewer.posY);
@@ -243,28 +253,30 @@ public final class ConstructionEffectRenderer {
         double z = interpolate(partial, camera.lastTickPosZ, camera.posZ);
         double now = tick + (double) partial;
         Frustum frustum = null;
-        boolean draw = false;
         for (var task : tasks.values()) {
-            if (task.slices.isEmpty() || !task.area.withinRenderDistance(viewerX, viewerY, viewerZ)) continue;
-            if (frustum == null) {
-                frustum = new Frustum();
-                frustum.setPosition(x, y, z);
-            }
+            if (task.hidden || task.slices.isEmpty() || !task.area.withinRenderDistance(viewerX, viewerY, viewerZ)) continue;
             double wire = task.wireOpacity(now);
             boolean prepareWire = task.prepareOutline(now);
+            boolean prepareShell = task.prepareShell(now);
             for (var slice : task.slices.values()) {
                 double solid = slice.hasSolid ? task.shellOpacity(slice.solid, now) : 0;
                 double fluid = slice.fluids.isEmpty() ? 0 : task.shellOpacity(slice.fluid, now);
                 boolean drawSlice = Math.max(wire, Math.max(solid, fluid)) > MIN_OPACITY;
-                boolean prepareSlice = prepareWire && slice.wireVersion != slice.version;
-                if ((!drawSlice && !prepareSlice) || !frustum.isBoundingBoxInFrustum(slice.view)) continue;
+                boolean prepareSliceWire = prepareWire && slice.wireVersion != slice.version;
+                boolean prepareSliceShell = prepareShell && slice.hasSolid && slice.solidMesh.version != slice.version;
+                if (!drawSlice && !prepareSliceWire && !prepareSliceShell) continue;
+                if (frustum == null) {
+                    frustum = new Frustum();
+                    frustum.setPosition(x, y, z);
+                }
+                if (!frustum.isBoundingBoxInFrustum(slice.view)) continue;
                 slice.seenFrame = frame;
-                slice.prepareWire = prepareSlice;
+                slice.prepareWire = prepareSliceWire;
+                slice.prepareShell = prepareSliceShell;
                 slice.wireOpacity = wire;
                 slice.solidMesh.opacity = solid;
                 slice.fluidMesh.opacity = fluid;
                 visible.add(slice);
-                draw |= drawSlice;
             }
         }
         if (visible.isEmpty()) {
@@ -279,15 +291,23 @@ public final class ConstructionEffectRenderer {
         }
         var state = ConstructionGlState.capture(color);
         try {
-            upload(System.nanoTime() + FRAME_BUILD_NANOS);
-            if (!draw) return;
-            ConstructionGlState.prepare();
-            if (vbo) GlStateManager.glEnableClientState(GL11.GL_VERTEX_ARRAY);
+            profiler.startSection("meshUpload");
             try {
-                drawShells(x, y, z);
-                drawWires(x, y, z);
+                upload(System.nanoTime() + FRAME_BUILD_NANOS);
             } finally {
-                if (vbo) GlStateManager.glDisableClientState(GL11.GL_VERTEX_ARRAY);
+                profiler.endSection();
+            }
+            batches.collect(visible);
+            if (batches.empty()) return;
+            ConstructionGlState.prepare();
+            GL11.glPushClientAttrib(GL11.GL_CLIENT_VERTEX_ARRAY_BIT);
+            profiler.startSection("submit");
+            try {
+                GlStateManager.glEnableClientState(GL11.GL_VERTEX_ARRAY);
+                batches.draw(x, y, z);
+            } finally {
+                profiler.endSection();
+                GL11.glPopClientAttrib();
             }
         } finally {
             state.restore();
@@ -296,7 +316,7 @@ public final class ConstructionEffectRenderer {
 
     private void upload(long deadline) {
         boolean readyToPrefetch = true;
-        if (meshes.preparingOutline()) {
+        if (meshes.prefetching()) {
             for (int i = 0; i < visible.size(); i++) {
                 var slice = visible.get(i);
                 if (slice.wireOpacity > MIN_OPACITY && slice.wireVersion != slice.version
@@ -317,48 +337,8 @@ public final class ConstructionEffectRenderer {
         for (int i = 0; i < visible.size(); i++) {
             var slice = visible.get(i);
             if (slice.prepareWire && !meshes.build(slice, (byte) 0, deadline, vbo)) return;
+            if (slice.prepareShell && !meshes.build(slice, SOLID, deadline, vbo)) return;
         }
-    }
-
-    private void drawShells(double x, double y, double z) {
-        GlStateManager.enablePolygonOffset();
-        GlStateManager.doPolygonOffset(-1.0F, -10.0F);
-        for (int i = 0; i < visible.size(); i++) {
-            var slice = visible.get(i);
-            var solid = slice.solidMesh;
-            var fluid = slice.fluidMesh;
-            boolean showSolid = solid.opacity > MIN_OPACITY && solid.mesh != null && solid.version == slice.version;
-            boolean showFluid = fluid.opacity > MIN_OPACITY && fluid.mesh != null && fluid.version == slice.version;
-            if (!showSolid && !showFluid) continue;
-            GlStateManager.pushMatrix();
-            try {
-                GlStateManager.translate(slice.view.minX - x, slice.view.minY - y, slice.view.minZ - z);
-                if (showSolid) paint(solid.mesh, solid.opacity);
-                if (showFluid) paint(fluid.mesh, fluid.opacity);
-            } finally {
-                GlStateManager.popMatrix();
-            }
-        }
-        GlStateManager.disablePolygonOffset();
-    }
-
-    private void drawWires(double x, double y, double z) {
-        for (int i = 0; i < visible.size(); i++) {
-            var slice = visible.get(i);
-            if (slice.wire == null || slice.wireOpacity <= MIN_OPACITY || slice.wireVersion != slice.version) continue;
-            GlStateManager.pushMatrix();
-            try {
-                GlStateManager.translate(slice.view.minX - x, slice.view.minY - y, slice.view.minZ - z);
-                paint(slice.wire, slice.wireOpacity);
-            } finally {
-                GlStateManager.popMatrix();
-            }
-        }
-    }
-
-    private void paint(ConstructionMeshes.Mesh mesh, double opacity) {
-        GlStateManager.color(244 / 255F, 248 / 255F, 1, (float) opacity);
-        meshes.draw(mesh);
     }
 
     private static double interpolate(double factor, double min, double max) {
