@@ -14,7 +14,9 @@ public sealed interface ConstructionEffectPayload {
     int MAX_BYTES = 16 * 1024 - 1; // Forge also writes the one-byte message discriminator.
     int WHITE_TRANSITION_TICKS = 3;
     int REGION_FADE_TICKS = 8;
-    int FINISH_TICKS = 10;
+    int FINAL_WIRE_TICKS = 20;
+    int MIN_INITIAL_WIRE_TICKS = 6;
+    int MAX_INITIAL_WIRE_TICKS = 28;
     int LAYER_HEIGHT = 8;
     int LAYERS_PER_SECTION = 32 / LAYER_HEIGHT;
     int REGION_COUNT = LAYERS_PER_SECTION * 2;
@@ -29,7 +31,7 @@ public sealed interface ConstructionEffectPayload {
 
     static int wireTicks(int cells) {
         int log = Integer.SIZE - 1 - Integer.numberOfLeadingZeros(Math.max(1, cells));
-        return Math.min(14, 3 + log);
+        return Math.min(MAX_INITIAL_WIRE_TICKS, MIN_INITIAL_WIRE_TICKS + 2 * log);
     }
 
     static int region(int cell, boolean fluid) {
@@ -49,7 +51,8 @@ public sealed interface ConstructionEffectPayload {
                     BitSet excluded, List<RegionTime> regions) implements ConstructionEffectPayload {
         public Geometry {
             requireTask(taskId);
-            if (startTick < 0 || serverTick < startTick || wireTicks < 3 || wireTicks > 14 || quadrant < 0 || quadrant > 3
+            if (startTick < 0 || serverTick < startTick || wireTicks < MIN_INITIAL_WIRE_TICKS || wireTicks > MAX_INITIAL_WIRE_TICKS
+                || quadrant < 0 || quadrant > 3
                 || cells.length() > CHUNK_CELL_COUNT || fluids.length() > CHUNK_CELL_COUNT || excluded.length() > CHUNK_CELL_COUNT)
                 throw new IllegalArgumentException("Invalid construction geometry bounds");
             if (area != null) {

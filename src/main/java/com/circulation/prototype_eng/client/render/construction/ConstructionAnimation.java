@@ -11,7 +11,7 @@ import java.util.BitSet;
 
 import static com.circulation.prototype_eng.client.render.construction.ConstructionSurface.HEIGHT;
 import static com.circulation.prototype_eng.client.render.construction.ConstructionSurface.WIDTH;
-import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.FINISH_TICKS;
+import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.FINAL_WIRE_TICKS;
 import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.LAYERS_PER_SECTION;
 import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.REGION_FADE_TICKS;
 import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.WHITE_TRANSITION_TICKS;
@@ -19,6 +19,7 @@ import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEf
 final class ConstructionAnimation {
     static final int SLICE_CELLS = WIDTH * HEIGHT * WIDTH;
     static final double MIN_OPACITY = .004;
+    private static final int COMPLETION_HUD_TICKS = 60;
     private static final long UNSET = Long.MIN_VALUE;
 
     final boolean dismantle;
@@ -60,7 +61,7 @@ final class ConstructionAnimation {
         if (dismantle) {
             double after = finishAge(now);
             return after < 0 ? 0 : .92 * smooth(after, WHITE_TRANSITION_TICKS)
-                * (1 - smooth(after - WHITE_TRANSITION_TICKS, FINISH_TICKS - WHITE_TRANSITION_TICKS));
+                * (1 - smooth(after - WHITE_TRANSITION_TICKS, FINAL_WIRE_TICKS - WHITE_TRANSITION_TICKS));
         }
         return finishAt == UNSET && wireTicks != 0 ? .92 * (1 - smooth(now - introAt - wireTicks, WHITE_TRANSITION_TICKS)) : 0;
     }
@@ -78,7 +79,7 @@ final class ConstructionAnimation {
     }
 
     boolean expired(double now) {
-        return finishAge(now) >= FINISH_TICKS;
+        return finishAge(now) >= (owner ? COMPLETION_HUD_TICKS : FINAL_WIRE_TICKS);
     }
 
     private static double smooth(double age, int duration) {

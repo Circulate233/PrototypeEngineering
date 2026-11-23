@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import java.util.BitSet;
 import java.util.List;
 
-import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.FINISH_TICKS;
+import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.FINAL_WIRE_TICKS;
 import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.REGION_FADE_TICKS;
 import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.WHITE_TRANSITION_TICKS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -88,8 +88,11 @@ class ConstructionAnimationTest {
         assertEquals(wire, animation.wireOpacity(arrives + 1));
         assertTrue(animation.wireOpacity(arrives + WHITE_TRANSITION_TICKS) > animation.wireOpacity(arrives + WHITE_TRANSITION_TICKS + 1));
         assertEquals(0, animation.shellOpacity(upper.solid, arrives + REGION_FADE_TICKS));
-        assertFalse(animation.expired(arrives + FINISH_TICKS - 1));
-        assertTrue(animation.expired(arrives + FINISH_TICKS));
+        assertFalse(animation.expired(arrives + FINAL_WIRE_TICKS - 1));
+        assertTrue(animation.expired(arrives + FINAL_WIRE_TICKS));
+        animation.owner = true;
+        assertEquals(0, animation.wireOpacity(arrives + FINAL_WIRE_TICKS));
+        assertFalse(animation.expired(arrives + FINAL_WIRE_TICKS));
     }
 
     @Test
@@ -109,13 +112,13 @@ class ConstructionAnimationTest {
     void lateDismantleViewerJoinsTheRemainingOutlineFade() {
         var animation = new ConstructionAnimation(true, START, AREA);
         long end = START + WHITE_TRANSITION_TICKS;
-        long elapsed = FINISH_TICKS / 2;
+        long elapsed = FINAL_WIRE_TICKS / 2;
         long local = 1;
         animation.geometry(geometry(true, end + elapsed, bits(0), new BitSet(), List.of(new RegionTime(0, START, end))), local);
         animation.finish(end, local);
         assertEquals(elapsed, animation.finishAge(local));
         assertTrue(animation.wireOpacity(local) > 0);
-        assertTrue(animation.expired(local + FINISH_TICKS - elapsed));
+        assertTrue(animation.expired(local + FINAL_WIRE_TICKS - elapsed));
     }
 
     @Test

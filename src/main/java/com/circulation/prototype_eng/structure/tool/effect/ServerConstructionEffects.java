@@ -447,7 +447,7 @@ public final class ServerConstructionEffects {
                 endingAudience = players;
                 end = effect.ending = new End(end.dimension(), end.taskId(), effect.session.tick, end.cancelled(), end.successful());
                 effect.endReady = true;
-                retireAfter = end.serverTick() + (end.cancelled() ? 0 : ConstructionEffectPayload.FINISH_TICKS);
+                retireAfter = end.serverTick() + (end.cancelled() ? 0 : ConstructionEffectPayload.FINAL_WIRE_TICKS);
             }
             if (cursor < players.size()) {
                 if (!effect.deliverEnd(players.get(cursor), end)) return WorkResult.WAIT;
@@ -637,7 +637,7 @@ public final class ServerConstructionEffects {
             var effect = sector.effect;
             if (!effect.live() || effect.retiring || effect.cancelled() || !sector.watching(viewer)) return WorkResult.DONE;
             var end = effect.endReady ? effect.ending : null;
-            if (end != null && effect.session.tick - end.serverTick() >= ConstructionEffectPayload.FINISH_TICKS) return WorkResult.DONE;
+            if (end != null && effect.session.tick - end.serverTick() >= ConstructionEffectPayload.FINAL_WIRE_TICKS) return WorkResult.DONE;
             if (effect.session.remainingPackets < (end == null ? 1 : 2)) return WorkResult.WAIT;
             if (!effect.session.send(viewer.player, sector.geometry(true, sector.excluded, (1 << sector.regions.length) - 1), end)) return WorkResult.WAIT;
             viewer.revision = sector.revision;

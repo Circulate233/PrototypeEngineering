@@ -1,5 +1,11 @@
 # 实施进度
 
+## 2026-11-23 施工线框与结束提示时长
+
+开场白线仍按施工格数对数增长，时长翻倍至 6–28 tick。拆卸收尾白线从 10 tick 延长至 20 tick。发起者的结束提示独立保留 60 个客户端 tick，区段白壳仍在 8 tick 内淡出。旁观者按收尾动画时间清理，不延长服务端几何保留时间来显示提示。
+
+Java 25 离线完整构建和 Spotless 通过。现有拆卸动画测试覆盖收尾白线淡出后发起者的提示仍可显示。本机 IDEA MCP 全级检查 4 个 Java 文件，错误、警告及弱警告均为零，定向构建通过。证据位于 `build/staging/construction-display-duration/`，显示时长待游戏内复验。
+
 ## 2026-11-23 施工预算热修改与观测站转向
 
 删除固定预算的 `BuilderConfig`。首次加载 `config/prototype_eng/builder.cfg` 时移除旧批量格数和间隔，保留其他设置，新增默认值为 10 ms 的 `construction.tickBudgetMillis`。管理员可用 `/pe builder budget <毫秒>` 更新并保存，或在编辑文件后执行 `/pe builder reload`。所有维度的搭建与拆卸共用预算，正在执行的队列从下一 tick 读到新值。延后的光照、邻居通知和特效发送独立结算。
