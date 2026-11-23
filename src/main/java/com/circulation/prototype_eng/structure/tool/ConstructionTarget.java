@@ -10,22 +10,27 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * Exact controller or external anchor captured at the construction owner's boundary.
- */
 public record ConstructionTarget(World world, BlockPos position, ResourceLocation binding, ResourceLocation structure,
-                                 LocalizationEnum name, BlockOrientation orientation, boolean formed,
+                                 LocalizationEnum name, BlockOrientation orientation,
                                  @Nullable MachineControllerHost controller, IBlockState anchorState) {
     public static @Nullable ConstructionTarget resolve(World world, BlockPos position) {
         if (!world.isBlockLoaded(position, false)) return null;
         var state = world.getBlockState(position);
         if (world.getTileEntity(position) instanceof MachineControllerHost host)
             return new ConstructionTarget(world, position.toImmutable(), host.type().id(), host.type().structureId(),
-                host.type().displayName(), host.orientation(), host.formed(), host, state);
+                host.type().displayName(), host.orientation(), host, state);
         var entry = StructureConstructionRegistry.INSTANCE.find(state);
         if (entry == null) return null;
         return new ConstructionTarget(world, position.toImmutable(), state.getBlock().getRegistryName(), entry.structure(),
-            entry.name(), entry.orientation().apply(state), false, null, state);
+            entry.name(), entry.orientation().apply(state), null, state);
+    }
+
+    boolean formedForConstruction() {
+        if (world.isRemote) throw new IllegalStateException("Construction formation is server-side");
+        if (controller != null) return controller.formed();
+        var entry = StructureConstructionRegistry.INSTANCE.find(anchorState);
+        return entry != null && entry.formation() != null
+            && entry.isFormed(anchorState, world.getTileEntity(position), world, position);
     }
 
     public void atBoundary(Runnable action) {
@@ -38,6 +43,10 @@ public record ConstructionTarget(World world, BlockPos position, ResourceLocatio
         if (controller != null)
             return world.getTileEntity(position) == controller && !controller.blockEntity().isInvalid()
                 && controller.type().id().equals(binding) && controller.orientation() == orientation;
-        return world.getBlockState(position).equals(anchorState);
+        var state = world.getBlockState(position);
+        if (anchorState.equals(state)) return true;
+        if (state.getBlock() != anchorState.getBlock()) return false;
+        var entry = StructureConstructionRegistry.INSTANCE.find(state);
+        return entry != null && entry.structure().equals(structure) && entry.orientation().apply(state) == orientation;
     }
 }

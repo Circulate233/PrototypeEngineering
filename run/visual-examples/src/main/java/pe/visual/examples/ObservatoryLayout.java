@@ -7,6 +7,7 @@ import static pe.visual.examples.ObservatoryLayout.Surface.*;
 final class ObservatoryLayout {
     private static final int DOME_Z = 32;
     private static final int TOWER_Z = 19;
+    static final long DOME_TIP = BlockPos2ObjectMap.toLong(0, 39, DOME_Z);
 
     enum Surface {
         STONE_BRICK, ANDESITE, QUARTZ, CARVED_QUARTZ, PRISMARINE, DARK_PRISMARINE,
@@ -102,7 +103,7 @@ final class ObservatoryLayout {
             if (radius <= 2.3) put(x, 37, DOME_Z + dz, CARVED_QUARTZ);
         }
         put(0, 38, DOME_Z, SEA_LANTERN);
-        put(0, 39, DOME_Z, GOLD);
+        cells.put(DOME_TIP, GOLD);
     }
 
     private static double domeRadius(double y) {

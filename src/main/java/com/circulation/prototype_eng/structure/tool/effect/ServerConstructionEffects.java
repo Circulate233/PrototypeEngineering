@@ -6,9 +6,11 @@ import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPay
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Forget;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Geometry;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Hud;
+import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.RegionTime;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Section;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
@@ -25,10 +27,10 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Iterator;
 import java.util.Objects;
-import java.util.function.BooleanSupplier;
 
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class ServerConstructionEffects {
@@ -48,11 +50,10 @@ public final class ServerConstructionEffects {
     }
 
     /** Run after the native player chunk map, and before this tick's block changes. */
-    public static void tick(MinecraftServer server, long deadlineNanos) {
+    public static void tick(MinecraftServer server) {
         var active = current;
         if (active == null || active.server != server) return;
-        long now = System.nanoTime();
-        active.tick(Math.min(deadlineNanos - now, SYNC_NANOS), now);
+        active.tick();
     }
 
     public static void stop() {
@@ -87,7 +88,7 @@ public final class ServerConstructionEffects {
         if (sectors == null) return;
         var player = event.getPlayer();
         for (var sector : sectors) {
-            if (watching) sector.watch(player, false);
+            if (watching) sector.watch(player);
             else sector.unwatch(player);
         }
     }
@@ -118,12 +119,13 @@ public final class ServerConstructionEffects {
             this.server = server;
         }
 
-        void tick(long allowance, long started) {
-            tick = Math.incrementExact(tick);
+        void tick() {
+            long started = System.nanoTime();
+            tick = Integer.toUnsignedLong(server.getTickCounter());
             remainingBytes = BYTES_PER_TICK;
             remainingPackets = PACKETS_PER_TICK;
             int waiting = 0;
-            while (!work.isEmpty() && waiting < work.size() && System.nanoTime() - started < allowance) {
+            while (!work.isEmpty() && waiting < work.size() && System.nanoTime() - started < SYNC_NANOS) {
                 var next = work.removeFirst();
                 switch (next.advance()) {
                     case DONE -> waiting = 0;
@@ -169,6 +171,10 @@ public final class ServerConstructionEffects {
         static SectorKey at(BlockPos position) {
             return new SectorKey(Section.at(position), Section.quadrant(position));
         }
+
+        static long packed(BlockPos position) {
+            return ChunkPos.asLong(position.getX() >> 4, position.getZ() >> 4) << 3 | (position.getY() >> 5);
+        }
     }
 
     public static final class Effect {
@@ -182,15 +188,17 @@ public final class ServerConstructionEffects {
         private final int dimension;
         private final ConstructionArea.Builder areaBuilder = new ConstructionArea.Builder();
         private @Nullable ConstructionArea area;
-        private final Object2ObjectLinkedOpenHashMap<SectorKey, Sector> sectors = new Object2ObjectLinkedOpenHashMap<>();
+        private final Long2ObjectLinkedOpenHashMap<Sector> sectors = new Long2ObjectLinkedOpenHashMap<>();
+        private final Int2ObjectOpenHashMap<RemovalLayer> removalLayers = new Int2ObjectOpenHashMap<>();
         private final Reference2ObjectOpenHashMap<EntityPlayerMP, Audience> audience = new Reference2ObjectOpenHashMap<>();
-        private @Nullable Iterator<Sector> publishing;
+        private final ObjectOpenHashSet<Sector> unsettled = new ObjectOpenHashSet<>();
+        private boolean publishing;
         private long startTick = -1;
-        private long lastInitialSend;
+        private int cellCount;
+        private int wireTicks;
         private @Nullable End ending;
         private boolean endReady;
         private boolean retiring;
-        private int initialReplays;
         private int pendingDeltas;
         private int missing;
         private int errors;
@@ -214,56 +222,75 @@ public final class ServerConstructionEffects {
             areaBuilder.include(position);
         }
 
-        public void add(BlockPos position) {
+        public void add(BlockPos position, boolean fluid) {
             if (startTick >= 0) throw new IllegalStateException("Cannot change a published construction plan");
             if (!inBounds(position)) return;
-            var key = SectorKey.at(position);
-            sectors.computeIfAbsent(key, _ -> new Sector(this, key)).cells.set(Section.index(position));
+            long key = SectorKey.packed(position);
+            var sector = sectors.get(key);
+            if (sector == null) {
+                sector = new Sector(this, SectorKey.at(position));
+                sectors.put(key, sector);
+            }
+            int cell = Section.index(position);
+            if (!sector.cells.get(cell)) {
+                sector.add(cell, fluid);
+                cellCount++;
+            }
         }
 
         /** Starts projection publication after preflight and the builder screen closes. */
         public void start() {
             if (startTick >= 0 || !live()) throw new IllegalStateException("Cannot start this construction projection");
             area = areaBuilder.build();
-            startTick = session.tick;
-            lastInitialSend = startTick;
-            publishing = sectors.values().iterator();
+            startTick = currentTick();
+            wireTicks = ConstructionEffectPayload.wireTicks(cellCount);
             queueHud();
-        }
-
-        public boolean hasConstructionWork() {
-            return publishing != null || introComplete();
+            if (!sectors.isEmpty()) {
+                publishing = true;
+                session.work.addLast(new PublishEffect(this, sectors.values().iterator()));
+            }
         }
 
         private boolean introComplete() {
-            return area == null || initialReplays == 0 && session.tick - lastInitialSend >= ConstructionEffectPayload.INTRO_TICKS;
+            return cellCount == 0 || currentTick() - startTick >= (dismantle ? 0 : wireTicks + ConstructionEffectPayload.WHITE_TRANSITION_TICKS);
         }
 
-        /** Index the first audience inside the task's time share, then allow the intro to play. */
-        public boolean ready(BooleanSupplier available) {
-            if (startTick < 0 || ending != null || !live()) return false;
-            var queue = publishing;
-            if (queue != null) {
-                while (queue.hasNext() && available.getAsBoolean()) queue.next().attach();
-                if (queue.hasNext()) return false;
-                publishing = null;
-            }
-            return introComplete();
+        public boolean ready() {
+            return startTick >= 0 && ending == null && live() && introComplete();
         }
 
-        /** Only call when the authoritative block operation has actually committed. */
-        public void committed(BlockPos position) {
-            change(position, true);
+        public boolean canRemove(BlockPos position, boolean fluid) {
+            var sector = sectors.get(SectorKey.packed(position));
+            if (sector == null) return true;
+            int region = ConstructionEffectPayload.region(Section.index(position), fluid);
+            return sector.canRemove(region);
         }
 
-        public void exclude(BlockPos position) {
-            change(position, false);
+        private RemovalLayer addRemovalRegion(Sector sector, int region) {
+            int key = sector.key.section.y() * ConstructionEffectPayload.REGION_COUNT + region;
+            var layer = removalLayers.computeIfAbsent(key, _ -> new RemovalLayer(this, region));
+            layer.sectors.add(sector);
+            return layer;
         }
 
-        private void change(BlockPos position, boolean changed) {
-            if (!live() || !inBounds(position)) return;
-            var sector = sectors.get(SectorKey.at(position));
-            if (sector != null) sector.change(Section.index(position), changed);
+        public boolean resolved(BlockPos position, boolean fluid, boolean changed) {
+            if (!inBounds(position)) return false;
+            var sector = sectors.get(SectorKey.packed(position));
+            if (sector == null) return false;
+            int cell = Section.index(position);
+            if (!sector.cells.get(cell)) return false;
+            return sector.resolve(cell, ConstructionEffectPayload.region(cell, fluid), changed);
+        }
+
+        /** Called after this task's lighting and neighbor notifications have been processed. */
+        public void flushSettled() {
+            long tick = currentTick();
+            for (var sector : unsettled) sector.settle(tick);
+            unsettled.clear();
+        }
+
+        private long currentTick() {
+            return Integer.toUnsignedLong(session.server.getTickCounter());
         }
 
         public boolean ownerWithinRenderDistance() {
@@ -290,7 +317,7 @@ public final class ServerConstructionEffects {
 
         private void end(boolean cancelled, boolean successful) {
             if (startTick < 0 || ending != null || !live()) return;
-            ending = new End(dimension, id, session.tick, cancelled, successful);
+            ending = new End(dimension, id, currentTick(), cancelled, successful);
             if (!cancelled) queueHud();
             session.work.addLast(new CloseEffect(this));
         }
@@ -352,6 +379,50 @@ public final class ServerConstructionEffects {
         }
     }
 
+    private record PublishEffect(Effect effect, Iterator<Sector> sectors) implements Work {
+        @Override
+        public WorkResult advance() {
+            if (effect.live() && !effect.cancelled()) {
+                sectors.next().attach();
+                if (sectors.hasNext()) return WorkResult.CONTINUE;
+            }
+            effect.publishing = false;
+            return WorkResult.DONE;
+        }
+    }
+
+    private static final class RemovalLayer implements Work {
+        private final Effect effect;
+        private final int index;
+        private final ObjectArrayList<Sector> sectors = new ObjectArrayList<>();
+        private int cursor;
+        private boolean requested;
+
+        RemovalLayer(Effect effect, int index) {
+            this.effect = effect;
+            this.index = index;
+        }
+
+        void request() {
+            if (requested) return;
+            requested = true;
+            effect.session.work.addLast(this);
+        }
+
+        @Override
+        public WorkResult advance() {
+            if (!effect.live() || effect.cancelled()) return WorkResult.DONE;
+            var sector = sectors.get(cursor);
+            if (!sector.attached) return WorkResult.WAIT;
+            var region = Objects.requireNonNull(sector.regions[index]);
+            if (region.remaining > 0) {
+                region.activating = true;
+                sector.queueDelta();
+            }
+            return ++cursor == sectors.size() ? WorkResult.DONE : WorkResult.CONTINUE;
+        }
+    }
+
     private static final class CloseEffect implements Work {
         private final Effect effect;
         private @Nullable ObjectArrayList<Audience> endingAudience;
@@ -370,7 +441,8 @@ public final class ServerConstructionEffects {
             if (end == null) throw new IllegalStateException("Construction effect has no terminal state");
             var players = endingAudience;
             if (players == null) {
-                if (!end.cancelled() && (effect.pendingDeltas != 0 || effect.initialReplays != 0 || effect.hudQueued)) return WorkResult.WAIT;
+                if (!end.cancelled() && (effect.publishing || effect.pendingDeltas != 0 || !effect.unsettled.isEmpty() || effect.hudQueued))
+                    return WorkResult.WAIT;
                 players = new ObjectArrayList<>(effect.audience.values());
                 endingAudience = players;
                 end = effect.ending = new End(end.dimension(), end.taskId(), effect.session.tick, end.cancelled(), end.successful());
@@ -399,13 +471,14 @@ public final class ServerConstructionEffects {
         private final SectorKey key;
         private final long chunk;
         private final BitSet cells = new BitSet();
-        private final BitSet committed = new BitSet();
+        private final BitSet fluids = new BitSet();
         private final BitSet excluded = new BitSet();
-        private final BitSet pendingCommit = new BitSet();
         private final BitSet pendingExclude = new BitSet();
+        private final Region[] regions = new Region[ConstructionEffectPayload.REGION_COUNT];
         private final Reference2ObjectOpenHashMap<EntityPlayerMP, Viewer> viewers = new Reference2ObjectOpenHashMap<>();
         private int revision;
         private boolean deltaQueued;
+        private boolean attached;
 
         Sector(Effect effect, SectorKey key) {
             this.effect = effect;
@@ -414,11 +487,12 @@ public final class ServerConstructionEffects {
         }
 
         void attach() {
+            attached = true;
             var index = effect.index;
             index.chunks.computeIfAbsent(chunk, _ -> new ObjectOpenHashSet<>()).add(this);
             var entry = index.world.getPlayerChunkMap().getEntry(key.section.chunkX(key.quadrant), key.section.chunkZ(key.quadrant));
             if (entry == null) return;
-            for (var player : entry.getWatchingPlayers()) watch(player, true);
+            for (var player : entry.getWatchingPlayers()) watch(player);
         }
 
         void detach() {
@@ -428,14 +502,13 @@ public final class ServerConstructionEffects {
             viewers.clear();
         }
 
-        void watch(EntityPlayerMP player, boolean initial) {
+        void watch(EntityPlayerMP player) {
             if (effect.retiring || effect.cancelled()) return;
             var view = viewers.get(player);
             if (view != null && view.connection == player.connection) return;
             view = new Viewer(player, player.connection);
             viewers.put(player, view);
-            if (initial) effect.initialReplays++;
-            effect.session.work.addLast(new Replay(this, view, initial));
+            effect.session.work.addLast(new Replay(this, view));
         }
 
         void unwatch(EntityPlayerMP player) {
@@ -459,26 +532,77 @@ public final class ServerConstructionEffects {
                 && effect.index.world.getPlayerChunkMap().isPlayerWatchingChunk(view.player, key.section.chunkX(key.quadrant), key.section.chunkZ(key.quadrant));
         }
 
-        void change(int cell, boolean changed) {
-            if (!cells.get(cell)) return;
-            if (changed && (excluded.get(cell) || pendingExclude.get(cell)) || !changed && (committed.get(cell) || pendingCommit.get(cell)))
-                throw new IllegalStateException("Conflicting construction outcome at " + key + " cell " + cell);
-            if (effect.startTick < 0) {
-                if (changed) throw new IllegalStateException("A construction committed before projection started");
-                excluded.set(cell);
-                return;
+        void add(int cell, boolean fluid) {
+            cells.set(cell);
+            if (fluid) fluids.set(cell);
+            int index = ConstructionEffectPayload.region(cell, fluid);
+            var region = regions[index];
+            if (region == null) regions[index] = region = new Region(effect.dismantle ? effect.addRemovalRegion(this, index) : null);
+            region.remaining++;
+        }
+
+        boolean canRemove(int index) {
+            var region = regions[index];
+            if (region == null) return true;
+            if (region.removableTick < 0) {
+                Objects.requireNonNull(region.removal).request();
+                return false;
             }
-            if (changed) pendingCommit.set(cell);
-            else pendingExclude.set(cell);
+            return effect.currentTick() >= region.removableTick;
+        }
+
+        boolean resolve(int cell, int index, boolean changed) {
+            var region = Objects.requireNonNull(regions[index]);
+            if (region.remaining <= 0) throw new IllegalStateException("Construction region already resolved at " + key);
+            if (!changed) {
+                pendingExclude.set(cell);
+                queueDelta();
+            }
+            if (--region.remaining != 0) return false;
+            effect.unsettled.add(this);
+            return true;
+        }
+
+        void settle(long tick) {
+            for (var region : regions) {
+                if (region != null && region.remaining == 0 && region.settledTick < 0 && region.syncAfterTick < 0) {
+                    region.syncAfterTick = tick;
+                    queueDelta();
+                }
+            }
+        }
+
+        private void queueDelta() {
             if (deltaQueued) return;
             deltaQueued = true;
             effect.pendingDeltas++;
             effect.session.work.addLast(new Delta(this));
         }
 
-        Geometry geometry(boolean snapshot, BitSet added, BitSet removed) {
+        Geometry geometry(boolean snapshot, BitSet removed, int mask) {
+            var times = new ArrayList<RegionTime>(Integer.bitCount(mask));
+            for (int i = 0; i < regions.length; i++) {
+                var region = regions[i];
+                if ((mask & 1 << i) != 0 && region != null && (region.activatedTick >= 0 || region.settledTick >= 0))
+                    times.add(new RegionTime(i, region.activatedTick, region.settledTick));
+            }
             return new Geometry(effect.dimension, effect.id, effect.anchor, effect.dismantle, effect.startTick, effect.session.tick,
-                key.section, key.quadrant, snapshot ? Objects.requireNonNull(effect.area) : null, snapshot ? cells : new BitSet(), added, removed);
+                effect.wireTicks, key.section, key.quadrant, snapshot ? Objects.requireNonNull(effect.area) : null,
+                snapshot ? cells : new BitSet(), snapshot ? fluids : new BitSet(), removed, times);
+        }
+    }
+
+    private static final class Region {
+        final @Nullable RemovalLayer removal;
+        int remaining;
+        long activatedTick = -1;
+        long removableTick = -1;
+        long syncAfterTick = -1;
+        long settledTick = -1;
+        boolean activating;
+
+        Region(@Nullable RemovalLayer removal) {
+            this.removal = removal;
         }
     }
 
@@ -507,30 +631,19 @@ public final class ServerConstructionEffects {
         }
     }
 
-    private record Replay(Sector sector, Viewer viewer, boolean initial) implements Work {
+    private record Replay(Sector sector, Viewer viewer) implements Work {
         @Override
         public WorkResult advance() {
             var effect = sector.effect;
-            if (!effect.live() || effect.retiring || effect.cancelled() || !sector.watching(viewer)) return finish(false);
+            if (!effect.live() || effect.retiring || effect.cancelled() || !sector.watching(viewer)) return WorkResult.DONE;
             var end = effect.endReady ? effect.ending : null;
-            if (end != null && effect.session.tick - end.serverTick() >= ConstructionEffectPayload.FINISH_TICKS) return finish(false);
-            var recipient = effect.audience.get(viewer.player);
-            if (recipient != null && recipient.connection == viewer.connection && recipient.endSent) end = null;
+            if (end != null && effect.session.tick - end.serverTick() >= ConstructionEffectPayload.FINISH_TICKS) return WorkResult.DONE;
             if (effect.session.remainingPackets < (end == null ? 1 : 2)) return WorkResult.WAIT;
-            if (!effect.session.send(viewer.player, sector.geometry(true, sector.committed, sector.excluded), end)) return WorkResult.WAIT;
+            if (!effect.session.send(viewer.player, sector.geometry(true, sector.excluded, (1 << sector.regions.length) - 1), end)) return WorkResult.WAIT;
             viewer.revision = sector.revision;
-            recipient = viewer.recipient = effect.recipient(viewer.player, viewer.connection);
+            var recipient = viewer.recipient = effect.recipient(viewer.player, viewer.connection);
             recipient.sectors++;
             if (end != null) recipient.endSent = true;
-            return finish(true);
-        }
-
-        private WorkResult finish(boolean sent) {
-            if (initial) {
-                var effect = sector.effect;
-                effect.initialReplays--;
-                if (sent) effect.lastInitialSend = effect.session.tick;
-            }
             return WorkResult.DONE;
         }
     }
@@ -540,6 +653,7 @@ public final class ServerConstructionEffects {
         private @Nullable Geometry packet;
         private @Nullable ObjectArrayList<Viewer> audience;
         private int cursor;
+        private int activating;
 
         Delta(Sector sector) {
             this.sector = sector;
@@ -551,14 +665,31 @@ public final class ServerConstructionEffects {
             if (!effect.live() || effect.cancelled()) return finish();
             var players = audience;
             if (players == null) {
-                if (sector.pendingCommit.isEmpty() && sector.pendingExclude.isEmpty()) return finish();
+                int mask = 0;
+                boolean waiting = false;
+                for (int i = 0; i < sector.regions.length; i++) {
+                    var region = sector.regions[i];
+                    if (region == null) continue;
+                    if (region.activating) {
+                        region.activating = false;
+                        region.activatedTick = effect.session.tick;
+                        activating |= 1 << i;
+                        mask |= 1 << i;
+                    }
+                    if (region.syncAfterTick >= 0) {
+                        if (effect.session.tick > region.syncAfterTick) {
+                            region.syncAfterTick = -1;
+                            region.settledTick = effect.session.tick;
+                            mask |= 1 << i;
+                        } else waiting = true;
+                    }
+                }
+                if (mask == 0 && sector.pendingExclude.isEmpty()) return waiting ? WorkResult.WAIT : finish();
                 sector.revision++;
-                sector.committed.or(sector.pendingCommit);
                 sector.excluded.or(sector.pendingExclude);
                 players = new ObjectArrayList<>(sector.viewers.values());
                 audience = players;
-                if (!players.isEmpty()) packet = sector.geometry(false, sector.pendingCommit, sector.pendingExclude);
-                sector.pendingCommit.clear();
+                if (!players.isEmpty()) packet = sector.geometry(false, sector.pendingExclude, mask);
                 sector.pendingExclude.clear();
                 cursor = 0;
             }
@@ -573,9 +704,13 @@ public final class ServerConstructionEffects {
                 cursor++;
                 return WorkResult.CONTINUE;
             }
+            while (activating != 0) {
+                int region = Integer.numberOfTrailingZeros(activating);
+                Objects.requireNonNull(sector.regions[region]).removableTick = effect.session.tick + ConstructionEffectPayload.WHITE_TRANSITION_TICKS;
+                activating &= activating - 1;
+            }
             packet = null;
             audience = null;
-            if (sector.pendingCommit.isEmpty() && sector.pendingExclude.isEmpty()) return finish();
             return WorkResult.CONTINUE;
         }
 

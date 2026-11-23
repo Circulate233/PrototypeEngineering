@@ -19,9 +19,11 @@ import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
+import com.circulation.prototype_eng.api.structure.StructureConstructionRegistry;
 import com.circulation.prototype_eng.block.MachineControllerBlocks;
 import com.circulation.prototype_eng.client.gui.GuiResearchOverview;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
@@ -36,7 +38,11 @@ import mezz.jei.api.recipe.IRecipeCategoryRegistration;
 import mezz.jei.config.Config;
 import mezz.jei.gui.recipes.RecipesGui;
 import net.minecraft.client.Minecraft;
+import net.minecraft.block.Block;
+import net.minecraft.block.state.IBlockState;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
@@ -371,7 +377,29 @@ public class PrototypeJeiPlugin implements IModPlugin {
 
             structures.add(new StructurePreviewJeiRecipe(machine, controllers));
         }
+        var anchors = new Object2ObjectLinkedOpenHashMap<AnchorKey, AnchorPage>();
+        for (var entry : StructureConstructionRegistry.INSTANCE.bindings().entrySet()) {
+            var state = entry.getKey();
+            var binding = entry.getValue();
+            var block = state.getBlock();
+            var item = Item.getItemFromBlock(block);
+            int subtype = item.getHasSubtypes() ? block.damageDropped(state) : 0;
+            var key = new AnchorKey(binding.structure(), block, subtype);
+            if (!anchors.containsKey(key) || state == block.getDefaultState())
+                anchors.put(key, new AnchorPage(state, binding, new ItemStack(item, 1, subtype)));
+        }
+        for (var page : anchors.values()) {
+            var stack = page.stack();
+            if (!stack.isEmpty()) registration.addRecipeCatalyst(stack, StructurePreviewJeiCategory.UID);
+            structures.add(new StructurePreviewJeiRecipe(page.state(), page.binding(), stack));
+        }
         registration.addRecipes(structures, StructurePreviewJeiCategory.UID);
+    }
+
+    private record AnchorKey(ResourceLocation structure, Block block, int subtype) {
+    }
+
+    private record AnchorPage(IBlockState state, StructureConstructionRegistry.Entry binding, ItemStack stack) {
     }
 
     private static void registerPoolRecipes(IModRegistry registration) {

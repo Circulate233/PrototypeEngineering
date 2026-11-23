@@ -120,12 +120,12 @@ public final class ContainerStructureTool extends AEBaseContainer {
             return;
         var tag = data();
         if (builder) {
-            if (action.kind.equals("upgrades") && BuilderState.state(tag) == BuilderState.State.IDLE) {
+            if (action.kind.equals("upgrades") && !StructureBuildTasks.controlsTask(getPlayer(), tag)) {
                 getPlayer().openGui(PrototypeEngineering.instance, ContainerBuilderUpgrades.GUI_ID, world, slot, 0, 0);
                 return;
             }
             if (action.kind.equals("task")) StructureBuildTasks.toggle(getPlayer(), slot, tool);
-            else if (action.kind.equals("builder_setting") && BuilderState.state(tag) == BuilderState.State.IDLE) {
+            else if (action.kind.equals("builder_setting") && !StructureBuildTasks.controlsTask(getPlayer(), tag)) {
                 for (var setting : BuilderState.Setting.VALUES)
                     if (setting.name().equals(action.key)) setting.toggle(tag);
                 switch (action.key) {
@@ -341,6 +341,7 @@ public final class ContainerStructureTool extends AEBaseContainer {
                     continue;
                 snapshot.setTag(key, tag.getTag(key));
             }
+            StructureBuildTasks.writeStatus(getPlayer(), snapshot);
             state = snapshot.toString();
         } else state = tag.toString();
         getPlayer().inventory.markDirty();

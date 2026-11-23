@@ -56,6 +56,7 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -208,10 +209,10 @@ public final class StructurePreviewScene implements AutoCloseable {
         access.advance(2048);
         camera.prepare(bounds);
         prepareBoundaries();
-        var controllerState = controller == null || !view.threeDimensional && view.layer != 0 ? null
+        var mainState = !view.threeDimensional && view.layer != 0 ? null : controller == null ? view.externalMainBlock()
             : controller.previewState(view.settings().orientation(), view.formingModelsVisible());
         if (closed || view.token() != round || view.model() != model || mc.world != world) return;
-        access.controllerState(controllerState);
+        access.controllerState(mainState);
         if (pickWorld == null) pickWorld = new StructurePickWorld(mc.world, access::getBlockState, position -> {
             var cell = view.at(position);
             return cell == null || cell.display() == null ? null : cell.display().tileNbt();
@@ -268,7 +269,7 @@ public final class StructurePreviewScene implements AutoCloseable {
                     GlStateManager.rotate((float) camera.yaw(), 0, 1, 0);
                     GlStateManager.translate(-center.x, -center.y, -center.z);
                     var ray = camera.ray(viewport, viewport.x() + viewport.width() / 2, viewport.y() + viewport.height() / 2, bounds);
-                    if (controllerState != null) drawController(controllerState);
+                    if (mainState != null) drawMainBlock(mainState);
                     meshes.renderScene(view, access, ray.origin().x, ray.origin().y, ray.origin().z);
                     tiles.draw(view, partialTicks, 512);
                     if (closed || view.token() != round || view.model() != model || mc.world != world) return;
@@ -282,7 +283,7 @@ public final class StructurePreviewScene implements AutoCloseable {
                                 RenderGlobal.drawSelectionBoundingBox(new AxisAlignedBB(position).grow(.002), .18f, .42f, 1, 1);
                         GlStateManager.enableDepth();
                     }
-                    if (view.wireframe) drawWireframe(model, bounds, controller);
+                    if (view.wireframe) drawWireframe(model, bounds, mainState);
                     float lineWidth = GL11.glGetFloat(GL11.GL_LINE_WIDTH);
                     GlStateManager.disableDepth();
                     GlStateManager.depthMask(false);
@@ -359,9 +360,7 @@ public final class StructurePreviewScene implements AutoCloseable {
         }
     }
 
-    @SuppressWarnings("DataFlowIssue") // An independent controller is resolved from the registered machine block.
-    private void drawWireframe(StructurePreviewModel model, StructureBounds bounds, @Nullable MachineControllerBlock<?> controller) {
-        boolean independentController = controller != null;
+    private void drawWireframe(StructurePreviewModel model, StructureBounds bounds, @Nullable IBlockState mainState) {
         var tessellator = Tessellator.getInstance();
         var buffer = tessellator.getBuffer();
         var min = bounds.min();
@@ -379,15 +378,15 @@ public final class StructurePreviewScene implements AutoCloseable {
         if (indices != null) for (int index1 = 0; index1 < indices.size(); index1++) {
             int index = indices.getInt(index1);
             var cell = model.cells().get(index);
-            if (independentController && cell.position().equals(BlockPos.ORIGIN)) continue;
+            if (mainState != null && cell.position().equals(BlockPos.ORIGIN)) continue;
             boolean selected = picked != null && picked.position().equals(cell.position());
             int color = selected ? 0xff2e6bff : wireColor(view.observation(index), cell.display() == null ? 0 : cell.display().key().hashCode());
             if (picked != null && !selected) color = 0x55000000 | color & 0xffffff;
             drawWireBox(cell.position(), color);
         }
-        if (independentController && (view.threeDimensional || view.layer == 0)) {
+        if (mainState != null) {
             boolean selected = picked == view.controllerCell();
-            int color = selected ? 0xff2e6bff : wireColor(null, controller.getRegistryName().toString().hashCode());
+            int color = selected ? 0xff2e6bff : wireColor(null, Objects.requireNonNull(mainState.getBlock().getRegistryName()).hashCode());
             if (picked != null && !selected) color = 0x55000000 | color & 0xffffff;
             drawWireBox(BlockPos.ORIGIN, color);
         }
@@ -643,7 +642,7 @@ public final class StructurePreviewScene implements AutoCloseable {
         if (controllerCursor == declarations.size()) controllerResolved = true;
     }
 
-    private void drawController(IBlockState state) {
+    private void drawMainBlock(IBlockState state) {
         var before = PreviewBlockModels.State.capture(colors);
         float lightX = OpenGlHelper.lastBrightnessX, lightY = OpenGlHelper.lastBrightnessY;
         GlStateManager.pushMatrix();

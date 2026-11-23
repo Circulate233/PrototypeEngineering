@@ -55,13 +55,19 @@ public final class BuilderState {
     }
 
     public static void bind(ItemStack stack, int dimension, BlockPos pos, String binding, String structure) {
-        var tag = data(stack);
+        bind(data(stack), dimension, pos, binding, structure);
+    }
+
+    public static boolean boundTo(NBTTagCompound tag, int dimension, BlockPos pos, String binding, String structure) {
+        return tag.getBoolean("Bound") && tag.getInteger("BoundDim") == dimension && position(tag).equals(pos)
+            && tag.getString("BoundMachineId").equals(binding) && tag.getString("BoundStructureId").equals(structure);
+    }
+
+    static void bind(NBTTagCompound tag, int dimension, BlockPos pos, String binding, String structure) {
         ensureIdentity(tag);
-        if (!tag.getBoolean("Bound") || tag.getInteger("BoundDim") != dimension || !position(tag).equals(pos)
-            || !tag.getString("BoundMachineId").equals(binding) || !tag.getString("BoundStructureId").equals(structure)) {
-            tag.removeTag("CellMaterialSelections");
-            tag.removeTag("SliceSelections");
-        }
+        if (boundTo(tag, dimension, pos, binding, structure)) return;
+        tag.removeTag("CellMaterialSelections");
+        tag.removeTag("SliceSelections");
         tag.setBoolean("Bound", true);
         tag.setInteger("BoundDim", dimension);
         tag.setInteger("BoundX", pos.getX());
@@ -69,12 +75,15 @@ public final class BuilderState {
         tag.setInteger("BoundZ", pos.getZ());
         tag.setString("BoundMachineId", binding);
         tag.setString("BoundStructureId", structure);
-        state(tag, State.IDLE);
-        progress(tag, 0, 0);
+        tag.removeTag("Task");
+    }
+
+    public static String identity(NBTTagCompound tag) {
+        return tag.getString("BuilderIdentity");
     }
 
     public static void ensureIdentity(NBTTagCompound tag) {
-        var identity = tag.getString("BuilderIdentity");
+        var identity = identity(tag);
         if (!identity.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
             identity = UUID.randomUUID().toString();
             tag.setString("BuilderIdentity", identity);

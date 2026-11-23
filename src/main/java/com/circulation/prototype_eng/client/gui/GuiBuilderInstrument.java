@@ -19,6 +19,7 @@ import com.circulation.prototype_eng.structure.tool.BuilderState;
 import com.circulation.prototype_eng.structure.tool.ConstructionTarget;
 import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.inventory.ClickType;
@@ -50,6 +51,7 @@ public final class GuiBuilderInstrument extends AEBaseGui<ContainerStructureTool
     private StructureCatalogView appliedGeneration;
     private boolean selectionsPending;
     private BlockOrientation orientation;
+    private IBlockState externalMainBlock;
 
     public GuiBuilderInstrument(ContainerStructureTool container, InventoryPlayer player) {
         super(container, player);
@@ -129,10 +131,14 @@ public final class GuiBuilderInstrument extends AEBaseGui<ContainerStructureTool
         }
         var next = new ResourceLocation(name);
         var anchor = BuilderState.position(tag);
+        var machineId = tag.getString("BoundMachineId");
         var host = mc.world != null && mc.world.provider.getDimension() == tag.getInteger("BoundDim")
             ? ConstructionTarget.resolve(mc.world, anchor) : null;
+        if (host != null && (!host.binding().toString().equals(machineId) || !host.structure().equals(next))) host = null;
+        var external = host != null && host.controller() == null ? host : null;
+        var mainBlock = external == null ? null : external.anchorState();
         var nextOrientation = host == null ? BlockOrientation.NORTH_UP : host.orientation();
-        if (next.equals(id) && nextOrientation == orientation) {
+        if (preview != null && next.equals(id) && nextOrientation == orientation && mainBlock == externalMainBlock) {
             preview.view().anchor(anchor);
             applySelections();
             return;
@@ -141,11 +147,13 @@ public final class GuiBuilderInstrument extends AEBaseGui<ContainerStructureTool
         if (preview != null) preview.close();
         id = next;
         orientation = nextOrientation;
-        var machineId = tag.getString("BoundMachineId");
+        externalMainBlock = mainBlock;
         var machineType = machineId.isBlank() ? null : MachineTypeRegistry.INSTANCE.get(new ResourceLocation(machineId));
         if (machineType != null && !machineType.structureId().equals(id)) machineType = null;
-        var view = new StructurePreviewView(StructurePreviews.client(), id,
-            new StructurePreviewSettings(orientation, BuilderState.previewSlices(tag), 65536, 1048576), machineType);
+        var service = StructurePreviews.client();
+        var settings = new StructurePreviewSettings(orientation, BuilderState.previewSlices(tag), 65536, 1048576);
+        var view = external == null ? new StructurePreviewView(service, id, settings, machineType)
+            : new StructurePreviewView(service, id, settings, external.anchorState(), external.name());
         view.anchor(anchor);
         view.wireframe = false;
         preview = new StructurePreviewPanel(view);

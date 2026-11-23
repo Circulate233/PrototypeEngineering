@@ -151,11 +151,12 @@ public final class BuilderInstrumentItem extends AEBaseItem implements IGuiItem,
                     || !world.isBlockModifiable(player, position) || !player.canPlayerEdit(position, side, stack))
                     return;
                 var data = stack.getTagCompound();
-                boolean same = data != null && data.getBoolean("Bound") && data.getInteger("BoundDim") == world.provider.getDimension()
-                    && BuilderState.position(data).equals(position) && data.getString("BoundMachineId").equals(current.binding().toString())
-                    && data.getString("BoundStructureId").equals(current.structure().toString());
-                if (!same || sneaking) {
-                    BuilderState.bind(stack, world.provider.getDimension(), position, current.binding().toString(), current.structure().toString());
+                int dimension = world.provider.getDimension();
+                var binding = current.binding().toString();
+                var structure = current.structure().toString();
+                boolean same = data != null && BuilderState.boundTo(data, dimension, position, binding, structure);
+                if (!same) {
+                    BuilderState.bind(stack, dimension, position, binding, structure);
                     player.inventory.markDirty();
                     player.sendStatusMessage(StructureToolText.Bound.text(current.name().text(), position.getX(), position.getY(), position.getZ()), true);
                 }

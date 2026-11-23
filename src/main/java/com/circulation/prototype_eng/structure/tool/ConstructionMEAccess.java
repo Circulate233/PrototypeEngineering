@@ -209,11 +209,11 @@ public final class ConstructionMEAccess extends ItemGuiHost<BuilderInstrumentIte
 
     @SuppressWarnings("DataFlowIssue")
         // Successful connection retains a nonempty builder, so AEItemKey.of returns its item key.
-    boolean openCrafting(List<GenericStack> missing) {
+    boolean openCrafting(List<GenericStack> missing, ItemGuiHostLocator confirmationLocator) {
         if (missing.isEmpty() || connect() == null) return false;
         var result = AEItemKey.of(tool);
         var provider = new TemporaryPseudoCraftingProvider(missing, List.of(new GenericStack(result, 1)));
-        return ContainerCraftConfirm.openWithBatchCrafting(this, (EntityPlayerMP) getPlayer(), getLocator(), missing,
+        return ContainerCraftConfirm.openWithBatchCrafting(this, (EntityPlayerMP) getPlayer(), confirmationLocator, missing,
             provider, getPlayer().inventoryContainer);
     }
 

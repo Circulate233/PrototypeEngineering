@@ -14,9 +14,6 @@ import mezz.jei.api.recipe.IRecipeCategory;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 
-/**
- * Virtual machine structure information only; this category never owns a RecipePool.
- */
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 @SideOnly(Side.CLIENT)

@@ -4,14 +4,20 @@ import io.netty.buffer.ByteBuf;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.List;
 import java.util.Objects;
 
 /** Geometry is a set of unit cells. The receiver emits their boundary vertices, omitting internal faces. */
 public sealed interface ConstructionEffectPayload {
     int MAX_BYTES = 16 * 1024 - 1; // Forge also writes the one-byte message discriminator.
-    int INTRO_TICKS = 24;
-    int FINISH_TICKS = 68;
+    int WHITE_TRANSITION_TICKS = 3;
+    int REGION_FADE_TICKS = 8;
+    int FINISH_TICKS = 10;
+    int LAYER_HEIGHT = 8;
+    int LAYERS_PER_SECTION = 32 / LAYER_HEIGHT;
+    int REGION_COUNT = LAYERS_PER_SECTION * 2;
     int CELL_COUNT = 32 * 32 * 32;
     int CHUNK_CELL_COUNT = CELL_COUNT / 4;
     int HEADER_BYTES = 1 + Integer.BYTES + Long.BYTES;
@@ -21,25 +27,51 @@ public sealed interface ConstructionEffectPayload {
 
     long taskId();
 
-    record Geometry(int dimension, long taskId, long anchor, boolean dismantle, long startTick, long serverTick,
-                    Section section, int quadrant, @Nullable ConstructionArea area, BitSet cells,
-                    BitSet committed, BitSet excluded) implements ConstructionEffectPayload {
+    static int wireTicks(int cells) {
+        int log = Integer.SIZE - 1 - Integer.numberOfLeadingZeros(Math.max(1, cells));
+        return Math.min(14, 3 + log);
+    }
+
+    static int region(int cell, boolean fluid) {
+        return (cell >>> 8) / LAYER_HEIGHT + (fluid ? LAYERS_PER_SECTION : 0);
+    }
+
+    record RegionTime(int region, long activatedTick, long settledTick) {
+        public RegionTime {
+            if (region < 0 || region >= REGION_COUNT || activatedTick < -1 || settledTick < -1
+                || activatedTick < 0 && settledTick < 0 || settledTick >= 0 && settledTick < activatedTick)
+                throw new IllegalArgumentException("Invalid construction region time");
+        }
+    }
+
+    record Geometry(int dimension, long taskId, long anchor, boolean dismantle, long startTick, long serverTick, int wireTicks,
+                    Section section, int quadrant, @Nullable ConstructionArea area, BitSet cells, BitSet fluids,
+                    BitSet excluded, List<RegionTime> regions) implements ConstructionEffectPayload {
         public Geometry {
             requireTask(taskId);
-            if (startTick < 0 || serverTick < 0 || quadrant < 0 || quadrant > 3 || cells.length() > CHUNK_CELL_COUNT
-                || committed.length() > CHUNK_CELL_COUNT || excluded.length() > CHUNK_CELL_COUNT)
+            if (startTick < 0 || serverTick < startTick || wireTicks < 3 || wireTicks > 14 || quadrant < 0 || quadrant > 3
+                || cells.length() > CHUNK_CELL_COUNT || fluids.length() > CHUNK_CELL_COUNT || excluded.length() > CHUNK_CELL_COUNT)
                 throw new IllegalArgumentException("Invalid construction geometry bounds");
             if (area != null) {
-                var unplanned = (BitSet) committed.clone();
+                var unplanned = (BitSet) fluids.clone();
                 unplanned.or(excluded);
                 unplanned.andNot(cells);
                 if (cells.isEmpty() || !unplanned.isEmpty()) throw new IllegalArgumentException("Invalid construction geometry snapshot");
-            } else if (!cells.isEmpty() || committed.isEmpty() && excluded.isEmpty())
+            } else if (!cells.isEmpty() || !fluids.isEmpty() || regions.isEmpty() && excluded.isEmpty())
                 throw new IllegalArgumentException("Invalid construction geometry delta");
-            if (committed.intersects(excluded)) throw new IllegalArgumentException("Conflicting construction geometry delta");
+            int seen = 0;
+            for (var time : regions) {
+                int mask = 1 << time.region();
+                if ((seen & mask) != 0 || time.activatedTick() > serverTick || time.settledTick() > serverTick
+                    || time.activatedTick() >= 0 && (!dismantle || time.activatedTick() < startTick)
+                    || time.settledTick() >= 0 && time.settledTick() < startTick)
+                    throw new IllegalArgumentException("Conflicting construction region time");
+                seen |= mask;
+            }
             cells = (BitSet) cells.clone();
-            committed = (BitSet) committed.clone();
+            fluids = (BitSet) fluids.clone();
             excluded = (BitSet) excluded.clone();
+            regions = List.copyOf(regions);
         }
 
         public boolean snapshot() {
@@ -121,14 +153,18 @@ public sealed interface ConstructionEffectPayload {
         buffer.writeByte(kind).writeInt(payload.dimension()).writeLong(payload.taskId());
         switch (payload) {
             case Geometry geometry -> {
-                buffer.writeLong(geometry.anchor).writeBoolean(geometry.dismantle).writeLong(geometry.startTick).writeLong(geometry.serverTick);
+                buffer.writeLong(geometry.anchor).writeBoolean(geometry.dismantle).writeLong(geometry.startTick).writeLong(geometry.serverTick)
+                    .writeByte(geometry.wireTicks);
                 writeSection(buffer, geometry.section, geometry.quadrant);
                 if (geometry.area != null) {
                     writeArea(buffer, geometry.area);
                     writeCells(buffer, geometry.cells);
+                    writeCells(buffer, geometry.fluids);
                 }
-                writeCells(buffer, geometry.committed);
                 writeCells(buffer, geometry.excluded);
+                buffer.writeByte(geometry.regions.size());
+                for (var time : geometry.regions)
+                    buffer.writeByte(time.region()).writeLong(time.activatedTick()).writeLong(time.settledTick());
             }
             case Forget forget -> writeSection(buffer, forget.section, forget.quadrant);
             case Hud hud -> {
@@ -153,11 +189,19 @@ public sealed interface ConstructionEffectPayload {
                 boolean dismantle = readBoolean(buffer);
                 long startTick = buffer.readLong();
                 long serverTick = buffer.readLong();
+                int wireTicks = buffer.readUnsignedByte();
                 var section = readSection(buffer);
                 int quadrant = buffer.readUnsignedByte();
                 var area = kind == 0 ? readArea(buffer) : null;
                 BitSet cells = kind == 0 ? readCells(buffer) : new BitSet();
-                yield new Geometry(dimension, task, anchor, dismantle, startTick, serverTick, section, quadrant, area, cells, readCells(buffer), readCells(buffer));
+                BitSet fluids = kind == 0 ? readCells(buffer) : new BitSet();
+                var excluded = readCells(buffer);
+                int count = buffer.readUnsignedByte();
+                if (count > REGION_COUNT) throw new IllegalArgumentException("Invalid construction region count");
+                var regions = new ArrayList<RegionTime>(count);
+                for (int i = 0; i < count; i++) regions.add(new RegionTime(buffer.readUnsignedByte(), buffer.readLong(), buffer.readLong()));
+                yield new Geometry(dimension, task, anchor, dismantle, startTick, serverTick, wireTicks, section, quadrant, area, cells, fluids,
+                    excluded, regions);
             }
             case 2 -> new Forget(dimension, task, readSection(buffer), buffer.readUnsignedByte());
             case 3 -> new Hud(dimension, task, buffer.readLong(), readBoolean(buffer), buffer.readLong(), buffer.readLong(),
@@ -171,7 +215,8 @@ public sealed interface ConstructionEffectPayload {
 
     static int bytes(ConstructionEffectPayload payload) {
         return HEADER_BYTES + switch (payload) {
-            case Geometry geometry -> 35 + (geometry.snapshot() ? AREA_BYTES + cellBytes(geometry.cells) : 0) + cellBytes(geometry.committed) + cellBytes(geometry.excluded);
+            case Geometry geometry -> 37 + (geometry.snapshot() ? AREA_BYTES + cellBytes(geometry.cells) + cellBytes(geometry.fluids) : 0)
+                + cellBytes(geometry.excluded) + geometry.regions.size() * (1 + 2 * Long.BYTES);
             case Forget _ -> 10;
             case Hud _ -> 39 + AREA_BYTES;
             case End _ -> 10;

@@ -34,8 +34,7 @@ public final class BuilderMiningTool {
         profile.setCount(1);
         var tag = BuilderState.data(result);
         tag.setTag(TOOL, profile.serializeNBT());
-        BuilderState.state(tag, BuilderState.State.IDLE);
-        BuilderState.progress(tag, 0, 0);
+        tag.removeTag("Task");
         return result;
     }
 

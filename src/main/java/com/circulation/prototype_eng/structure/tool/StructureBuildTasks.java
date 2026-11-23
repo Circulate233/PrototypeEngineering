@@ -14,10 +14,13 @@ import com.circulation.prototype_eng.localization.StructureToolText;
 import com.circulation.prototype_eng.structure.StructureMaterials;
 import com.circulation.prototype_eng.structure.StructurePickWorld;
 import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
+import com.circulation.prototype_eng.structure.tool.ConstructionProgress.Phase;
 import com.circulation.prototype_eng.structure.tool.ConstructionProgress.Step;
+import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload;
 import com.circulation.prototype_eng.structure.tool.effect.ServerConstructionEffects;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockFalling;
 import net.minecraft.block.BlockLiquid;
@@ -30,6 +33,7 @@ import net.minecraft.init.Enchantments;
 import net.minecraft.inventory.Container;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.profiler.Profiler;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
@@ -38,6 +42,7 @@ import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.common.util.BlockSnapshot;
 import net.minecraftforge.event.ForgeEventFactory;
 import net.minecraftforge.event.world.BlockEvent;
 import net.minecraftforge.event.world.WorldEvent;
@@ -58,28 +63,45 @@ import java.util.UUID;
 public final class StructureBuildTasks {
     private static final Object2ObjectLinkedOpenHashMap<UUID, Task> TASKS = new Object2ObjectLinkedOpenHashMap<>();
     private static final ObjectArrayList<Task> RUNNABLE = new ObjectArrayList<>();
-    private static final ObjectArrayList<Task> WAITING = new ObjectArrayList<>();
+    private static final ObjectArrayList<Task> ACTIVE = new ObjectArrayList<>();
     private static final ConstructionBudget BUDGET = new ConstructionBudget(System::nanoTime);
-    private static final ConstructionLightingBatch<World> LIGHTING = new ConstructionLightingBatch<>(ConstructionPlacement::checkLight, System::nanoTime);
-    private static final long WAITING_CHECK_NANOS = 250_000L;
-    private static final Comparator<Target> ORDER = Comparator.comparingInt((Target target) -> target.pos.getY())
+    private static final ConstructionLightingBatch LIGHTING = new ConstructionLightingBatch();
+    private static final ReferenceLinkedOpenHashSet<ServerConstructionEffects.Effect> SETTLING = new ReferenceLinkedOpenHashSet<>();
+    private static final Comparator<Target> POSITION_ORDER = Comparator.comparingInt((Target target) -> target.pos.getY())
         .thenComparingInt(target -> target.pos.getX()).thenComparingInt(target -> target.pos.getZ());
-    private static final Comparator<Target> BUILD_ORDER = Comparator.<Target>comparingInt(target -> {
-        var desired = target.desired;
-        return desired != null && (fluid(desired) || desired.getBlock() instanceof BlockFalling) ? 1 : 0;
-    }).thenComparing(ORDER);
-    private static long earlyLightingNanos;
-    private static int nextWaiting;
+    private static final Comparator<Target> REGION_ORDER = Comparator.comparingInt((Target target) -> target.pos.getY() / ConstructionEffectPayload.LAYER_HEIGHT)
+        .thenComparingInt(target -> target.pos.getX() >> 4).thenComparingInt(target -> target.pos.getZ() >> 4);
+    private static final Comparator<Target> STATIC_COLUMN_ORDER = Comparator.comparingInt((Target target) -> target.pos.getX())
+        .thenComparingInt(target -> target.pos.getZ()).thenComparingInt(target -> -target.pos.getY());
+    private static final Comparator<Target> BUILD_ORDER = Comparator.comparingInt((Target target) -> target.fluid ? 1 : 0)
+        .thenComparing(REGION_ORDER)
+        .thenComparingInt(target -> target.order)
+        .thenComparing((first, second) -> (first.order == 0 ? STATIC_COLUMN_ORDER : POSITION_ORDER).compare(first, second));
+    private static final Comparator<Target> REMOVE_ORDER = REGION_ORDER.reversed().thenComparing(POSITION_ORDER.reversed());
 
     private StructureBuildTasks() {
+    }
+
+    public static boolean controlsTask(EntityPlayer player, NBTTagCompound builder) {
+        var task = TASKS.get(player.getUniqueID());
+        return task != null && task.controls(builder);
+    }
+
+    public static void writeStatus(EntityPlayer player, NBTTagCompound snapshot) {
+        snapshot.removeTag("Task");
+        var task = TASKS.get(player.getUniqueID());
+        if (task == null || !task.controls(snapshot)) return;
+        BuilderState.state(snapshot, task.state());
+        BuilderState.progress(snapshot, task.progress.done(), task.effectStarted ? task.targets.size() : 0);
     }
 
     public static void toggle(EntityPlayer player, int slot, ItemStack tool) {
         if (!(player instanceof EntityPlayerMP owner) || !(owner.world instanceof WorldServer world)) return;
         var previous = TASKS.get(owner.getUniqueID());
         var tag = BuilderState.data(tool);
-        if (previous != null && previous.tool == tool && previous.valid()) {
-            previous.setPaused(!BuilderState.state(tag).paused());
+        if (previous != null && previous.valid()) {
+            if (previous.controls(tag)) previous.setPaused(!previous.paused);
+            else owner.sendStatusMessage(StructureToolText.BuilderTaskOwned.text(), true);
             return;
         }
         var pos = BuilderState.position(tag);
@@ -94,7 +116,8 @@ public final class StructureBuildTasks {
             if (host == null || !anchor.current() || !host.binding().toString().equals(tag.getString("BoundMachineId"))
                 || !host.structure().toString().equals(tag.getString("BoundStructureId"))) return;
             if (owner.world != world || owner.openContainer != open || owner.inventory.getStackInSlot(slot) != tool
-                || !open.canInteractWith(owner) || !BuilderState.position(tag).equals(pos) || !ConstructionPlacement.accepts(world)) return;
+                || !open.canInteractWith(owner) || !BuilderState.position(tag).equals(pos) || !ConstructionPlacement.accepts(world)
+                || !world.isBlockModifiable(owner, pos) || !owner.canPlayerEdit(pos, EnumFacing.UP, tool)) return;
             var server = owner.getServer();
             if (server == null) return;
             var view = ServerStructureReloads.view(server, MachineTypeRegistry.INSTANCE.structureCatalog());
@@ -103,77 +126,78 @@ public final class StructureBuildTasks {
                 return;
             }
             var active = TASKS.get(owner.getUniqueID());
-            if (active != null && active.tool == tool && active.valid()) return;
+            if (active != null && active.valid()) return;
+            boolean dismantle;
+            try {
+                dismantle = host.formedForConstruction();
+            } catch (RuntimeException failure) {
+                PrototypeEngineering.LOGGER.error("Cannot check construction formation for {} at {}", host.binding(), pos, failure);
+                owner.sendStatusMessage(StructureToolText.Unavailable.text(), true);
+                return;
+            }
             if (active != null) cancel(active);
-            var task = new Task(owner, world, slot, tool, tag, host, view, open);
-            TASKS.put(owner.getUniqueID(), task);
-            task.setPaused(false);
-            BuilderState.progress(tag, 0, 0);
+            TASKS.put(owner.getUniqueID(), new Task(owner, world, slot, tool.copy(), host, view, open, dismantle));
         });
     }
 
-    public static void beginTick() {
-        earlyLightingNanos = 0;
-        if (!LIGHTING.hasPending()) return;
-        long start = System.nanoTime();
-        LIGHTING.flush(() -> System.nanoTime() - start < ConstructionBudget.TICK_NANOS);
-        earlyLightingNanos = System.nanoTime() - start;
-    }
-
     public static void tick(MinecraftServer server) {
-        long start = System.nanoTime() - earlyLightingNanos;
-        long deadline = start + ConstructionBudget.TICK_NANOS;
+        var profiler = server.profiler;
+        profiler.startSection("effects");
         try {
-            if (System.nanoTime() - deadline >= 0) return;
-            ServerConstructionEffects.tick(server, deadline);
-            if (TASKS.isEmpty()) return;
-            for (var task : TASKS.values()) {
-                if (System.nanoTime() - deadline >= 0) return;
-                if (task.world.getMinecraftServer() != server) continue;
-                (task.runnable() ? RUNNABLE : WAITING).add(task);
-            }
-            checkWaiting(start);
-            BUDGET.run(start, RUNNABLE, LIGHTING::reservedNanos, (task, slice) -> {
-                if (TASKS.get(task.owner.getUniqueID()) != task || !task.runnable()) return;
+            ServerConstructionEffects.tick(server);
+        } finally {
+            profiler.endSection();
+        }
+        if (TASKS.isEmpty()) return;
+        ACTIVE.addAll(TASKS.values());
+        try {
+            for (var task : ACTIVE) {
                 try {
-                    if (!task.valid()) {
-                        cancel(task);
-                        return;
-                    }
-                    task.advance(slice);
-                    if (slice.available() && !task.valid()) cancel(task);
+                    if (!task.valid()) cancel(task);
+                    else if (task.runnable()) RUNNABLE.add(task);
                 } catch (RuntimeException failure) {
                     fail(task, failure);
                 }
-            });
+            }
+            if (RUNNABLE.isEmpty()) return;
+            profiler.startSection("operations");
+            try {
+                BUDGET.run(System.nanoTime(), RUNNABLE, StructureBuildTasks::advance);
+            } finally {
+                profiler.endSection();
+            }
         } finally {
+            ACTIVE.clear();
             RUNNABLE.clear();
-            WAITING.clear();
-            LIGHTING.flush(() -> System.nanoTime() - deadline < 0);
+            settle(profiler);
         }
     }
 
-    private static void checkWaiting(long tickStart) {
-        int count = WAITING.size();
-        if (count == 0) {
-            nextWaiting = 0;
-            return;
+    private static boolean advance(Task task, ConstructionBudget.Slice slice) {
+        if (TASKS.get(task.owner.getUniqueID()) != task || !task.runnable()) return false;
+        try {
+            return task.advance(slice);
+        } catch (RuntimeException failure) {
+            fail(task, failure);
+            return false;
         }
-        long start = System.nanoTime();
-        long budget = ConstructionBudget.TICK_NANOS - (start - tickStart);
-        if (!RUNNABLE.isEmpty()) budget = Math.min(budget, WAITING_CHECK_NANOS);
-        if (budget <= 0L) return;
-        nextWaiting %= count;
-        for (int visited = 0; visited < count && System.nanoTime() - start < budget; visited++) {
-            var task = WAITING.get(nextWaiting);
-            if (++nextWaiting == count) nextWaiting = 0;
-            if (TASKS.get(task.owner.getUniqueID()) != task) continue;
-            try {
-                if (!task.valid()) cancel(task);
-            } catch (RuntimeException failure) {
-                fail(task, failure);
-            }
+    }
+
+    private static void settle(Profiler profiler) {
+        if (!LIGHTING.hasPending() && SETTLING.isEmpty()) return;
+        profiler.startSection("lighting");
+        try {
+            LIGHTING.flushLighting();
+        } finally {
+            profiler.endSection();
         }
+        profiler.startSection("notifications");
+        try {
+            LIGHTING.flushNotifications();
+        } finally {
+            profiler.endSection();
+        }
+        while (!SETTLING.isEmpty()) SETTLING.removeFirst().flushSettled();
     }
 
     private static void fail(Task task, RuntimeException failure) {
@@ -203,10 +227,8 @@ public final class StructureBuildTasks {
     public static void stop() {
         for (var task : TASKS.values()) task.stop();
         TASKS.clear();
-        earlyLightingNanos = 0;
-        nextWaiting = 0;
-        LIGHTING.flush(() -> true);
         LIGHTING.clear();
+        SETTLING.clear();
         ServerConstructionEffects.stop();
     }
 
@@ -239,7 +261,14 @@ public final class StructureBuildTasks {
         return BuilderMiningTool.canHarvest(tool, actual, player);
     }
 
-    private static Step operate(Task task, Target target) {
+    private static Step operate(Task task, Target target, Phase phase) {
+        if (phase == Phase.SKIP_FLUIDS) {
+            if (!task.reportedFluidsSkipped) {
+                task.reportedFluidsSkipped = true;
+                task.owner.sendMessage(StructureToolText.BuilderFluidsSkipped.text());
+            }
+            return task.outcome(target, State.BLOCKED, true);
+        }
         var world = task.world;
         var pos = target.pos;
         var chunk = task.chunk(pos);
@@ -249,17 +278,19 @@ public final class StructureBuildTasks {
         var desired = target.desired;
         if ((task.dismantle && air(world, pos, current)) || current.equals(desired))
             return task.outcome(target, State.MATCHED, true);
-        if (task.progress.firstPass() && !fluid(current)) {
+        boolean clear = phase == Phase.CLEAR_FLUIDS;
+        if (clear && !fluid(current)) {
             task.setOutcome(target, State.PENDING);
-            return Step.DEFER;
+            return Step.CONTINUE;
         }
         if (!blockPermission(task, pos))
             return task.outcome(target, State.BLOCKED, !task.dismantle && !task.requireSpace);
-        if (desired == null || task.progress.firstPass()) {
+        if (desired == null || clear) {
+            if (task.dismantle && !task.effect().canRemove(pos, target.fluid)) return Step.WAIT;
             if (!remove(task, pos, chunk, current)) return task.outcome(target, State.BLOCKED, !task.dismantle && !task.requireSpace);
             if (task.dismantle) return task.outcome(target, State.COMMITTED, true);
             task.setOutcome(target, State.PENDING);
-            return Step.DEFER;
+            return Step.CONTINUE;
         }
         if (!spaceAvailable(task, pos, current)) return task.outcome(target, State.BLOCKED, !task.requireSpace);
         ConstructionPayment payment;
@@ -280,17 +311,15 @@ public final class StructureBuildTasks {
                 return task.outcome(target, State.MISSING, true);
             }
         }
-        var snapshot = ConstructionPlacement.snapshot(world, pos, current);
-        boolean wrote = false;
+        BlockSnapshot snapshot = null;
         boolean finished = false;
         try {
-            if (!payment.commit() || !task.authorized(pos, chunk, current)) return Step.RETRY;
+            if (payment != ConstructionPayment.FREE && (!payment.commit() || !task.authorized(pos, chunk, current))) return Step.RETRY;
             if (!air(world, pos, current)) {
                 if (!task.requireSpace) {
                     if (!remove(task, pos, chunk, current)) return task.outcome(target, State.BLOCKED, true);
                     current = chunk.getBlockState(pos);
                     if (!task.authorized(pos, chunk, current) || !air(world, pos, current)) return Step.RETRY;
-                    snapshot = ConstructionPlacement.snapshot(world, pos, current);
                 } else {
                     var event = new BlockEvent.BreakEvent(world, pos, current, task.owner);
                     event.setExpToDrop(0);
@@ -298,7 +327,7 @@ public final class StructureBuildTasks {
                         return task.outcome(target, State.BLOCKED, false);
                 }
             }
-            wrote = true;
+            snapshot = ConstructionPlacement.snapshot(world, pos, current);
             if (!ConstructionPlacement.write(world, pos, chunk, current, desired, LIGHTING)
                 || ForgeEventFactory.onPlayerBlockPlace(task.owner, snapshot, EnumFacing.UP, task.hand).isCanceled()
                 || !task.authorized(pos, chunk, desired)) return task.outcome(target, State.ROLLED_BACK, !task.requireSpace);
@@ -306,13 +335,13 @@ public final class StructureBuildTasks {
             try {
                 payment.finish();
             } finally {
-                ConstructionPlacement.notify(world, pos, chunk, current, desired);
+                ConstructionPlacement.notify(world, pos, chunk, current, desired, LIGHTING);
             }
             return task.outcome(target, State.COMMITTED, true);
         } finally {
             if (!finished) {
                 try {
-                    if (wrote) ConstructionPlacement.restore(world, chunk, snapshot, desired, LIGHTING);
+                    if (snapshot != null) ConstructionPlacement.restore(world, chunk, snapshot, desired, LIGHTING);
                 } finally {
                     payment.refund(task.owner);
                 }
@@ -326,14 +355,20 @@ public final class StructureBuildTasks {
         var block = state.getBlock();
         boolean fluid = fluid(state);
         if (!canRemove(player, world, pos, state, task.tool)) return false;
-        var harvestedWith = BuilderMiningTool.profile(task.tool);
+        boolean creative = player.isCreative();
+        var harvestedWith = creative || fluid ? ItemStack.EMPTY : BuilderMiningTool.profile(task.tool);
         var event = new BlockEvent.BreakEvent(world, pos, state, player);
-        event.setExpToDrop(player.isCreative() || fluid
+        event.setExpToDrop(creative || fluid
             || block.canSilkHarvest(world, pos, state, player) && EnchantmentHelper.getEnchantmentLevel(Enchantments.SILK_TOUCH, harvestedWith) > 0
             ? 0 : block.getExpDrop(state, world, pos, EnchantmentHelper.getEnchantmentLevel(Enchantments.FORTUNE, harvestedWith)));
         if (MinecraftForge.EVENT_BUS.post(event) || !task.authorized(pos, chunk, state))
             return false;
-        if (fluid && !player.isCreative()) {
+        if (creative && ConstructionPlacement.isStatic(state)) {
+            if (!ConstructionPlacement.removeStatic(world, pos, chunk, state, player, LIGHTING)) return false;
+            block.onPlayerDestroy(world, pos, state);
+            return true;
+        }
+        if (fluid && !creative) {
             var source = FluidUtil.getFluidHandler(world, pos, EnumFacing.UP);
             if (source == null) return false;
             var available = source.drain(Integer.MAX_VALUE, false);
@@ -349,10 +384,10 @@ public final class StructureBuildTasks {
         }
         try (var _ = BuilderDropRecovery.capture(player, task.me)) {
             var tile = world.getTileEntity(pos);
-            if (!block.removedByPlayer(state, world, pos, player, !player.isCreative()) || chunk.getBlockState(pos).equals(state)) return false;
+            if (!block.removedByPlayer(state, world, pos, player, !creative) || chunk.getBlockState(pos).equals(state)) return false;
             block.onPlayerDestroy(world, pos, state);
             world.playEvent(player, 2001, pos, Block.getStateId(state));
-            if (!player.isCreative()) {
+            if (!creative) {
                 block.harvestBlock(world, player, pos, state, tile, harvestedWith);
                 if (event.getExpToDrop() > 0) block.dropXpOnBlockBreak(world, pos, event.getExpToDrop());
             }
@@ -368,25 +403,27 @@ public final class StructureBuildTasks {
         final @Nullable String tileNbt;
         @Nullable GenericStack resource;
         State outcome = State.PENDING;
-        boolean first;
+        final int order;
+        boolean first, fluid;
 
         Target(BlockPos pos, @Nullable IBlockState desired, @Nullable String tileNbt) {
             this.pos = pos;
             this.desired = desired;
             this.tileNbt = tileNbt;
+            fluid = desired != null && fluid(desired);
+            order = desired == null ? 1 : ConstructionPlacement.isStatic(desired) ? 0 : desired.getBlock() instanceof BlockFalling ? 2 : 1;
         }
     }
 
     private static final class Task {
         final EntityPlayerMP owner;
         final WorldServer world;
-        final int slot;
+        final int confirmationSlot;
         final ItemStack tool;
-        final NBTTagCompound tag;
+        final NBTTagCompound settings;
         final EnumHand hand;
         final ConstructionTarget controller;
-        final String binding;
-        final String structure;
+        final String builderIdentity;
         final boolean dismantle, requireSpace, replaceFluids, requireMaterials, waitMaterials, autoCraft;
         final ConstructionPayment.Sources sources;
         final StructureCatalogView view;
@@ -402,42 +439,45 @@ public final class StructureBuildTasks {
         @Nullable GenericStack waitingMaterial;
         @Nullable Chunk lastChunk;
         int lastChunkX, lastChunkZ;
+        long lastWriteTick = Long.MIN_VALUE;
         int matched, committed, missing, errors, unloaded, total;
         long nextMissingReport;
-        boolean initialized, effectStarted, geometryPublished;
+        boolean initialized, effectStarted, paused, reportedFluidsSkipped;
 
-        Task(EntityPlayerMP owner, WorldServer world, int slot, ItemStack tool, NBTTagCompound tag, ConstructionTarget controller,
-             StructureCatalogView view, @Nullable Container window) {
+        Task(EntityPlayerMP owner, WorldServer world, int slot, ItemStack tool, ConstructionTarget controller,
+             StructureCatalogView view, @Nullable Container window, boolean dismantle) {
             this.owner = owner;
             this.world = world;
-            this.slot = slot;
+            confirmationSlot = slot;
             this.tool = tool;
-            this.tag = tag;
+            settings = BuilderState.data(tool);
+            settings.removeTag("Task");
             hand = slot == owner.inventory.getSizeInventory() - 1 ? EnumHand.OFF_HAND : EnumHand.MAIN_HAND;
             this.controller = controller;
             this.view = view;
-            binding = controller.binding().toString();
-            structure = controller.structure().toString();
-            dismantle = controller.formed();
-            requireSpace = BuilderState.Setting.REQUIRE_SPACE.enabled(tag);
-            replaceFluids = BuilderState.Setting.REPLACE_FLUIDS.enabled(tag);
-            requireMaterials = BuilderState.Setting.REQUIRE_MATERIALS.enabled(tag);
-            waitMaterials = BuilderState.Setting.WAIT_MATERIALS.enabled(tag);
-            meMode = BuilderState.meMode(tag);
+            builderIdentity = BuilderState.identity(settings);
+            this.dismantle = dismantle;
+            requireSpace = BuilderState.Setting.REQUIRE_SPACE.enabled(settings);
+            replaceFluids = BuilderState.Setting.REPLACE_FLUIDS.enabled(settings);
+            requireMaterials = BuilderState.Setting.REQUIRE_MATERIALS.enabled(settings);
+            waitMaterials = BuilderState.Setting.WAIT_MATERIALS.enabled(settings);
+            meMode = BuilderState.meMode(settings);
             autoCraft = meMode == 2;
             sources = new ConstructionPayment.Sources(owner);
             builderWindow = window;
         }
 
         boolean valid() {
-            return taskItemsCurrent() && controller.current() && tag.getBoolean("Bound")
-                && tag.getInteger("BoundDim") == world.provider.getDimension() && BuilderState.position(tag).equals(controller.position())
-                && tag.getString("BoundMachineId").equals(binding) && tag.getString("BoundStructureId").equals(structure);
+            return owner.isEntityAlive() && owner.world == world && controller.current();
         }
 
-        private boolean taskItemsCurrent() {
-            return owner.isEntityAlive() && owner.world == world && owner.inventory.getStackInSlot(slot) == tool
-                && !tool.isEmpty() && BuilderState.state(tag) != BuilderState.State.IDLE;
+        boolean controls(NBTTagCompound builder) {
+            return builderIdentity.equals(BuilderState.identity(builder));
+        }
+
+        BuilderState.State state() {
+            return dismantle ? (paused ? BuilderState.State.PAUSED_DISASSEMBLING : BuilderState.State.DISASSEMBLING)
+                : (paused ? BuilderState.State.PAUSED_BUILDING : BuilderState.State.BUILDING);
         }
 
         boolean authorized(BlockPos pos, Chunk chunk, IBlockState expected) {
@@ -446,15 +486,12 @@ public final class StructureBuildTasks {
         }
 
         boolean runnable() {
-            return !BuilderState.state(tag).paused() && (craftingWindow == null || owner.openContainer != craftingWindow)
-                && (!effectStarted || geometryPublished || effect().hasConstructionWork());
+            return !paused && (craftingWindow == null || owner.openContainer != craftingWindow)
+                && (!effectStarted || effect().ready());
         }
 
         void setPaused(boolean paused) {
-            BuilderState.state(tag, dismantle
-                ? (paused ? BuilderState.State.PAUSED_DISASSEMBLING : BuilderState.State.DISASSEMBLING)
-                : (paused ? BuilderState.State.PAUSED_BUILDING : BuilderState.State.BUILDING));
-            owner.inventory.markDirty();
+            this.paused = paused;
             status();
         }
 
@@ -492,57 +529,53 @@ public final class StructureBuildTasks {
             return Objects.requireNonNull(projection);
         }
 
-        void advance(ConstructionBudget.Slice slice) {
-            if (!slice.available()) return;
-            lastChunk = null;
-            sources.beginSlice();
+        boolean advance(ConstructionBudget.Slice slice) {
+            long now = world.getTotalWorldTime();
+            if (lastWriteTick != now) {
+                lastChunk = null;
+                sources.beginSlice();
+                lastWriteTick = now;
+            }
             if (!initialized) {
                 me = meMode == 0 ? null
-                    : ((BuilderInstrumentItem) tool.getItem()).getGuiHost(owner, GuiHostLocators.forInventorySlot(slot), null);
+                    : ((BuilderInstrumentItem) tool.getItem()).getGuiHost(owner, _ -> tool, null);
                 projection = ServerConstructionEffects.create(owner, controller.position(), dismantle);
                 prepare = new Preparation(this, view);
                 initialized = true;
-                return;
             }
-            var confirmation = craftingWindow;
-            craftingWindow = null;
-            if (confirmation != null) {
+            if (craftingWindow != null) {
+                craftingWindow = null;
                 start();
-                return;
+                return false;
             }
             var planning = prepare;
             if (planning != null) {
-                while (slice.available() && taskItemsCurrent()) {
-                    if (!planning.step()) break;
+                while (slice.available()) {
+                    if (!planning.step()) return false;
                 }
-                return;
+                return true;
             }
-            if (!geometryPublished) {
-                geometryPublished = effect().ready(slice::available);
-                if (!geometryPublished || !slice.available()) return;
-            }
+            var phase = progress.nextPhase();
             waitingMaterial = null;
-            progress.advance(slice, index -> taskItemsCurrent() ? operate(this, targets.get(index)) : Step.WAIT);
-            int done = progress.done();
-            if (BuilderState.done(tag) != done) {
-                BuilderState.progress(tag, done, targets.size());
-                owner.inventory.markDirty();
+            boolean again = false;
+            if (phase != Phase.DONE) {
+                again = progress.advance(now, phase, slice::available, index -> operate(this, targets.get(index), phase));
             }
             status();
-            if (done == targets.size()) {
-                if (!TASKS.remove(owner.getUniqueID(), this)) return;
-                boolean successful = matched + committed == total;
-                effect().finish(successful);
-                finish();
-            } else if (progress.waiting() && waitingMaterial != null && world.getTotalWorldTime() % 40 == 0 && effect().ownerWithinRenderDistance()) {
+            if (progress.nextPhase() == Phase.DONE) {
+                if (TASKS.remove(owner.getUniqueID(), this)) effect().finish(matched + committed == total);
+                return false;
+            }
+            if (progress.waiting() && waitingMaterial != null && now % 40 == 0 && effect().ownerWithinRenderDistance()) {
                 owner.sendStatusMessage(StructureToolText.BuilderWaitingMaterial.text(waitingMaterial.what().getDisplayName()), true);
             }
+            return again;
         }
 
         void status() {
             if (effectStarted) {
                 int stillNeeded = total - matched - committed - errors - unloaded;
-                effect().status(Math.max(stillNeeded, missing), errors, unloaded, BuilderState.state(tag).paused());
+                effect().status(Math.max(stillNeeded, missing), errors, unloaded, paused);
             }
         }
 
@@ -556,8 +589,10 @@ public final class StructureBuildTasks {
         Step outcome(Target target, State state, boolean terminal) {
             setOutcome(target, state);
             if (terminal) {
-                if (state == State.COMMITTED) effect().committed(target.pos);
-                else effect().exclude(target.pos);
+                boolean changed = state == State.COMMITTED;
+                if (!dismantle && !target.fluid && !changed && state != State.MATCHED) progress.missSolid();
+                var active = effect();
+                if (active.resolved(target.pos, target.fluid, changed)) SETTLING.add(active);
             }
             return terminal ? Step.COMPLETE : Step.RETRY;
         }
@@ -589,8 +624,6 @@ public final class StructureBuildTasks {
             if (window != null && owner.openContainer == window) owner.closeScreen();
             builderWindow = null;
             prepare = null;
-            BuilderState.progress(tag, 0, targets.size());
-            owner.inventory.markDirty();
             effect().start();
             effectStarted = true;
             status();
@@ -599,12 +632,6 @@ public final class StructureBuildTasks {
         void stop() {
             var effect = projection;
             if (effect != null) effect.cancel();
-            finish();
-        }
-
-        private void finish() {
-            BuilderState.state(tag, BuilderState.State.IDLE);
-            owner.inventory.markDirty();
         }
     }
 
@@ -626,8 +653,8 @@ public final class StructureBuildTasks {
 
         Preparation(Task task, StructureCatalogView view) {
             this.task = task;
-            expansion = new StructureBuildPlan.Expansion(view, task.controller.structure(), task.controller.orientation(), BuilderState.sliceCounts(task.tag));
-            ordered = new PriorityQueue<>(task.dismantle ? ORDER.reversed() : BUILD_ORDER);
+            expansion = new StructureBuildPlan.Expansion(view, task.controller.structure(), task.controller.orientation(), BuilderState.sliceCounts(task.settings));
+            ordered = new PriorityQueue<>(task.dismantle ? REMOVE_ORDER : BUILD_ORDER);
         }
 
         boolean step() {
@@ -666,6 +693,7 @@ public final class StructureBuildTasks {
             var pos = StructureBuildPlan.add(task.controller.position(), cell.position());
             task.total++;
             if (!task.inBuildBounds(pos)) {
+                task.progress.missSolid();
                 task.errors++;
                 return;
             }
@@ -676,7 +704,7 @@ public final class StructureBuildTasks {
             }
             var display = cell.display();
             if (display != null && display.complete()) {
-                var choice = BuilderState.choice(task.tag, display, cell.position(), task.controller.orientation());
+                var choice = BuilderState.choice(task.settings, display, cell.position(), task.controller.orientation());
                 if (Block.REGISTRY.containsKey(choice.blockId())) {
                     var block = Block.REGISTRY.getObject(choice.blockId());
                     if (block != null) {
@@ -691,6 +719,7 @@ public final class StructureBuildTasks {
             }
             invalid++;
             task.errors++;
+            task.progress.missSolid();
         }
 
         private void inspect() {
@@ -712,6 +741,7 @@ public final class StructureBuildTasks {
             if (chunk == null) {
                 task.setOutcome(target, State.UNLOADED);
                 if (task.dismantle) candidates.add(target);
+                else if (!target.fluid) task.progress.missSolid();
                 return;
             }
             var current = chunk.getBlockState(target.pos);
@@ -721,9 +751,11 @@ public final class StructureBuildTasks {
             }
             if (!task.dismantle && (!blockPermission(task, target.pos) || !spaceAvailable(task, target.pos, current))) {
                 task.setOutcome(target, State.BLOCKED);
+                if (!target.fluid) task.progress.missSolid();
                 return;
             }
             target.first = (task.dismantle || !task.requireSpace) && fluid(current);
+            if (task.dismantle) target.fluid = target.first;
             if (!task.dismantle && !task.owner.isCreative()) {
                 var resource = task.resource(target);
                 if (resource == null) {
@@ -793,18 +825,19 @@ public final class StructureBuildTasks {
             var material = target.resource;
             if (material != null && !allocations.admit(material) && !task.waitMaterials) {
                 task.setOutcome(target, State.MISSING);
+                if (!target.fluid) task.progress.missSolid();
                 skipped++;
                 return;
             }
-            task.effect().add(target.pos);
+            task.effect().add(target.pos, target.fluid);
             task.targets.add(target);
-            task.progress.add(selected++, target.first);
+            task.progress.add(selected++, target.first, !task.dismantle && target.fluid);
         }
 
         private void start() {
             var me = task.me;
             if (!craft.isEmpty() && me != null && task.owner.openContainer == task.builderWindow) {
-                if (me.openCrafting(craft)) task.craftingWindow = task.owner.openContainer;
+                if (me.openCrafting(craft, GuiHostLocators.forInventorySlot(task.confirmationSlot))) task.craftingWindow = task.owner.openContainer;
                 else task.owner.sendMessage(StructureToolText.BuilderMeUnavailable.text());
             }
             if (missing && task.requireMaterials) {

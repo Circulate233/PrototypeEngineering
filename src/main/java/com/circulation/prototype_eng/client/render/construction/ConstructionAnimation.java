@@ -1,84 +1,113 @@
 package com.circulation.prototype_eng.client.render.construction;
 
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionArea;
-import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Geometry;
+import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.RegionTime;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.longs.LongLinkedOpenHashSet;
 import net.minecraft.util.math.AxisAlignedBB;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.BitSet;
-import java.util.Objects;
+
+import static com.circulation.prototype_eng.client.render.construction.ConstructionSurface.HEIGHT;
+import static com.circulation.prototype_eng.client.render.construction.ConstructionSurface.WIDTH;
+import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.FINISH_TICKS;
+import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.LAYERS_PER_SECTION;
+import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.REGION_FADE_TICKS;
+import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.WHITE_TRANSITION_TICKS;
 
 final class ConstructionAnimation {
-    static final int EDGE = 32;
-    static final int COUNT = EDGE * EDGE * EDGE;
-    static final int WHITE_WIRE_TICKS = 9;
-    static final int WHITE_HOLD_TICKS = 5;
-    static final int BUILD_REVEAL_TICKS = 55;
-    static final int REMOVE_WIRE_TICKS = 10;
-    static final int FINISH_COLOR_TICKS = 12;
-    static final int PLAN_FILL = 1;
-    static final int PLAN_WIRE = 2;
-    static final int PENDING_FILL = 4;
-    static final int CHANGED_FILL = 8;
-    static final int ALL = PLAN_FILL | PLAN_WIRE | PENDING_FILL | CHANGED_FILL;
+    static final int SLICE_CELLS = WIDTH * HEIGHT * WIDTH;
+    static final double MIN_OPACITY = .004;
+    private static final long UNSET = Long.MIN_VALUE;
 
     final boolean dismantle;
     final long startTick;
     final ConstructionArea area;
-    final Long2ObjectLinkedOpenHashMap<Section> sections = new Long2ObjectLinkedOpenHashMap<>();
-    final LongLinkedOpenHashSet dirty = new LongLinkedOpenHashSet();
-    @Nullable Bounds bounds;
-    @Nullable ConstructionMeshes.Mesh frame;
-    boolean updateBounds;
+    final Long2ObjectLinkedOpenHashMap<Slice> slices = new Long2ObjectLinkedOpenHashMap<>();
     boolean owner;
     boolean complete;
     boolean paused;
-    private long sampleTick;
-    private long sampleAt = -1;
-    private long receivedTick = -1;
-    private long observedFrom = -1;
-    private long finishAt;
-    private boolean finished;
-    boolean success;
     int missing, wrong, unloaded;
     @Nullable String hudText;
+
+    private long firstServerTick = UNSET;
+    private long latestServerTick = UNSET;
+    private long introAt;
+    private int wireTicks;
+    private long finishAt = UNSET;
 
     ConstructionAnimation(boolean dismantle, long startTick, ConstructionArea area) {
         this.dismantle = dismantle;
         this.startTick = startTick;
         this.area = area;
-        sampleTick = startTick;
     }
 
-    void sample(long serverTick, long clientTick) {
-        if (serverTick > receivedTick) {
-            if (sampleAt < 0) {
-                observedFrom = serverTick;
-                sampleTick = serverTick;
-            } else sampleTick = Math.max(serverTick, sampleTick + clientTick - sampleAt);
-            sampleAt = clientTick;
-            receivedTick = serverTick;
-        }
+    void sample(long serverTick) {
+        if (firstServerTick == UNSET) firstServerTick = serverTick;
+        latestServerTick = Math.max(latestServerTick, serverTick);
     }
 
-    double age(double clientTick) {
-        return sampleTick - startTick + Math.max(0.0, clientTick - sampleAt);
-    }
-
-    void finish(long serverTick, long clientTick, boolean successful) {
-        if (finished) return;
-        // A viewer whose first snapshot follows the end joins the current phase.
-        // Viewers already watching play the full reveal when the end arrives.
-        finishAt = observedFrom > serverTick ? clientTick - (receivedTick - serverTick) : clientTick;
-        finished = true;
-        success = successful;
+    void finish(long serverTick, long clientTick) {
+        if (finishAt == UNSET) finishAt = firstServerTick > serverTick ? clientTick - (latestServerTick - serverTick) : clientTick;
     }
 
     double finishAge(double clientTick) {
-        return finished ? Math.max(0, clientTick - finishAt) : -1;
+        return finishAt == UNSET ? -1 : Math.max(0, clientTick - finishAt);
+    }
+
+    double wireOpacity(double now) {
+        if (dismantle) {
+            double after = finishAge(now);
+            return after < 0 ? 0 : .92 * smooth(after, WHITE_TRANSITION_TICKS)
+                * (1 - smooth(after - WHITE_TRANSITION_TICKS, FINISH_TICKS - WHITE_TRANSITION_TICKS));
+        }
+        return finishAt == UNSET && wireTicks != 0 ? .92 * (1 - smooth(now - introAt - wireTicks, WHITE_TRANSITION_TICKS)) : 0;
+    }
+
+    boolean prepareOutline(double now) {
+        return dismantle && finishAge(now) < WHITE_TRANSITION_TICKS;
+    }
+
+    double shellOpacity(Phase region, double now) {
+        if (dismantle) {
+            if (region.activeAt == UNSET || finishAt != UNSET && region.settledAt == UNSET) return 0;
+            return smooth(now - region.activeAt, WHITE_TRANSITION_TICKS) * region.remaining(now);
+        }
+        return smooth(now - introAt - wireTicks, WHITE_TRANSITION_TICKS) * region.remaining(now);
+    }
+
+    boolean expired(double now) {
+        return finishAge(now) >= FINISH_TICKS;
+    }
+
+    private static double smooth(double age, int duration) {
+        double value = Math.clamp(age / duration, 0, 1);
+        return value * value * (3 - 2 * value);
+    }
+
+    void geometry(Geometry packet, long clientTick) {
+        sample(packet.serverTick());
+        long startedAt = clientTick - (packet.serverTick() - startTick);
+        if (wireTicks == 0) {
+            wireTicks = packet.wireTicks();
+            introAt = startedAt;
+        } else if (!dismantle && packet.snapshot()) introAt = Math.min(introAt, startedAt);
+        var section = packet.section();
+        int x = section.chunkX(packet.quadrant()), y = section.y() * LAYERS_PER_SECTION, z = section.chunkZ(packet.quadrant());
+        for (int i = 0; i < LAYERS_PER_SECTION; i++) {
+            int from = i * SLICE_CELLS, to = from + SLICE_CELLS;
+            if (packet.snapshot() || !packet.excluded().isEmpty()) {
+                apply(x, y + i, z, packet.snapshot() ? packet.cells().get(from, to) : null,
+                    packet.snapshot() ? packet.fluids().get(from, to) : null, packet.excluded().get(from, to));
+            }
+        }
+        for (var time : packet.regions()) {
+            boolean fluid = time.region() >= LAYERS_PER_SECTION;
+            int layer = fluid ? time.region() - LAYERS_PER_SECTION : time.region();
+            var slice = slices.get(key(x, y + layer, z));
+            if (slice != null) (fluid ? slice.fluid : slice.solid).apply(time, packet.serverTick(), clientTick, packet.snapshot(), finishAt);
+        }
     }
 
     void metrics(int missing, int wrong, int unloaded, boolean paused) {
@@ -93,196 +122,155 @@ final class ConstructionAnimation {
         return ((long) x & 0x3ffffff) << 38 | ((long) z & 0x3ffffff) << 12 | ((long) y & 0xfff);
     }
 
-    static int x(long key) {
-        return (int) (key >> 38);
-    }
-
-    static int y(long key) {
-        return (int) (key << 52 >> 52);
-    }
-
-    static int z(long key) {
-        return (int) (key << 26 >> 38);
-    }
-
     static int index(int x, int y, int z) {
-        return x | z << 5 | y << 10;
+        return x | z << 4 | y << 8;
     }
 
-    static int localX(int cell) {
-        return cell & 31;
+    void apply(int x, int y, int z, @Nullable BitSet snapshot, @Nullable BitSet fluids, BitSet excluded) {
+        long key = key(x, y, z);
+        var slice = slices.get(key);
+        BitSet cells;
+        BitSet liquid;
+        if (snapshot == null) {
+            if (slice == null || excluded.isEmpty()) return;
+            cells = (BitSet) slice.cells.clone();
+            liquid = (BitSet) slice.fluids.clone();
+        } else {
+            cells = snapshot;
+            liquid = fluids == null ? new BitSet() : fluids;
+        }
+        cells.andNot(excluded);
+        liquid.and(cells);
+        if (cells.isEmpty()) {
+            forget(x, y, z);
+            return;
+        }
+        var changed = (BitSet) cells.clone();
+        if (slice != null) {
+            changed.xor(slice.cells);
+            var materialChanges = (BitSet) liquid.clone();
+            materialChanges.xor(slice.fluids);
+            changed.or(materialChanges);
+        }
+        if (changed.isEmpty()) return;
+        if (slice == null) {
+            slice = new Slice(this, x, y, z);
+            slices.put(key, slice);
+        }
+        slice.cells = cells;
+        slice.fluids = liquid;
+        slice.hasSolid = liquid.cardinality() < cells.cardinality();
+        slice.invalidate();
+        invalidateNeighbors(x, y, z, changed);
     }
 
-    static int localY(int cell) {
-        return cell >> 10;
+    void forget(int x, int y, int z) {
+        var removed = slices.remove(key(x, y, z));
+        if (removed == null) return;
+        removed.dispose();
+        invalidateNeighbors(x, y, z, removed.cells);
     }
 
-    static int localZ(int cell) {
-        return cell >> 5 & 31;
-    }
-
-    void markDirty(long key, boolean planChanged) {
-        flag(key, ALL);
-        updateBounds |= planChanged;
-        int x = x(key), y = y(key), z = z(key);
-        for (int dy = -1; dy <= 1; dy++) for (int dz = -1; dz <= 1; dz++) for (int dx = -1; dx <= 1; dx++) {
-            if (dx == 0 && dy == 0 && dz == 0) continue;
-            flag(key(x + dx, y + dy, z + dz), ALL);
+    private void invalidateNeighbors(int x, int y, int z, BitSet changed) {
+        int neighbors = 0;
+        for (int cell = changed.nextSetBit(0); cell >= 0; cell = changed.nextSetBit(cell + 1)) {
+            int dx = boundary(cell & 15, WIDTH);
+            int dy = boundary(cell >> 8, HEIGHT);
+            int dz = boundary(cell >> 4 & 15, WIDTH);
+            if ((dx | dy | dz) == 0) continue;
+            for (int a = Math.min(dx, 0); a <= Math.max(dx, 0); a++)
+                for (int b = Math.min(dy, 0); b <= Math.max(dy, 0); b++)
+                    for (int c = Math.min(dz, 0); c <= Math.max(dz, 0); c++)
+                        neighbors |= 1 << ((b + 1) * 9 + (c + 1) * 3 + a + 1);
         }
-    }
-
-    void committed(long key) {
-        flag(key, PENDING_FILL | CHANGED_FILL);
-        int x = x(key), y = y(key), z = z(key);
-        flag(key(x - 1, y, z), PENDING_FILL | CHANGED_FILL);
-        flag(key(x + 1, y, z), PENDING_FILL | CHANGED_FILL);
-        flag(key(x, y - 1, z), PENDING_FILL | CHANGED_FILL);
-        flag(key(x, y + 1, z), PENDING_FILL | CHANGED_FILL);
-        flag(key(x, y, z - 1), PENDING_FILL | CHANGED_FILL);
-        flag(key(x, y, z + 1), PENDING_FILL | CHANGED_FILL);
-    }
-
-    private void flag(long key, int kinds) {
-        var section = sections.get(key);
-        if (section == null) dirty.remove(key);
-        else {
-            section.dirty |= kinds;
-            dirty.add(key);
-        }
-    }
-
-    boolean occupied(Section center, int x, int y, int z, MeshKind kind) {
-        if ((x | y | z) >= 0 && (x | y | z) < EDGE)
-            return center.occupied(index(x, y, z), kind);
-        var other = sections.get(key(center.x + (x >> 5), center.y + (y >> 5), center.z + (z >> 5)));
-        return other != null && other.occupied(index(x & 31, y & 31, z & 31), kind);
-    }
-
-    static final class Section {
-        final int x, y, z;
-        final AxisAlignedBB view;
-        final BitSet plan = new BitSet(COUNT);
-        final BitSet changed = new BitSet(COUNT);
-        final BitSet excluded = new BitSet(COUNT);
-        int dirty = ALL;
-        @Nullable Bounds bounds;
-        @Nullable ConstructionMeshes.Mesh planFill;
-        @Nullable ConstructionMeshes.Mesh planWire;
-        @Nullable ConstructionMeshes.Mesh pendingFill;
-        @Nullable ConstructionMeshes.Mesh changedFill;
-
-        Section(int x, int y, int z) {
-            this.x = x;
-            this.y = y;
-            this.z = z;
-            view = new AxisAlignedBB(x * EDGE, y * EDGE, z * EDGE, (x + 1) * EDGE, (y + 1) * EDGE, (z + 1) * EDGE).grow(0.005);
-        }
-
-        void apply(Geometry geometry) {
-            int quadrant = geometry.quadrant();
-            if (geometry.snapshot()) {
-                clearQuadrant(quadrant);
-                copy(geometry.cells(), plan, quadrant);
-                bounds = Bounds.of(this);
-            }
-            copy(geometry.committed(), changed, quadrant);
-            copy(geometry.excluded(), excluded, quadrant);
-        }
-
-        void forget(int quadrant) {
-            clearQuadrant(quadrant);
-            bounds = Bounds.of(this);
-        }
-
-        private void clearQuadrant(int quadrant) {
-            int x = (quadrant & 1) << 4;
-            int z = (quadrant >> 1) << 4;
-            for (int y = 0; y < EDGE; y++) for (int dz = z; dz < z + 16; dz++) {
-                int row = index(x, y, dz);
-                plan.clear(row, row + 16);
-                changed.clear(row, row + 16);
-                excluded.clear(row, row + 16);
-            }
-        }
-
-        private static void copy(BitSet cells, BitSet output, int quadrant) {
-            for (int cell = cells.nextSetBit(0); cell >= 0; cell = cells.nextSetBit(cell + 1))
-                output.set(Geometry.sectionIndex(quadrant, cell));
-        }
-
-        boolean occupied(int cell, MeshKind kind) {
-            return switch (kind) {
-                case PLAN -> plan.get(cell) && !excluded.get(cell);
-                case PENDING -> plan.get(cell) && !changed.get(cell) && !excluded.get(cell);
-                case CHANGED -> changed.get(cell);
-            };
-        }
-
-        BitSet visit(MeshKind kind) {
-            return kind == MeshKind.CHANGED ? changed : plan;
-        }
-
-        void dispose() {
-            if (planFill != null) planFill.delete();
-            if (planWire != null) planWire.delete();
-            if (pendingFill != null) pendingFill.delete();
-            if (changedFill != null) changedFill.delete();
-            planFill = null;
-            planWire = null;
-            pendingFill = null;
-            changedFill = null;
+        neighbors &= ~(1 << 13);
+        while (neighbors != 0) {
+            int neighbor = Integer.numberOfTrailingZeros(neighbors);
+            neighbors &= neighbors - 1;
+            var adjacent = slices.get(key(x + neighbor % 3 - 1, y + neighbor / 9 - 1, z + neighbor / 3 % 3 - 1));
+            if (adjacent != null) adjacent.invalidate();
         }
     }
 
-    void refreshBounds() {
-        if (!updateBounds) return;
-        var previous = bounds;
-        bounds = null;
-        for (var section : sections.values()) {
-            if (section.bounds != null) bounds = bounds == null ? section.bounds : bounds.union(section.bounds);
-        }
-        if (!Objects.equals(previous, bounds) && frame != null) {
-            frame.delete();
-            frame = null;
-        }
-        updateBounds = false;
+    private static int boundary(int value, int bound) {
+        if (value == 0) return -1;
+        return value == bound - 1 ? 1 : 0;
     }
 
-    boolean expired(double tick) {
-        return finishAge(tick) >= ConstructionEffectPayload.FINISH_TICKS;
+    void invalidateMeshes() {
+        for (var slice : slices.values()) slice.dispose();
     }
 
     void dispose() {
-        if (frame != null) frame.delete();
-        for (var section : sections.values()) section.dispose();
-        sections.clear();
-        dirty.clear();
+        invalidateMeshes();
+        slices.clear();
     }
 
-    record Bounds(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
-        static @Nullable Bounds of(Section section) {
-            if (section.plan.isEmpty()) return null;
-            int minX = EDGE, minY = EDGE, minZ = EDGE, maxX = -1, maxY = -1, maxZ = -1;
-            for (int cell = section.plan.nextSetBit(0); cell >= 0; cell = section.plan.nextSetBit(cell + 1)) {
-                int x = localX(cell), y = localY(cell), z = localZ(cell);
-                minX = Math.min(minX, x);
-                minY = Math.min(minY, y);
-                minZ = Math.min(minZ, z);
-                maxX = Math.max(maxX, x);
-                maxY = Math.max(maxY, y);
-                maxZ = Math.max(maxZ, z);
+    static final class Phase {
+        private long activeAt = UNSET;
+        private long settledAt = UNSET;
+
+        void apply(RegionTime time, long serverTick, long clientTick, boolean snapshot, long finishAt) {
+            if (activeAt == UNSET && time.activatedTick() >= 0) activeAt = clientTick - (serverTick - time.activatedTick());
+            if (settledAt == UNSET && time.settledTick() >= 0) {
+                settledAt = snapshot ? clientTick - (serverTick - time.settledTick()) : clientTick;
+                if (finishAt != UNSET) settledAt = Math.min(settledAt, finishAt);
             }
-            int x = section.x * EDGE, y = section.y * EDGE, z = section.z * EDGE;
-            return new Bounds(x + minX, y + minY, z + minZ, x + maxX + 1, y + maxY + 1, z + maxZ + 1);
         }
 
-        Bounds union(Bounds other) {
-            return new Bounds(Math.min(minX, other.minX), Math.min(minY, other.minY), Math.min(minZ, other.minZ),
-                Math.max(maxX, other.maxX), Math.max(maxY, other.maxY), Math.max(maxZ, other.maxZ));
+        double remaining(double now) {
+            return settledAt == UNSET ? 1 : 1 - smooth(now - settledAt, REGION_FADE_TICKS);
         }
     }
 
-    enum MeshKind {
-        PLAN, PENDING, CHANGED
+    static final class Slice {
+        final ConstructionAnimation task;
+        final int x, y, z;
+        final AxisAlignedBB view;
+        BitSet cells = new BitSet();
+        BitSet fluids = new BitSet();
+        boolean hasSolid;
+        int version;
+        int wireVersion = -1;
+        @Nullable ConstructionMeshes.Mesh wire;
+        final Phase solid = new Phase();
+        final Phase fluid = new Phase();
+        final ConstructionMeshes.Part solidMesh = new ConstructionMeshes.Part();
+        final ConstructionMeshes.Part fluidMesh = new ConstructionMeshes.Part();
+        int seenFrame;
+        boolean prepareWire;
+        double wireOpacity;
+
+        Slice(ConstructionAnimation task, int x, int y, int z) {
+            this.task = task;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            int minX = x * WIDTH, minY = y * HEIGHT, minZ = z * WIDTH;
+            view = new AxisAlignedBB(minX, minY, minZ, minX + WIDTH, minY + HEIGHT, minZ + WIDTH);
+        }
+
+        byte cell(int x, int y, int z) {
+            Slice slice = this;
+            if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= WIDTH) {
+                slice = task.slices.get(key(this.x + (x >> 4), this.y + (y >> 3), this.z + (z >> 4)));
+                if (slice == null) return 0;
+            }
+            int index = index(x & 15, y & 7, z & 15);
+            if (!slice.cells.get(index)) return 0;
+            return slice.fluids.get(index) ? ConstructionSurface.FLUID : ConstructionSurface.SOLID;
+        }
+
+        void invalidate() {
+            version++;
+        }
+
+        void dispose() {
+            invalidate();
+            if (wire != null) wire.delete();
+            wire = null;
+            solidMesh.delete();
+            fluidMesh.delete();
+        }
     }
 }

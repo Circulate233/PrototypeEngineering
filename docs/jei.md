@@ -140,6 +140,10 @@ Scene.materials统计完整model.cells并仅排除原点控制器占用，整种
 
 本地源码提交 `ac66590`。6Java及两语言本机MCP errorsOnly:false全级零、完整读回匹配，Spotless/必要构建（-x test）和MCP build通过；未新增或运行测试。可视addon已编译安装到run/mods，boundary_structure完整输入169、各片层仍169、JEI候选替换109及本地化控制器输出的操作说明见 `run/visual-examples/README.md`；构造器单格108+1与整种109的设置独立于JEI，不把工具NBT当结构页当前选择。原始证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/structure-jei-import/`；真实终端编码和客户端视觉仍待用户重启复验，未启动游戏。
 
+## 外部主方块的结构预览
+
+通过 `StructureConstructionRegistrationEvent` 注册的外部主方块进入同一个结构预览分类。在物品栏或 HEI 对主方块物品按 R 或 U 打开。相同结构、方块和物品子类型的多个状态共用一个条目，优先展示该方块的默认状态，可以在原点点选主方块。样板转移复用完整结构材料和本地化输出名称，输出使用主方块物品。成型模型切换用于提供该模型的机器类型。
+
 ## D2 结构预览联动
 
 PrototypeJeiPlugin注册实际StructurePreviewJeiCategory/Recipe；静态canonical MachineType.structureId关联独立机器结构页和已有controller catalyst，完整服务端客户端目录供view选择，不枚举世界实例或执行matcher。AutoLayoutRecipePage的嵌入预览使用公开concrete Panel/Scene；独立custom RecipePoolJeiPage可调用StructurePreviewScreens.panel，不继承默认实现。全屏viewer直接AEBaseGui，保留即时HEI父页和准确机器原容器返回。原生GuiOpen和初始化事件由Minecraft处理，预览仅管理自己的打开、资源释放和返回；嵌入的Mouse/Keyboard事件仅消费实际绘制控件，拖拽跨draw继续且关闭后准确一次up不泄露到父槽位。

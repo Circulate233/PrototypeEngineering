@@ -276,7 +276,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
             sprite("top_button_base_structural_forming_" + (view.formedPreview() ? "on" : "off"), 141, y, 17, 17);
             area("formingBase", 141, y, 17, 17, List.of(PreviewUiText.Formed.getLocal()), null);
             button("forming", "top_button/self_locking_default", "top_button/self_locking_selected", "top_button/self_locking_pressed",
-                144, y + 15, 13, 5, view.formedPreview(), true, PreviewUiText.Formed,
+                144, y + 15, 13, 5, view.formedPreview(), view.machine() != null, PreviewUiText.Formed,
                 () -> view.formedPreview(drawnToken, !view.formedPreview()));
         });
         clipped(159, 10, 17, 18, () -> {

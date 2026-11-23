@@ -1,71 +1,85 @@
 package com.circulation.prototype_eng.structure.tool;
 
 import it.unimi.dsi.fastutil.ints.IntArrayFIFOQueue;
-import org.jetbrains.annotations.Nullable;
 
+import java.util.BitSet;
+import java.util.function.BooleanSupplier;
 import java.util.function.IntFunction;
-import java.util.function.IntPredicate;
 
 final class ConstructionProgress {
-    private final IntArrayFIFOQueue priority = new IntArrayFIFOQueue();
-    private final IntArrayFIFOQueue ordinary = new IntArrayFIFOQueue();
+    private final IntArrayFIFOQueue clearFluids = new IntArrayFIFOQueue();
+    private final IntArrayFIFOQueue solids = new IntArrayFIFOQueue();
+    private final IntArrayFIFOQueue fluids = new IntArrayFIFOQueue();
+    private final BitSet cleared = new BitSet();
     private int done;
+    private int unvisited;
+    private long lastTick = Long.MIN_VALUE;
+    private long fluidBarrierTick = Long.MIN_VALUE;
+    private Phase pass = Phase.CLEAR_FLUIDS;
     private boolean waiting;
+    private boolean missingSolid;
 
-    ConstructionProgress() {
+    void add(int index, boolean clearFirst, boolean placeFluidLast) {
+        if (clearFirst) clearFluids.enqueue(index);
+        (placeFluidLast ? fluids : solids).enqueue(index);
     }
 
-    ConstructionProgress(int size) {
-        this(size, _ -> false);
+    Phase nextPhase() {
+        return !clearFluids.isEmpty() ? Phase.CLEAR_FLUIDS : !solids.isEmpty() ? Phase.SOLIDS
+            : fluids.isEmpty() ? Phase.DONE : missingSolid ? Phase.SKIP_FLUIDS : Phase.FLUIDS;
     }
 
-    ConstructionProgress(int size, IntPredicate first) {
-        for (int index = 0; index < size; index++) add(index, first.test(index));
+    void missSolid() {
+        missingSolid = true;
     }
 
-    void add(int index, boolean first) {
-        (first ? priority : ordinary).enqueue(index);
-    }
-
-    boolean firstPass() {
-        return !priority.isEmpty();
-    }
-
-    void advance(int budget, IntFunction<Step> operation) {
-        advance(null, budget, operation);
-    }
-
-    void advance(ConstructionBudget.Slice slice, IntFunction<Step> operation) {
-        advance(slice, Integer.MAX_VALUE, operation);
-    }
-
-    private void advance(ConstructionBudget.@Nullable Slice slice, int budget, IntFunction<Step> operation) {
-        waiting = false;
-        if (firstPass()) {
-            budget -= advancePhase(priority, slice, budget, operation);
-            if (firstPass() || waiting || budget <= 0) return;
+    boolean advance(long tick, Phase phase, BooleanSupplier available, IntFunction<Step> operation) {
+        var queue = switch (phase) {
+            case CLEAR_FLUIDS -> clearFluids;
+            case SOLIDS -> solids;
+            case FLUIDS, SKIP_FLUIDS -> fluids;
+            case DONE -> throw new IllegalStateException("No construction positions remaining");
+        };
+        if (phase == Phase.FLUIDS && tick == fluidBarrierTick) return false;
+        if (tick != lastTick || phase != pass) {
+            lastTick = tick;
+            pass = phase;
+            unvisited = queue.size();
+            waiting = false;
         }
-        advancePhase(ordinary, slice, budget, operation);
-    }
-
-    private int advancePhase(IntArrayFIFOQueue queue, ConstructionBudget.@Nullable Slice slice, int budget, IntFunction<Step> operation) {
-        int visits = Math.min(queue.size(), budget);
-        for (int visit = 0; visit < visits && (slice == null || slice.available()); visit++) {
+        if (waiting || unvisited == 0) return false;
+        while (unvisited > 0 && available.getAsBoolean()) {
             int index = queue.firstInt();
-            var result = operation.apply(index);
-            if (result == Step.WAIT) {
-                waiting = true;
-                return visit + 1;
+            if (phase != Phase.CLEAR_FLUIDS && cleared.get(index)) {
+                queue.dequeueInt();
+                cleared.clear(index);
+            } else {
+                var result = operation.apply(index);
+                if (result == Step.WAIT) {
+                    waiting = true;
+                    return false;
+                }
+                queue.dequeueInt();
+                switch (result) {
+                    case COMPLETE -> {
+                        if (phase == Phase.CLEAR_FLUIDS) cleared.set(index);
+                        done++;
+                    }
+                    case RETRY -> queue.enqueue(index);
+                    case CONTINUE -> {
+                    }
+                    case WAIT -> throw new IllegalStateException("Waiting must preserve the current position");
+                }
             }
-            queue.dequeueInt();
-            switch (result) {
-                case COMPLETE -> done++;
-                case RETRY -> queue.enqueue(index);
-                case DEFER -> ordinary.enqueue(index);
-                case WAIT -> throw new IllegalStateException("Waiting must preserve the current position");
-            }
+            --unvisited;
         }
-        return visits;
+        if (!queue.isEmpty()) return unvisited > 0;
+        var next = nextPhase();
+        if (next == Phase.FLUIDS && phase != Phase.FLUIDS) {
+            fluidBarrierTick = tick;
+            return false;
+        }
+        return next != Phase.DONE;
     }
 
     int done() {
@@ -76,5 +90,7 @@ final class ConstructionProgress {
         return waiting;
     }
 
-    enum Step {COMPLETE, RETRY, WAIT, DEFER}
+    enum Phase {CLEAR_FLUIDS, SOLIDS, FLUIDS, SKIP_FLUIDS, DONE}
+
+    enum Step {COMPLETE, RETRY, WAIT, CONTINUE}
 }

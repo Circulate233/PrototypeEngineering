@@ -10,6 +10,7 @@ import com.circulation.prototype_eng.api.client.jei.JeiPatternRecipe;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.structure.StructureConstructionRegistry;
 import com.circulation.prototype_eng.client.preview.StructurePreviewPanel;
 import com.circulation.prototype_eng.client.preview.StructurePreviewView;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -21,25 +22,28 @@ import mezz.jei.api.ingredients.IIngredients;
 import mezz.jei.api.ingredients.VanillaTypes;
 import mezz.jei.api.recipe.IRecipeWrapper;
 import mezz.jei.gui.recipes.RecipeLayout;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
- * One machine's native controller R output. Each wrapper has independent camera, choices and owned meshes.
- * Controller stacks and lists are borrowed read-only for the wrapper's lifetime.
+ * A structure's main blocks are its JEI outputs and are borrowed read-only.
  */
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
 @SideOnly(Side.CLIENT)
 public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoCloseable {
-    private final MachineType machine;
-    private final List<ItemStack> controllers;
+    private final @Nullable MachineType machine;
+    private final @Nullable IBlockState anchor;
+    private final StructureConstructionRegistry.@Nullable Entry binding;
+    private final List<ItemStack> mainBlocks;
     private final Int2ObjectOpenHashMap<IngredientSlot> ingredientSlots = new Int2ObjectOpenHashMap<>();
     private final IntOpenHashSet visibleIngredients = new IntOpenHashSet();
     private StructurePreviewView view;
@@ -48,20 +52,37 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
     private Object transferToken, transferMaterials;
 
     public StructurePreviewJeiRecipe(MachineType machine, List<ItemStack> controllers) {
+        this(machine, null, null, controllers);
+    }
+
+    StructurePreviewJeiRecipe(IBlockState anchor, StructureConstructionRegistry.Entry binding, ItemStack output) {
+        this(null, anchor, binding, output.isEmpty() ? List.of() : List.of(output));
+    }
+
+    private StructurePreviewJeiRecipe(@Nullable MachineType machine, @Nullable IBlockState anchor,
+                                      StructureConstructionRegistry.@Nullable Entry binding, List<ItemStack> mainBlocks) {
         this.machine = machine;
-        this.controllers = controllers;
+        this.anchor = anchor;
+        this.binding = binding;
+        this.mainBlocks = mainBlocks;
+    }
+
+    private StructurePreviewView createView() {
+        var service = StructurePreviews.client();
+        if (binding != null && anchor != null)
+            return new StructurePreviewView(service, binding.structure(), new StructurePreviewSettings(binding.orientation().apply(anchor)), anchor, binding.name());
+        var type = Objects.requireNonNull(machine);
+        return new StructurePreviewView(service, type.structureId(), new StructurePreviewSettings(BlockOrientation.NORTH_UP), type);
     }
 
     @Override
     public void getIngredients(IIngredients ingredients) {
-        if (!controllers.isEmpty())
-            ingredients.setOutputs(VanillaTypes.ITEM, controllers);
+        if (!mainBlocks.isEmpty()) ingredients.setOutputs(VanillaTypes.ITEM, mainBlocks);
     }
 
     @Override
     public void drawInfo(Minecraft minecraft, int width, int height, int mouseX, int mouseY) {
-        if (view == null || view.previews().closed())
-            view = new StructurePreviewView(StructurePreviews.client(), machine.structureId(), new StructurePreviewSettings(BlockOrientation.NORTH_UP), machine);
+        if (view == null || view.previews().closed()) view = createView();
         visibleIngredients.clear();
         if (panel == null || panel.closed()) {
             panel = new StructurePreviewPanel(view);
@@ -139,10 +160,10 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
         var materials = scene.materials();
         if (materials == null) return null;
         var output = ItemStack.EMPTY;
-        for (int index3 = 0; index3 < controllers.size(); index3++) {
-            var controller = controllers.get(index3);
-            if (!controller.isEmpty()) {
-                output = controller;
+        for (int index = 0; index < mainBlocks.size(); index++) {
+            var stack = mainBlocks.get(index);
+            if (!stack.isEmpty()) {
+                output = stack;
                 break;
             }
         }

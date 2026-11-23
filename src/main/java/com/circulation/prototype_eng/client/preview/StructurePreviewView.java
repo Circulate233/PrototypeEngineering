@@ -18,12 +18,14 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectIterator;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.function.Function;
 
@@ -34,6 +36,8 @@ public final class StructurePreviewView {
     private final StructurePreviews previews;
     private final ResourceLocation id;
     private final @Nullable MachineType machine;
+    private final @Nullable IBlockState externalMainBlock;
+    private final @Nullable LocalizationEnum externalName;
     private final Object2IntOpenHashMap<StructureDisplay> alternatives = new Object2IntOpenHashMap<>();
     private final Object2ObjectOpenHashMap<BlockPos, StructurePreviewModel.Cell> cells = new Object2ObjectOpenHashMap<>();
     private final Object2LongOpenHashMap<StructureDisplay> mismatchCounts = new Object2LongOpenHashMap<>();
@@ -77,11 +81,25 @@ public final class StructurePreviewView {
      */
     public StructurePreviewView(StructurePreviews previews, ResourceLocation id, StructurePreviewSettings settings,
                                 @Nullable MachineType machine) {
+        this(previews, id, settings, machine, null, null);
+    }
+
+    public StructurePreviewView(StructurePreviews previews, ResourceLocation id, StructurePreviewSettings settings,
+                                IBlockState externalMainBlock, LocalizationEnum externalName) {
+        this(previews, id, settings, null, externalMainBlock, externalName);
+        var option = StructureDisplay.BlockOption.of(externalMainBlock, Map.of());
+        controllerDisplay(new StructureDisplay("state:" + option.blockId() + ":" + option.meta(), List.of(option), null));
+    }
+
+    private StructurePreviewView(StructurePreviews previews, ResourceLocation id, StructurePreviewSettings settings,
+                                 @Nullable MachineType machine, @Nullable IBlockState externalMainBlock, @Nullable LocalizationEnum externalName) {
         this.previews = previews;
         this.id = id;
         if (machine != null && !machine.structureId().equals(id))
             throw new IllegalArgumentException("Preview machine does not reference the requested structure");
         this.machine = machine;
+        this.externalMainBlock = externalMainBlock;
+        this.externalName = externalName;
         this.settings = settings;
         alternatives.putAll(settings.displayOptions());
     }
@@ -116,13 +134,14 @@ public final class StructurePreviewView {
         return machine;
     }
 
-    /**
-     * An unnamed structure in a machine viewer keeps that machine's localized display contract.
-     */
+    @Nullable IBlockState externalMainBlock() {
+        return externalMainBlock;
+    }
+
     public @Nullable LocalizationEnum title() {
         var current = model();
         var declared = current == null ? null : current.title();
-        return declared != null ? declared : machine == null ? null : machine.displayName();
+        return declared != null ? declared : machine == null ? externalName : machine.displayName();
     }
 
     public boolean formedPreview() {

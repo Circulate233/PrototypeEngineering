@@ -24,8 +24,10 @@ import net.minecraft.init.Blocks;
 import net.minecraft.item.EnumDyeColor;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemBlock;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
 import net.minecraftforge.client.event.ModelRegistryEvent;
 import net.minecraftforge.client.model.ModelLoader;
 import net.minecraftforge.event.RegistryEvent;
@@ -43,6 +45,7 @@ public final class ObservatoryExamples {
     private static final LocalizationEnum NAME = () -> "pe_visual_examples.observatory";
     private static final Block ANCHOR = new Anchor();
     private static final Item ANCHOR_ITEM = new ItemBlock(ANCHOR).setRegistryName(ANCHOR_ID);
+    private static final BlockPos2ObjectMap<ObservatoryLayout.Surface> CELLS = ObservatoryLayout.build();
 
     private ObservatoryExamples() {
     }
@@ -64,10 +67,10 @@ public final class ObservatoryExamples {
     @SubscribeEvent
     public static void structure(MachineRuntimeRegistrationEvent event) {
         var materials = new EnumMap<ObservatoryLayout.Surface, StructurePredicate>(ObservatoryLayout.Surface.class);
-        for (var material : ObservatoryLayout.Surface.values()) materials.put(material, StructurePredicates.state(state(material)));
-        var cells = ObservatoryLayout.build();
-        var predicates = new BlockPos2ObjectMap<StructurePredicate>(cells.size());
-        for (var iterator = cells.fastIterator(); iterator.hasNext(); ) {
+        for (var material : ObservatoryLayout.Surface.values())
+            materials.put(material, StructurePredicates.state(MaterialStates.STATES.get(material)));
+        var predicates = new BlockPos2ObjectMap<StructurePredicate>(CELLS.size());
+        for (var iterator = CELLS.fastIterator(); iterator.hasNext(); ) {
             var entry = iterator.next();
             predicates.put(entry.getLongKey(), materials.get(entry.getValue()));
         }
@@ -78,7 +81,33 @@ public final class ObservatoryExamples {
 
     @SubscribeEvent
     public static void construction(StructureConstructionRegistrationEvent event) {
-        event.registry().register(ANCHOR.getDefaultState(), SHAPE_ID, NAME);
+        event.registry().register(ANCHOR.getDefaultState(), SHAPE_ID, NAME, _ -> BlockOrientation.NORTH_UP,
+            ObservatoryExamples::formed);
+    }
+
+    private static boolean formed(IBlockState state, TileEntity tile, World world, BlockPos origin) {
+        var pos = new BlockPos.MutableBlockPos();
+        if (!matches(world, pos, origin, ObservatoryLayout.DOME_TIP, CELLS.get(ObservatoryLayout.DOME_TIP))) return false;
+        for (var iterator = CELLS.fastIterator(); iterator.hasNext(); ) {
+            var entry = iterator.next();
+            if (!matches(world, pos, origin, entry.getLongKey(), entry.getValue())) return false;
+        }
+        return true;
+    }
+
+    private static boolean matches(World world, BlockPos.MutableBlockPos pos, BlockPos origin, long cell,
+                                   ObservatoryLayout.Surface material) {
+        pos.setPos(origin.getX() + BlockPos2ObjectMap.unpackX(cell), origin.getY() + BlockPos2ObjectMap.unpackY(cell),
+            origin.getZ() + BlockPos2ObjectMap.unpackZ(cell));
+        return world.isBlockLoaded(pos, false) && world.getBlockState(pos) == MaterialStates.STATES.get(material);
+    }
+
+    private static final class MaterialStates {
+        private static final EnumMap<ObservatoryLayout.Surface, IBlockState> STATES = new EnumMap<>(ObservatoryLayout.Surface.class);
+
+        static {
+            for (var material : ObservatoryLayout.Surface.values()) STATES.put(material, state(material));
+        }
     }
 
     private static IBlockState state(ObservatoryLayout.Surface material) {

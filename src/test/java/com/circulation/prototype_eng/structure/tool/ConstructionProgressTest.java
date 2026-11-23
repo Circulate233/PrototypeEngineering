@@ -1,153 +1,137 @@
 package com.circulation.prototype_eng.structure.tool;
 
+import com.circulation.prototype_eng.structure.tool.ConstructionProgress.Phase;
+import com.circulation.prototype_eng.structure.tool.ConstructionProgress.Step;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.IntFunction;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class ConstructionProgressTest {
     @Test
-    void unfinishedFluidPositionsPreventBlockMiningAcrossRetries() {
-        var progress = new ConstructionProgress(4, index -> index == 1 || index == 3);
+    void constructionPlacesFluidAfterTheLastSolidRetryAndItsNotifications() {
+        var progress = new ConstructionProgress();
+        progress.add(0, false, false);
+        progress.add(1, false, false);
+        progress.add(2, false, true);
         var visits = new IntArrayList();
-        progress.advance(8, index -> {
-            visits.add(index);
-            return index == 1 ? ConstructionProgress.Step.RETRY : ConstructionProgress.Step.COMPLETE;
-        });
-        assertEquals(IntList.of(1, 3), visits);
-        assertEquals(1, progress.done());
-        assertTrue(progress.firstPass());
-        visits.clear();
-        progress.advance(8, index -> {
-            visits.add(index);
-            return ConstructionProgress.Step.COMPLETE;
-        });
-        assertEquals(1, visits.getInt(0));
-        assertFalse(progress.firstPass());
-        progress.advance(8, _ -> ConstructionProgress.Step.COMPLETE);
-        assertEquals(4, progress.done());
-    }
 
-    @Test
-    void fluidPositionCanContinueAsAPlacementAfterItsFluidIsRemoved() {
-        var progress = new ConstructionProgress(3, index -> index == 1);
-        var visits = new IntArrayList();
-        progress.advance(1, index -> {
+        assertFalse(advance(progress, 0, index -> {
             visits.add(index);
-            return ConstructionProgress.Step.DEFER;
-        });
-        assertEquals(IntList.of(1), visits);
-        assertEquals(0, progress.done());
-        assertFalse(progress.firstPass());
-        visits.clear();
-        progress.advance(8, index -> {
-            visits.add(index);
-            return ConstructionProgress.Step.COMPLETE;
-        });
-        assertEquals(IntList.of(0, 2, 1), visits);
-        assertEquals(3, progress.done());
-    }
-
-    @Test
-    void missingMaterialHoldsTheCurrentPositionUntilSupplyArrives() {
-        var progress = new ConstructionProgress(3);
-        var visits = new IntArrayList();
-        progress.advance(8, index -> {
-            visits.add(index);
-            return index == 1 ? ConstructionProgress.Step.WAIT : ConstructionProgress.Step.COMPLETE;
-        });
+            return index == 0 ? Step.RETRY : Step.COMPLETE;
+        }));
         assertEquals(IntList.of(0, 1), visits);
-        assertEquals(1, progress.done());
-        assertTrue(progress.waiting());
+        assertEquals(Phase.SOLIDS, progress.nextPhase());
 
-        visits.clear();
-        progress.advance(8, index -> {
+        assertFalse(advance(progress, 1, index -> {
             visits.add(index);
-            return ConstructionProgress.Step.WAIT;
-        });
-        assertEquals(IntList.of(1), visits);
-        assertEquals(1, progress.done());
-
-        visits.clear();
-        progress.advance(8, index -> {
+            return Step.COMPLETE;
+        }));
+        assertEquals(Phase.FLUIDS, progress.nextPhase());
+        assertFalse(advance(progress, 1, _ -> fail("Fluid ran before the end-of-tick notifications")));
+        assertFalse(advance(progress, 2, index -> {
             visits.add(index);
-            return ConstructionProgress.Step.COMPLETE;
-        });
-        assertEquals(IntList.of(1, 2), visits);
-        assertEquals(3, progress.done());
-        assertFalse(progress.waiting());
+            return Step.COMPLETE;
+        }));
+        assertEquals(IntList.of(0, 1, 0, 2), visits);
+        assertEquals(Phase.DONE, progress.nextPhase());
     }
 
     @Test
-    void skippedPositionsAreNotRetriedAndRemainingPositionsRespectTheBatchBudget() {
-        var progress = new ConstructionProgress(4);
+    void skippedSolidPositionsSendTheRemainingFluidsToTheSkipPhase() {
+        var progress = new ConstructionProgress();
+        progress.add(0, false, false);
+        progress.add(1, false, true);
+        assertTrue(advance(progress, 0, _ -> {
+            progress.missSolid();
+            return Step.COMPLETE;
+        }));
+        assertEquals(Phase.SKIP_FLUIDS, progress.nextPhase());
+        advance(progress, 0, _ -> Step.COMPLETE);
+        assertEquals(Phase.DONE, progress.nextPhase());
+    }
+
+    @Test
+    void clearingAFluidKeepsItsNewSolidInTheOriginalPlacementOrder() {
+        var progress = new ConstructionProgress();
+        progress.add(0, true, false);
+        progress.add(1, false, false);
         var visits = new IntArrayList();
-        progress.advance(2, index -> {
+        assertTrue(advance(progress, 0, index -> {
             visits.add(index);
-            // COMPLETE also represents an explicitly skipped missing block.
-            return ConstructionProgress.Step.COMPLETE;
+            return Step.CONTINUE;
+        }));
+        assertEquals(Phase.SOLIDS, progress.nextPhase());
+        advance(progress, 0, index -> {
+            visits.add(index);
+            return Step.COMPLETE;
         });
-        assertEquals(IntList.of(0, 1), visits);
+        assertEquals(IntList.of(0, 0, 1), visits);
         assertEquals(2, progress.done());
-        visits.clear();
-        progress.advance(2, index -> {
-            visits.add(index);
-            return ConstructionProgress.Step.COMPLETE;
-        });
-        assertEquals(IntList.of(2, 3), visits);
-        assertEquals(4, progress.done());
     }
 
     @Test
-    void expiredSlicePreservesTheNextPositionAndWaitingRechecksItInTheNextTick() {
-        var progress = new ConstructionProgress(3);
-        var budgetClock = new AtomicLong();
-        var budget = new ConstructionBudget(budgetClock::get);
+    void dismantlingWaitsForFluidsAndDoesNotRemoveThemTwice() {
+        var progress = new ConstructionProgress();
+        progress.add(0, false, false);
+        progress.add(1, true, false);
         var visits = new IntArrayList();
-        var work = List.of(progress);
-        budget.run(work, (queue, slice) -> queue.advance(slice, index -> {
+        assertFalse(advance(progress, 0, index -> {
             visits.add(index);
-            budgetClock.addAndGet(slice.allowanceNanos());
-            return ConstructionProgress.Step.COMPLETE;
+            return Step.RETRY;
+        }));
+        assertTrue(advance(progress, 1, index -> {
+            visits.add(index);
+            return Step.COMPLETE;
+        }));
+        advance(progress, 1, index -> {
+            visits.add(index);
+            return Step.COMPLETE;
+        });
+        assertEquals(IntList.of(1, 1, 0), visits);
+        assertEquals(2, progress.done());
+    }
+
+    @Test
+    void expiredShareKeepsTheNextPositionAndMissingMaterialWaitsForTheNextTick() {
+        var progress = new ConstructionProgress();
+        progress.add(0, false, false);
+        progress.add(1, false, false);
+        progress.add(2, false, false);
+        var clock = new AtomicLong();
+        var budget = new ConstructionBudget(clock::get);
+        var tasks = List.of(progress);
+        var visits = new IntArrayList();
+
+        budget.run(clock.get(), tasks, (queue, slice) -> queue.advance(0, Phase.SOLIDS, slice::available, index -> {
+            visits.add(index);
+            clock.set(slice.deadlineNanos());
+            return Step.COMPLETE;
         }));
         assertEquals(IntList.of(0), visits);
-        budget.run(work, (queue, slice) -> queue.advance(slice, index -> {
+        assertFalse(advance(progress, 1, index -> {
             visits.add(index);
-            return ConstructionProgress.Step.WAIT;
+            return Step.WAIT;
         }));
-        assertEquals(IntList.of(0, 1), visits);
         assertTrue(progress.waiting());
-        budget.run(work, (queue, slice) -> queue.advance(slice, index -> {
+        assertFalse(advance(progress, 1, _ -> fail("A waiting position was retried in the same tick")));
+        advance(progress, 2, index -> {
             visits.add(index);
-            return ConstructionProgress.Step.COMPLETE;
-        }));
+            return Step.COMPLETE;
+        });
         assertEquals(IntList.of(0, 1, 1, 2), visits);
         assertEquals(3, progress.done());
     }
 
-    @Test
-    void temporaryPlacementFailureRetriesWithoutBlockingOtherAvailablePositions() {
-        var progress = new ConstructionProgress(3);
-        var visits = new IntArrayList();
-        progress.advance(8, index -> {
-            visits.add(index);
-            return index == 0 ? ConstructionProgress.Step.RETRY : ConstructionProgress.Step.COMPLETE;
-        });
-        assertEquals(IntList.of(0, 1, 2), visits);
-        assertEquals(2, progress.done());
-        assertFalse(progress.waiting());
-        visits.clear();
-        progress.advance(1, index -> {
-            visits.add(index);
-            return ConstructionProgress.Step.COMPLETE;
-        });
-        assertEquals(IntList.of(0), visits);
-        assertEquals(3, progress.done());
+    private static boolean advance(ConstructionProgress progress, long tick, IntFunction<Step> operation) {
+        return progress.advance(tick, progress.nextPhase(), () -> true, operation);
     }
 }
