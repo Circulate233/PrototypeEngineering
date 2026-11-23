@@ -1,13 +1,11 @@
 package com.circulation.prototype_eng.structure.tool;
 
-import com.circulation.prototype_eng.BuilderConfig;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 
 import java.util.List;
 import java.util.function.LongSupplier;
 
 final class ConstructionBudget {
-    static final long TICK_NANOS = BuilderConfig.TICK_NANOS;
     private final LongSupplier nanoTime;
     private final IntArrayList eligible = new IntArrayList();
     private int nextStart;
@@ -16,7 +14,7 @@ final class ConstructionBudget {
         this.nanoTime = nanoTime;
     }
 
-    <T> void run(long tickStart, List<T> runnable, Work<T> work) {
+    <T> void run(long tickStart, long budgetNanos, List<T> runnable, Work<T> work) {
         int count = runnable.size();
         if (count == 0) {
             nextStart = 0;
@@ -29,7 +27,7 @@ final class ConstructionBudget {
             eligible.add(index);
             if (++index == count) index = 0;
         }
-        long deadline = tickStart + TICK_NANOS;
+        long deadline = tickStart + budgetNanos;
         while (count > 0) {
             long now = nanoTime.getAsLong();
             long remaining = deadline - now;

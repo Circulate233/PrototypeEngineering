@@ -11,15 +11,17 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConstructionBudgetTest {
+    private static final long TEST_BUDGET_NANOS = 300;
+
     @Test
     void firstRoundSharesTimeEquallyAndRotatesBetweenTicks() {
         var clock = new AtomicLong();
         var budget = new ConstructionBudget(clock::get);
         var visits = new ArrayList<String>();
         var jobs = List.of("overworld construction", "nether dismantle", "end construction");
-        long share = ConstructionBudget.TICK_NANOS / jobs.size();
+        long share = TEST_BUDGET_NANOS / jobs.size();
         for (int tick = 0; tick < jobs.size(); tick++) {
-            budget.run(clock.get(), jobs, (job, slice) -> {
+            budget.run(clock.get(), TEST_BUDGET_NANOS, jobs, (job, slice) -> {
                 visits.add(job);
                 assertEquals(share, slice.deadlineNanos() - clock.get());
                 clock.addAndGet(share - 1);
@@ -35,19 +37,19 @@ class ConstructionBudgetTest {
 
     @Test
     void callbackOverrunStopsFurtherWorkAndTheNextTickGivesTheOtherJobFirstAccess() {
-        var clock = new AtomicLong(Long.MAX_VALUE - ConstructionBudget.TICK_NANOS / 4);
+        var clock = new AtomicLong(Long.MAX_VALUE - TEST_BUDGET_NANOS / 4);
         var budget = new ConstructionBudget(clock::get);
         var visits = new ArrayList<String>();
         var jobs = List.of("slow callback", "ordinary placement");
-        budget.run(clock.get(), jobs, (job, slice) -> {
+        budget.run(clock.get(), TEST_BUDGET_NANOS, jobs, (job, slice) -> {
             visits.add(job);
-            clock.addAndGet(ConstructionBudget.TICK_NANOS);
+            clock.addAndGet(TEST_BUDGET_NANOS);
             assertFalse(slice.available());
             return true;
         });
         assertEquals(List.of(jobs.getFirst()), visits);
         visits.clear();
-        budget.run(clock.get(), jobs, (job, _) -> {
+        budget.run(clock.get(), TEST_BUDGET_NANOS, jobs, (job, _) -> {
             visits.add(job);
             return false;
         });
@@ -60,10 +62,10 @@ class ConstructionBudgetTest {
         var budget = new ConstructionBudget(clock::get);
         var jobs = List.of("preflight", "placement");
         long tickStart = clock.get();
-        clock.addAndGet(ConstructionBudget.TICK_NANOS / 4);
-        long deadline = tickStart + ConstructionBudget.TICK_NANOS;
+        clock.addAndGet(TEST_BUDGET_NANOS / 4);
+        long deadline = tickStart + TEST_BUDGET_NANOS;
         long equalShare = (deadline - clock.get()) / jobs.size();
-        budget.run(tickStart, jobs, (job, slice) -> {
+        budget.run(tickStart, TEST_BUDGET_NANOS, jobs, (job, slice) -> {
             if (job.equals(jobs.getFirst())) {
                 assertEquals(equalShare, slice.deadlineNanos() - clock.get());
                 clock.set(slice.deadlineNanos() + 1);
@@ -78,17 +80,17 @@ class ConstructionBudgetTest {
     }
 
     @Test
-    void reclaimUsesTimeActuallyLeftAfterPlacementAndLightingWithoutRetryingWaitingTasks() {
+    void reclaimUsesTimeActuallyLeftAfterPlacementWithoutRetryingWaitingTasks() {
         var clock = new AtomicLong();
         var budget = new ConstructionBudget(clock::get);
         var visits = new ArrayList<String>();
         var jobs = List.of("waiting for materials", "finished", "continuing");
         long start = clock.get();
-        long deadline = start + ConstructionBudget.TICK_NANOS;
-        clock.addAndGet(ConstructionBudget.TICK_NANOS / 5);
+        long deadline = start + TEST_BUDGET_NANOS;
+        clock.addAndGet(TEST_BUDGET_NANOS / 5);
         long share = (deadline - clock.get()) / jobs.size();
 
-        budget.run(start, jobs, (job, slice) -> {
+        budget.run(start, TEST_BUDGET_NANOS, jobs, (job, slice) -> {
             visits.add(job);
             if (visits.size() <= jobs.size()) {
                 assertEquals(share, slice.deadlineNanos() - clock.get());
@@ -106,5 +108,25 @@ class ConstructionBudgetTest {
         });
         assertEquals(List.of(jobs.get(0), jobs.get(1), jobs.get(2), jobs.get(2)), visits);
         assertEquals(deadline, clock.get());
+    }
+
+    @Test
+    void loweringTheBudgetStopsAnAlreadyRunningQueueEarlierOnItsNextTick() {
+        var clock = new AtomicLong();
+        var budget = new ConstructionBudget(clock::get);
+        var placementsPerTick = new ArrayList<Integer>();
+        var jobs = List.of("continuing");
+        for (long tickBudget : new long[]{TEST_BUDGET_NANOS, TEST_BUDGET_NANOS / 2}) {
+            budget.run(clock.get(), tickBudget, jobs, (_, slice) -> {
+                int placed = 0;
+                while (slice.available()) {
+                    clock.addAndGet(TEST_BUDGET_NANOS / 6);
+                    placed++;
+                }
+                placementsPerTick.add(placed);
+                return true;
+            });
+        }
+        assertEquals(List.of(6, 3), placementsPerTick);
     }
 }

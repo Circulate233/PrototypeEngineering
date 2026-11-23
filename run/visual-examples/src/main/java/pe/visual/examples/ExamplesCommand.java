@@ -91,6 +91,7 @@ public final class ExamplesCommand extends CommandBase {
             var player = getCommandSenderAsPlayer(sender);
             give(player, ObservatoryExamples.anchorItem(), 1);
             give(player, StructureToolItems.BUILDER, 1);
+            give(player, OrientationToolItems.TOOL, 1);
             player.inventoryContainer.detectAndSendChanges();
             player.sendMessage(new net.minecraft.util.text.TextComponentTranslation("pe_visual_examples.observatory.kit"));
             return;

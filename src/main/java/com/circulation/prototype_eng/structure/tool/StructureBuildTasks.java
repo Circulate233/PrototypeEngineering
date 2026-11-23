@@ -163,7 +163,7 @@ public final class StructureBuildTasks {
             if (RUNNABLE.isEmpty()) return;
             profiler.startSection("operations");
             try {
-                BUDGET.run(System.nanoTime(), RUNNABLE, StructureBuildTasks::advance);
+                BUDGET.run(System.nanoTime(), ConstructionConfig.tickBudgetNanos(), RUNNABLE, StructureBuildTasks::advance);
             } finally {
                 profiler.endSection();
             }

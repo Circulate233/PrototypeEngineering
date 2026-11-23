@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.research.ResearchEditCommand;
 import com.circulation.prototype_eng.research.ResearchReloadCommand;
 import com.circulation.prototype_eng.scheduler.SchedulerCommand;
 import com.circulation.prototype_eng.structure.reload.StructureReloadCommand;
+import com.circulation.prototype_eng.structure.tool.BuilderCommand;
 import mcp.MethodsReturnNonnullByDefault;
 import net.minecraft.command.ICommand;
 import net.minecraft.command.ICommandSender;
@@ -17,6 +18,7 @@ import javax.annotation.ParametersAreNonnullByDefault;
 @ParametersAreNonnullByDefault
 public final class PECommand extends CommandTreeBase {
     public PECommand() {
+        addSubcommand(new BuilderCommand());
         addSubcommand(new Group("research", CommandText.ResearchUsage.getTranslationKey(),
             new ResearchEditCommand(), new ResearchReloadCommand()));
         addSubcommand(new Group("structures", "structure.prototype_eng.ReloadUsage", new StructureReloadCommand()));

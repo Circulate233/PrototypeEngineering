@@ -61,6 +61,7 @@ import com.circulation.prototype_eng.recipe.ServerRecipeManifests;
 import com.circulation.prototype_eng.research.ServerResearch;
 import com.circulation.prototype_eng.scheduler.SchedulerConfig;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
+import com.circulation.prototype_eng.structure.tool.ConstructionConfig;
 import com.circulation.prototype_eng.structure.tool.StructureBuildTasks;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload;
 import com.circulation.prototype_eng.storage.HatchCapabilityRegistration;
@@ -109,6 +110,7 @@ public class CommonProxy implements IGuiHandler {
         ParallelControllerConfig.load(event.getModConfigurationDirectory());
         SchedulerConfig.load(event.getModConfigurationDirectory());
         OrientationToolConfig.load(event.getModConfigurationDirectory());
+        ConstructionConfig.load(event.getModConfigurationDirectory());
         structureDirectory = configRoot.resolve(Tags.MOD_ID).resolve("structures");
         structureData = StructureJsonLoader.readDirectory(structureDirectory);
         InitNetwork.init();

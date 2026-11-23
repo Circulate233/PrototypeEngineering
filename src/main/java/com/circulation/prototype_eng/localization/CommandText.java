@@ -6,7 +6,7 @@ import com.circulation.prototype_eng.Tags;
 import java.util.Locale;
 
 public enum CommandText implements LocalizationEnum {
-    Usage, ResearchUsage;
+    Usage, ResearchUsage, BuilderUsage, BuilderUpdated, BuilderUpdateFailed;
 
     private final String key = "commands." + Tags.MOD_ID + ".pe." + name().toLowerCase(Locale.ROOT);
 

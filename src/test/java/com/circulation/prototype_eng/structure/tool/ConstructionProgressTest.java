@@ -111,7 +111,7 @@ class ConstructionProgressTest {
         var tasks = List.of(progress);
         var visits = new IntArrayList();
 
-        budget.run(clock.get(), tasks, (queue, slice) -> queue.advance(0, Phase.SOLIDS, slice::available, index -> {
+        budget.run(clock.get(), 100, tasks, (queue, slice) -> queue.advance(0, Phase.SOLIDS, slice::available, index -> {
             visits.add(index);
             clock.set(slice.deadlineNanos());
             return Step.COMPLETE;

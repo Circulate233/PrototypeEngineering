@@ -1,8 +1,12 @@
 {
-  "parent": "block/cube_bottom_top",
+  "parent": "block/cube",
   "textures": {
-    "side": "blocks/quartz_block_chiseled",
-    "bottom": "blocks/prismarine_dark",
-    "top": "blocks/sea_lantern"
+    "particle": "blocks/quartz_block_chiseled",
+    "down": "blocks/prismarine_dark",
+    "up": "blocks/sea_lantern",
+    "north": "blocks/gold_block",
+    "south": "blocks/quartz_block_chiseled",
+    "west": "blocks/quartz_block_chiseled",
+    "east": "blocks/quartz_block_chiseled"
   }
 }

@@ -3,28 +3,35 @@ package pe.visual.examples;
 import ae2.api.orientation.BlockOrientation;
 import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.api.machine.MachineRuntimeRegistrationEvent;
+import com.circulation.prototype_eng.api.structure.StructureAnchorRotation;
 import com.circulation.prototype_eng.api.structure.StructureConstructionRegistrationEvent;
 import com.circulation.prototype_eng.api.structure.StructureDefinition;
 import com.circulation.prototype_eng.api.structure.StructureDefinitions;
 import com.circulation.prototype_eng.api.structure.StructurePattern;
 import com.circulation.prototype_eng.api.structure.StructurePredicate;
 import com.circulation.prototype_eng.api.structure.StructurePredicates;
+import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockHorizontal;
 import net.minecraft.block.BlockPrismarine;
 import net.minecraft.block.BlockQuartz;
 import net.minecraft.block.BlockStainedGlass;
 import net.minecraft.block.BlockStone;
 import net.minecraft.block.SoundType;
 import net.minecraft.block.material.Material;
+import net.minecraft.block.state.BlockStateContainer;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.block.model.ModelResourceLocation;
 import net.minecraft.creativetab.CreativeTabs;
+import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.init.Blocks;
 import net.minecraft.item.EnumDyeColor;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemBlock;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.EnumHand;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
@@ -44,6 +51,7 @@ public final class ObservatoryExamples {
     private static final ResourceLocation SHAPE_ID = VisualExamples.id("observatory");
     private static final LocalizationEnum NAME = () -> "pe_visual_examples.observatory";
     private static final Block ANCHOR = new Anchor();
+    private static final StructureAnchorRotation ROTATION = StructureAnchorRotation.fourWay(BlockHorizontal.FACING);
     private static final Item ANCHOR_ITEM = new ItemBlock(ANCHOR).setRegistryName(ANCHOR_ID);
     private static final BlockPos2ObjectMap<ObservatoryLayout.Surface> CELLS = ObservatoryLayout.build();
 
@@ -81,23 +89,24 @@ public final class ObservatoryExamples {
 
     @SubscribeEvent
     public static void construction(StructureConstructionRegistrationEvent event) {
-        event.registry().register(ANCHOR.getDefaultState(), SHAPE_ID, NAME, ObservatoryExamples::formed);
+        event.registry().register(ANCHOR.getDefaultState(), SHAPE_ID, NAME, ROTATION, ObservatoryExamples::formed);
     }
 
     private static boolean formed(IBlockState state, TileEntity tile, World world, BlockPos origin) {
+        var transform = StructureTransform.of(ROTATION.read(state, tile));
         var pos = new BlockPos.MutableBlockPos();
-        if (!matches(world, pos, origin, ObservatoryLayout.DOME_TIP, CELLS.get(ObservatoryLayout.DOME_TIP))) return false;
+        if (!matches(world, pos, origin, transform, ObservatoryLayout.DOME_TIP, CELLS.get(ObservatoryLayout.DOME_TIP))) return false;
         for (var iterator = CELLS.fastIterator(); iterator.hasNext(); ) {
             var entry = iterator.next();
-            if (!matches(world, pos, origin, entry.getLongKey(), entry.getValue())) return false;
+            if (!matches(world, pos, origin, transform, entry.getLongKey(), entry.getValue())) return false;
         }
         return true;
     }
 
-    private static boolean matches(World world, BlockPos.MutableBlockPos pos, BlockPos origin, long cell,
-                                   ObservatoryLayout.Surface material) {
-        pos.setPos(origin.getX() + BlockPos2ObjectMap.unpackX(cell), origin.getY() + BlockPos2ObjectMap.unpackY(cell),
-            origin.getZ() + BlockPos2ObjectMap.unpackZ(cell));
+    private static boolean matches(World world, BlockPos.MutableBlockPos pos, BlockPos origin, StructureTransform transform,
+                                   long cell, ObservatoryLayout.Surface material) {
+        var offset = transform.apply(cell);
+        pos.setPos(origin.getX() + offset.getX(), origin.getY() + offset.getY(), origin.getZ() + offset.getZ());
         return world.isBlockLoaded(pos, false) && world.getBlockState(pos) == MaterialStates.STATES.get(material);
     }
 
@@ -130,7 +139,10 @@ public final class ObservatoryExamples {
         return Blocks.STAINED_GLASS.getDefaultState().withProperty(BlockStainedGlass.COLOR, color);
     }
 
-    private static final class Anchor extends Block {
+    private static final class Anchor extends BlockHorizontal {
+        // The original anchor saved metadata zero and used the NORTH_UP layout.
+        private static final int METADATA_ORIGIN = EnumFacing.NORTH.getHorizontalIndex();
+
         private Anchor() {
             super(Material.ROCK);
             setRegistryName(ANCHOR_ID);
@@ -138,6 +150,28 @@ public final class ObservatoryExamples {
             setCreativeTab(CreativeTabs.BUILDING_BLOCKS);
             setSoundType(SoundType.STONE);
             setHardness(1.8F);
+            setDefaultState(blockState.getBaseState().withProperty(FACING, EnumFacing.NORTH));
+        }
+
+        @Override
+        protected BlockStateContainer createBlockState() {
+            return new BlockStateContainer(this, FACING);
+        }
+
+        @Override
+        public IBlockState getStateFromMeta(int meta) {
+            return getDefaultState().withProperty(FACING, EnumFacing.byHorizontalIndex(meta ^ METADATA_ORIGIN));
+        }
+
+        @Override
+        public int getMetaFromState(IBlockState state) {
+            return state.getValue(FACING).getHorizontalIndex() ^ METADATA_ORIGIN;
+        }
+
+        @Override
+        public IBlockState getStateForPlacement(World world, BlockPos pos, EnumFacing side, float hitX, float hitY, float hitZ,
+                                                int meta, EntityLivingBase placer, EnumHand hand) {
+            return getDefaultState().withProperty(FACING, placer.getHorizontalFacing().getOpposite());
         }
     }
 

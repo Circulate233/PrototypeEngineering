@@ -1,11 +1,13 @@
 package com.circulation.prototype_eng.command;
 
 import com.circulation.prototype_eng.client.PEClientCommand;
+import com.circulation.prototype_eng.localization.CommandText;
 import com.circulation.prototype_eng.localization.SchedulerText;
 import com.circulation.prototype_eng.localization.StructureText;
 import net.minecraft.command.CommandException;
 import net.minecraft.command.ICommand;
 import net.minecraft.command.ICommandSender;
+import net.minecraft.command.NumberInvalidException;
 import net.minecraft.command.WrongUsageException;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.text.ITextComponent;
@@ -38,11 +40,16 @@ class PECommandTest {
         var denied = assertThrows(CommandException.class,
             () -> command.execute(null, sender, new String[]{"research", "edit"}));
         assertEquals("commands.generic.permission", denied.getMessage());
+        var builderDenied = assertThrows(CommandException.class,
+            () -> command.execute(null, sender, new String[]{"builder", "reload"}));
+        assertEquals("commands.generic.permission", builderDenied.getMessage());
 
         sender.permission = 2;
         assertTrue(command.checkPermission(null, sender));
-        assertEquals(List.of("research", "scheduler", "structures"),
+        assertEquals(List.of("builder", "research", "scheduler", "structures"),
             command.getTabCompletions(null, sender, new String[]{""}, null));
+        assertEquals(List.of("budget", "reload"),
+            command.getTabCompletions(null, sender, new String[]{"builder", ""}, null));
         assertEquals(List.of("edit", "reload"),
             command.getTabCompletions(null, sender, new String[]{"research", ""}, null));
         assertEquals(List.of("reload"),
@@ -67,6 +74,11 @@ class PECommandTest {
         var reloadUsage = assertThrows(WrongUsageException.class,
             () -> command.execute(null, sender, new String[]{"research", "reload", "extra"}));
         assertEquals("/pe research reload", reloadUsage.getMessage());
+        var builderUsage = assertThrows(WrongUsageException.class,
+            () -> command.execute(null, sender, new String[]{"builder", "reload", "extra"}));
+        assertEquals(CommandText.BuilderUsage.getTranslationKey(), builderUsage.getMessage());
+        assertThrows(NumberInvalidException.class,
+            () -> command.execute(null, sender, new String[]{"builder", "budget", "0"}));
 
         command.execute(null, sender, new String[]{"structures", "reload", "extra"});
         assertEquals(StructureText.ReloadUsage.getTranslationKey(),
@@ -91,7 +103,8 @@ class PECommandTest {
         assertTrue(command.getTabCompletions(null, sender, new String[]{"research", "edit", ""}, null).isEmpty());
 
         for (var arguments : List.of(new String[0], new String[]{"research", "edit", "Alice"},
-            new String[]{"structures", "reload"}, new String[]{"scheduler", "status"}, new String[]{"unknown"})) {
+            new String[]{"structures", "reload"}, new String[]{"scheduler", "status"}, new String[]{"builder", "budget", "20"},
+            new String[]{"unknown"})) {
             var event = event(command, sender, arguments);
             command.route(event);
             assertTrue(event.isCanceled());

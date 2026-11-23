@@ -1,5 +1,8 @@
 {
   "variants": {
-    "normal": { "model": "pe_visual_examples:observatory_anchor" }
+    "facing=north": { "model": "pe_visual_examples:observatory_anchor" },
+    "facing=east": { "model": "pe_visual_examples:observatory_anchor", "y": 90 },
+    "facing=south": { "model": "pe_visual_examples:observatory_anchor", "y": 180 },
+    "facing=west": { "model": "pe_visual_examples:observatory_anchor", "y": 270 }
   }
 }
