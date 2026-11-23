@@ -19,7 +19,7 @@ class ConstructionBudgetTest {
         var jobs = List.of("overworld construction", "nether dismantle", "end construction");
         long share = ConstructionBudget.TICK_NANOS / jobs.size();
         for (int tick = 0; tick < jobs.size(); tick++) {
-            var report = budget.run(jobs, (job, slice) -> {
+            budget.run(jobs, (job, slice) -> {
                 visits.add(job);
                 assertEquals(share, slice.allowanceNanos());
                 if (!job.equals(jobs.getFirst())) {
@@ -29,7 +29,6 @@ class ConstructionBudgetTest {
                     assertFalse(slice.available());
                 }
             });
-            assertEquals(0, report.overruns());
         }
         assertEquals(List.of(jobs.get(0), jobs.get(1), jobs.get(2),
             jobs.get(1), jobs.get(2), jobs.get(0), jobs.get(2), jobs.get(0), jobs.get(1)), visits);
@@ -41,28 +40,26 @@ class ConstructionBudgetTest {
         var budget = new ConstructionBudget(clock::get);
         var visits = new ArrayList<String>();
         var jobs = List.of("slow callback", "ordinary placement");
-        var firstReport = budget.run(jobs, (job, slice) -> {
+        budget.run(jobs, (job, slice) -> {
             visits.add(job);
             clock.addAndGet(ConstructionBudget.TICK_NANOS);
             assertFalse(slice.available());
         });
         assertEquals(List.of(jobs.getFirst()), visits);
-        assertEquals(1, firstReport.overruns());
-        assertEquals(ConstructionBudget.TICK_NANOS - ConstructionBudget.TICK_NANOS / jobs.size(), firstReport.maxOverrunNanos());
         visits.clear();
         budget.run(jobs, (job, _) -> visits.add(job));
         assertEquals(List.of(jobs.getLast(), jobs.getFirst()), visits);
     }
 
     @Test
-    void tickPreparationAndEarlierOverrunCountAgainstTheGlobalDeadline() {
+    void laterQueueUsesOnlyTheTimeLeftAfterPreparationAndAnOverrun() {
         var clock = new AtomicLong();
         var budget = new ConstructionBudget(clock::get);
         var jobs = List.of("preflight", "placement");
         long tickStart = clock.get();
         clock.addAndGet(ConstructionBudget.TICK_NANOS / 4);
         long equalShare = (ConstructionBudget.TICK_NANOS - clock.get()) / jobs.size();
-        var report = budget.run(tickStart, jobs, (job, slice) -> {
+        budget.run(tickStart, jobs, (job, slice) -> {
             if (job.equals(jobs.getFirst())) {
                 assertEquals(equalShare, slice.allowanceNanos());
                 clock.addAndGet(slice.allowanceNanos() + 1);
@@ -72,7 +69,35 @@ class ConstructionBudgetTest {
                 assertFalse(slice.available());
             }
         });
-        assertEquals(1, report.overruns());
         assertEquals(ConstructionBudget.TICK_NANOS, clock.get());
+    }
+
+    @Test
+    void growingLightingReservationEndsTheCurrentShareAndReducesTheNextShare() {
+        var clock = new AtomicLong();
+        var budget = new ConstructionBudget(clock::get);
+        var visits = new ArrayList<String>();
+        var jobs = List.of("queues light checks", "continues placement");
+        long share = ConstructionBudget.TICK_NANOS / 3;
+        var reserved = new AtomicLong(ConstructionBudget.TICK_NANOS - share * jobs.size());
+
+        budget.run(clock.get(), jobs, reserved::get, (job, slice) -> {
+            visits.add(job);
+            if (job.equals(jobs.getFirst())) {
+                long placementTime = share / 2;
+                clock.addAndGet(placementTime);
+                reserved.addAndGet(share - placementTime - 1);
+                assertTrue(slice.available());
+                reserved.addAndGet(2);
+                assertFalse(slice.available());
+            } else {
+                clock.addAndGet(share - 2);
+                assertTrue(slice.available());
+                clock.incrementAndGet();
+                assertFalse(slice.available());
+            }
+        });
+        assertEquals(jobs, visits);
+        assertEquals(ConstructionBudget.TICK_NANOS, clock.get() + reserved.get());
     }
 }

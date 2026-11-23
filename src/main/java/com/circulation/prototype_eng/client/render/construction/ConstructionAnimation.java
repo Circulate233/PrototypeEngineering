@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.client.render.construction;
 
+import com.circulation.prototype_eng.structure.tool.effect.ConstructionArea;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Geometry;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
@@ -13,11 +14,10 @@ import java.util.Objects;
 final class ConstructionAnimation {
     static final int EDGE = 32;
     static final int COUNT = EDGE * EDGE * EDGE;
-    static final int INTRO_GHOST_TICKS = 9;
+    static final int WHITE_WIRE_TICKS = 9;
     static final int WHITE_HOLD_TICKS = 5;
     static final int BUILD_REVEAL_TICKS = 55;
     static final int REMOVE_WIRE_TICKS = 10;
-    static final int REMOVE_GHOST_TICKS = 12;
     static final int FINISH_COLOR_TICKS = 12;
     static final int PLAN_FILL = 1;
     static final int PLAN_WIRE = 2;
@@ -27,6 +27,7 @@ final class ConstructionAnimation {
 
     final boolean dismantle;
     final long startTick;
+    final ConstructionArea area;
     final Long2ObjectLinkedOpenHashMap<Section> sections = new Long2ObjectLinkedOpenHashMap<>();
     final LongLinkedOpenHashSet dirty = new LongLinkedOpenHashSet();
     @Nullable Bounds bounds;
@@ -45,9 +46,10 @@ final class ConstructionAnimation {
     int missing, wrong, unloaded;
     @Nullable String hudText;
 
-    ConstructionAnimation(boolean dismantle, long startTick) {
+    ConstructionAnimation(boolean dismantle, long startTick, ConstructionArea area) {
         this.dismantle = dismantle;
         this.startTick = startTick;
+        this.area = area;
         sampleTick = startTick;
     }
 

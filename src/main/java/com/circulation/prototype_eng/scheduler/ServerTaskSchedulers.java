@@ -132,7 +132,8 @@ public final class ServerTaskSchedulers {
     @SubscribeEvent
     @SuppressWarnings("resource") // FML serverStopped owns closure of this session-wide scheduler.
     public static void onServerTick(TickEvent.ServerTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) {
+        if (event.phase == TickEvent.Phase.START) {
+            if (session != null) StructureBuildTasks.beginTick();
             return;
         }
         var current = session;

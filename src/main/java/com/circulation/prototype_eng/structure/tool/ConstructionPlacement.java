@@ -28,20 +28,34 @@ final class ConstructionPlacement {
             : new BlockSnapshot(world, pos, current);
     }
 
-    static boolean write(World world, BlockPos pos, Chunk chunk, IBlockState current, IBlockState desired) {
+    static boolean write(World world, BlockPos pos, Chunk chunk, IBlockState current, IBlockState desired,
+                         ConstructionLightingBatch<World> lighting) {
         if (!accepts(world)) return false;
-        if (current.getBlock() != Blocks.AIR || !fastBlock(desired.getBlock()))
-            return world.setBlockState(pos, desired, SUPPRESS_NEIGHBORS_AND_OBSERVERS);
+        return usesChunkPlacement(current, desired) ? writeChunk(world, pos, chunk, current, desired, lighting)
+            : world.setBlockState(pos, desired, SUPPRESS_NEIGHBORS_AND_OBSERVERS);
+    }
 
+    private static boolean writeChunk(World world, BlockPos pos, Chunk chunk, IBlockState current, IBlockState desired,
+                                      ConstructionLightingBatch<World> lighting) {
         int light = current.getLightValue(world, pos);
         int opacity = current.getLightOpacity(world, pos);
         if (chunk.setBlockState(pos, desired) == null) return false;
         if (light != desired.getLightValue(world, pos) || opacity != desired.getLightOpacity(world, pos))
-            world.checkLight(pos);
+            lighting.add(world, pos);
         return true;
     }
 
-    private static boolean fastBlock(Block block) {
+    static void checkLight(World world, BlockPos pos) {
+        try {
+            world.checkLight(pos);
+        } catch (RuntimeException failure) {
+            PrototypeEngineering.LOGGER.error("Construction lighting failed at {} in dimension {}", pos, world.provider.getDimension(), failure);
+        }
+    }
+
+    private static boolean usesChunkPlacement(IBlockState current, IBlockState desired) {
+        if (current.getBlock() != Blocks.AIR) return false;
+        Block block = desired.getBlock();
         var id = block.getRegistryName();
         if (id != null && id.getNamespace().equals(Tags.MOD_ID)) {
             return switch (id.getPath()) {
@@ -58,7 +72,7 @@ final class ConstructionPlacement {
         world.markAndNotifyBlock(pos, chunk, previous, placed, Constants.BlockFlags.DEFAULT);
     }
 
-    static void restore(World world, Chunk chunk, BlockSnapshot snapshot, IBlockState written) {
+    static void restore(World world, Chunk chunk, BlockSnapshot snapshot, IBlockState written, ConstructionLightingBatch<World> lighting) {
         var pos = snapshot.getPos();
         if (world.getChunkProvider().getLoadedChunk(pos.getX() >> 4, pos.getZ() >> 4) != chunk) {
             PrototypeEngineering.LOGGER.error("Construction rollback lost access to the chunk at {}", pos);
@@ -69,7 +83,9 @@ final class ConstructionPlacement {
         world.restoringBlockSnapshots = true;
         try {
             var restored = snapshot.getReplacedBlock();
-            if (!world.setBlockState(pos, restored, SUPPRESS_NEIGHBORS_AND_OBSERVERS) || !chunk.getBlockState(pos).equals(restored)) {
+            boolean reverted = usesChunkPlacement(restored, written) ? writeChunk(world, pos, chunk, written, restored, lighting)
+                : world.setBlockState(pos, restored, SUPPRESS_NEIGHBORS_AND_OBSERVERS);
+            if (!reverted || !chunk.getBlockState(pos).equals(restored)) {
                 PrototypeEngineering.LOGGER.error("Construction rollback failed for {}", pos);
                 return;
             }

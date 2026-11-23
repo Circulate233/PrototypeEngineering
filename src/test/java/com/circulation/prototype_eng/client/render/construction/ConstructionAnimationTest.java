@@ -2,6 +2,8 @@ package com.circulation.prototype_eng.client.render.construction;
 
 import com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.MeshKind;
 import com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.Section;
+import com.circulation.prototype_eng.structure.tool.effect.ConstructionArea;
+import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;
 
 import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.FINISH_TICKS;
@@ -10,9 +12,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConstructionAnimationTest {
+    private static final ConstructionArea AREA = new ConstructionArea(new BlockPos(-1, 37, 2), new BlockPos(0, 37, 2));
+
     @Test
     void liveViewerPlaysTheFullRevealAfterDelayedEndWithoutRestartingOnDuplicates() {
-        var animation = new ConstructionAnimation(false, 100);
+        var animation = new ConstructionAnimation(false, 100, AREA);
         animation.sample(103, 5);
         long finishedAt = 140;
         long receivedAt = 200;
@@ -29,7 +33,7 @@ class ConstructionAnimationTest {
 
     @Test
     void lateViewerContinuesFromTheServerSnapshotWithoutRestartingTheReveal() {
-        var animation = new ConstructionAnimation(true, 100);
+        var animation = new ConstructionAnimation(true, 100, AREA);
         long finishedAt = 140;
         long elapsed = FINISH_TICKS / 2;
         animation.sample(finishedAt + elapsed, 2);
@@ -41,7 +45,7 @@ class ConstructionAnimationTest {
 
     @Test
     void observingASecondSectionSuppressesInteriorSurfacesAcrossTheNegativeBoundary() {
-        var animation = new ConstructionAnimation(false, 0);
+        var animation = new ConstructionAnimation(false, 0, AREA);
         var first = new Section(-1, 1, 0);
         var second = new Section(0, 1, 0);
         long firstKey = ConstructionAnimation.key(first.x, first.y, first.z);

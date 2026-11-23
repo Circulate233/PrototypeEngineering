@@ -27,6 +27,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayDeque;
 import java.util.BitSet;
 import java.util.Iterator;
+import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
@@ -179,6 +180,8 @@ public final class ServerConstructionEffects {
         private final long anchor;
         private final boolean dismantle;
         private final int dimension;
+        private final ConstructionArea.Builder areaBuilder = new ConstructionArea.Builder();
+        private @Nullable ConstructionArea area;
         private final Object2ObjectLinkedOpenHashMap<SectorKey, Sector> sectors = new Object2ObjectLinkedOpenHashMap<>();
         private final Reference2ObjectOpenHashMap<EntityPlayerMP, Audience> audience = new Reference2ObjectOpenHashMap<>();
         private @Nullable Iterator<Sector> publishing;
@@ -206,6 +209,11 @@ public final class ServerConstructionEffects {
             dimension = index.world.provider.getDimension();
         }
 
+        public void includeInArea(BlockPos position) {
+            if (startTick >= 0) throw new IllegalStateException("Cannot change a published construction area");
+            areaBuilder.include(position);
+        }
+
         public void add(BlockPos position) {
             if (startTick >= 0) throw new IllegalStateException("Cannot change a published construction plan");
             if (!inBounds(position)) return;
@@ -216,6 +224,7 @@ public final class ServerConstructionEffects {
         /** Starts projection publication after preflight and the builder screen closes. */
         public void start() {
             if (startTick >= 0 || !live()) throw new IllegalStateException("Cannot start this construction projection");
+            area = areaBuilder.build();
             startTick = session.tick;
             lastInitialSend = startTick;
             publishing = sectors.values().iterator();
@@ -227,7 +236,7 @@ public final class ServerConstructionEffects {
         }
 
         private boolean introComplete() {
-            return initialReplays == 0 && session.tick - lastInitialSend >= ConstructionEffectPayload.INTRO_TICKS;
+            return area == null || initialReplays == 0 && session.tick - lastInitialSend >= ConstructionEffectPayload.INTRO_TICKS;
         }
 
         /** Index the first audience inside the task's time share, then allow the intro to play. */
@@ -257,6 +266,11 @@ public final class ServerConstructionEffects {
             if (sector != null) sector.change(Section.index(position), changed);
         }
 
+        public boolean ownerWithinRenderDistance() {
+            var range = area;
+            return range != null && range.withinRenderDistance(owner.posX, owner.posY, owner.posZ);
+        }
+
         public void status(int missing, int errors, int unloaded, boolean paused) {
             if (this.missing == missing && this.errors == errors && this.unloaded == unloaded && this.paused == paused) return;
             this.missing = missing;
@@ -282,13 +296,14 @@ public final class ServerConstructionEffects {
         }
 
         private void queueHud() {
-            if (hudQueued) return;
+            var range = area;
+            if (hudQueued || range == null) return;
             hudQueued = true;
             session.work.addLast(() -> {
                 var end = ending;
                 if (live() && (end == null || !end.cancelled()) && connected(owner, ownerConnection)) {
                     if (end != null && pendingDeltas != 0) return WorkResult.WAIT;
-                    var message = new Hud(dimension, id, anchor, dismantle, startTick, session.tick, missing, errors, unloaded,
+                    var message = new Hud(dimension, id, anchor, dismantle, startTick, session.tick, range, missing, errors, unloaded,
                         paused, end != null && end.successful());
                     if (!session.send(owner, message)) return WorkResult.WAIT;
                     recipient(owner, ownerConnection).hud = true;
@@ -463,7 +478,7 @@ public final class ServerConstructionEffects {
 
         Geometry geometry(boolean snapshot, BitSet added, BitSet removed) {
             return new Geometry(effect.dimension, effect.id, effect.anchor, effect.dismantle, effect.startTick, effect.session.tick,
-                key.section, key.quadrant, snapshot, snapshot ? cells : new BitSet(), added, removed);
+                key.section, key.quadrant, snapshot ? Objects.requireNonNull(effect.area) : null, snapshot ? cells : new BitSet(), added, removed);
         }
     }
 

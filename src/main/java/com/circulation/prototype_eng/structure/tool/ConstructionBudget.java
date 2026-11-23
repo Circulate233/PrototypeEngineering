@@ -8,6 +8,7 @@ import java.util.function.LongSupplier;
 
 final class ConstructionBudget {
     static final long TICK_NANOS = BuilderConfig.TICK_NANOS;
+    private static final LongSupplier NO_RESERVATION = () -> 0L;
     private final LongSupplier nanoTime;
     private int nextStart;
 
@@ -15,44 +16,37 @@ final class ConstructionBudget {
         this.nanoTime = nanoTime;
     }
 
-    <T> Report run(List<T> runnable, BiConsumer<T, Slice> work) {
-        return run(nanoTime.getAsLong(), runnable, work);
+    <T> void run(List<T> runnable, BiConsumer<T, Slice> work) {
+        run(nanoTime.getAsLong(), runnable, work);
     }
 
-    <T> Report run(long tickStart, List<T> runnable, BiConsumer<T, Slice> work) {
+    <T> void run(long tickStart, List<T> runnable, BiConsumer<T, Slice> work) {
+        run(tickStart, runnable, NO_RESERVATION, work);
+    }
+
+    <T> void run(long tickStart, List<T> runnable, LongSupplier reservedNanos, BiConsumer<T, Slice> work) {
         int count = runnable.size();
         if (count == 0) {
             nextStart = 0;
-            return new Report(0, 0);
+            return;
         }
         int index = nextStart % count;
         nextStart = (index + 1) % count;
-        long share = (TICK_NANOS - (nanoTime.getAsLong() - tickStart)) / count;
-        if (share <= 0L) return new Report(0, 0);
-        int overruns = 0;
-        long maxOverrun = 0;
+        long share = (TICK_NANOS - (nanoTime.getAsLong() - tickStart) - reservedNanos.getAsLong()) / count;
+        if (share <= 0L) return;
         for (int served = 0; served < count; served++) {
             long start = nanoTime.getAsLong();
-            long allowed = Math.min(share, TICK_NANOS - (start - tickStart));
+            long reserved = reservedNanos.getAsLong();
+            long allowed = Math.min(share, TICK_NANOS - (start - tickStart) - reserved);
             if (allowed <= 0L) break;
-            var slice = new Slice(nanoTime, start, allowed);
-            work.accept(runnable.get(index), slice);
-            long overrun = nanoTime.getAsLong() - start - allowed;
-            if (overrun > 0L) {
-                overruns++;
-                maxOverrun = Math.max(maxOverrun, overrun);
-            }
+            work.accept(runnable.get(index), new Slice(nanoTime, start, allowed, reservedNanos, reserved));
             if (++index == count) index = 0;
         }
-        return new Report(overruns, maxOverrun);
     }
 
-    record Slice(LongSupplier nanoTime, long start, long allowanceNanos) {
+    record Slice(LongSupplier nanoTime, long start, long allowanceNanos, LongSupplier reservedNanos, long reservedAtStart) {
         boolean available() {
-            return nanoTime.getAsLong() - start < allowanceNanos;
+            return nanoTime.getAsLong() - start + (reservedNanos.getAsLong() - reservedAtStart) < allowanceNanos;
         }
-    }
-
-    record Report(int overruns, long maxOverrunNanos) {
     }
 }

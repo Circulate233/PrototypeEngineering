@@ -60,6 +60,7 @@ public final class StructureBuildTasks {
     private static final ObjectArrayList<Task> RUNNABLE = new ObjectArrayList<>();
     private static final ObjectArrayList<Task> WAITING = new ObjectArrayList<>();
     private static final ConstructionBudget BUDGET = new ConstructionBudget(System::nanoTime);
+    private static final ConstructionLightingBatch<World> LIGHTING = new ConstructionLightingBatch<>(ConstructionPlacement::checkLight, System::nanoTime);
     private static final long WAITING_CHECK_NANOS = 250_000L;
     private static final Comparator<Target> ORDER = Comparator.comparingInt((Target target) -> target.pos.getY())
         .thenComparingInt(target -> target.pos.getX()).thenComparingInt(target -> target.pos.getZ());
@@ -67,10 +68,8 @@ public final class StructureBuildTasks {
         var desired = target.desired;
         return desired != null && (fluid(desired) || desired.getBlock() instanceof BlockFalling) ? 1 : 0;
     }).thenComparing(ORDER);
-    private static int overrunCount;
+    private static long earlyLightingNanos;
     private static int nextWaiting;
-    private static long maxOverrun;
-    private static long lastOverrunLog;
 
     private StructureBuildTasks() {
     }
@@ -113,19 +112,28 @@ public final class StructureBuildTasks {
         });
     }
 
-    public static void tick(MinecraftServer server) {
+    public static void beginTick() {
+        earlyLightingNanos = 0;
+        if (!LIGHTING.hasPending()) return;
         long start = System.nanoTime();
-        int overrunsBeforeTick = overrunCount;
+        LIGHTING.flush(() -> System.nanoTime() - start < ConstructionBudget.TICK_NANOS);
+        earlyLightingNanos = System.nanoTime() - start;
+    }
+
+    public static void tick(MinecraftServer server) {
+        long start = System.nanoTime() - earlyLightingNanos;
+        long deadline = start + ConstructionBudget.TICK_NANOS;
         try {
-            ServerConstructionEffects.tick(server, start + ConstructionBudget.TICK_NANOS);
+            if (System.nanoTime() - deadline >= 0) return;
+            ServerConstructionEffects.tick(server, deadline);
             if (TASKS.isEmpty()) return;
             for (var task : TASKS.values()) {
-                if (System.nanoTime() - start >= ConstructionBudget.TICK_NANOS) return;
+                if (System.nanoTime() - deadline >= 0) return;
                 if (task.world.getMinecraftServer() != server) continue;
                 (task.runnable() ? RUNNABLE : WAITING).add(task);
             }
             checkWaiting(start);
-            var report = BUDGET.run(start, RUNNABLE, (task, slice) -> {
+            BUDGET.run(start, RUNNABLE, LIGHTING::reservedNanos, (task, slice) -> {
                 if (TASKS.get(task.owner.getUniqueID()) != task || !task.runnable()) return;
                 try {
                     if (!task.valid()) {
@@ -138,24 +146,10 @@ public final class StructureBuildTasks {
                     fail(task, failure);
                 }
             });
-            overrunCount += report.overruns();
-            maxOverrun = Math.max(maxOverrun, report.maxOverrunNanos());
         } finally {
             RUNNABLE.clear();
             WAITING.clear();
-            long now = System.nanoTime();
-            long overrun = now - start - ConstructionBudget.TICK_NANOS;
-            if (overrun > 0L && overrunCount == overrunsBeforeTick) {
-                overrunCount++;
-                maxOverrun = Math.max(maxOverrun, overrun);
-            }
-            if (overrunCount != 0 && (lastOverrunLog == 0 || now - lastOverrunLog >= 5_000_000_000L)) {
-                PrototypeEngineering.LOGGER.warn("Construction exceeded its budget {} times; longest overrun {} us",
-                    overrunCount, maxOverrun / 1000);
-                overrunCount = 0;
-                maxOverrun = 0;
-                lastOverrunLog = now;
-            }
+            LIGHTING.flush(() -> System.nanoTime() - deadline < 0);
         }
     }
 
@@ -180,11 +174,6 @@ public final class StructureBuildTasks {
                 fail(task, failure);
             }
         }
-        long overrun = System.nanoTime() - start - budget;
-        if (overrun > 0L) {
-            overrunCount++;
-            maxOverrun = Math.max(maxOverrun, overrun);
-        }
     }
 
     private static void fail(Task task, RuntimeException failure) {
@@ -203,6 +192,7 @@ public final class StructureBuildTasks {
     @SubscribeEvent
     public static void unload(WorldEvent.Unload event) {
         if (event.getWorld().isRemote) return;
+        LIGHTING.clear(event.getWorld());
         TASKS.values().removeIf(task -> {
             if (task.world != event.getWorld()) return false;
             task.stop();
@@ -213,10 +203,10 @@ public final class StructureBuildTasks {
     public static void stop() {
         for (var task : TASKS.values()) task.stop();
         TASKS.clear();
-        overrunCount = 0;
+        earlyLightingNanos = 0;
         nextWaiting = 0;
-        maxOverrun = 0;
-        lastOverrunLog = 0;
+        LIGHTING.flush(() -> true);
+        LIGHTING.clear();
         ServerConstructionEffects.stop();
     }
 
@@ -309,7 +299,7 @@ public final class StructureBuildTasks {
                 }
             }
             wrote = true;
-            if (!ConstructionPlacement.write(world, pos, chunk, current, desired)
+            if (!ConstructionPlacement.write(world, pos, chunk, current, desired, LIGHTING)
                 || ForgeEventFactory.onPlayerBlockPlace(task.owner, snapshot, EnumFacing.UP, task.hand).isCanceled()
                 || !task.authorized(pos, chunk, desired)) return task.outcome(target, State.ROLLED_BACK, !task.requireSpace);
             finished = true;
@@ -322,7 +312,7 @@ public final class StructureBuildTasks {
         } finally {
             if (!finished) {
                 try {
-                    if (wrote) ConstructionPlacement.restore(world, chunk, snapshot, desired);
+                    if (wrote) ConstructionPlacement.restore(world, chunk, snapshot, desired, LIGHTING);
                 } finally {
                     payment.refund(task.owner);
                 }
@@ -544,7 +534,7 @@ public final class StructureBuildTasks {
                 boolean successful = matched + committed == total;
                 effect().finish(successful);
                 finish();
-            } else if (progress.waiting() && waitingMaterial != null && world.getTotalWorldTime() % 40 == 0) {
+            } else if (progress.waiting() && waitingMaterial != null && world.getTotalWorldTime() % 40 == 0 && effect().ownerWithinRenderDistance()) {
                 owner.sendStatusMessage(StructureToolText.BuilderWaitingMaterial.text(waitingMaterial.what().getDisplayName()), true);
             }
         }
@@ -679,6 +669,7 @@ public final class StructureBuildTasks {
                 task.errors++;
                 return;
             }
+            task.effect().includeInArea(pos);
             if (task.dismantle) {
                 ordered.add(new Target(pos, null, null));
                 return;

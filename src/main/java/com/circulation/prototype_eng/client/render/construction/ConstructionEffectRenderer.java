@@ -4,6 +4,7 @@ import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.client.preview.ProjectionInteractions;
 import com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.MeshKind;
 import com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.Section;
+import com.circulation.prototype_eng.structure.tool.effect.ConstructionArea;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.End;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Forget;
@@ -39,13 +40,12 @@ import static com.circulation.prototype_eng.client.render.construction.Construct
 import static com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.CHANGED_FILL;
 import static com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.EDGE;
 import static com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.FINISH_COLOR_TICKS;
-import static com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.INTRO_GHOST_TICKS;
 import static com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.PENDING_FILL;
 import static com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.PLAN_FILL;
 import static com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.PLAN_WIRE;
-import static com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.REMOVE_GHOST_TICKS;
 import static com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.REMOVE_WIRE_TICKS;
 import static com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.WHITE_HOLD_TICKS;
+import static com.circulation.prototype_eng.client.render.construction.ConstructionAnimation.WHITE_WIRE_TICKS;
 import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.INTRO_TICKS;
 
 public final class ConstructionEffectRenderer {
@@ -54,15 +54,16 @@ public final class ConstructionEffectRenderer {
     private static final String PAUSED_KEY = "structure_tool.prototype_eng.ConstructionPaused";
     private static final String COMPLETE_KEY = "structure_tool.prototype_eng.ConstructionComplete";
     private static final int WHITE = 0xf4f8ff;
-    private static final int GHOST = 0x8cd8fc;
     private static final int FRAME = 0xf2d573;
     private static final int GREEN = 0x65ef85;
     private static final int PROBLEM = 0xf0ae67;
     private static final int BLOCK_SETTLE_TICKS = 4;
+    private static final int WHITE_FILL_END_TICK = INTRO_TICKS - WHITE_HOLD_TICKS;
     private static final int MAX_UPLOADS_PER_FRAME = 12;
     private static final int MAX_UPLOAD_BYTES_PER_FRAME = 1 << 20;
     private static final long FRAME_BUILD_NANOS = 1_500_000L;
     private final Long2ObjectLinkedOpenHashMap<ConstructionAnimation> tasks = new Long2ObjectLinkedOpenHashMap<>();
+    private final ObjectArrayList<ConstructionAnimation> nearby = new ObjectArrayList<>();
     private final ObjectArrayList<Section> visible = new ObjectArrayList<>();
     private final ConstructionMeshes meshes = new ConstructionMeshes();
     private final FloatBuffer color = BufferUtils.createFloatBuffer(4);
@@ -94,8 +95,9 @@ public final class ConstructionEffectRenderer {
         long key = ConstructionAnimation.key(section.x(), section.y(), section.z());
         var task = tasks.get(packet.taskId());
         if (task == null) {
-            if (!packet.snapshot()) return;
-            task = begin(packet, packet.anchor(), packet.dismantle(), packet.startTick());
+            var area = packet.area();
+            if (area == null) return;
+            task = begin(packet, packet.anchor(), packet.dismantle(), packet.startTick(), area);
         }
         var batch = task.sections.get(key);
         if (batch == null) {
@@ -127,7 +129,7 @@ public final class ConstructionEffectRenderer {
 
     private void status(Hud packet) {
         var task = tasks.get(packet.taskId());
-        if (task == null) task = begin(packet, packet.anchor(), packet.dismantle(), packet.startTick());
+        if (task == null) task = begin(packet, packet.anchor(), packet.dismantle(), packet.startTick(), packet.area());
         task.owner = true;
         task.complete = packet.complete();
         task.sample(packet.serverTick(), tick);
@@ -135,8 +137,8 @@ public final class ConstructionEffectRenderer {
         hudTask = Math.max(hudTask, packet.taskId());
     }
 
-    private ConstructionAnimation begin(ConstructionEffectPayload packet, long anchor, boolean dismantle, long startTick) {
-        var task = new ConstructionAnimation(dismantle, startTick);
+    private ConstructionAnimation begin(ConstructionEffectPayload packet, long anchor, boolean dismantle, long startTick, ConstructionArea area) {
+        var task = new ConstructionAnimation(dismantle, startTick, area);
         tasks.put(packet.taskId(), task);
         ProjectionInteractions.INSTANCE.constructionStarted(packet.dimension(), BlockPos.fromLong(anchor));
         return task;
@@ -217,9 +219,14 @@ public final class ConstructionEffectRenderer {
     public void hud(RenderGameOverlayEvent.Post event) {
         if (event.getType() != RenderGameOverlayEvent.ElementType.ALL) return;
         var mc = Minecraft.getMinecraft();
-        if (mc.currentScreen != null || mc.world != world) return;
+        var viewer = mc.player;
+        if (mc.currentScreen != null || mc.world != world || viewer == null || viewer != player) return;
         var task = tasks.get(hudTask);
-        if (task == null) return;
+        float partialTicks = event.getPartialTicks();
+        if (task == null || !task.area.withinRenderDistance(
+            interpolate(partialTicks, viewer.lastTickPosX, viewer.posX),
+            interpolate(partialTicks, viewer.lastTickPosY, viewer.posY),
+            interpolate(partialTicks, viewer.lastTickPosZ, viewer.posZ))) return;
         boolean success = task.complete && task.missing == 0 && task.wrong == 0 && task.unloaded == 0;
         String text;
         if (success) text = I18n.format(COMPLETE_KEY);
@@ -248,19 +255,30 @@ public final class ConstructionEffectRenderer {
 
     private void render(Entity camera, float partialTicks) {
         var mc = Minecraft.getMinecraft();
-        if (tasks.isEmpty() || mc.world != world) return;
+        var viewer = mc.player;
+        if (tasks.isEmpty() || mc.world != world || viewer == null || viewer != player) return;
         mc.profiler.startSection("peConstruction");
         try {
-            renderScene(camera, partialTicks);
+            renderScene(camera, viewer, partialTicks);
         } catch (RuntimeException failure) {
             PrototypeEngineering.LOGGER.error("Cannot render construction effects", failure);
             clear();
         } finally {
+            nearby.clear();
             mc.profiler.endSection();
         }
     }
 
-    private void renderScene(Entity camera, float partialTicks) {
+    private void renderScene(Entity camera, EntityPlayerSP viewer, float partialTicks) {
+        meshes.resetCounters();
+        double viewerX = interpolate(partialTicks, viewer.lastTickPosX, viewer.posX);
+        double viewerY = interpolate(partialTicks, viewer.lastTickPosY, viewer.posY);
+        double viewerZ = interpolate(partialTicks, viewer.lastTickPosZ, viewer.posZ);
+        for (var task : tasks.values()) {
+            if (!task.sections.isEmpty() && task.area.withinRenderDistance(viewerX, viewerY, viewerZ)) nearby.add(task);
+        }
+        if (nearby.isEmpty()) return;
+
         boolean newVbo = OpenGlHelper.useVbo();
         if (vbo != newVbo) {
             for (var task : tasks.values()) {
@@ -276,7 +294,6 @@ public final class ConstructionEffectRenderer {
             }
             vbo = newVbo;
         }
-        meshes.resetCounters();
         double x = camera.lastTickPosX + (camera.posX - camera.lastTickPosX) * partialTicks;
         double y = camera.lastTickPosY + (camera.posY - camera.lastTickPosY) * partialTicks;
         double z = camera.lastTickPosZ + (camera.posZ - camera.lastTickPosZ) * partialTicks;
@@ -288,22 +305,27 @@ public final class ConstructionEffectRenderer {
         ConstructionGlState.prepare();
         try {
             if (vbo) ConstructionMeshes.beginDraw();
-            for (var task : tasks.values()) {
+            for (var task : nearby) {
                 task.refreshBounds();
                 double after = task.finishAge(now);
                 if (task.bounds == null || after >= ConstructionEffectPayload.FINISH_TICKS) continue;
                 double age = task.age(now);
-                visible.clear();
-                for (var section : task.sections.values()) if (frustum.isBoundingBoxInFrustum(section.view)) visible.add(section);
-                var dirty = task.dirty.iterator();
-                while (dirty.hasNext() && canUpload(deadline)) {
-                    long key = dirty.nextLong();
-                    var section = task.sections.get(key);
-                    if (!frustum.isBoundingBoxInFrustum(section.view)) continue;
-                    upload(task, section, age, after, deadline);
-                    if (section.dirty == 0) dirty.remove();
+                int variants = visibleMeshes(task.dismantle, age, after);
+                if (variants != 0) {
+                    visible.clear();
+                    for (var section : task.sections.values()) if (frustum.isBoundingBoxInFrustum(section.view)) visible.add(section);
+                    var dirty = task.dirty.iterator();
+                    while (dirty.hasNext() && canUpload(deadline)) {
+                        long key = dirty.nextLong();
+                        var section = task.sections.get(key);
+                        if (!frustum.isBoundingBoxInFrustum(section.view)) continue;
+                        int needed = variants;
+                        if (!task.dismantle && age >= INTRO_TICKS && after < 0 && !section.changed.isEmpty()) needed |= CHANGED_FILL;
+                        upload(task, section, needed, deadline);
+                        if (section.dirty == 0) dirty.remove();
+                    }
+                    for (var section : visible) drawBatch(task, section, age, after, x, y, z);
                 }
-                for (var section : visible) drawBatch(task, section, age, after, x, y, z);
                 drawFrame(task, frustum, after, x, y, z, deadline);
             }
         } finally {
@@ -316,11 +338,17 @@ public final class ConstructionEffectRenderer {
         return meshes.canUpload(MAX_UPLOADS_PER_FRAME, MAX_UPLOAD_BYTES_PER_FRAME) && System.nanoTime() < deadline;
     }
 
-    private void upload(ConstructionAnimation task, Section section, double age, double after, long deadline) {
-        int variants = task.dismantle
-            ? after < 0 ? PENDING_FILL | PLAN_WIRE : after < REMOVE_WIRE_TICKS ? PLAN_WIRE : PLAN_FILL
-            : after >= 0 ? CHANGED_FILL : age < INTRO_TICKS ? PLAN_FILL | PLAN_WIRE : PLAN_FILL;
-        if (!task.dismantle && age >= INTRO_TICKS && after < 0 && !section.changed.isEmpty()) variants |= CHANGED_FILL;
+    private static int visibleMeshes(boolean dismantle, double age, double after) {
+        if (dismantle) {
+            if (after < 0) return PENDING_FILL | PLAN_WIRE;
+            return after < REMOVE_WIRE_TICKS ? PLAN_WIRE : 0;
+        }
+        if (after >= 0) return after < BUILD_REVEAL_TICKS ? CHANGED_FILL : 0;
+        if (age < WHITE_WIRE_TICKS) return PLAN_WIRE;
+        return age < WHITE_FILL_END_TICK ? PLAN_WIRE | PLAN_FILL : PLAN_FILL;
+    }
+
+    private void upload(ConstructionAnimation task, Section section, int variants, long deadline) {
         int needed = section.dirty & variants;
         while (needed != 0 && canUpload(deadline)) {
             int kind = Integer.lowestOneBit(needed);
@@ -351,9 +379,7 @@ public final class ConstructionEffectRenderer {
         GlStateManager.translate(section.x * (double) EDGE - x, section.y * (double) EDGE - y, section.z * (double) EDGE - z);
         try {
             if (task.dismantle) {
-                if (after >= REMOVE_WIRE_TICKS) {
-                    paint(section.planFill, GHOST, 0.28 * (1 - smooth(after - REMOVE_WIRE_TICKS, REMOVE_GHOST_TICKS)));
-                } else if (after >= 0) {
+                if (after >= 0) {
                     paint(section.planWire, WHITE, 0.92 * (1 - smooth(after, REMOVE_WIRE_TICKS)));
                 } else {
                     double height = interpolate(smooth(age, INTRO_TICKS), bounds.maxY() + 1.0, bounds.minY() - 1.0);
@@ -364,11 +390,10 @@ public final class ConstructionEffectRenderer {
                 double fade = smooth(after - BLOCK_SETTLE_TICKS, BUILD_REVEAL_TICKS - BLOCK_SETTLE_TICKS);
                 double height = interpolate(fade, bounds.minY() - 2.0, bounds.maxY() + 2.0);
                 masked(section.changedFill, section.y * EDGE, height, 2.0);
-            } else if (age < INTRO_GHOST_TICKS) {
-                paint(section.planFill, GHOST, 0.33 * (1 - smooth(age, INTRO_GHOST_TICKS)));
-                paint(section.planWire, WHITE, 0.85 * smooth(age, INTRO_GHOST_TICKS));
-            } else if (age < INTRO_TICKS) {
-                double fill = smooth(age - INTRO_GHOST_TICKS, INTRO_TICKS - INTRO_GHOST_TICKS - WHITE_HOLD_TICKS);
+            } else if (age < WHITE_WIRE_TICKS) {
+                paint(section.planWire, WHITE, 0.90);
+            } else if (age < WHITE_FILL_END_TICK) {
+                double fill = smooth(age - WHITE_WIRE_TICKS, WHITE_FILL_END_TICK - WHITE_WIRE_TICKS);
                 paintSolid(section.planFill, fill);
                 paint(section.planWire, WHITE, 0.90 * (1 - fill));
             } else {
@@ -385,7 +410,7 @@ public final class ConstructionEffectRenderer {
         if (bounds == null || !frustum.isBoxInFrustum(bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ())) return;
         if (task.frame == null && canUpload(deadline))
             task.frame = meshes.frame(bounds.maxX() - bounds.minX(), bounds.maxY() - bounds.minY(), bounds.maxZ() - bounds.minZ(), vbo);
-        int transition = task.dismantle ? REMOVE_WIRE_TICKS + REMOVE_GHOST_TICKS : BUILD_REVEAL_TICKS;
+        int transition = task.dismantle ? REMOVE_WIRE_TICKS : BUILD_REVEAL_TICKS;
         int frameColor = after >= transition && task.success ? GREEN : FRAME;
         double opacity = after < ConstructionEffectPayload.FINISH_TICKS - FINISH_COLOR_TICKS ? .78
             : .78 * (1 - smooth(after - ConstructionEffectPayload.FINISH_TICKS + FINISH_COLOR_TICKS, FINISH_COLOR_TICKS));

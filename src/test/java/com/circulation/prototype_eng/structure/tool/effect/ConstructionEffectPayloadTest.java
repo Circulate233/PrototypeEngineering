@@ -7,8 +7,10 @@ import org.junit.jupiter.api.Test;
 
 import java.util.BitSet;
 import java.util.List;
+import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -23,9 +25,9 @@ class ConstructionEffectPayloadTest {
             var cells = new BitSet();
             cells.set(cell);
             var initial = new ConstructionEffectPayload.Geometry(-1, 1, position.toLong(), false, 90, 98,
-                section, quadrant, true, cells, new BitSet(), new BitSet());
+                section, quadrant, new ConstructionArea(position, position), cells, new BitSet(), new BitSet());
             var delta = new ConstructionEffectPayload.Geometry(-1, 1, position.toLong(), false, 90, 99,
-                section, quadrant, false, new BitSet(), cells, new BitSet());
+                section, quadrant, null, new BitSet(), cells, new BitSet());
             assertEquals(initial, roundTrip(initial));
             assertEquals(delta, roundTrip(delta));
             assertEquals(position.getX() >> 4, section.chunkX(quadrant));
@@ -40,6 +42,7 @@ class ConstructionEffectPayloadTest {
     void denseSixThousandCellSnapshotUsesLessSpaceThanIndividualPositions() {
         var origin = new BlockPos(35, 70, -32);
         var section = ConstructionEffectPayload.Section.at(origin);
+        var area = new ConstructionArea(origin, origin.add(24, 15, 14));
         BitSet[] subsets = {new BitSet(), new BitSet(), new BitSet(), new BitSet()};
         for (int x = 0; x < 25; x++) for (int y = 0; y < 16; y++) for (int z = 0; z < 15; z++) {
             var position = origin.add(x, y, z);
@@ -52,7 +55,7 @@ class ConstructionEffectPayloadTest {
             if (subset.isEmpty()) continue;
             cells += subset.cardinality();
             var payload = new ConstructionEffectPayload.Geometry(0, 7, origin.toLong(), true, 200, 260,
-                section, quadrant, true, subset, subset, new BitSet());
+                section, quadrant, area, subset, subset, new BitSet());
             assertEquals(payload, roundTrip(payload));
             encoded += ConstructionEffectPayload.bytes(payload);
         }
@@ -71,9 +74,9 @@ class ConstructionEffectPayloadTest {
         var section = ConstructionEffectPayload.Section.at(position);
         int quadrant = ConstructionEffectPayload.Section.quadrant(position);
         assertThrows(IllegalArgumentException.class, () -> new ConstructionEffectPayload.Geometry(0, 9, position.toLong(),
-            false, 40, 50, section, quadrant, false, new BitSet(), completed, completed));
+            false, 40, 50, section, quadrant, null, new BitSet(), completed, completed));
         var payload = new ConstructionEffectPayload.Geometry(0, 9, position.toLong(), false, 40, 50,
-            section, quadrant, false, new BitSet(), completed, excluded);
+            section, quadrant, null, new BitSet(), completed, excluded);
         completed.clear();
         excluded.clear();
         var received = (ConstructionEffectPayload.Geometry) roundTrip(payload);
@@ -84,7 +87,8 @@ class ConstructionEffectPayloadTest {
     @Test
     void statusAndVisibilityMessagesRetainTaskIdentityAndRejectExtraBytes() {
         var anchor = new BlockPos(32, 80, -1);
-        var status = new ConstructionEffectPayload.Hud(1, 13, anchor.toLong(), true, 38, 86, 51, 2, 6, true, false);
+        var area = new ConstructionArea(anchor, anchor.add(16, 12, 4));
+        var status = new ConstructionEffectPayload.Hud(1, 13, anchor.toLong(), true, 38, 86, area, 51, 2, 6, true, false);
         var unwatch = new ConstructionEffectPayload.Forget(1, 13, ConstructionEffectPayload.Section.at(anchor),
             ConstructionEffectPayload.Section.quadrant(anchor));
         var end = new ConstructionEffectPayload.End(1, 13, 100, true, false);
@@ -99,6 +103,51 @@ class ConstructionEffectPayloadTest {
                 buffer.release();
             }
         }
+    }
+
+    @Test
+    void partialGeometryAndOwnerStatusCarryTheFullRangeBeyondTheirOwnChunk() {
+        var anchor = new BlockPos(-79, 64, -8);
+        var watchedCell = anchor.add(1, 0, 0);
+        var extent = new ConstructionArea.Builder();
+        extent.include(watchedCell);
+        extent.include(new BlockPos(17, 80, 12));
+        extent.include(new BlockPos(-82, 79, 10));
+        var area = Objects.requireNonNull(extent.build());
+        assertEquals(new BlockPos(-82, 64, -8), area.min());
+        assertEquals(new BlockPos(17, 80, 12), area.max());
+
+        var cells = new BitSet();
+        cells.set(ConstructionEffectPayload.Section.index(watchedCell));
+        var snapshot = new ConstructionEffectPayload.Geometry(0, 1, anchor.toLong(), false, 10, 13,
+            ConstructionEffectPayload.Section.at(watchedCell), ConstructionEffectPayload.Section.quadrant(watchedCell),
+            area, cells, new BitSet(), new BitSet());
+        var status = new ConstructionEffectPayload.Hud(0, 1, anchor.toLong(), false, 10, 13, area, 1, 0, 0, false, false);
+        var observer = (ConstructionEffectPayload.Geometry) roundTrip(snapshot);
+        var owner = (ConstructionEffectPayload.Hud) roundTrip(status);
+        var observerArea = Objects.requireNonNull(observer.area());
+        var ownerArea = owner.area();
+        assertEquals(area, observerArea);
+        assertEquals(area, ownerArea);
+        assertEquals(cells, observer.cells());
+        for (var received : List.of(observerArea, ownerArea)) {
+            assertTrue(received.withinRenderDistance(48, 75, 4));
+            assertFalse(received.withinRenderDistance(51, 75, 4));
+        }
+    }
+
+    @Test
+    void distanceUsesTheOuterBlockFacesAndTheNearestPointInThreeDimensions() {
+        var area = new ConstructionArea(new BlockPos(-8, 63, -12), new BlockPos(17, 66, 11));
+        assertTrue(area.withinRenderDistance(18, 64, 0));
+        assertTrue(area.withinRenderDistance(50, 64, 0));
+        assertFalse(area.withinRenderDistance(50.01, 64, 0));
+        assertTrue(area.withinRenderDistance(-40, 64, 0));
+        assertFalse(area.withinRenderDistance(-40.01, 64, 0));
+        assertTrue(area.withinRenderDistance(0, 99, 0));
+        assertFalse(area.withinRenderDistance(0, 99.01, 0));
+        assertTrue(area.withinRenderDistance(38, 64, 32));
+        assertFalse(area.withinRenderDistance(42, 64, 36));
     }
 
     private static ConstructionEffectPayload roundTrip(ConstructionEffectPayload payload) {
