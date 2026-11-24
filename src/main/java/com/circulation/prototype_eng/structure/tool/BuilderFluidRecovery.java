@@ -4,12 +4,15 @@ import ae2.api.stacks.AEFluidKey;
 import ae2.items.misc.GenericResourcePackageItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.item.ItemStack;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.FluidUtil;
 import net.minecraftforge.items.CapabilityItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
 import net.minecraftforge.items.wrapper.PlayerInvWrapper;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.function.Consumer;
 
 /**
  * Delivers fluid already extracted from the world, preserving type, amount and NBT.
@@ -19,26 +22,27 @@ final class BuilderFluidRecovery {
     }
 
     @SuppressWarnings("DataFlowIssue")
-    static void deliver(EntityPlayerMP player, FluidStack fluid, @Nullable ConstructionMEAccess ae) {
+    static void deliver(EntityPlayerMP player, FluidStack fluid, @Nullable ConstructionMEAccess ae, @Nullable Consumer<ItemStack> overflow) {
         var key = AEFluidKey.of(fluid);
         int remaining = fluid.amount;
         if (ae != null) remaining -= (int) ae.insert(key, remaining);
         if (remaining == 0) return;
         var inventory = new PlayerInvWrapper(player.inventory);
         for (int slot = 0; slot < inventory.getSlots() && remaining > 0; slot++) {
-            remaining = fill(player, inventory, slot, fluid, remaining);
+            remaining = fill(player, inventory, slot, fluid, remaining, overflow);
             var stack = inventory.getStackInSlot(slot);
             var nested = stack.getCapability(CapabilityItemHandler.ITEM_HANDLER_CAPABILITY, null);
             if (nested instanceof IItemHandlerModifiable writable)
                 for (int inner = 0; inner < writable.getSlots() && remaining > 0; inner++)
-                    remaining = fill(player, writable, inner, fluid, remaining);
+                    remaining = fill(player, writable, inner, fluid, remaining, overflow);
         }
         if (remaining > 0)
-            BuilderDropRecovery.give(player, GenericResourcePackageItem.wrap(key, remaining));
+            BuilderDropRecovery.give(player, GenericResourcePackageItem.wrap(key, remaining), overflow);
         player.inventory.markDirty();
     }
 
-    private static int fill(EntityPlayer player, IItemHandlerModifiable inventory, int slot, FluidStack fluid, int remaining) {
+    private static int fill(EntityPlayer player, IItemHandlerModifiable inventory, int slot, FluidStack fluid, int remaining,
+                            @Nullable Consumer<ItemStack> overflow) {
         int containers = inventory.getStackInSlot(slot).getCount();
         for (int attempt = 0; attempt < containers && remaining > 0; attempt++) {
             var original = inventory.getStackInSlot(slot);
@@ -57,7 +61,7 @@ final class BuilderFluidRecovery {
             }
             if (inventory.extractItem(slot, 1, false).isEmpty()) break;
             remaining -= accepted;
-            BuilderDropRecovery.give(player, filled);
+            BuilderDropRecovery.give(player, filled, overflow);
         }
         return remaining;
     }

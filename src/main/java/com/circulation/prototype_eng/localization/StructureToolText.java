@@ -17,6 +17,8 @@ public enum StructureToolText implements LocalizationEnum {
     BuilderEnabled, BuilderDisabled, BuilderMissing, BuilderMissingEntry, BuilderBlocked,
     BuilderSkipped, BuilderFluidsSkipped, BuilderMeUnavailable, BuilderTaskOwned,
     BuilderBuildElapsed, BuilderPartialBuildElapsed,
+    BuilderDismantleElapsed, BuilderPartialDismantleElapsed,
+    BuilderRecoveryFull,
     OriginSet,
     OriginRestart,
     CornerSet,

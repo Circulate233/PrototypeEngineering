@@ -12,6 +12,8 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
+import net.minecraftforge.items.ItemHandlerHelper;
+import net.minecraftforge.items.wrapper.PlayerMainInvWrapper;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -21,7 +23,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Captures drops from the current mining call and delivers them to AE, player inventory, then the player's feet.
+ * Captures drops from the current mining call and delivers them to AE and player inventory.
  */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class BuilderDropRecovery implements AutoCloseable {
@@ -31,19 +33,21 @@ public final class BuilderDropRecovery implements AutoCloseable {
     private final World world;
     private final BlockPos feet;
     private final @Nullable ConstructionMEAccess ae;
+    private final @Nullable Consumer<ItemStack> overflow;
     private final ObjectArrayList<EntityItem> drops = new ObjectArrayList<>();
 
-    private BuilderDropRecovery(EntityPlayerMP player, @Nullable ConstructionMEAccess ae) {
+    private BuilderDropRecovery(EntityPlayerMP player, @Nullable ConstructionMEAccess ae, @Nullable Consumer<ItemStack> overflow) {
         this.player = player;
         world = player.world;
         feet = player.getPosition();
         this.ae = ae;
+        this.overflow = overflow;
         previous = ACTIVE.get();
         ACTIVE.set(this);
     }
 
-    static BuilderDropRecovery capture(EntityPlayerMP player, @Nullable ConstructionMEAccess ae) {
-        return new BuilderDropRecovery(player, ae);
+    static BuilderDropRecovery capture(EntityPlayerMP player, @Nullable ConstructionMEAccess ae, @Nullable Consumer<ItemStack> overflow) {
+        return new BuilderDropRecovery(player, ae, overflow);
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -78,13 +82,19 @@ public final class BuilderDropRecovery implements AutoCloseable {
     }
 
     private void deliver(List<ItemStack> stacks) {
-        if (!playerAvailable()) {
+        boolean available = playerAvailable();
+        var retain = overflow;
+        if (!available && retain == null) {
             Platform.spawnDrops(world, feet, stacks);
             return;
         }
         for (int index1 = 0; index1 < stacks.size(); index1++) {
             var stack = stacks.get(index1);
-            give(player, insert(ae, stack));
+            if (retain == null) give(player, insert(ae, stack), null);
+            else {
+                var remaining = available ? recover(player, ae, stack) : stack;
+                if (!remaining.isEmpty()) retain.accept(remaining);
+            }
         }
         player.inventory.markDirty();
     }
@@ -102,8 +112,24 @@ public final class BuilderDropRecovery implements AutoCloseable {
         return stack;
     }
 
-    static void give(EntityPlayer player, ItemStack stack) {
+    static ItemStack recover(EntityPlayer player, @Nullable ConstructionMEAccess ae, ItemStack stack) {
+        return recoverInventory(player, insert(ae, stack));
+    }
+
+    private static ItemStack recoverInventory(EntityPlayer player, ItemStack stack) {
+        if (stack.isEmpty()) return stack;
+        if (player.isCreative()) return ItemHandlerHelper.insertItemStacked(new PlayerMainInvWrapper(player.inventory), stack, false);
+        player.inventory.addItemStackToInventory(stack);
+        return stack;
+    }
+
+    static void give(EntityPlayer player, ItemStack stack, @Nullable Consumer<ItemStack> overflow) {
         if (stack.isEmpty()) return;
+        if (overflow != null) {
+            var remaining = recoverInventory(player, stack);
+            if (!remaining.isEmpty()) overflow.accept(remaining);
+            return;
+        }
         player.inventory.addItemStackToInventory(stack);
         if (stack.isEmpty()) return;
         var entity = new EntityItem(player.world, player.posX, player.posY, player.posZ, stack);
@@ -120,6 +146,14 @@ public final class BuilderDropRecovery implements AutoCloseable {
             var destination = available ? ae : null;
             for (int index = 0; index < drops.size(); index++) {
                 var entity = drops.get(index);
+                var retain = overflow;
+                if (retain != null) {
+                    var stack = entity.getItem();
+                    var remaining = available ? recover(player, destination, stack) : stack;
+                    if (!remaining.isEmpty()) retain.accept(remaining);
+                    entity.setDead();
+                    continue;
+                }
                 var remaining = insert(destination, entity.getItem());
                 if (available) {
                     player.inventory.addItemStackToInventory(remaining);

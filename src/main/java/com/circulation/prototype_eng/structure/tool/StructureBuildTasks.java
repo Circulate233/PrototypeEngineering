@@ -50,6 +50,7 @@ import net.minecraftforge.fluids.IFluidBlock;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.PlayerEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
@@ -58,9 +59,11 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.PriorityQueue;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class StructureBuildTasks {
+    private static final int RECOVERY_RETRY_TICKS = 20;
     private static final Object2ObjectLinkedOpenHashMap<UUID, Task> TASKS = new Object2ObjectLinkedOpenHashMap<>();
     private static final ObjectArrayList<Task> RUNNABLE = new ObjectArrayList<>();
     private static final ObjectArrayList<Task> ACTIVE = new ObjectArrayList<>();
@@ -217,6 +220,23 @@ public final class StructureBuildTasks {
     }
 
     @SubscribeEvent
+    public static void login(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.player instanceof EntityPlayerMP player) BuilderDismantleRecovery.load(player);
+    }
+
+    @SubscribeEvent
+    public static void recoverAfterDismantle(TickEvent.PlayerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || !(event.player instanceof EntityPlayerMP player)
+            || player.ticksExisted % RECOVERY_RETRY_TICKS != 0 || !player.isEntityAlive()) return;
+        var uuid = player.getUniqueID();
+        if (!BuilderDismantleRecovery.pending(uuid)) return;
+        var task = TASKS.get(uuid);
+        if (task != null && task.dismantle) return;
+        int[] remaining = {64};
+        BuilderDismantleRecovery.deliver(player, null, () -> remaining[0]-- > 0);
+    }
+
+    @SubscribeEvent
     public static void logout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (!(event.player instanceof EntityPlayerMP)) return;
         var task = TASKS.get(event.player.getUniqueID());
@@ -239,6 +259,7 @@ public final class StructureBuildTasks {
         TASKS.clear();
         LIGHTING.clear();
         SETTLING.clear();
+        BuilderDismantleRecovery.stop();
         ServerConstructionEffects.stop();
     }
 
@@ -388,10 +409,10 @@ public final class StructureBuildTasks {
             if (drained == null || drained.amount <= 0) return false;
             var actual = chunk.getBlockState(pos);
             boolean removed = air(world, pos, actual) || !fluid(actual);
-            BuilderFluidRecovery.deliver(player, drained, task.me);
+            BuilderFluidRecovery.deliver(player, drained, task.me, task.overflow);
             return removed;
         }
-        try (var _ = BuilderDropRecovery.capture(player, task.me)) {
+        try (var _ = BuilderDropRecovery.capture(player, task.me, task.overflow)) {
             var tile = world.getTileEntity(pos);
             if (!block.removedByPlayer(state, world, pos, player, !creative) || chunk.getBlockState(pos).equals(state)) return false;
             block.onPlayerDestroy(world, pos, state);
@@ -437,6 +458,7 @@ public final class StructureBuildTasks {
         final BlockOrientation orientation;
         final String builderIdentity;
         final boolean dismantle, requireSpace, replaceFluids, requireMaterials, waitMaterials, autoCraft;
+        final @Nullable Consumer<ItemStack> overflow;
         final ConstructionPayment.Sources sources;
         final StructureCatalogView view;
         final int meMode;
@@ -456,6 +478,7 @@ public final class StructureBuildTasks {
         long lastWriteTick = Long.MIN_VALUE;
         int matched, committed, missing, errors, unloaded, total;
         long nextMissingReport;
+        long retryRecoveryTick;
         boolean initialized, effectStarted, paused, reportedFluidsSkipped;
 
         Task(EntityPlayerMP owner, WorldServer world, int slot, ItemStack tool, ConstructionTarget controller,
@@ -472,6 +495,7 @@ public final class StructureBuildTasks {
             this.view = view;
             builderIdentity = BuilderState.identity(settings);
             this.dismantle = dismantle;
+            overflow = dismantle ? this::retainDrop : null;
             requireSpace = BuilderState.Setting.REQUIRE_SPACE.enabled(settings);
             replaceFluids = BuilderState.Setting.REPLACE_FLUIDS.enabled(settings);
             requireMaterials = BuilderState.Setting.REQUIRE_MATERIALS.enabled(settings);
@@ -507,8 +531,26 @@ public final class StructureBuildTasks {
         }
 
         boolean runnable() {
-            return !paused && (craftingWindow == null || owner.openContainer != craftingWindow)
+            return !paused && (!dismantle || world.getTotalWorldTime() >= retryRecoveryTick)
+                && (craftingWindow == null || owner.openContainer != craftingWindow)
                 && (!effectStarted || effect().ready());
+        }
+
+        private boolean awaitingRecovery() {
+            return dismantle && BuilderDismantleRecovery.pending(owner.getUniqueID());
+        }
+
+        private void retainDrop(ItemStack stack) {
+            var uuid = owner.getUniqueID();
+            BuilderDismantleRecovery.keep(world, uuid, stack);
+            var active = TASKS.get(uuid);
+            if (active != null && active.dismantle && active.world.getTotalWorldTime() >= active.retryRecoveryTick) active.waitForSpace();
+        }
+
+        private void waitForSpace() {
+            retryRecoveryTick = world.getTotalWorldTime() + RECOVERY_RETRY_TICKS;
+            owner.sendStatusMessage(StructureToolText.BuilderRecoveryFull.text(), true);
+            status();
         }
 
         void setPaused(boolean paused) {
@@ -564,6 +606,14 @@ public final class StructureBuildTasks {
                 prepare = new Preparation(this, view);
                 initialized = true;
             }
+            if (awaitingRecovery()) {
+                var recovery = BuilderDismantleRecovery.deliver(owner, me, slice::available);
+                if (recovery == BuilderDismantleRecovery.Result.FULL) {
+                    waitForSpace();
+                    return false;
+                }
+                if (recovery == BuilderDismantleRecovery.Result.PENDING) return true;
+            }
             if (craftingWindow != null) {
                 craftingWindow = null;
                 start();
@@ -580,18 +630,20 @@ public final class StructureBuildTasks {
             waitingMaterial = null;
             boolean again = false;
             if (phase != Phase.DONE) {
-                again = progress.advance(now, phase, slice::available, index -> operate(this, targets.get(index), phase));
+                again = progress.advance(now, phase, () -> now >= retryRecoveryTick && slice.available(),
+                    index -> operate(this, targets.get(index), phase));
             }
             status();
+            if (awaitingRecovery()) return false;
             if (progress.nextPhase() == Phase.DONE) {
                 if (TASKS.remove(owner.getUniqueID(), this)) {
                     boolean successful = matched + committed == total;
                     effect().finish(successful);
-                    if (!dismantle) {
-                        String seconds = String.format(Locale.ROOT, "%.2f", (System.nanoTime() - queuedAtNanos) / 1_000_000_000.0);
-                        var message = successful ? StructureToolText.BuilderBuildElapsed : StructureToolText.BuilderPartialBuildElapsed;
-                        owner.sendMessage(message.text(seconds));
-                    }
+                    String seconds = String.format(Locale.ROOT, "%.2f", (System.nanoTime() - queuedAtNanos) / 1_000_000_000.0);
+                    var message = dismantle
+                        ? (successful ? StructureToolText.BuilderDismantleElapsed : StructureToolText.BuilderPartialDismantleElapsed)
+                        : (successful ? StructureToolText.BuilderBuildElapsed : StructureToolText.BuilderPartialBuildElapsed);
+                    owner.sendMessage(message.text(seconds));
                 }
                 return false;
             }
@@ -604,7 +656,7 @@ public final class StructureBuildTasks {
         void status() {
             if (effectStarted) {
                 int stillNeeded = total - matched - committed - errors - unloaded;
-                effect().status(Math.max(stillNeeded, missing), errors, unloaded, paused);
+                effect().status(Math.max(stillNeeded, missing), errors, unloaded, paused || awaitingRecovery());
             }
         }
 
