@@ -34,7 +34,6 @@ public final class ConstructionChunkPlan {
     static final class Builder {
         private final LongArrayList positions;
         private final int count;
-        private final int supportingSide;
         private final Long2IntOpenHashMap indexByPosition;
         private final int[] queuedFor;
         private final int[] ids;
@@ -55,10 +54,9 @@ public final class ConstructionChunkPlan {
         private boolean growing;
         private Mode mode = Mode.CONNECTED;
 
-        Builder(LongArrayList positions, boolean dismantle) {
+        Builder(LongArrayList positions) {
             this.positions = positions;
             count = positions.size();
-            supportingSide = dismantle ? 1 : -1;
             indexByPosition = new Long2IntOpenHashMap(count);
             indexByPosition.defaultReturnValue(-1);
             ids = new int[count];
@@ -119,8 +117,8 @@ public final class ConstructionChunkPlan {
             enqueue(indexByPosition.get(toLong(x - 1, y, z)));
             enqueue(indexByPosition.get(toLong(x, y, z + 1)));
             enqueue(indexByPosition.get(toLong(x, y, z - 1)));
-            enqueue(indexByPosition.get(toLong(x, y - supportingSide, z)));
-            int support = indexByPosition.get(toLong(x, y + supportingSide, z));
+            enqueue(indexByPosition.get(toLong(x, y + 1, z)));
+            int support = indexByPosition.get(toLong(x, y - 1, z));
             enqueue(support);
             if (mode == Mode.MERGE_ADJACENT && support >= 0 && ids[support] <= chunks)
                 supportFloor = Math.max(supportFloor, ids[support]);
@@ -135,7 +133,7 @@ public final class ConstructionChunkPlan {
             }
             if (queuedFor[index] == visit) return;
             long pos = positions.getLong(index);
-            int support = indexByPosition.get(toLong(unpackX(pos), unpackY(pos) + supportingSide, unpackZ(pos)));
+            int support = indexByPosition.get(toLong(unpackX(pos), unpackY(pos) - 1, unpackZ(pos)));
             if (support >= 0 && ids[support] == 0) return;
             queue[tail++] = index;
             queuedFor[index] = visit;

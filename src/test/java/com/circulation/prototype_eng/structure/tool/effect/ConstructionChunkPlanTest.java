@@ -14,13 +14,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ConstructionChunkPlanTest {
     @Test
     void emptyPlacementPlanContainsNoAnimationChunks() {
-        assertEquals(0, plan(new LongArrayList(), false).size());
+        assertEquals(0, plan(new LongArrayList()).size());
     }
 
     @Test
     void connectedRowsSplitIntoConnectedAnimationChunks() {
         var positions = row(ConstructionChunkPlan.TARGET_BLOCKS * 2 + 1);
-        var plan = plan(positions, false);
+        var plan = plan(positions);
 
         assertEquals(3, plan.size());
         for (int chunk = 0; chunk < plan.size(); chunk++) {
@@ -43,7 +43,7 @@ class ConstructionChunkPlanTest {
     void largerStructuresIncreaseChunkCapacityAndStayWithinTheThirtyTwoChunkLimit() {
         int blocks = ConstructionChunkPlan.TARGET_BLOCKS * ConstructionChunkPlan.MAX_CHUNKS + 1;
         var positions = row(blocks);
-        var plan = plan(positions, false);
+        var plan = plan(positions);
 
         assertEquals(ConstructionChunkPlan.MAX_CHUNKS, plan.size());
         int[] counts = new int[plan.size()];
@@ -64,7 +64,7 @@ class ConstructionChunkPlanTest {
         var positions = new LongArrayList(width * depth * height);
         for (int y = 0; y < height; y++) for (int z = 0; z < depth; z++) for (int x = 0; x < width; x++)
             positions.add(new BlockPos(x, y + 64, z).toLong());
-        var plan = plan(positions, false);
+        var plan = plan(positions);
         assertTrue(plan.size() >= (positions.size() + ConstructionChunkPlan.TARGET_BLOCKS - 1) / ConstructionChunkPlan.TARGET_BLOCKS);
         assertTrue(plan.size() <= ConstructionChunkPlan.MAX_CHUNKS);
 
@@ -93,7 +93,7 @@ class ConstructionChunkPlanTest {
         var positions = new LongArrayList();
         for (int x = 0; x < 450; x++) for (int z = 0; z < 40; z++)
             positions.add(new BlockPos(-800 + x * 2, 64, -64 + z * 2).toLong());
-        var plan = plan(positions, false);
+        var plan = plan(positions);
         int minimumCapacity = positions.size() / ConstructionChunkPlan.MAX_CHUNKS;
         int[] counts = new int[plan.size()];
         for (int i = 0; i < positions.size(); i++) counts[plan.chunkAt(i)]++;
@@ -101,21 +101,19 @@ class ConstructionChunkPlanTest {
     }
 
     @Test
-    void groupOrderPreservesVerticalNeighborsForPlacementAndRemoval() {
-        for (boolean dismantle : new boolean[]{false, true}) {
-            int width = 29, depth = 23, height = 4;
-            int layer = width * depth;
-            var positions = new LongArrayList();
-            for (int y = 0; y < height; y++) for (int x = 0; x < width; x++) for (int z = 0; z < depth; z++)
-                positions.add(new BlockPos(x - 20, 70 + (dismantle ? -y : y), z - 20).toLong());
-            var plan = plan(positions, dismantle);
-            for (int i = layer; i < positions.size(); i++)
-                assertTrue(plan.chunkAt(i - layer) <= plan.chunkAt(i));
-        }
+    void groupOrderPlacesSupportsBeforeTheBlocksAboveThem() {
+        int width = 29, depth = 23, height = 4;
+        int layer = width * depth;
+        var positions = new LongArrayList();
+        for (int y = 0; y < height; y++) for (int x = 0; x < width; x++) for (int z = 0; z < depth; z++)
+            positions.add(new BlockPos(x - 20, 70 + y, z - 20).toLong());
+        var plan = plan(positions);
+        for (int i = layer; i < positions.size(); i++)
+            assertTrue(plan.chunkAt(i - layer) <= plan.chunkAt(i));
     }
 
-    private static ConstructionChunkPlan plan(LongArrayList positions, boolean dismantle) {
-        var builder = new ConstructionChunkPlan.Builder(positions, dismantle);
+    private static ConstructionChunkPlan plan(LongArrayList positions) {
+        var builder = new ConstructionChunkPlan.Builder(positions);
         boolean done;
         do {
             done = builder.step();

@@ -232,6 +232,7 @@ public final class ServerConstructionEffects {
         private int cellCount;
         private int wireTicks;
         private long activated;
+        private long removalRegions;
         private long settled;
         private @Nullable End ending;
         private boolean endReady;
@@ -256,6 +257,12 @@ public final class ServerConstructionEffects {
             areaBuilder.include(position);
         }
 
+        public int includeInLayout(BlockPos position) {
+            int index = positions.size();
+            positions.add(position.toLong());
+            return index;
+        }
+
         public void add(BlockPos position, boolean fluid) {
             if (startTick >= 0 || chunkPlanBuilder != null || chunkPlan != null)
                 throw new IllegalStateException("Cannot change a published construction plan");
@@ -269,7 +276,6 @@ public final class ServerConstructionEffects {
             int cell = Section.index(position);
             if (!sector.cells.get(cell)) {
                 sector.add(cell, fluid);
-                positions.add(position.toLong());
                 cellCount++;
             }
         }
@@ -278,7 +284,7 @@ public final class ServerConstructionEffects {
             if (startTick >= 0) throw new IllegalStateException("Cannot prepare a published construction plan");
             if (chunkPlan == null) {
                 var builder = chunkPlanBuilder;
-                if (builder == null) chunkPlanBuilder = builder = new ConstructionChunkPlan.Builder(positions, dismantle);
+                if (builder == null) chunkPlanBuilder = builder = new ConstructionChunkPlan.Builder(positions);
                 if (!builder.step()) return false;
                 chunkPlan = builder.result();
                 chunkPlanBuilder = null;
@@ -286,8 +292,9 @@ public final class ServerConstructionEffects {
             if (assignedCells < positions.size()) {
                 int index = assignedCells++;
                 var position = BlockPos.fromLong(positions.getLong(index));
-                var sector = Objects.requireNonNull(sectors.get(SectorKey.packed(position)));
+                var sector = sectors.get(SectorKey.packed(position));
                 int cell = Section.index(position);
+                if (sector == null || !sector.cells.get(cell)) return false;
                 int group = chunkPlan.chunkAt(index);
                 sector.assign(cell, group);
                 int stage = ConstructionEffectPayload.region(group, sector.fluids.get(cell));
@@ -295,6 +302,7 @@ public final class ServerConstructionEffects {
                 if (region == null) regions[stage] = region = new Region(dismantle ? new RemovalLayer(this, stage) : null);
                 region.remaining++;
                 long bit = 1L << stage;
+                if (dismantle) removalRegions |= bit;
                 if ((sector.regionMask & bit) == 0) {
                     sector.regionMask |= bit;
                     region.sectors.add(sector);
@@ -323,6 +331,7 @@ public final class ServerConstructionEffects {
             if (!sectors.isEmpty()) {
                 publishing = true;
                 session.work.addLast(new PublishEffect(this, sectors.values().iterator()));
+                if (dismantle) requestRemoval(removalRegions);
             }
         }
 
@@ -340,9 +349,24 @@ public final class ServerConstructionEffects {
             int index = ConstructionEffectPayload.region(sector.group(Section.index(position)), fluid);
             var region = regions[index];
             if (region == null) return true;
-            if (region.removableTick >= 0) return currentTick() >= region.removableTick;
+            if (region.removableTick >= 0) {
+                if (currentTick() < region.removableTick) return false;
+                if (!region.removalStarted) {
+                    region.removalStarted = true;
+                    long lowerRegions = (1L << index) - 1;
+                    long samePhase = fluid ? -1L << ConstructionEffectPayload.MAX_LOGICAL_CHUNKS : -1L;
+                    requestRemoval(removalRegions & lowerRegions & samePhase);
+                }
+                return true;
+            }
             Objects.requireNonNull(region.removal).request();
             return false;
+        }
+
+        private void requestRemoval(long candidates) {
+            if (candidates == 0) return;
+            var region = Objects.requireNonNull(regions[Long.SIZE - 1 - Long.numberOfLeadingZeros(candidates)]);
+            Objects.requireNonNull(region.removal).request();
         }
 
         public boolean resolved(BlockPos position, boolean fluid, boolean changed) {
@@ -359,6 +383,7 @@ public final class ServerConstructionEffects {
                 sector.queueDelta();
             }
             if (--region.remaining != 0) return false;
+            removalRegions &= ~(1L << index);
             unsettled.add(region);
             return true;
         }
@@ -715,6 +740,7 @@ public final class ServerConstructionEffects {
         }
 
         int activationPendingSectors;
+        boolean removalStarted;
 
         Region(@Nullable RemovalLayer removal) {
             this.removal = removal;

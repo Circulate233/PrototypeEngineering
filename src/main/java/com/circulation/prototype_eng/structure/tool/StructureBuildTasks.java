@@ -74,7 +74,7 @@ public final class StructureBuildTasks {
     private static final Comparator<Target> BUILD_GROUP_ORDER = Comparator.comparingInt((Target target) -> target.group)
         .thenComparingInt(target -> target.staticBlock ? 0 : 1)
         .thenComparing((first, second) -> (first.staticBlock ? STATIC_COLUMN_ORDER : POSITION_ORDER).compare(first, second));
-    private static final Comparator<Target> REMOVE_GROUP_ORDER = Comparator.comparingInt((Target target) -> target.group)
+    private static final Comparator<Target> REMOVE_GROUP_ORDER = Comparator.comparingInt((Target target) -> target.group).reversed()
         .thenComparing(POSITION_ORDER.reversed());
 
     private StructureBuildTasks() {
@@ -256,19 +256,18 @@ public final class StructureBuildTasks {
 
     private static boolean spaceAvailable(Task task, BlockPos pos, IBlockState current) {
         return air(task.world, pos, current) || (task.requireSpace ? task.replaceFluids && fluid(current)
-            : canRemove(task.owner, task.world, pos, current, task.tool));
+            : current.getBlockHardness(task.world, pos) >= 0 && (task.owner.isCreative() || fluid(current)
+                || canHarvest(task, pos, current, task.miningProfile())));
+    }
+
+    private static boolean canHarvest(Task task, BlockPos pos, IBlockState state, ItemStack profile) {
+        @SuppressWarnings("deprecation")
+        var actual = state.getBlock().getActualState(state, task.world, pos);
+        return BuilderMiningTool.canHarvestWithProfile(profile, actual, task.owner);
     }
 
     private static boolean fluid(IBlockState state) {
         return state.getBlock() instanceof IFluidBlock || state.getBlock() instanceof BlockLiquid || state.getMaterial().isLiquid();
-    }
-
-    private static boolean canRemove(EntityPlayer player, World world, BlockPos pos, IBlockState state, ItemStack tool) {
-        if (state.getBlockHardness(world, pos) < 0) return false;
-        if (player.isCreative() || fluid(state)) return true;
-        @SuppressWarnings("deprecation")
-        var actual = state.getBlock().getActualState(state, world, pos);
-        return BuilderMiningTool.canHarvest(tool, actual, player);
     }
 
     private static Step operate(Task task, Target target, Phase phase) {
@@ -364,9 +363,10 @@ public final class StructureBuildTasks {
         var world = task.world;
         var block = state.getBlock();
         boolean fluid = fluid(state);
-        if (!canRemove(player, world, pos, state, task.tool)) return false;
+        if (state.getBlockHardness(world, pos) < 0) return false;
         boolean creative = player.isCreative();
-        var harvestedWith = creative || fluid ? ItemStack.EMPTY : BuilderMiningTool.profile(task.tool);
+        var harvestedWith = creative || fluid ? ItemStack.EMPTY : task.miningProfile();
+        if (!creative && !fluid && !canHarvest(task, pos, state, harvestedWith)) return false;
         var event = new BlockEvent.BreakEvent(world, pos, state, player);
         event.setExpToDrop(creative || fluid
             || block.canSilkHarvest(world, pos, state, player) && EnchantmentHelper.getEnchantmentLevel(Enchantments.SILK_TOUCH, harvestedWith) > 0
@@ -414,6 +414,7 @@ public final class StructureBuildTasks {
         @Nullable GenericStack resource;
         State outcome = State.PENDING;
         final boolean staticBlock;
+        int layoutIndex;
         int group;
         boolean first, fluid;
 
@@ -442,6 +443,7 @@ public final class StructureBuildTasks {
         final int meMode;
         final long queuedAtNanos = System.nanoTime();
         @Nullable ConstructionMEAccess me;
+        @Nullable ItemStack miningProfile;
         @Nullable ServerConstructionEffects.Effect projection;
         @Nullable StructurePickWorld pickWorld;
         final ConstructionProgress progress = new ConstructionProgress();
@@ -483,6 +485,12 @@ public final class StructureBuildTasks {
 
         boolean valid() {
             return owner.isEntityAlive() && owner.world == world && controller.current();
+        }
+
+        ItemStack miningProfile() {
+            var profile = miningProfile;
+            if (profile == null) miningProfile = profile = BuilderMiningTool.profile(tool);
+            return profile.copy();
         }
 
         boolean controls(NBTTagCompound builder) {
@@ -616,7 +624,7 @@ public final class StructureBuildTasks {
                 var active = effect();
                 if (active.resolved(target.pos, target.fluid, changed)) SETTLING.add(active);
             }
-            return terminal ? Step.COMPLETE : Step.RETRY;
+            return terminal ? Step.COMPLETE : dismantle ? Step.WAIT : Step.RETRY;
         }
 
         void setOutcome(Target target, State state) {
@@ -678,7 +686,7 @@ public final class StructureBuildTasks {
         Preparation(Task task, StructureCatalogView view) {
             this.task = task;
             expansion = new StructureBuildPlan.Expansion(view, task.controller.structure(), task.orientation, BuilderState.sliceCounts(task.settings));
-            ordered = new PriorityQueue<>(task.dismantle ? POSITION_ORDER.reversed() : POSITION_ORDER);
+            ordered = new PriorityQueue<>(POSITION_ORDER);
             grouped = new PriorityQueue<>(task.dismantle ? REMOVE_GROUP_ORDER : BUILD_GROUP_ORDER);
         }
 
@@ -747,6 +755,7 @@ public final class StructureBuildTasks {
             invalid++;
             task.errors++;
             task.progress.missSolid();
+            ordered.add(new Target(pos, null, null));
         }
 
         private void inspect() {
@@ -764,6 +773,8 @@ public final class StructureBuildTasks {
                 phase = allocations.isEmpty() ? Phase.ADMIT : Phase.INVENTORY;
                 return;
             }
+            target.layoutIndex = task.effect().includeInLayout(target.pos);
+            if (!task.dismantle && target.desired == null) return;
             var chunk = task.chunk(target.pos);
             if (chunk == null) {
                 task.setOutcome(target, State.UNLOADED);
@@ -867,8 +878,8 @@ public final class StructureBuildTasks {
                 phase = Phase.QUEUE;
                 return;
             }
-            var target = admitted.get(scan);
-            target.group = task.effect().chunkPlan().chunkAt(scan++);
+            var target = admitted.get(scan++);
+            target.group = task.effect().chunkPlan().chunkAt(target.layoutIndex);
             grouped.add(target);
         }
 

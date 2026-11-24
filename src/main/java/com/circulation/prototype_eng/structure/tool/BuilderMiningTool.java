@@ -46,9 +46,8 @@ public final class BuilderMiningTool {
         return profile.getItem() instanceof StructureToolItem || profile.getItem() instanceof BuilderInstrumentItem ? ItemStack.EMPTY : profile;
     }
 
-    public static boolean canHarvest(ItemStack builder, IBlockState state, @Nullable EntityPlayer player) {
+    static boolean canHarvestWithProfile(ItemStack tool, IBlockState state, @Nullable EntityPlayer player) {
         if (state.getMaterial().isToolNotRequired()) return true;
-        var tool = profile(builder);
         if (tool.isEmpty()) return state.getBlock().getHarvestLevel(state) <= 3;
         var toolClass = state.getBlock().getHarvestTool(state);
         if (toolClass != null) {
