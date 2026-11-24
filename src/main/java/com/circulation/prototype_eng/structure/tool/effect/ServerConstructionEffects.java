@@ -222,7 +222,7 @@ public final class ServerConstructionEffects {
         private final Region[] regions = new Region[ConstructionEffectPayload.REGION_COUNT];
         private @Nullable ConstructionChunkPlan.Builder chunkPlanBuilder;
         private @Nullable ConstructionChunkPlan chunkPlan;
-        private int assignedCells;
+        private @Nullable ConstructionFadePlan fadePlan;
         private @Nullable Layout layout;
         private final Long2ObjectLinkedOpenHashMap<Sector> sectors = new Long2ObjectLinkedOpenHashMap<>();
         private final Reference2ObjectOpenHashMap<EntityPlayerMP, Audience> audience = new Reference2ObjectOpenHashMap<>();
@@ -261,10 +261,25 @@ public final class ServerConstructionEffects {
             return index;
         }
 
-        public void add(BlockPos position, boolean fluid) {
-            if (startTick >= 0 || chunkPlanBuilder != null || chunkPlan != null)
-                throw new IllegalStateException("Cannot change a published construction plan");
-            if (!inBounds(position)) return;
+        public boolean prepareChunkPlanStep() {
+            if (startTick >= 0) throw new IllegalStateException("Cannot prepare a published construction plan");
+            if (chunkPlan != null) return true;
+            var builder = chunkPlanBuilder;
+            if (builder == null) chunkPlanBuilder = builder = new ConstructionChunkPlan.Builder(positions);
+            if (!builder.step()) return false;
+            chunkPlan = builder.result();
+            chunkPlanBuilder = null;
+            positions.clear();
+            positions.trim();
+            return true;
+        }
+
+        public void planFades(int[] workByGroup) {
+            fadePlan = ConstructionFadePlan.create(workByGroup);
+        }
+
+        public void add(BlockPos position, boolean fluid, int physicalGroup) {
+            int group = Objects.requireNonNull(fadePlan).group(physicalGroup);
             long key = SectorKey.packed(position);
             var sector = sectors.get(key);
             if (sector == null) {
@@ -272,41 +287,22 @@ public final class ServerConstructionEffects {
                 sectors.put(key, sector);
             }
             int cell = Section.index(position);
-            if (!sector.cells.get(cell)) {
-                sector.add(cell, fluid);
-                cellCount++;
+            sector.add(cell, fluid);
+            sector.assign(cell, group);
+            cellCount++;
+            int stage = regionIndex(group, fluid);
+            var region = regions[stage];
+            if (region == null) regions[stage] = region = new Region();
+            region.remaining++;
+            long bit = 1L << stage;
+            if ((sector.regionMask & bit) == 0) {
+                sector.regionMask |= bit;
+                region.sectors.add(sector);
             }
         }
 
-        public boolean prepareChunkPlanStep() {
-            if (startTick >= 0) throw new IllegalStateException("Cannot prepare a published construction plan");
-            if (chunkPlan == null) {
-                var builder = chunkPlanBuilder;
-                if (builder == null) chunkPlanBuilder = builder = new ConstructionChunkPlan.Builder(positions);
-                if (!builder.step()) return false;
-                chunkPlan = builder.result();
-                chunkPlanBuilder = null;
-            }
-            if (assignedCells < positions.size()) {
-                int index = assignedCells++;
-                var position = BlockPos.fromLong(positions.getLong(index));
-                var sector = sectors.get(SectorKey.packed(position));
-                int cell = Section.index(position);
-                if (sector == null || !sector.cells.get(cell)) return false;
-                int group = chunkPlan.chunkAt(index);
-                sector.assign(cell, group);
-                int stage = ConstructionEffectPayload.region(group, sector.fluids.get(cell));
-                var region = regions[stage];
-                if (region == null) regions[stage] = region = new Region();
-                region.remaining++;
-                long bit = 1L << stage;
-                if ((sector.regionMask & bit) == 0) {
-                    sector.regionMask |= bit;
-                    region.sectors.add(sector);
-                }
-                return false;
-            }
-            return true;
+        private int regionIndex(int group, boolean fluid) {
+            return ConstructionEffectPayload.region(group, fluid && Objects.requireNonNull(fadePlan).size() > 1);
         }
 
         public ConstructionChunkPlan chunkPlan() {
@@ -315,14 +311,11 @@ public final class ServerConstructionEffects {
 
         public void start() {
             if (startTick >= 0 || !live()) throw new IllegalStateException("Cannot start this construction projection");
-            var plan = chunkPlan();
-            if (assignedCells != positions.size()) throw new IllegalStateException("Construction chunks are not assigned");
+            var plan = Objects.requireNonNull(fadePlan);
             var area = areaBuilder.build();
             startTick = currentTick();
             wireTicks = ConstructionEffectPayload.wireTicks(cellCount);
             if (area != null) layout = new Layout(anchor, dismantle, startTick, wireTicks, plan.size(), area);
-            positions.clear();
-            positions.trim();
             chunkPlan = null;
             queueHud();
             if (!sectors.isEmpty()) {
@@ -345,7 +338,7 @@ public final class ServerConstructionEffects {
             if (sector == null) return false;
             int cell = Section.index(position);
             if (!sector.cells.get(cell)) return false;
-            int index = ConstructionEffectPayload.region(sector.group(cell), fluid);
+            int index = regionIndex(sector.group(cell), fluid);
             var region = Objects.requireNonNull(regions[index]);
             if (region.remaining <= 0) throw new IllegalStateException("Construction group already resolved at " + position);
             if (!changed) {

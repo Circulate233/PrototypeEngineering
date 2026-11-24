@@ -731,6 +731,7 @@ public final class StructureBuildTasks {
         private @Nullable ConstructionInventory.Request stock;
         private @Nullable GenericStack material;
         private Phase phase = Phase.EXPAND;
+        private int[] workByGroup;
         private int scan, slot, source, invalid, skipped;
         private boolean unavailable, missing;
 
@@ -748,6 +749,12 @@ public final class StructureBuildTasks {
                 case SORT -> inspect();
                 case INVENTORY -> inventory();
                 case MATERIALS -> materials();
+                case PLAN -> {
+                    if (task.effect().prepareChunkPlanStep()) {
+                        workByGroup = new int[task.effect().chunkPlan().size()];
+                        phase = Phase.ADMIT;
+                    }
+                }
                 case ADMIT -> admit();
                 case GROUP -> group();
                 case QUEUE -> queue();
@@ -821,7 +828,7 @@ public final class StructureBuildTasks {
                     task.prepare = null;
                     return;
                 }
-                phase = allocations.isEmpty() ? Phase.ADMIT : Phase.INVENTORY;
+                phase = allocations.isEmpty() ? Phase.PLAN : Phase.INVENTORY;
                 return;
             }
             target.layoutIndex = task.effect().includeInLayout(target.pos);
@@ -899,14 +906,14 @@ public final class StructureBuildTasks {
                 material = resource;
                 stock = inventory.new Request(resource);
             } else {
-                phase = Phase.ADMIT;
+                phase = Phase.PLAN;
                 materialKeys = null;
             }
         }
 
         private void admit() {
             if (scan == candidates.size()) {
-                if (!task.effect().prepareChunkPlanStep()) return;
+                task.effect().planFades(workByGroup);
                 if (skipped > 0) task.owner.sendMessage(StructureToolText.BuilderSkipped.text(skipped));
                 scan = 0;
                 phase = Phase.GROUP;
@@ -920,7 +927,8 @@ public final class StructureBuildTasks {
                 skipped++;
                 return;
             }
-            task.effect().add(target.pos, target.fluid);
+            target.group = task.effect().chunkPlan().chunkAt(target.layoutIndex);
+            workByGroup[target.group]++;
             admitted.add(target);
         }
 
@@ -930,7 +938,7 @@ public final class StructureBuildTasks {
                 return;
             }
             var target = admitted.get(scan++);
-            target.group = task.effect().chunkPlan().chunkAt(target.layoutIndex);
+            task.effect().add(target.pos, target.fluid, target.group);
             grouped.add(target);
         }
 
@@ -958,6 +966,6 @@ public final class StructureBuildTasks {
             task.start();
         }
 
-        private enum Phase {EXPAND, RESOLVE, SORT, INVENTORY, MATERIALS, ADMIT, GROUP, QUEUE, START}
+        private enum Phase {EXPAND, RESOLVE, SORT, INVENTORY, MATERIALS, PLAN, ADMIT, GROUP, QUEUE, START}
     }
 }

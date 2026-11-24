@@ -16,7 +16,7 @@ import java.util.function.IntUnaryOperator;
 public sealed interface ConstructionEffectPayload {
     int MAX_BYTES = 16 * 1024 - 1; // Forge also writes the one-byte message discriminator.
     int WHITE_TRANSITION_TICKS = 3;
-    int REGION_FADE_TICKS = 8;
+    int REGION_FADE_TICKS = 12;
     int FINAL_WIRE_TICKS = 20;
     int MIN_INITIAL_WIRE_TICKS = 6;
     int MAX_INITIAL_WIRE_TICKS = 28;

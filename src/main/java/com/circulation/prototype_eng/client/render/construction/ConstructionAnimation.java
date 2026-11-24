@@ -52,7 +52,10 @@ final class ConstructionAnimation {
         this.startTick = startTick;
         this.wireTicks = wireTicks;
         phases = new Phase[chunkCount * 2];
-        for (int i = 0; i < phases.length; i++) phases[i] = new Phase();
+        for (int group = 0; group < chunkCount; group++) {
+            phases[group] = new Phase();
+            phases[group + chunkCount] = chunkCount == 1 ? phases[group] : new Phase();
+        }
         this.area = area;
         arena = new ConstructionMeshes.Arena(area.min());
     }

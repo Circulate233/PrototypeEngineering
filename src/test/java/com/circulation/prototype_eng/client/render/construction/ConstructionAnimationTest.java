@@ -27,7 +27,7 @@ class ConstructionAnimationTest {
 
     @Test
     void regionProgressChangesOpacityWithoutInvalidatingGeometry() {
-        var animation = new ConstructionAnimation(false, START, WIRE, 1, AREA);
+        var animation = new ConstructionAnimation(false, START, WIRE, 2, AREA);
         int upperCell = ConstructionAnimation.SLICE_CELLS;
         var cells = bits(0, upperCell, upperCell + 1);
         animation.geometry(geometry(START, cells, bits(0, upperCell), List.of()), 0);
@@ -49,6 +49,27 @@ class ConstructionAnimationTest {
         assertEquals(0, animation.shellOpacity(lower.fluid, arrived + REGION_FADE_TICKS));
         assertEquals(0, animation.shellOpacity(upper.fluid, arrived + REGION_FADE_TICKS));
         assertEquals(1, animation.shellOpacity(upper.solid, arrived + REGION_FADE_TICKS));
+    }
+
+    @Test
+    void wholeStructureSharesOneFadeWithFluidSnapshotsArrivingAfterTheEnd() {
+        long settled = START + WIRE + WHITE_TRANSITION_TICKS;
+        long local = settled - START;
+        int halfFade = REGION_FADE_TICKS / 2;
+        for (boolean dismantle : new boolean[]{false, true}) {
+            var animation = new ConstructionAnimation(dismantle, START, WIRE, 1, AREA);
+            animation.geometry(westGeometry(0), 0);
+            var west = animation.slices.get(ConstructionAnimation.key(-1, 4, 0, 0));
+            assertEquals(1, animation.shellOpacity(west.solid, local));
+
+            animation.geometry(geometry(settled, null, new BitSet(), List.of(new RegionTime(0, settled))), local);
+            animation.finish(settled, local);
+            animation.geometry(geometry(settled + halfFade, bits(0), bits(0), List.of()), local + halfFade);
+            var east = slice(animation, 4);
+            assertEquals(.5, animation.shellOpacity(west.solid, local + halfFade));
+            assertEquals(.5, animation.shellOpacity(east.fluid, local + halfFade));
+            assertEquals(0, animation.shellOpacity(east.fluid, local + REGION_FADE_TICKS));
+        }
     }
 
     @Test
