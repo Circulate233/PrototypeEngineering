@@ -89,8 +89,8 @@ final class ConstructionAnimation {
 
     double shellOpacity(Phase region, double now) {
         if (dismantle) {
-            if (region.activeAt == UNSET || finishAt != UNSET && region.settledAt == UNSET) return 0;
-            return smooth(now - region.activeAt, WHITE_TRANSITION_TICKS) * region.remaining(now);
+            if (introAt == UNSET || finishAt != UNSET && region.settledAt == UNSET) return 0;
+            return smooth(now - introAt, WHITE_TRANSITION_TICKS) * region.remaining(now);
         }
         return smooth(now - introAt - wireTicks, WHITE_TRANSITION_TICKS) * region.remaining(now);
     }
@@ -316,15 +316,12 @@ final class ConstructionAnimation {
     }
 
     static final class Phase {
-        private long activeAt = UNSET;
         private long settledAt = UNSET;
 
         void apply(RegionTime time, long serverTick, long clientTick, long finishAt) {
-            if (activeAt == UNSET && time.activatedTick() >= 0) activeAt = clientTick - (serverTick - time.activatedTick());
-            if (settledAt == UNSET && time.settledTick() >= 0) {
-                settledAt = clientTick - (serverTick - time.settledTick());
-                if (finishAt != UNSET) settledAt = Math.min(settledAt, finishAt);
-            }
+            if (settledAt != UNSET) return;
+            settledAt = clientTick - (serverTick - time.settledTick());
+            if (finishAt != UNSET) settledAt = Math.min(settledAt, finishAt);
         }
 
         double remaining(double now) {

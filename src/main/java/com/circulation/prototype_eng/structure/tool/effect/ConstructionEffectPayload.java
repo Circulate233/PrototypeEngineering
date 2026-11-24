@@ -129,10 +129,9 @@ public sealed interface ConstructionEffectPayload {
         return result;
     }
 
-    record RegionTime(int region, long activatedTick, long settledTick) {
+    record RegionTime(int region, long settledTick) {
         public RegionTime {
-            if (region < 0 || region >= REGION_COUNT || activatedTick < -1 || settledTick < -1
-                || activatedTick < 0 && settledTick < 0 || settledTick >= 0 && settledTick < activatedTick)
+            if (region < 0 || region >= REGION_COUNT || settledTick < 0)
                 throw new IllegalArgumentException("Invalid construction region time");
         }
     }
@@ -158,13 +157,7 @@ public sealed interface ConstructionEffectPayload {
                     if (!geometry.cells.isEmpty()) buffer.writeShort(geometry.groups.length).writeBytes(geometry.groups);
                 } else writeCells(buffer, geometry.excluded);
                 buffer.writeByte(geometry.regions.size());
-                for (var time : geometry.regions) {
-                    boolean activate = time.activatedTick() >= 0;
-                    boolean settle = time.settledTick() >= 0;
-                    buffer.writeByte(time.region() | (activate ? 64 : 0) | (settle ? 128 : 0));
-                    if (activate) buffer.writeLong(time.activatedTick());
-                    if (settle) buffer.writeLong(time.settledTick());
-                }
+                for (var time : geometry.regions) buffer.writeByte(time.region()).writeLong(time.settledTick());
             }
             case Visibility _ -> {
             }
@@ -205,10 +198,7 @@ public sealed interface ConstructionEffectPayload {
                 int count = buffer.readUnsignedByte();
                 if (count > REGION_COUNT) throw new IllegalArgumentException("Invalid construction region count");
                 var regions = new ArrayList<RegionTime>(count);
-                for (int i = 0; i < count; i++) {
-                    int flags = buffer.readUnsignedByte();
-                    regions.add(new RegionTime(flags & 63, (flags & 64) == 0 ? -1 : buffer.readLong(), (flags & 128) == 0 ? -1 : buffer.readLong()));
-                }
+                for (int i = 0; i < count; i++) regions.add(new RegionTime(buffer.readUnsignedByte(), buffer.readLong()));
                 yield new Geometry(dimension, task, serverTick, section, quadrant, snapshot, layout, cells, fluids, groups, excluded, regions);
             }
             case 2, 7 -> new Visibility(dimension, task, kind == 7);
@@ -234,9 +224,7 @@ public sealed interface ConstructionEffectPayload {
         int bytes = 19 + (geometry.snapshot ? cellBytes(geometry.cells) + cellBytes(geometry.fluids)
             + (geometry.cells.isEmpty() ? 0 : Short.BYTES + geometry.groups.length) : cellBytes(geometry.excluded));
         if (geometry.layout != null) bytes += 19 + AREA_BYTES;
-        for (var time : geometry.regions)
-            bytes += 1 + (time.activatedTick() >= 0 ? Long.BYTES : 0) + (time.settledTick() >= 0 ? Long.BYTES : 0);
-        return bytes;
+        return bytes + geometry.regions.size() * (Byte.BYTES + Long.BYTES);
     }
 
     private static Layout readLayout(ByteBuf buffer) {
@@ -315,10 +303,9 @@ public sealed interface ConstructionEffectPayload {
             for (var time : regions) {
                 long mask = 1L << time.region();
                 int group = time.region() >= MAX_LOGICAL_CHUNKS ? time.region() - MAX_LOGICAL_CHUNKS : time.region();
-                if ((seen & mask) != 0 || time.activatedTick() > serverTick || time.settledTick() > serverTick
+                if ((seen & mask) != 0 || time.settledTick() > serverTick
                     || layout != null && group >= layout.chunks()
-                    || layout != null && (time.activatedTick() >= 0 && (!layout.dismantle || time.activatedTick() < layout.startTick)
-                    || time.settledTick() >= 0 && time.settledTick() < layout.startTick))
+                    || layout != null && time.settledTick() < layout.startTick)
                     throw new IllegalArgumentException("Conflicting construction region time");
                 seen |= mask;
             }

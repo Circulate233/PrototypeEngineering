@@ -40,7 +40,7 @@ class ConstructionAnimationTest {
 
         long settle = START + WIRE + WHITE_TRANSITION_TICKS;
         long arrived = settle - START;
-        animation.geometry(geometry(settle, null, new BitSet(), List.of(new RegionTime(ConstructionEffectPayload.region(0, true), -1, settle))), arrived);
+        animation.geometry(geometry(settle, null, new BitSet(), List.of(new RegionTime(ConstructionEffectPayload.region(0, true), settle))), arrived);
         assertEquals(lowerVersion, lower.version);
         assertEquals(upperVersion, upper.version);
         assertEquals(0, animation.wireOpacity(arrived));
@@ -57,7 +57,7 @@ class ConstructionAnimationTest {
         long settle = START + WIRE + WHITE_TRANSITION_TICKS;
         long elapsed = REGION_FADE_TICKS / 2;
         long local = 3;
-        animation.geometry(geometry(settle + elapsed, bits(0), new BitSet(), List.of(new RegionTime(0, -1, settle))), local);
+        animation.geometry(geometry(settle + elapsed, bits(0), new BitSet(), List.of(new RegionTime(0, settle))), local);
         assertEquals(0, animation.wireOpacity(local));
         assertEquals(.5, animation.shellOpacity(slice(animation, 4).solid, local));
         assertEquals(0, animation.shellOpacity(slice(animation, 4).solid, local + REGION_FADE_TICKS - elapsed));
@@ -79,7 +79,7 @@ class ConstructionAnimationTest {
         long settled = START + WIRE + WHITE_TRANSITION_TICKS;
         var update = new Geometry(0, 1, settled, SECTION, 0, false, null,
             new BitSet(), new BitSet(), new byte[0], new BitSet(),
-            List.of(new RegionTime(ConstructionEffectPayload.region(1, false), -1, settled)));
+            List.of(new RegionTime(ConstructionEffectPayload.region(1, false), settled)));
         animation.geometry(update, settled - START);
         double midpoint = settled - START + REGION_FADE_TICKS / 2.0;
         assertEquals(animation.shellOpacity(west.solid, midpoint), animation.shellOpacity(east.solid, midpoint));
@@ -91,16 +91,18 @@ class ConstructionAnimationTest {
         long local = 7;
         var cells = bits(0, 8 * 256);
         animation.geometry(new Geometry(0, 1, START, SECTION, 0, true, null, cells, new BitSet(),
-            ConstructionEffectPayload.packGroups(cells, cell -> cell == 0 ? 0 : 1), new BitSet(), List.of(new RegionTime(1, START, -1))), local);
+            ConstructionEffectPayload.packGroups(cells, cell -> cell == 0 ? 0 : 1), new BitSet(), List.of()), local);
         var lower = slice(animation, 4);
         var upper = slice(animation, 5, 1);
-        assertEquals(0, animation.shellOpacity(lower.solid, local + WHITE_TRANSITION_TICKS));
+        assertEquals(0, animation.shellOpacity(lower.solid, local));
+        assertEquals(animation.shellOpacity(lower.solid, local + 1), animation.shellOpacity(upper.solid, local + 1));
+        assertEquals(1, animation.shellOpacity(lower.solid, local + WHITE_TRANSITION_TICKS));
         assertEquals(1, animation.shellOpacity(upper.solid, local + WHITE_TRANSITION_TICKS));
         assertTrue(animation.prepareOutline(local));
         assertEquals(0, animation.wireOpacity(local));
         long finished = START + WHITE_TRANSITION_TICKS + 2;
         long arrives = local + (finished - START);
-        animation.geometry(geometry(finished, null, new BitSet(), List.of(new RegionTime(1, START, finished))), arrives);
+        animation.geometry(geometry(finished, null, new BitSet(), List.of(new RegionTime(1, finished))), arrives);
         animation.finish(finished, arrives);
         assertEquals(1, animation.shellOpacity(upper.solid, arrives));
         assertEquals(0, animation.wireOpacity(arrives));
@@ -139,7 +141,7 @@ class ConstructionAnimationTest {
         long end = START + WHITE_TRANSITION_TICKS;
         long elapsed = FINAL_WIRE_TICKS / 2;
         long local = 1;
-        animation.geometry(geometry(end + elapsed, bits(0), new BitSet(), List.of(new RegionTime(0, START, end))), local);
+        animation.geometry(geometry(end + elapsed, bits(0), new BitSet(), List.of(new RegionTime(0, end))), local);
         animation.finish(end, local);
         assertEquals(elapsed, animation.finishAge(local));
         assertTrue(animation.wireOpacity(local) > 0);
@@ -152,7 +154,7 @@ class ConstructionAnimationTest {
         long end = START + WHITE_TRANSITION_TICKS;
         animation.finish(end, 0);
         long local = REGION_FADE_TICKS;
-        animation.geometry(geometry(end + 1, bits(0), new BitSet(), List.of(new RegionTime(0, START, end))), local);
+        animation.geometry(geometry(end + 1, bits(0), new BitSet(), List.of(new RegionTime(0, end))), local);
         animation.finish(end, local);
         assertEquals(0, animation.shellOpacity(slice(animation, 4).solid, local));
         assertEquals(local, animation.finishAge(local));
@@ -198,7 +200,7 @@ class ConstructionAnimationTest {
         long elapsed = REGION_FADE_TICKS / 2;
         long local = settled - START + elapsed;
         animation.geometry(new Geometry(0, 1, settled + elapsed, SECTION, 0, true, null, east, new BitSet(),
-            ConstructionEffectPayload.packGroups(east, cell -> cell == eastEdge ? 0 : 1), new BitSet(), List.of(new RegionTime(0, -1, settled))), local);
+            ConstructionEffectPayload.packGroups(east, cell -> cell == eastEdge ? 0 : 1), new BitSet(), List.of(new RegionTime(0, settled))), local);
         assertEquals(ConstructionSurface.SOLID, west.cell(16, 0, 2));
         assertEquals(.5, animation.shellOpacity(slice(animation, 4).solid, local));
         assertEquals(1, animation.shellOpacity(slice(animation, 5, 1).solid, local));

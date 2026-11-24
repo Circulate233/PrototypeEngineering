@@ -295,7 +295,6 @@ public final class StructureBuildTasks {
         if (!blockPermission(task, pos))
             return task.outcome(target, State.BLOCKED, !task.dismantle && !task.requireSpace);
         if (desired == null || clear) {
-            if (task.dismantle && !task.effect().canRemove(pos, target.fluid)) return Step.WAIT;
             if (!remove(task, pos, chunk, current)) return task.outcome(target, State.BLOCKED, !task.dismantle && !task.requireSpace);
             if (task.dismantle) return task.outcome(target, State.COMMITTED, true);
             task.setOutcome(target, State.PENDING);

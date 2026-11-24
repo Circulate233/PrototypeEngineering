@@ -231,8 +231,6 @@ public final class ServerConstructionEffects {
         private long startTick = -1;
         private int cellCount;
         private int wireTicks;
-        private long activated;
-        private long removalRegions;
         private long settled;
         private @Nullable End ending;
         private boolean endReady;
@@ -299,10 +297,9 @@ public final class ServerConstructionEffects {
                 sector.assign(cell, group);
                 int stage = ConstructionEffectPayload.region(group, sector.fluids.get(cell));
                 var region = regions[stage];
-                if (region == null) regions[stage] = region = new Region(dismantle ? new RemovalLayer(this, stage) : null);
+                if (region == null) regions[stage] = region = new Region();
                 region.remaining++;
                 long bit = 1L << stage;
-                if (dismantle) removalRegions |= bit;
                 if ((sector.regionMask & bit) == 0) {
                     sector.regionMask |= bit;
                     region.sectors.add(sector);
@@ -331,42 +328,15 @@ public final class ServerConstructionEffects {
             if (!sectors.isEmpty()) {
                 publishing = true;
                 session.work.addLast(new PublishEffect(this, sectors.values().iterator()));
-                if (dismantle) requestRemoval(removalRegions);
             }
         }
 
         private boolean introComplete() {
-            return cellCount == 0 || currentTick() - startTick >= (dismantle ? 0 : wireTicks + ConstructionEffectPayload.WHITE_TRANSITION_TICKS);
+            return cellCount == 0 || currentTick() - startTick >= ((dismantle ? 0 : wireTicks) + ConstructionEffectPayload.WHITE_TRANSITION_TICKS);
         }
 
         public boolean ready() {
             return startTick >= 0 && ending == null && live() && introComplete();
-        }
-
-        public boolean canRemove(BlockPos position, boolean fluid) {
-            var sector = sectors.get(SectorKey.packed(position));
-            if (sector == null) return true;
-            int index = ConstructionEffectPayload.region(sector.group(Section.index(position)), fluid);
-            var region = regions[index];
-            if (region == null) return true;
-            if (region.removableTick >= 0) {
-                if (currentTick() < region.removableTick) return false;
-                if (!region.removalStarted) {
-                    region.removalStarted = true;
-                    long lowerRegions = (1L << index) - 1;
-                    long samePhase = fluid ? -1L << ConstructionEffectPayload.MAX_LOGICAL_CHUNKS : -1L;
-                    requestRemoval(removalRegions & lowerRegions & samePhase);
-                }
-                return true;
-            }
-            Objects.requireNonNull(region.removal).request();
-            return false;
-        }
-
-        private void requestRemoval(long candidates) {
-            if (candidates == 0) return;
-            var region = Objects.requireNonNull(regions[Long.SIZE - 1 - Long.numberOfLeadingZeros(candidates)]);
-            Objects.requireNonNull(region.removal).request();
         }
 
         public boolean resolved(BlockPos position, boolean fluid, boolean changed) {
@@ -383,7 +353,6 @@ public final class ServerConstructionEffects {
                 sector.queueDelta();
             }
             if (--region.remaining != 0) return false;
-            removalRegions &= ~(1L << index);
             unsettled.add(region);
             return true;
         }
@@ -511,39 +480,6 @@ public final class ServerConstructionEffects {
         }
     }
 
-    private static final class RemovalLayer implements Work {
-        private final Effect effect;
-        private final int index;
-        private int cursor;
-        private boolean requested;
-
-        RemovalLayer(Effect effect, int index) {
-            this.effect = effect;
-            this.index = index;
-        }
-
-        void request() {
-            if (requested) return;
-            requested = true;
-            effect.session.work.addLast(this);
-        }
-
-        @Override
-        public WorkResult advance() {
-            if (!effect.live() || effect.cancelled()) return WorkResult.DONE;
-            var region = Objects.requireNonNull(effect.regions[index]);
-            var sector = region.sectors.get(cursor);
-            if (!sector.attached) return WorkResult.WAIT;
-            if (cursor == 0) {
-                region.activatedTick = effect.session.tick;
-                region.activationPendingSectors = region.sectors.size();
-                effect.activated |= 1L << index;
-            }
-            sector.queueDelta();
-            return ++cursor == region.sectors.size() ? WorkResult.DONE : WorkResult.CONTINUE;
-        }
-    }
-
     private static final class CloseEffect implements Work {
         private final Effect effect;
         private @Nullable ObjectArrayList<Audience> endingAudience;
@@ -603,11 +539,9 @@ public final class ServerConstructionEffects {
         private @Nullable Short2ByteOpenHashMap otherGroups;
         private final Reference2ObjectOpenHashMap<EntityPlayerMP, Viewer> viewers = new Reference2ObjectOpenHashMap<>();
         private long regionMask;
-        private long sentActivation;
         private long sentSettlement;
         private int revision;
         private boolean deltaQueued;
-        private boolean attached;
 
         Sector(Effect effect, SectorKey key) {
             this.effect = effect;
@@ -616,7 +550,6 @@ public final class ServerConstructionEffects {
         }
 
         void attach() {
-            attached = true;
             var index = effect.index;
             index.chunks.computeIfAbsent(chunk, _ -> new ObjectOpenHashSet<>()).add(this);
             var entry = index.world.getPlayerChunkMap().getEntry(key.section.chunkX(key.quadrant), key.section.chunkZ(key.quadrant));
@@ -702,49 +635,30 @@ public final class ServerConstructionEffects {
         }
 
         private boolean hasMissingTimes(Audience recipient) {
-            return (regionMask & (effect.activated & ~recipient.activated | effect.settled & ~recipient.settled)) != 0;
+            return (regionMask & effect.settled & ~recipient.settled) != 0;
         }
 
         private List<RegionTime> missingTimes(Audience recipient) {
-            return regionTimes(regionMask & effect.activated & ~recipient.activated, regionMask & effect.settled & ~recipient.settled);
+            return regionTimes(regionMask & effect.settled & ~recipient.settled);
         }
 
-        private List<RegionTime> regionTimes(long activate, long settle) {
-            long mask = activate | settle;
+        private List<RegionTime> regionTimes(long mask) {
             if (mask == 0) return List.of();
             var times = new ArrayList<RegionTime>(Long.bitCount(mask));
             for (long remaining = mask; remaining != 0; remaining &= remaining - 1) {
                 int i = Long.numberOfTrailingZeros(remaining);
-                long flag = 1L << i;
                 var region = Objects.requireNonNull(effect.regions[i]);
-                long activatedTick = (activate & flag) == 0 ? -1 : region.activatedTick;
-                long settledTick = (settle & flag) == 0 ? -1 : region.settledTick;
-                if (activatedTick >= 0 || settledTick >= 0) times.add(new RegionTime(i, activatedTick, settledTick));
+                times.add(new RegionTime(i, region.settledTick));
             }
             return times;
         }
     }
 
     private static final class Region {
-        final @Nullable RemovalLayer removal;
         final ObjectArrayList<Sector> sectors = new ObjectArrayList<>();
         int remaining;
-        long activatedTick = -1;
-        long removableTick = -1;
         long syncAfterTick = -1;
         long settledTick = -1;
-
-        void activationPublished(Effect effect) {
-            if (activationPendingSectors <= 0) throw new IllegalStateException("Construction activation was published more than once");
-            if (--activationPendingSectors == 0) removableTick = effect.session.tick + ConstructionEffectPayload.WHITE_TRANSITION_TICKS;
-        }
-
-        int activationPendingSectors;
-        boolean removalStarted;
-
-        Region(@Nullable RemovalLayer removal) {
-            this.removal = removal;
-        }
     }
 
     private static final class Viewer implements Work {
@@ -803,7 +717,6 @@ public final class ServerConstructionEffects {
         final NetHandlerPlayServer connection;
         final ObjectOpenHashSet<Viewer> viewers = new ObjectOpenHashSet<>();
         @Nullable Status lastStatus;
-        long activated;
         long settled;
         int sentSectors;
         int pendingReplays;
@@ -821,11 +734,7 @@ public final class ServerConstructionEffects {
         }
 
         void recordTimes(Geometry packet) {
-            for (var time : packet.regions()) {
-                long bit = 1L << time.region();
-                if (time.activatedTick() >= 0) activated |= bit;
-                if (time.settledTick() >= 0) settled |= bit;
-            }
+            for (var time : packet.regions()) settled |= 1L << time.region();
         }
 
         void updateDistance() {
@@ -869,7 +778,6 @@ public final class ServerConstructionEffects {
         private @Nullable ObjectArrayList<Viewer> audience;
         private int cursor;
         private int baseRevision;
-        private long activating;
         private long settled;
 
         Delta(Sector sector) {
@@ -894,16 +802,14 @@ public final class ServerConstructionEffects {
                         } else waiting = true;
                     }
                 }
-                activating = 0;
                 settled = 0;
                 for (long mask = sector.regionMask; mask != 0; mask &= mask - 1) {
                     int index = Long.numberOfTrailingZeros(mask);
                     long bit = 1L << index;
                     var region = Objects.requireNonNull(effect.regions[index]);
-                    if (region.activatedTick >= 0 && (sector.sentActivation & bit) == 0) activating |= bit;
                     if (region.settledTick >= 0 && (sector.sentSettlement & bit) == 0) settled |= bit;
                 }
-                if ((activating | settled) == 0 && sector.pendingExclude.isEmpty())
+                if (settled == 0 && sector.pendingExclude.isEmpty())
                     return waiting ? WorkResult.WAIT : finish();
                 baseRevision = sector.revision;
                 removed = (BitSet) sector.pendingExclude.clone();
@@ -922,7 +828,7 @@ public final class ServerConstructionEffects {
                     if (viewer.revision < baseRevision || viewer.replayQueued) viewer.queueReplay();
                     else {
                         var recipient = viewer.recipient;
-                        var times = sector.regionTimes(activating & ~recipient.activated, settled & ~recipient.settled);
+                        var times = sector.regionTimes(settled & ~recipient.settled);
                         if (!times.isEmpty() || viewer.revision != sector.revision) {
                             var message = sector.delta(viewer.revision == sector.revision ? new BitSet() : removed, times);
                             if (!effect.session.send(recipient.player, message)) return WorkResult.WAIT;
@@ -933,11 +839,6 @@ public final class ServerConstructionEffects {
                 }
                 cursor++;
                 return WorkResult.CONTINUE;
-            }
-            for (long mask = activating; mask != 0; mask &= mask - 1) {
-                int index = Long.numberOfTrailingZeros(mask);
-                sector.sentActivation |= 1L << index;
-                Objects.requireNonNull(effect.regions[index]).activationPublished(effect);
             }
             sector.sentSettlement |= settled;
             audience = null;

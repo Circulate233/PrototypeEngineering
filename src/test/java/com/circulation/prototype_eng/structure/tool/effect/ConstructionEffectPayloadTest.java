@@ -33,7 +33,7 @@ class ConstructionEffectPayloadTest {
             var initial = new ConstructionEffectPayload.Geometry(-1, 1, 98, section, quadrant, true, layout,
                 cells, new BitSet(), new byte[]{0}, new BitSet(), List.of());
             var delta = new ConstructionEffectPayload.Geometry(-1, 1, 99, section, quadrant, false, null, new BitSet(), new BitSet(), new byte[0], new BitSet(),
-                List.of(new ConstructionEffectPayload.RegionTime(ConstructionEffectPayload.region(0, false), -1, 98)));
+                List.of(new ConstructionEffectPayload.RegionTime(ConstructionEffectPayload.region(0, false), 98)));
             assertEquals(initial, roundTrip(initial));
             assertEquals(delta, roundTrip(delta));
             var next = new ConstructionEffectPayload.Geometry(-1, 1, 100, section, quadrant, true, null,
@@ -66,7 +66,7 @@ class ConstructionEffectPayloadTest {
             var payload = new ConstructionEffectPayload.Geometry(0, 7, 260, section, quadrant, true,
                 layout(origin, true, 200, area, 25 * 16 * 15), subset, subset,
                 new byte[]{0}, new BitSet(),
-                List.of(new ConstructionEffectPayload.RegionTime(ConstructionEffectPayload.region(0, true), 251, 259)));
+                List.of(new ConstructionEffectPayload.RegionTime(ConstructionEffectPayload.region(0, true), 259)));
             assertEquals(payload, roundTrip(payload));
             encoded += ConstructionEffectPayload.bytes(payload);
         }
@@ -92,9 +92,9 @@ class ConstructionEffectPayloadTest {
         var layout = new Layout(position.toLong(), true, 90, ConstructionEffectPayload.wireTicks(3), 32, area);
         var snapshot = new ConstructionEffectPayload.Geometry(0, 1, 105, section, quadrant, true, layout,
             cells, fluids, groups, new BitSet(), List.of(
-                new ConstructionEffectPayload.RegionTime(0, 100, -1),
-                new ConstructionEffectPayload.RegionTime(32, 101, -1),
-                new ConstructionEffectPayload.RegionTime(63, 102, -1)));
+                new ConstructionEffectPayload.RegionTime(0, 100),
+                new ConstructionEffectPayload.RegionTime(32, 101),
+                new ConstructionEffectPayload.RegionTime(63, 102)));
 
         var received = (ConstructionEffectPayload.Geometry) roundTrip(snapshot);
         assertArrayEquals(ids, received.cellGroups());
@@ -138,7 +138,7 @@ class ConstructionEffectPayloadTest {
                 cells.set(cell);
                 if (fluid) fluids.set(cell);
                 groupIds[cell] = group;
-                times.add(new ConstructionEffectPayload.RegionTime(ConstructionEffectPayload.region(group, fluid), -1, ++tick));
+                times.add(new ConstructionEffectPayload.RegionTime(ConstructionEffectPayload.region(group, fluid), ++tick));
             }
         }
         var area = new ConstructionArea(origin, origin.add(1, 24, 0));
@@ -156,7 +156,7 @@ class ConstructionEffectPayloadTest {
         excluded.set(cell ^ 1);
         var section = ConstructionEffectPayload.Section.at(position);
         int quadrant = ConstructionEffectPayload.Section.quadrant(position);
-        var time = new ConstructionEffectPayload.RegionTime(ConstructionEffectPayload.region(0, false), -1, 45);
+        var time = new ConstructionEffectPayload.RegionTime(ConstructionEffectPayload.region(0, false), 45);
         assertThrows(IllegalArgumentException.class, () -> new ConstructionEffectPayload.Geometry(0, 9, 50,
             section, quadrant, false, null, new BitSet(), new BitSet(), new byte[0], excluded, List.of(time, time)));
         var payload = new ConstructionEffectPayload.Geometry(0, 9, 50, section, quadrant, false, null,
