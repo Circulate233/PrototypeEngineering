@@ -54,6 +54,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
 import java.util.Iterator;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.PriorityQueue;
 import java.util.UUID;
@@ -439,6 +440,7 @@ public final class StructureBuildTasks {
         final ConstructionPayment.Sources sources;
         final StructureCatalogView view;
         final int meMode;
+        final long queuedAtNanos = System.nanoTime();
         @Nullable ConstructionMEAccess me;
         @Nullable ServerConstructionEffects.Effect projection;
         @Nullable StructurePickWorld pickWorld;
@@ -575,7 +577,15 @@ public final class StructureBuildTasks {
             }
             status();
             if (progress.nextPhase() == Phase.DONE) {
-                if (TASKS.remove(owner.getUniqueID(), this)) effect().finish(matched + committed == total);
+                if (TASKS.remove(owner.getUniqueID(), this)) {
+                    boolean successful = matched + committed == total;
+                    effect().finish(successful);
+                    if (!dismantle) {
+                        String seconds = String.format(Locale.ROOT, "%.2f", (System.nanoTime() - queuedAtNanos) / 1_000_000_000.0);
+                        var message = successful ? StructureToolText.BuilderBuildElapsed : StructureToolText.BuilderPartialBuildElapsed;
+                        owner.sendMessage(message.text(seconds));
+                    }
+                }
                 return false;
             }
             if (progress.waiting() && waitingMaterial != null && now % 40 == 0 && effect().ownerWithinRenderDistance()) {
