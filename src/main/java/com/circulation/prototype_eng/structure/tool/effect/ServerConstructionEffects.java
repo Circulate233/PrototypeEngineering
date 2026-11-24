@@ -10,12 +10,13 @@ import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPay
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Section;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Status;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Visibility;
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.shorts.Short2ByteOpenHashMap;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.network.NetHandlerPlayServer;
 import net.minecraft.server.MinecraftServer;
@@ -33,6 +34,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Objects;
 
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
@@ -216,15 +218,21 @@ public final class ServerConstructionEffects {
         private final boolean dismantle;
         private final int dimension;
         private final ConstructionArea.Builder areaBuilder = new ConstructionArea.Builder();
+        private final LongArrayList positions = new LongArrayList();
+        private final Region[] regions = new Region[ConstructionEffectPayload.REGION_COUNT];
+        private @Nullable ConstructionChunkPlan.Builder chunkPlanBuilder;
+        private @Nullable ConstructionChunkPlan chunkPlan;
+        private int assignedCells;
         private @Nullable Layout layout;
         private final Long2ObjectLinkedOpenHashMap<Sector> sectors = new Long2ObjectLinkedOpenHashMap<>();
-        private final Int2ObjectOpenHashMap<RemovalLayer> removalLayers = new Int2ObjectOpenHashMap<>();
         private final Reference2ObjectOpenHashMap<EntityPlayerMP, Audience> audience = new Reference2ObjectOpenHashMap<>();
-        private final ObjectOpenHashSet<Sector> unsettled = new ObjectOpenHashSet<>();
+        private final ObjectOpenHashSet<Region> unsettled = new ObjectOpenHashSet<>();
         private boolean publishing;
         private long startTick = -1;
         private int cellCount;
         private int wireTicks;
+        private long activated;
+        private long settled;
         private @Nullable End ending;
         private boolean endReady;
         private boolean retiring;
@@ -249,7 +257,8 @@ public final class ServerConstructionEffects {
         }
 
         public void add(BlockPos position, boolean fluid) {
-            if (startTick >= 0) throw new IllegalStateException("Cannot change a published construction plan");
+            if (startTick >= 0 || chunkPlanBuilder != null || chunkPlan != null)
+                throw new IllegalStateException("Cannot change a published construction plan");
             if (!inBounds(position)) return;
             long key = SectorKey.packed(position);
             var sector = sectors.get(key);
@@ -260,17 +269,56 @@ public final class ServerConstructionEffects {
             int cell = Section.index(position);
             if (!sector.cells.get(cell)) {
                 sector.add(cell, fluid);
+                positions.add(position.toLong());
                 cellCount++;
             }
         }
 
-        /** Starts projection publication after preflight and the builder screen closes. */
+        public boolean prepareChunkPlanStep() {
+            if (startTick >= 0) throw new IllegalStateException("Cannot prepare a published construction plan");
+            if (chunkPlan == null) {
+                var builder = chunkPlanBuilder;
+                if (builder == null) chunkPlanBuilder = builder = new ConstructionChunkPlan.Builder(positions, dismantle);
+                if (!builder.step()) return false;
+                chunkPlan = builder.result();
+                chunkPlanBuilder = null;
+            }
+            if (assignedCells < positions.size()) {
+                int index = assignedCells++;
+                var position = BlockPos.fromLong(positions.getLong(index));
+                var sector = Objects.requireNonNull(sectors.get(SectorKey.packed(position)));
+                int cell = Section.index(position);
+                int group = chunkPlan.chunkAt(index);
+                sector.assign(cell, group);
+                int stage = ConstructionEffectPayload.region(group, sector.fluids.get(cell));
+                var region = regions[stage];
+                if (region == null) regions[stage] = region = new Region(dismantle ? new RemovalLayer(this, stage) : null);
+                region.remaining++;
+                long bit = 1L << stage;
+                if ((sector.regionMask & bit) == 0) {
+                    sector.regionMask |= bit;
+                    region.sectors.add(sector);
+                }
+                return false;
+            }
+            return true;
+        }
+
+        public ConstructionChunkPlan chunkPlan() {
+            return Objects.requireNonNull(chunkPlan, "Construction chunks have not been prepared");
+        }
+
         public void start() {
             if (startTick >= 0 || !live()) throw new IllegalStateException("Cannot start this construction projection");
+            var plan = chunkPlan();
+            if (assignedCells != positions.size()) throw new IllegalStateException("Construction chunks are not assigned");
             var area = areaBuilder.build();
             startTick = currentTick();
             wireTicks = ConstructionEffectPayload.wireTicks(cellCount);
-            if (area != null) layout = new Layout(anchor, dismantle, startTick, wireTicks, area);
+            if (area != null) layout = new Layout(anchor, dismantle, startTick, wireTicks, plan.size(), area);
+            positions.clear();
+            positions.trim();
+            chunkPlan = null;
             queueHud();
             if (!sectors.isEmpty()) {
                 publishing = true;
@@ -289,15 +337,12 @@ public final class ServerConstructionEffects {
         public boolean canRemove(BlockPos position, boolean fluid) {
             var sector = sectors.get(SectorKey.packed(position));
             if (sector == null) return true;
-            int region = ConstructionEffectPayload.region(Section.index(position), fluid);
-            return sector.canRemove(region);
-        }
-
-        private RemovalLayer addRemovalRegion(Sector sector, int region) {
-            int key = sector.key.section.y() * ConstructionEffectPayload.REGION_COUNT + region;
-            var layer = removalLayers.computeIfAbsent(key, _ -> new RemovalLayer(this, region));
-            layer.sectors.add(sector);
-            return layer;
+            int index = ConstructionEffectPayload.region(sector.group(Section.index(position)), fluid);
+            var region = regions[index];
+            if (region == null) return true;
+            if (region.removableTick >= 0) return currentTick() >= region.removableTick;
+            Objects.requireNonNull(region.removal).request();
+            return false;
         }
 
         public boolean resolved(BlockPos position, boolean fluid, boolean changed) {
@@ -306,13 +351,25 @@ public final class ServerConstructionEffects {
             if (sector == null) return false;
             int cell = Section.index(position);
             if (!sector.cells.get(cell)) return false;
-            return sector.resolve(cell, ConstructionEffectPayload.region(cell, fluid), changed);
+            int index = ConstructionEffectPayload.region(sector.group(cell), fluid);
+            var region = Objects.requireNonNull(regions[index]);
+            if (region.remaining <= 0) throw new IllegalStateException("Construction group already resolved at " + position);
+            if (!changed) {
+                sector.pendingExclude.set(cell);
+                sector.queueDelta();
+            }
+            if (--region.remaining != 0) return false;
+            unsettled.add(region);
+            return true;
         }
 
         /** Called after this task's lighting and neighbor notifications have been processed. */
         public void flushSettled() {
             long tick = currentTick();
-            for (var sector : unsettled) sector.settle(tick);
+            for (var region : unsettled) {
+                region.syncAfterTick = tick;
+                for (var sector : region.sectors) sector.queueDelta();
+            }
             unsettled.clear();
         }
 
@@ -432,7 +489,6 @@ public final class ServerConstructionEffects {
     private static final class RemovalLayer implements Work {
         private final Effect effect;
         private final int index;
-        private final ObjectArrayList<Sector> sectors = new ObjectArrayList<>();
         private int cursor;
         private boolean requested;
 
@@ -450,14 +506,16 @@ public final class ServerConstructionEffects {
         @Override
         public WorkResult advance() {
             if (!effect.live() || effect.cancelled()) return WorkResult.DONE;
-            var sector = sectors.get(cursor);
+            var region = Objects.requireNonNull(effect.regions[index]);
+            var sector = region.sectors.get(cursor);
             if (!sector.attached) return WorkResult.WAIT;
-            var region = Objects.requireNonNull(sector.regions[index]);
-            if (region.remaining > 0) {
-                region.activating = true;
-                sector.queueDelta();
+            if (cursor == 0) {
+                region.activatedTick = effect.session.tick;
+                region.activationPendingSectors = region.sectors.size();
+                effect.activated |= 1L << index;
             }
-            return ++cursor == sectors.size() ? WorkResult.DONE : WorkResult.CONTINUE;
+            sector.queueDelta();
+            return ++cursor == region.sectors.size() ? WorkResult.DONE : WorkResult.CONTINUE;
         }
     }
 
@@ -516,8 +574,12 @@ public final class ServerConstructionEffects {
         private final BitSet fluids = new BitSet();
         private final BitSet excluded = new BitSet();
         private final BitSet pendingExclude = new BitSet();
-        private final Region[] regions = new Region[ConstructionEffectPayload.REGION_COUNT];
+        private byte firstGroup = -1;
+        private @Nullable Short2ByteOpenHashMap otherGroups;
         private final Reference2ObjectOpenHashMap<EntityPlayerMP, Viewer> viewers = new Reference2ObjectOpenHashMap<>();
+        private long regionMask;
+        private long sentActivation;
+        private long sentSettlement;
         private int revision;
         private boolean deltaQueued;
         private boolean attached;
@@ -570,41 +632,23 @@ public final class ServerConstructionEffects {
         void add(int cell, boolean fluid) {
             cells.set(cell);
             if (fluid) fluids.set(cell);
-            int index = ConstructionEffectPayload.region(cell, fluid);
-            var region = regions[index];
-            if (region == null) regions[index] = region = new Region(effect.dismantle ? effect.addRemovalRegion(this, index) : null);
-            region.remaining++;
         }
 
-        boolean canRemove(int index) {
-            var region = regions[index];
-            if (region == null) return true;
-            if (region.removableTick < 0) {
-                Objects.requireNonNull(region.removal).request();
-                return false;
-            }
-            return effect.currentTick() >= region.removableTick;
-        }
-
-        boolean resolve(int cell, int index, boolean changed) {
-            var region = Objects.requireNonNull(regions[index]);
-            if (region.remaining <= 0) throw new IllegalStateException("Construction region already resolved at " + key);
-            if (!changed) {
-                pendingExclude.set(cell);
-                queueDelta();
-            }
-            if (--region.remaining != 0) return false;
-            effect.unsettled.add(this);
-            return true;
-        }
-
-        void settle(long tick) {
-            for (var region : regions) {
-                if (region != null && region.remaining == 0 && region.settledTick < 0 && region.syncAfterTick < 0) {
-                    region.syncAfterTick = tick;
-                    queueDelta();
+        void assign(int cell, int group) {
+            if (firstGroup < 0) firstGroup = (byte) group;
+            else if (group != firstGroup) {
+                var others = otherGroups;
+                if (others == null) {
+                    otherGroups = others = new Short2ByteOpenHashMap();
+                    others.defaultReturnValue(firstGroup);
                 }
+                others.put((short) cell, (byte) group);
             }
+        }
+
+        int group(int cell) {
+            var others = otherGroups;
+            return others == null ? firstGroup : others.get((short) cell);
         }
 
         private void queueDelta() {
@@ -614,29 +658,40 @@ public final class ServerConstructionEffects {
             effect.session.work.addLast(new Delta(this));
         }
 
-        @Nullable Geometry snapshot(boolean includeLayout, boolean replacing) {
+        @Nullable Geometry snapshot(Audience recipient, boolean replacing) {
             var visibleCells = (BitSet) cells.clone();
             visibleCells.andNot(excluded);
             if (visibleCells.isEmpty() && !replacing) return null;
             var visibleFluids = (BitSet) fluids.clone();
             visibleFluids.and(visibleCells);
-            int all = (1 << regions.length) - 1;
+            var groups = visibleCells.isEmpty() ? new byte[0]
+                : otherGroups == null ? new byte[]{firstGroup} : ConstructionEffectPayload.packGroups(visibleCells, this::group);
             return new Geometry(effect.dimension, effect.id, effect.session.tick, key.section, key.quadrant, true,
-                includeLayout ? Objects.requireNonNull(effect.layout) : null, visibleCells, visibleFluids, new BitSet(), regionTimes(all, all));
+                recipient.known ? null : Objects.requireNonNull(effect.layout), visibleCells, visibleFluids,
+                groups, new BitSet(), missingTimes(recipient));
         }
 
-        Geometry delta(int activate, int settle) {
+        Geometry delta(BitSet removed, List<RegionTime> times) {
             return new Geometry(effect.dimension, effect.id, effect.session.tick, key.section, key.quadrant, false, null,
-                new BitSet(), new BitSet(), pendingExclude, regionTimes(activate, settle));
+                new BitSet(), new BitSet(), new byte[0], removed, times);
         }
 
-        private ArrayList<RegionTime> regionTimes(int activate, int settle) {
-            int mask = activate | settle;
-            var times = new ArrayList<RegionTime>(Integer.bitCount(mask));
-            for (int i = 0; i < regions.length; i++) {
-                var region = regions[i];
-                int flag = 1 << i;
-                if ((mask & flag) == 0 || region == null) continue;
+        private boolean hasMissingTimes(Audience recipient) {
+            return (regionMask & (effect.activated & ~recipient.activated | effect.settled & ~recipient.settled)) != 0;
+        }
+
+        private List<RegionTime> missingTimes(Audience recipient) {
+            return regionTimes(regionMask & effect.activated & ~recipient.activated, regionMask & effect.settled & ~recipient.settled);
+        }
+
+        private List<RegionTime> regionTimes(long activate, long settle) {
+            long mask = activate | settle;
+            if (mask == 0) return List.of();
+            var times = new ArrayList<RegionTime>(Long.bitCount(mask));
+            for (long remaining = mask; remaining != 0; remaining &= remaining - 1) {
+                int i = Long.numberOfTrailingZeros(remaining);
+                long flag = 1L << i;
+                var region = Objects.requireNonNull(effect.regions[i]);
                 long activatedTick = (activate & flag) == 0 ? -1 : region.activatedTick;
                 long settledTick = (settle & flag) == 0 ? -1 : region.settledTick;
                 if (activatedTick >= 0 || settledTick >= 0) times.add(new RegionTime(i, activatedTick, settledTick));
@@ -647,12 +702,19 @@ public final class ServerConstructionEffects {
 
     private static final class Region {
         final @Nullable RemovalLayer removal;
+        final ObjectArrayList<Sector> sectors = new ObjectArrayList<>();
         int remaining;
         long activatedTick = -1;
         long removableTick = -1;
         long syncAfterTick = -1;
         long settledTick = -1;
-        boolean activating;
+
+        void activationPublished(Effect effect) {
+            if (activationPendingSectors <= 0) throw new IllegalStateException("Construction activation was published more than once");
+            if (--activationPendingSectors == 0) removableTick = effect.session.tick + ConstructionEffectPayload.WHITE_TRANSITION_TICKS;
+        }
+
+        int activationPendingSectors;
 
         Region(@Nullable RemovalLayer removal) {
             this.removal = removal;
@@ -671,7 +733,7 @@ public final class ServerConstructionEffects {
         }
 
         void queueReplay() {
-            if (revision == sector.revision || replayQueued || !recipient.near) return;
+            if (replayQueued || !recipient.near || revision == sector.revision && !sector.hasMissingTimes(recipient)) return;
             replayQueued = true;
             recipient.pendingReplays++;
             recipient.effect.session.work.addLast(this);
@@ -684,9 +746,17 @@ public final class ServerConstructionEffects {
             var end = effect.endReady ? effect.ending : null;
             var after = recipient.endSent ? null : end;
             if (effect.session.remainingPackets < (after == null ? 1 : 2)) return WorkResult.WAIT;
-            var snapshot = sector.snapshot(!recipient.known, revision >= 0);
-            if (snapshot == null) return done();
-            if (!effect.session.send(recipient.player, snapshot, after)) return WorkResult.WAIT;
+            Geometry update;
+            if (revision == sector.revision) {
+                var times = sector.missingTimes(recipient);
+                if (times.isEmpty()) return done();
+                update = sector.delta(new BitSet(), times);
+            } else {
+                update = sector.snapshot(recipient, revision >= 0);
+                if (update == null) return done();
+            }
+            if (!effect.session.send(recipient.player, update, after)) return WorkResult.WAIT;
+            recipient.recordTimes(update);
             if (revision < 0) recipient.sentSectors++;
             revision = sector.revision;
             recipient.known = true;
@@ -707,6 +777,8 @@ public final class ServerConstructionEffects {
         final NetHandlerPlayServer connection;
         final ObjectOpenHashSet<Viewer> viewers = new ObjectOpenHashSet<>();
         @Nullable Status lastStatus;
+        long activated;
+        long settled;
         int sentSectors;
         int pendingReplays;
         boolean near;
@@ -720,6 +792,14 @@ public final class ServerConstructionEffects {
             this.player = player;
             connection = player.connection;
             near = effect.withinRange(player);
+        }
+
+        void recordTimes(Geometry packet) {
+            for (var time : packet.regions()) {
+                long bit = 1L << time.region();
+                if (time.activatedTick() >= 0) activated |= bit;
+                if (time.settledTick() >= 0) settled |= bit;
+            }
         }
 
         void updateDistance() {
@@ -759,10 +839,12 @@ public final class ServerConstructionEffects {
 
     private static final class Delta implements Work {
         private final Sector sector;
-        private @Nullable Geometry packet;
+        private BitSet removed = new BitSet();
         private @Nullable ObjectArrayList<Viewer> audience;
         private int cursor;
-        private int activating;
+        private int baseRevision;
+        private long activating;
+        private long settled;
 
         Delta(Sector sector) {
             this.sector = sector;
@@ -774,54 +856,64 @@ public final class ServerConstructionEffects {
             if (!effect.live() || effect.cancelled()) return finish();
             var players = audience;
             if (players == null) {
-                int settled = 0;
                 boolean waiting = false;
-                for (int i = 0; i < sector.regions.length; i++) {
-                    var region = sector.regions[i];
-                    if (region == null) continue;
-                    if (region.activating) {
-                        region.activating = false;
-                        region.activatedTick = effect.session.tick;
-                        activating |= 1 << i;
-                    }
-                    if (region.syncAfterTick >= 0) {
+                for (long mask = sector.regionMask; mask != 0; mask &= mask - 1) {
+                    int index = Long.numberOfTrailingZeros(mask);
+                    var region = Objects.requireNonNull(effect.regions[index]);
+                    if (region.syncAfterTick >= 0 && region.settledTick < 0) {
                         if (effect.session.tick > region.syncAfterTick) {
                             region.syncAfterTick = -1;
                             region.settledTick = effect.session.tick;
-                            settled |= 1 << i;
+                            effect.settled |= 1L << index;
                         } else waiting = true;
                     }
                 }
+                activating = 0;
+                settled = 0;
+                for (long mask = sector.regionMask; mask != 0; mask &= mask - 1) {
+                    int index = Long.numberOfTrailingZeros(mask);
+                    long bit = 1L << index;
+                    var region = Objects.requireNonNull(effect.regions[index]);
+                    if (region.activatedTick >= 0 && (sector.sentActivation & bit) == 0) activating |= bit;
+                    if (region.settledTick >= 0 && (sector.sentSettlement & bit) == 0) settled |= bit;
+                }
                 if ((activating | settled) == 0 && sector.pendingExclude.isEmpty())
                     return waiting ? WorkResult.WAIT : finish();
-                sector.revision++;
-                sector.excluded.or(sector.pendingExclude);
+                baseRevision = sector.revision;
+                removed = (BitSet) sector.pendingExclude.clone();
+                if (!removed.isEmpty()) {
+                    sector.revision++;
+                    sector.excluded.or(removed);
+                }
                 players = new ObjectArrayList<>(sector.viewers.values());
                 audience = players;
-                if (!players.isEmpty()) packet = sector.delta(activating, settled);
                 sector.pendingExclude.clear();
                 cursor = 0;
             }
             if (cursor < players.size()) {
                 var viewer = players.get(cursor);
-                if (viewer.revision >= 0 && viewer.revision < sector.revision && sector.watching(viewer)) {
-                    if (viewer.revision != sector.revision - 1 || viewer.replayQueued) viewer.queueReplay();
+                if (viewer.revision >= 0 && sector.watching(viewer)) {
+                    if (viewer.revision < baseRevision || viewer.replayQueued) viewer.queueReplay();
                     else {
-                        var message = packet;
-                        if (message == null) throw new IllegalStateException("Missing construction geometry delta");
-                        if (!effect.session.send(viewer.recipient.player, message)) return WorkResult.WAIT;
+                        var recipient = viewer.recipient;
+                        var times = sector.regionTimes(activating & ~recipient.activated, settled & ~recipient.settled);
+                        if (!times.isEmpty() || viewer.revision != sector.revision) {
+                            var message = sector.delta(viewer.revision == sector.revision ? new BitSet() : removed, times);
+                            if (!effect.session.send(recipient.player, message)) return WorkResult.WAIT;
+                            recipient.recordTimes(message);
+                        }
                         viewer.revision = sector.revision;
                     }
                 }
                 cursor++;
                 return WorkResult.CONTINUE;
             }
-            while (activating != 0) {
-                int region = Integer.numberOfTrailingZeros(activating);
-                Objects.requireNonNull(sector.regions[region]).removableTick = effect.session.tick + ConstructionEffectPayload.WHITE_TRANSITION_TICKS;
-                activating &= activating - 1;
+            for (long mask = activating; mask != 0; mask &= mask - 1) {
+                int index = Long.numberOfTrailingZeros(mask);
+                sector.sentActivation |= 1L << index;
+                Objects.requireNonNull(effect.regions[index]).activationPublished(effect);
             }
-            packet = null;
+            sector.sentSettlement |= settled;
             audience = null;
             return WorkResult.CONTINUE;
         }

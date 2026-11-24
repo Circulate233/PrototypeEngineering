@@ -4,15 +4,19 @@ import com.circulation.prototype_eng.structure.tool.effect.ConstructionArea;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.Geometry;
 import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.RegionTime;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.math.AxisAlignedBB;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
 import java.util.BitSet;
 
 import static com.circulation.prototype_eng.client.render.construction.ConstructionSurface.HEIGHT;
 import static com.circulation.prototype_eng.client.render.construction.ConstructionSurface.WIDTH;
 import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.FINAL_WIRE_TICKS;
 import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.LAYERS_PER_SECTION;
+import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.MAX_LOGICAL_CHUNKS;
 import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.REGION_FADE_TICKS;
 import static com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload.WHITE_TRANSITION_TICKS;
 
@@ -27,6 +31,9 @@ final class ConstructionAnimation {
     final ConstructionArea area;
     final ConstructionMeshes.Arena arena;
     final Long2ObjectLinkedOpenHashMap<Slice> slices = new Long2ObjectLinkedOpenHashMap<>();
+    private final Phase[] phases;
+    private final Long2ObjectOpenHashMap<byte[]> occupancy = new Long2ObjectOpenHashMap<>();
+    private final Long2ObjectOpenHashMap<ObjectArrayList<Slice>> spatialSlices = new Long2ObjectOpenHashMap<>();
     boolean owner;
     boolean hidden;
     boolean complete;
@@ -40,10 +47,12 @@ final class ConstructionAnimation {
     private final int wireTicks;
     private long finishAt = UNSET;
 
-    ConstructionAnimation(boolean dismantle, long startTick, int wireTicks, ConstructionArea area) {
+    ConstructionAnimation(boolean dismantle, long startTick, int wireTicks, int chunkCount, ConstructionArea area) {
         this.dismantle = dismantle;
         this.startTick = startTick;
         this.wireTicks = wireTicks;
+        phases = new Phase[chunkCount * 2];
+        for (int i = 0; i < phases.length; i++) phases[i] = new Phase();
         this.area = area;
         arena = new ConstructionMeshes.Arena(area.min());
     }
@@ -103,18 +112,71 @@ final class ConstructionAnimation {
         }
         var section = packet.section();
         int x = section.chunkX(packet.quadrant()), y = section.y() * LAYERS_PER_SECTION, z = section.chunkZ(packet.quadrant());
-        for (int i = 0; i < LAYERS_PER_SECTION; i++) {
-            int from = i * SLICE_CELLS, to = from + SLICE_CELLS;
-            if (packet.snapshot() || !packet.excluded().isEmpty()) {
-                apply(x, y + i, z, packet.snapshot() ? packet.cells().get(from, to) : null,
-                    packet.snapshot() ? packet.fluids().get(from, to) : null, packet.excluded().get(from, to));
+        var cells = packet.cells();
+        var fluids = packet.fluids();
+        var excluded = packet.excluded();
+        int chunkCount = phases.length / 2;
+        if (packet.snapshot()) {
+            var groups = packet.cellGroups();
+            var selected = new BitSet[LAYERS_PER_SECTION * chunkCount];
+            var liquid = new BitSet[selected.length];
+            int ordinal = 0;
+            for (int index = cells.nextSetBit(0); index >= 0; index = cells.nextSetBit(index + 1)) {
+                int group = groups[ordinal++];
+                if (group >= chunkCount) throw new IllegalArgumentException("Construction snapshot references an unknown chunk");
+                int slice = index / SLICE_CELLS;
+                int localCell = index % SLICE_CELLS;
+                int offset = slice * chunkCount + group;
+                if (selected[offset] == null) selected[offset] = new BitSet(SLICE_CELLS);
+                selected[offset].set(localCell);
+                if (fluids.get(index)) {
+                    if (liquid[offset] == null) liquid[offset] = new BitSet(SLICE_CELLS);
+                    liquid[offset].set(localCell);
+                }
+            }
+            for (int slice = 0; slice < LAYERS_PER_SECTION; slice++) {
+                int height = y + slice;
+                long space = spaceKey(x, height, z);
+                var changed = new BitSet();
+                for (int group = 0; group < chunkCount; group++) {
+                    int offset = slice * chunkCount + group;
+                    var old = slices.get(key(x, height, z, group));
+                    var selection = selected[offset];
+                    if (selection == null) {
+                        if (old != null) remove(old, changed);
+                    } else update(x, height, z, group, old, selection, liquid[offset], changed);
+                }
+                refresh(x, height, z, space, changed);
+            }
+        } else if (!excluded.isEmpty()) {
+            for (int slice = 0; slice < LAYERS_PER_SECTION; slice++) {
+                int from = slice * SLICE_CELLS;
+                var removed = excluded.get(from, from + SLICE_CELLS);
+                int height = y + slice;
+                long space = spaceKey(x, height, z);
+                var siblings = spatialSlices.get(space);
+                if (siblings == null || removed.isEmpty()) continue;
+                var changed = new BitSet();
+                for (int i = siblings.size() - 1; i >= 0; i--) {
+                    var old = siblings.get(i);
+                    if (!old.cells.intersects(removed)) continue;
+                    var selection = (BitSet) old.cells.clone();
+                    selection.andNot(removed);
+                    if (selection.isEmpty()) remove(old, changed);
+                    else {
+                        var liquids = (BitSet) old.fluids.clone();
+                        liquids.andNot(removed);
+                        update(x, height, z, old.group, old, selection, liquids, changed);
+                    }
+                }
+                refresh(x, height, z, space, changed);
             }
         }
         for (var time : packet.regions()) {
-            boolean fluid = time.region() >= LAYERS_PER_SECTION;
-            int layer = fluid ? time.region() - LAYERS_PER_SECTION : time.region();
-            var slice = slices.get(key(x, y + layer, z));
-            if (slice != null) (fluid ? slice.fluid : slice.solid).apply(time, packet.serverTick(), clientTick, packet.snapshot(), finishAt);
+            int group = time.region() % MAX_LOGICAL_CHUNKS;
+            if (group >= chunkCount) throw new IllegalArgumentException("Construction transition references an unknown chunk");
+            int phase = time.region() >= MAX_LOGICAL_CHUNKS ? group + chunkCount : group;
+            phases[phase].apply(time, packet.serverTick(), clientTick, finishAt);
         }
     }
 
@@ -126,57 +188,57 @@ final class ConstructionAnimation {
         this.paused = paused;
     }
 
-    static long key(int x, int y, int z) {
+    private static long spaceKey(int x, int y, int z) {
         return ((long) x & 0x3ffffff) << 38 | ((long) z & 0x3ffffff) << 12 | ((long) y & 0xfff);
+    }
+
+    static long key(int x, int y, int z, int group) {
+        return spaceKey(x, y, z) & ~0xfffL | ((long) y & 0x3f) << 6 | group & 0x3f;
     }
 
     static int index(int x, int y, int z) {
         return x | z << 4 | y << 8;
     }
 
-    void apply(int x, int y, int z, @Nullable BitSet snapshot, @Nullable BitSet fluids, BitSet excluded) {
-        long key = key(x, y, z);
-        var slice = slices.get(key);
-        BitSet cells;
-        BitSet liquid;
-        if (snapshot == null) {
-            if (slice == null || excluded.isEmpty()) return;
-            cells = (BitSet) slice.cells.clone();
-            liquid = (BitSet) slice.fluids.clone();
-        } else {
-            cells = snapshot;
-            liquid = fluids == null ? new BitSet() : fluids;
-        }
-        cells.andNot(excluded);
-        liquid.and(cells);
-        if (cells.isEmpty()) {
-            forget(x, y, z);
-            return;
-        }
-        var changed = (BitSet) cells.clone();
-        if (slice != null) {
-            changed.xor(slice.cells);
-            var materialChanges = (BitSet) liquid.clone();
-            materialChanges.xor(slice.fluids);
-            changed.or(materialChanges);
-        }
-        if (changed.isEmpty()) return;
+    private void update(int x, int y, int z, int group, @Nullable Slice slice,
+                        BitSet cells, @Nullable BitSet fluids, BitSet changed) {
+        var liquid = fluids == null ? new BitSet() : fluids;
         if (slice == null) {
-            slice = new Slice(this, x, y, z);
-            slices.put(key, slice);
+            slice = new Slice(this, x, y, z, group);
+            slices.put(key(x, y, z, group), slice);
+            var siblings = spatialSlices.computeIfAbsent(spaceKey(x, y, z), _ -> new ObjectArrayList<>());
+            slice.ownsWire = siblings.isEmpty();
+            siblings.add(slice);
+            changed.or(cells);
+        } else {
+            if (cells.equals(slice.cells) && liquid.equals(slice.fluids)) return;
+            var differences = (BitSet) cells.clone();
+            differences.xor(slice.cells);
+            changed.or(differences);
+            differences = (BitSet) liquid.clone();
+            differences.xor(slice.fluids);
+            changed.or(differences);
         }
         slice.cells = cells;
         slice.fluids = liquid;
         slice.hasSolid = liquid.cardinality() < cells.cardinality();
-        slice.invalidate();
+    }
+
+    private void refresh(int x, int y, int z, long space, BitSet changed) {
+        if (changed.isEmpty()) return;
+        rebuildOccupancy(space);
         invalidateNeighbors(x, y, z, changed);
     }
 
-    void forget(int x, int y, int z) {
-        var removed = slices.remove(key(x, y, z));
-        if (removed == null) return;
+    private void remove(Slice removed, BitSet changed) {
+        slices.remove(key(removed.x, removed.y, removed.z, removed.group));
+        long spatialKey = spaceKey(removed.x, removed.y, removed.z);
+        var siblings = spatialSlices.get(spatialKey);
+        siblings.remove(removed);
+        if (siblings.isEmpty()) spatialSlices.remove(spatialKey);
+        else siblings.getFirst().ownsWire = true;
         removed.dispose();
-        invalidateNeighbors(x, y, z, removed.cells);
+        changed.or(removed.cells);
     }
 
     void forgetChunk(int x, int z) {
@@ -184,7 +246,36 @@ final class ConstructionAnimation {
         var max = area.max();
         if (slices.isEmpty() || x < min.getX() >> 4 || x > max.getX() >> 4 || z < min.getZ() >> 4 || z > max.getZ() >> 4)
             return;
-        for (int y = min.getY() >> 3; y <= max.getY() >> 3; y++) forget(x, y, z);
+        for (int y = min.getY() >> 3; y <= max.getY() >> 3; y++) {
+            long space = spaceKey(x, y, z);
+            var siblings = spatialSlices.get(space);
+            if (siblings == null) continue;
+            var changed = new BitSet();
+            while (!siblings.isEmpty()) remove(siblings.getLast(), changed);
+            refresh(x, y, z, space, changed);
+        }
+    }
+
+    private void rebuildOccupancy(long key) {
+        var siblings = spatialSlices.get(key);
+        if (siblings == null) {
+            occupancy.remove(key);
+            return;
+        }
+        var cells = occupancy.computeIfAbsent(key, _ -> new byte[SLICE_CELLS]);
+        Arrays.fill(cells, (byte) 0);
+        for (var slice : siblings) {
+            slice.invalidate();
+            for (int index = slice.cells.nextSetBit(0); index >= 0; index = slice.cells.nextSetBit(index + 1)) {
+                byte value = slice.fluids.get(index) ? ConstructionSurface.FLUID : ConstructionSurface.SOLID;
+                cells[index] = ConstructionSurface.groupMaterial(slice.group, value);
+            }
+        }
+    }
+
+    byte cell(int sliceX, int sliceY, int sliceZ, int x, int y, int z) {
+        var cells = occupancy.get(spaceKey(sliceX, sliceY, sliceZ));
+        return cells == null ? 0 : cells[index(x, y, z)];
     }
 
     private void invalidateNeighbors(int x, int y, int z, BitSet changed) {
@@ -203,8 +294,8 @@ final class ConstructionAnimation {
         while (neighbors != 0) {
             int neighbor = Integer.numberOfTrailingZeros(neighbors);
             neighbors &= neighbors - 1;
-            var adjacent = slices.get(key(x + neighbor % 3 - 1, y + neighbor / 9 - 1, z + neighbor / 3 % 3 - 1));
-            if (adjacent != null) adjacent.invalidate();
+            var adjacent = spatialSlices.get(spaceKey(x + neighbor % 3 - 1, y + neighbor / 9 - 1, z + neighbor / 3 % 3 - 1));
+            if (adjacent != null) for (var slice : adjacent) slice.invalidate();
         }
     }
 
@@ -220,16 +311,18 @@ final class ConstructionAnimation {
     void dispose() {
         invalidateMeshes();
         slices.clear();
+        spatialSlices.clear();
+        occupancy.clear();
     }
 
     static final class Phase {
         private long activeAt = UNSET;
         private long settledAt = UNSET;
 
-        void apply(RegionTime time, long serverTick, long clientTick, boolean snapshot, long finishAt) {
+        void apply(RegionTime time, long serverTick, long clientTick, long finishAt) {
             if (activeAt == UNSET && time.activatedTick() >= 0) activeAt = clientTick - (serverTick - time.activatedTick());
             if (settledAt == UNSET && time.settledTick() >= 0) {
-                settledAt = snapshot ? clientTick - (serverTick - time.settledTick()) : clientTick;
+                settledAt = clientTick - (serverTick - time.settledTick());
                 if (finishAt != UNSET) settledAt = Math.min(settledAt, finishAt);
             }
         }
@@ -241,16 +334,17 @@ final class ConstructionAnimation {
 
     static final class Slice {
         final ConstructionAnimation task;
-        final int x, y, z;
+        final int x, y, z, group;
         final AxisAlignedBB view;
         BitSet cells = new BitSet();
         BitSet fluids = new BitSet();
         boolean hasSolid;
+        boolean ownsWire;
         int version;
         int wireVersion = -1;
         @Nullable ConstructionMeshes.Mesh wire;
-        final Phase solid = new Phase();
-        final Phase fluid = new Phase();
+        final Phase solid;
+        final Phase fluid;
         final ConstructionMeshes.Part solidMesh = new ConstructionMeshes.Part();
         final ConstructionMeshes.Part fluidMesh = new ConstructionMeshes.Part();
         int seenFrame;
@@ -258,24 +352,20 @@ final class ConstructionAnimation {
         boolean prepareShell;
         double wireOpacity;
 
-        Slice(ConstructionAnimation task, int x, int y, int z) {
+        Slice(ConstructionAnimation task, int x, int y, int z, int group) {
             this.task = task;
             this.x = x;
             this.y = y;
             this.z = z;
+            this.group = group;
+            solid = task.phases[group];
+            fluid = task.phases[group + task.phases.length / 2];
             int minX = x * WIDTH, minY = y * HEIGHT, minZ = z * WIDTH;
             view = new AxisAlignedBB(minX, minY, minZ, minX + WIDTH, minY + HEIGHT, minZ + WIDTH);
         }
 
         byte cell(int x, int y, int z) {
-            Slice slice = this;
-            if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= WIDTH) {
-                slice = task.slices.get(key(this.x + (x >> 4), this.y + (y >> 3), this.z + (z >> 4)));
-                if (slice == null) return 0;
-            }
-            int index = index(x & 15, y & 7, z & 15);
-            if (!slice.cells.get(index)) return 0;
-            return slice.fluids.get(index) ? ConstructionSurface.FLUID : ConstructionSurface.SOLID;
+            return task.cell(this.x + (x >> 4), this.y + (y >> 3), this.z + (z >> 4), x & 15, y & 7, z & 15);
         }
 
         void invalidate() {

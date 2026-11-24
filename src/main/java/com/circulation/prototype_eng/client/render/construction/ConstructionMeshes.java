@@ -65,7 +65,7 @@ final class ConstructionMeshes {
         if (!next.ready) {
             while (System.nanoTime() < deadline) {
                 for (int i = 0; i < STEP_BATCH; i++) {
-                    if (!surface.step(next.cells, next.material, next.vertex)) continue;
+                    if (!surface.step(next.cells, next.groupMaterial, next.vertex)) continue;
                     output.flip();
                     next.ready = true;
                     break;
@@ -245,6 +245,7 @@ final class ConstructionMeshes {
         final ConstructionSurface.Vertex vertex = this::vertex;
         final int version;
         final byte material;
+        final byte groupMaterial;
         final Part part;
         final int x, y, z;
         boolean ready;
@@ -254,6 +255,7 @@ final class ConstructionMeshes {
             cells = slice::cell;
             version = slice.version;
             this.material = material;
+            groupMaterial = material == 0 ? 0 : ConstructionSurface.groupMaterial(slice.group, material);
             this.part = part;
             var arena = slice.task.arena;
             x = (int) slice.view.minX - arena.x;

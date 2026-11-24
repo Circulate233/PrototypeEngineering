@@ -17,6 +17,10 @@ final class ConstructionSurface {
         step = 0;
     }
 
+    static byte groupMaterial(int group, byte material) {
+        return (byte) (group * 4 + material);
+    }
+
     // Each step samples one row, merges one face plane, or merges one line along an axis.
     boolean step(Cells source, byte material, Vertex output) {
         boolean wire = material == 0;
@@ -46,7 +50,7 @@ final class ConstructionSurface {
             for (int u = 0; u < axis.u; u++) {
                 if (cell(axis, n, u, v) != material) continue;
                 byte neighbor = cell(axis, n + side, u, v);
-                if (neighbor == 0 || material == SOLID && neighbor == FLUID) row |= 1 << u;
+                if (neighbor == 0 || (material & 3) == SOLID && (neighbor & 3) == FLUID) row |= 1 << u;
             }
             rows[v] = row;
         }

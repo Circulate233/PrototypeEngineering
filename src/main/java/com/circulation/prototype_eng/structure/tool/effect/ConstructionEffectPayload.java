@@ -1,13 +1,16 @@
 package com.circulation.prototype_eng.structure.tool.effect;
 
 import io.netty.buffer.ByteBuf;
+import it.unimi.dsi.fastutil.bytes.ByteArrayList;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.IntUnaryOperator;
 
 /** Geometry is a set of unit cells. The receiver emits their boundary vertices, omitting internal faces. */
 public sealed interface ConstructionEffectPayload {
@@ -17,11 +20,15 @@ public sealed interface ConstructionEffectPayload {
     int FINAL_WIRE_TICKS = 20;
     int MIN_INITIAL_WIRE_TICKS = 6;
     int MAX_INITIAL_WIRE_TICKS = 28;
-    int LAYER_HEIGHT = 8;
-    int LAYERS_PER_SECTION = 32 / LAYER_HEIGHT;
-    int REGION_COUNT = LAYERS_PER_SECTION * 2;
+    int MAX_LOGICAL_CHUNKS = ConstructionChunkPlan.MAX_CHUNKS;
+    int REGION_COUNT = MAX_LOGICAL_CHUNKS * 2;
     int CELL_COUNT = 32 * 32 * 32;
     int CHUNK_CELL_COUNT = CELL_COUNT / 4;
+    int GROUP_BITS = 5;
+    int PACKED_GROUPS = MAX_LOGICAL_CHUNKS;
+    int GROUP_RUNS = PACKED_GROUPS + 1;
+    int LAYER_HEIGHT = 8;
+    int LAYERS_PER_SECTION = 32 / LAYER_HEIGHT;
     int HEADER_BYTES = 1 + Integer.BYTES + Long.BYTES;
     int AREA_BYTES = 2 * Long.BYTES;
 
@@ -34,8 +41,92 @@ public sealed interface ConstructionEffectPayload {
         return Math.min(MAX_INITIAL_WIRE_TICKS, MIN_INITIAL_WIRE_TICKS + 2 * log);
     }
 
-    static int region(int cell, boolean fluid) {
-        return (cell >>> 8) / LAYER_HEIGHT + (fluid ? LAYERS_PER_SECTION : 0);
+    static int region(int chunk, boolean fluid) {
+        if (chunk < 0 || chunk >= MAX_LOGICAL_CHUNKS) throw new IllegalArgumentException("Invalid construction chunk");
+        return chunk + (fluid ? MAX_LOGICAL_CHUNKS : 0);
+    }
+
+    private static int packedGroup(byte[] groups, int ordinal) {
+        int bit = ordinal * GROUP_BITS;
+        int offset = 1 + (bit >>> 3);
+        int shift = bit & 7;
+        int value = Byte.toUnsignedInt(groups[offset]);
+        if (offset + 1 < groups.length) value |= Byte.toUnsignedInt(groups[offset + 1]) << 8;
+        return value >>> shift & 31;
+    }
+
+    private static void setPackedGroup(byte[] groups, int cell, int group) {
+        int bit = cell * GROUP_BITS;
+        int offset = 1 + (bit >>> 3);
+        int shift = bit & 7;
+        int value = Byte.toUnsignedInt(groups[offset]);
+        if (offset + 1 < groups.length) value |= Byte.toUnsignedInt(groups[offset + 1]) << 8;
+        value |= group << shift;
+        groups[offset] = (byte) value;
+        if (offset + 1 < groups.length) groups[offset + 1] = (byte) (value >>> 8);
+    }
+
+    static byte[] packGroups(BitSet cells, IntUnaryOperator groupAtCell) {
+        if (cells.isEmpty()) return new byte[0];
+        byte[] packed = new byte[1 + groupBytes(cells.cardinality())];
+        packed[0] = PACKED_GROUPS;
+        var runs = new ByteArrayList();
+        runs.add((byte) GROUP_RUNS);
+        int ordinal = 0;
+        int previous = -1, length = 0;
+        for (int cell = cells.nextSetBit(0); cell >= 0; cell = cells.nextSetBit(cell + 1)) {
+            int id = groupAtCell.applyAsInt(cell);
+            setPackedGroup(packed, ordinal++, id);
+            if (id != previous) {
+                if (length != 0 && runs.size() < packed.length) appendRun(runs, previous, length);
+                previous = id;
+                length = 0;
+            }
+            length++;
+        }
+        if (length == ordinal) return new byte[]{(byte) previous};
+        if (runs.size() < packed.length) appendRun(runs, previous, length);
+        return runs.size() < packed.length ? runs.toByteArray() : packed;
+    }
+
+    private static void appendRun(ByteArrayList output, int group, int length) {
+        int value = (length - 1) << GROUP_BITS | group;
+        while (value >= 128) {
+            output.add((byte) (value | 128));
+            value >>>= 7;
+        }
+        output.add((byte) value);
+    }
+
+    private static int groupBytes(int cellCount) {
+        return (cellCount * GROUP_BITS + Byte.SIZE - 1) / Byte.SIZE;
+    }
+
+    private static byte[] unpackGroups(byte[] encoded, int count) {
+        byte[] result = new byte[count];
+        if (count == 0) return result;
+        int mode = Byte.toUnsignedInt(encoded[0]);
+        if (mode < MAX_LOGICAL_CHUNKS && encoded.length == 1) Arrays.fill(result, (byte) mode);
+        else if (mode == PACKED_GROUPS && encoded.length == 1 + groupBytes(count)) {
+            for (int i = 0; i < count; i++) result[i] = (byte) packedGroup(encoded, i);
+        } else if (mode == GROUP_RUNS) {
+            int offset = 1, next = 0;
+            while (offset < encoded.length && next < count) {
+                int value = 0, shift = 0, part;
+                do {
+                    if (offset == encoded.length || shift == 21) throw new IllegalArgumentException("Invalid construction group run");
+                    part = Byte.toUnsignedInt(encoded[offset++]);
+                    value |= (part & 127) << shift;
+                    shift += 7;
+                } while ((part & 128) != 0);
+                int end = next + (value >>> GROUP_BITS) + 1;
+                if (end > count) throw new IllegalArgumentException("Construction group run exceeds cell count");
+                Arrays.fill(result, next, end, (byte) (value & (MAX_LOGICAL_CHUNKS - 1)));
+                next = end;
+            }
+            if (next != count || offset != encoded.length) throw new IllegalArgumentException("Invalid construction group coverage");
+        } else throw new IllegalArgumentException("Invalid construction group encoding");
+        return result;
     }
 
     record RegionTime(int region, long activatedTick, long settledTick) {
@@ -64,12 +155,13 @@ public sealed interface ConstructionEffectPayload {
                     if (layout != null) writeLayout(buffer, layout);
                     writeCells(buffer, geometry.cells);
                     writeCells(buffer, geometry.fluids);
+                    if (!geometry.cells.isEmpty()) buffer.writeShort(geometry.groups.length).writeBytes(geometry.groups);
                 } else writeCells(buffer, geometry.excluded);
                 buffer.writeByte(geometry.regions.size());
                 for (var time : geometry.regions) {
                     boolean activate = time.activatedTick() >= 0;
                     boolean settle = time.settledTick() >= 0;
-                    buffer.writeByte(time.region() | (activate ? 8 : 0) | (settle ? 16 : 0));
+                    buffer.writeByte(time.region() | (activate ? 64 : 0) | (settle ? 128 : 0));
                     if (activate) buffer.writeLong(time.activatedTick());
                     if (settle) buffer.writeLong(time.settledTick());
                 }
@@ -101,16 +193,23 @@ public sealed interface ConstructionEffectPayload {
                 var layout = kind == 0 ? readLayout(buffer) : null;
                 BitSet cells = snapshot ? readCells(buffer) : new BitSet();
                 BitSet fluids = snapshot ? readCells(buffer) : new BitSet();
+                byte[] groups = new byte[0];
+                if (!cells.isEmpty()) {
+                    int size = buffer.readUnsignedShort();
+                    if (size == 0 || size > 1 + groupBytes(cells.cardinality()) || size > buffer.readableBytes())
+                        throw new IllegalArgumentException("Invalid construction group encoding length");
+                    groups = new byte[size];
+                    buffer.readBytes(groups);
+                }
                 var excluded = snapshot ? new BitSet() : readCells(buffer);
                 int count = buffer.readUnsignedByte();
                 if (count > REGION_COUNT) throw new IllegalArgumentException("Invalid construction region count");
                 var regions = new ArrayList<RegionTime>(count);
                 for (int i = 0; i < count; i++) {
                     int flags = buffer.readUnsignedByte();
-                    if ((flags & ~31) != 0) throw new IllegalArgumentException("Invalid construction region flags");
-                    regions.add(new RegionTime(flags & 7, (flags & 8) == 0 ? -1 : buffer.readLong(), (flags & 16) == 0 ? -1 : buffer.readLong()));
+                    regions.add(new RegionTime(flags & 63, (flags & 64) == 0 ? -1 : buffer.readLong(), (flags & 128) == 0 ? -1 : buffer.readLong()));
                 }
-                yield new Geometry(dimension, task, serverTick, section, quadrant, snapshot, layout, cells, fluids, excluded, regions);
+                yield new Geometry(dimension, task, serverTick, section, quadrant, snapshot, layout, cells, fluids, groups, excluded, regions);
             }
             case 2, 7 -> new Visibility(dimension, task, kind == 7);
             case 3, 5 -> new Hud(dimension, task, kind == 5 ? readLayout(buffer) : null,
@@ -126,21 +225,22 @@ public sealed interface ConstructionEffectPayload {
         return HEADER_BYTES + switch (payload) {
             case Geometry geometry -> geometryBytes(geometry);
             case Visibility _ -> 0;
-            case Hud hud -> 13 + (hud.layout != null ? 18 + AREA_BYTES : 0);
+            case Hud hud -> 13 + (hud.layout != null ? 19 + AREA_BYTES : 0);
             case End _ -> 10;
         };
     }
 
     private static int geometryBytes(Geometry geometry) {
-        int bytes = 19 + (geometry.snapshot ? cellBytes(geometry.cells) + cellBytes(geometry.fluids) : cellBytes(geometry.excluded));
-        if (geometry.layout != null) bytes += 18 + AREA_BYTES;
+        int bytes = 19 + (geometry.snapshot ? cellBytes(geometry.cells) + cellBytes(geometry.fluids)
+            + (geometry.cells.isEmpty() ? 0 : Short.BYTES + geometry.groups.length) : cellBytes(geometry.excluded));
+        if (geometry.layout != null) bytes += 19 + AREA_BYTES;
         for (var time : geometry.regions)
             bytes += 1 + (time.activatedTick() >= 0 ? Long.BYTES : 0) + (time.settledTick() >= 0 ? Long.BYTES : 0);
         return bytes;
     }
 
     private static Layout readLayout(ByteBuf buffer) {
-        return new Layout(buffer.readLong(), readBoolean(buffer), buffer.readLong(), buffer.readUnsignedByte(),
+        return new Layout(buffer.readLong(), readBoolean(buffer), buffer.readLong(), buffer.readUnsignedByte(), buffer.readUnsignedByte(),
             new ConstructionArea(BlockPos.fromLong(buffer.readLong()), BlockPos.fromLong(buffer.readLong())));
     }
 
@@ -180,20 +280,21 @@ public sealed interface ConstructionEffectPayload {
     }
 
     private static void writeLayout(ByteBuf buffer, Layout layout) {
-        buffer.writeLong(layout.anchor).writeBoolean(layout.dismantle).writeLong(layout.startTick).writeByte(layout.wireTicks);
+        buffer.writeLong(layout.anchor).writeBoolean(layout.dismantle).writeLong(layout.startTick).writeByte(layout.wireTicks).writeByte(layout.chunks);
         buffer.writeLong(layout.area.min().toLong()).writeLong(layout.area.max().toLong());
     }
 
-    record Layout(long anchor, boolean dismantle, long startTick, int wireTicks, ConstructionArea area) {
+    record Layout(long anchor, boolean dismantle, long startTick, int wireTicks, int chunks, ConstructionArea area) {
         public Layout {
             Objects.requireNonNull(area);
-            if (startTick < 0 || wireTicks < MIN_INITIAL_WIRE_TICKS || wireTicks > MAX_INITIAL_WIRE_TICKS)
+            if (startTick < 0 || wireTicks < MIN_INITIAL_WIRE_TICKS || wireTicks > MAX_INITIAL_WIRE_TICKS
+                || chunks < 0 || chunks > MAX_LOGICAL_CHUNKS)
                 throw new IllegalArgumentException("Invalid construction layout");
         }
     }
 
     record Geometry(int dimension, long taskId, long serverTick, Section section, int quadrant, boolean snapshot,
-                    @Nullable Layout layout, BitSet cells, BitSet fluids,
+                    @Nullable Layout layout, BitSet cells, BitSet fluids, byte[] groups,
                     BitSet excluded, List<RegionTime> regions) implements ConstructionEffectPayload {
         public Geometry {
             requireTask(taskId);
@@ -203,14 +304,19 @@ public sealed interface ConstructionEffectPayload {
             if (snapshot) {
                 var unplanned = (BitSet) fluids.clone();
                 unplanned.andNot(cells);
-                if (layout != null && (serverTick < layout.startTick || cells.isEmpty()) || !unplanned.isEmpty() || !excluded.isEmpty())
+                if (layout != null && (serverTick < layout.startTick || cells.isEmpty()) || cells.isEmpty() != (groups.length == 0)
+                    || groups.length > 1 + groupBytes(cells.cardinality())
+                    || !unplanned.isEmpty() || !excluded.isEmpty())
                     throw new IllegalArgumentException("Invalid construction geometry snapshot");
-            } else if (layout != null || !cells.isEmpty() || !fluids.isEmpty() || regions.isEmpty() && excluded.isEmpty())
+            } else if (layout != null || groups.length != 0 || !cells.isEmpty() || !fluids.isEmpty()
+                || regions.isEmpty() && excluded.isEmpty())
                 throw new IllegalArgumentException("Invalid construction geometry delta");
-            int seen = 0;
+            long seen = 0;
             for (var time : regions) {
-                int mask = 1 << time.region();
+                long mask = 1L << time.region();
+                int group = time.region() >= MAX_LOGICAL_CHUNKS ? time.region() - MAX_LOGICAL_CHUNKS : time.region();
                 if ((seen & mask) != 0 || time.activatedTick() > serverTick || time.settledTick() > serverTick
+                    || layout != null && group >= layout.chunks()
                     || layout != null && (time.activatedTick() >= 0 && (!layout.dismantle || time.activatedTick() < layout.startTick)
                     || time.settledTick() >= 0 && time.settledTick() < layout.startTick))
                     throw new IllegalArgumentException("Conflicting construction region time");
@@ -218,8 +324,29 @@ public sealed interface ConstructionEffectPayload {
             }
             cells = (BitSet) cells.clone();
             fluids = (BitSet) fluids.clone();
+            groups = groups.clone();
             excluded = (BitSet) excluded.clone();
             regions = List.copyOf(regions);
+        }
+
+        public byte[] cellGroups() {
+            return unpackGroups(groups, cells.cardinality());
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Geometry(var otherDimension, var otherTaskId, var otherTick, var otherSection, var otherQuadrant,
+                var otherSnapshot, var otherLayout, var otherCells, var otherFluids, var otherGroups, var otherExcluded, var otherTimes))) return false;
+            return dimension == otherDimension && taskId == otherTaskId && serverTick == otherTick && quadrant == otherQuadrant
+                && snapshot == otherSnapshot && section.equals(otherSection) && Objects.equals(layout, otherLayout) && cells.equals(otherCells)
+                && fluids.equals(otherFluids) && Arrays.equals(groups, otherGroups) && excluded.equals(otherExcluded) && regions.equals(otherTimes);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = Objects.hash(dimension, taskId, serverTick, section, quadrant, snapshot, layout, cells, fluids, excluded, regions);
+            return 31 * result + Arrays.hashCode(groups);
         }
 
         public int sectionIndex(int index) {

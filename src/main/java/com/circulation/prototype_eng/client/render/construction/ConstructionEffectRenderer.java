@@ -103,7 +103,7 @@ public final class ConstructionEffectRenderer {
     }
 
     private ConstructionAnimation begin(ConstructionEffectPayload packet, Layout layout) {
-        var task = new ConstructionAnimation(layout.dismantle(), layout.startTick(), layout.wireTicks(), layout.area());
+        var task = new ConstructionAnimation(layout.dismantle(), layout.startTick(), layout.wireTicks(), layout.chunks(), layout.area());
         tasks.put(packet.taskId(), task);
         ProjectionInteractions.INSTANCE.constructionStarted(packet.dimension(), BlockPos.fromLong(layout.anchor()));
         return task;
@@ -261,8 +261,9 @@ public final class ConstructionEffectRenderer {
             for (var slice : task.slices.values()) {
                 double solid = slice.hasSolid ? task.shellOpacity(slice.solid, now) : 0;
                 double fluid = slice.fluids.isEmpty() ? 0 : task.shellOpacity(slice.fluid, now);
-                boolean drawSlice = Math.max(wire, Math.max(solid, fluid)) > MIN_OPACITY;
-                boolean prepareSliceWire = prepareWire && slice.wireVersion != slice.version;
+                double sliceWire = slice.ownsWire ? wire : 0;
+                boolean drawSlice = Math.max(sliceWire, Math.max(solid, fluid)) > MIN_OPACITY;
+                boolean prepareSliceWire = slice.ownsWire && prepareWire && slice.wireVersion != slice.version;
                 boolean prepareSliceShell = prepareShell && slice.hasSolid && slice.solidMesh.version != slice.version;
                 if (!drawSlice && !prepareSliceWire && !prepareSliceShell) continue;
                 if (frustum == null) {
@@ -273,7 +274,7 @@ public final class ConstructionEffectRenderer {
                 slice.seenFrame = frame;
                 slice.prepareWire = prepareSliceWire;
                 slice.prepareShell = prepareSliceShell;
-                slice.wireOpacity = wire;
+                slice.wireOpacity = sliceWire;
                 slice.solidMesh.opacity = solid;
                 slice.fluidMesh.opacity = fluid;
                 visible.add(slice);

@@ -17,13 +17,11 @@ import com.circulation.prototype_eng.structure.StructurePickWorld;
 import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
 import com.circulation.prototype_eng.structure.tool.ConstructionProgress.Phase;
 import com.circulation.prototype_eng.structure.tool.ConstructionProgress.Step;
-import com.circulation.prototype_eng.structure.tool.effect.ConstructionEffectPayload;
 import com.circulation.prototype_eng.structure.tool.effect.ServerConstructionEffects;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
 import net.minecraft.block.Block;
-import net.minecraft.block.BlockFalling;
 import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.enchantment.EnchantmentHelper;
@@ -70,15 +68,13 @@ public final class StructureBuildTasks {
     private static final ReferenceLinkedOpenHashSet<ServerConstructionEffects.Effect> SETTLING = new ReferenceLinkedOpenHashSet<>();
     private static final Comparator<Target> POSITION_ORDER = Comparator.comparingInt((Target target) -> target.pos.getY())
         .thenComparingInt(target -> target.pos.getX()).thenComparingInt(target -> target.pos.getZ());
-    private static final Comparator<Target> REGION_ORDER = Comparator.comparingInt((Target target) -> target.pos.getY() / ConstructionEffectPayload.LAYER_HEIGHT)
-        .thenComparingInt(target -> target.pos.getX() >> 4).thenComparingInt(target -> target.pos.getZ() >> 4);
     private static final Comparator<Target> STATIC_COLUMN_ORDER = Comparator.comparingInt((Target target) -> target.pos.getX())
         .thenComparingInt(target -> target.pos.getZ()).thenComparingInt(target -> -target.pos.getY());
-    private static final Comparator<Target> BUILD_ORDER = Comparator.comparingInt((Target target) -> target.fluid ? 1 : 0)
-        .thenComparing(REGION_ORDER)
-        .thenComparingInt(target -> target.order)
-        .thenComparing((first, second) -> (first.order == 0 ? STATIC_COLUMN_ORDER : POSITION_ORDER).compare(first, second));
-    private static final Comparator<Target> REMOVE_ORDER = REGION_ORDER.reversed().thenComparing(POSITION_ORDER.reversed());
+    private static final Comparator<Target> BUILD_GROUP_ORDER = Comparator.comparingInt((Target target) -> target.group)
+        .thenComparingInt(target -> target.staticBlock ? 0 : 1)
+        .thenComparing((first, second) -> (first.staticBlock ? STATIC_COLUMN_ORDER : POSITION_ORDER).compare(first, second));
+    private static final Comparator<Target> REMOVE_GROUP_ORDER = Comparator.comparingInt((Target target) -> target.group)
+        .thenComparing(POSITION_ORDER.reversed());
 
     private StructureBuildTasks() {
     }
@@ -416,7 +412,8 @@ public final class StructureBuildTasks {
         final @Nullable String tileNbt;
         @Nullable GenericStack resource;
         State outcome = State.PENDING;
-        final int order;
+        final boolean staticBlock;
+        int group;
         boolean first, fluid;
 
         Target(BlockPos pos, @Nullable IBlockState desired, @Nullable String tileNbt) {
@@ -424,7 +421,7 @@ public final class StructureBuildTasks {
             this.desired = desired;
             this.tileNbt = tileNbt;
             fluid = desired != null && fluid(desired);
-            order = desired == null ? 1 : ConstructionPlacement.isStatic(desired) ? 0 : desired.getBlock() instanceof BlockFalling ? 2 : 1;
+            staticBlock = desired != null && ConstructionPlacement.isStatic(desired);
         }
     }
 
@@ -654,6 +651,8 @@ public final class StructureBuildTasks {
         private final Task task;
         private final StructureBuildPlan.Expansion expansion;
         private final PriorityQueue<Target> ordered;
+        private final PriorityQueue<Target> grouped;
+        private final ObjectArrayList<Target> admitted = new ObjectArrayList<>();
         private final ObjectArrayList<Target> candidates = new ObjectArrayList<>();
         private final ConstructionInventory inventory = new ConstructionInventory();
         private final ConstructionPreflight.Stock allocations = new ConstructionPreflight.Stock();
@@ -663,13 +662,14 @@ public final class StructureBuildTasks {
         private @Nullable ConstructionInventory.Request stock;
         private @Nullable GenericStack material;
         private Phase phase = Phase.EXPAND;
-        private int scan, slot, source, selected, invalid, skipped;
+        private int scan, slot, source, invalid, skipped;
         private boolean unavailable, missing;
 
         Preparation(Task task, StructureCatalogView view) {
             this.task = task;
             expansion = new StructureBuildPlan.Expansion(view, task.controller.structure(), task.orientation, BuilderState.sliceCounts(task.settings));
-            ordered = new PriorityQueue<>(task.dismantle ? REMOVE_ORDER : BUILD_ORDER);
+            ordered = new PriorityQueue<>(task.dismantle ? POSITION_ORDER.reversed() : POSITION_ORDER);
+            grouped = new PriorityQueue<>(task.dismantle ? REMOVE_GROUP_ORDER : BUILD_GROUP_ORDER);
         }
 
         boolean step() {
@@ -680,6 +680,8 @@ public final class StructureBuildTasks {
                 case INVENTORY -> inventory();
                 case MATERIALS -> materials();
                 case ADMIT -> admit();
+                case GROUP -> group();
+                case QUEUE -> queue();
                 case START -> {
                     start();
                     return false;
@@ -832,8 +834,10 @@ public final class StructureBuildTasks {
 
         private void admit() {
             if (scan == candidates.size()) {
+                if (!task.effect().prepareChunkPlanStep()) return;
                 if (skipped > 0) task.owner.sendMessage(StructureToolText.BuilderSkipped.text(skipped));
-                phase = Phase.START;
+                scan = 0;
+                phase = Phase.GROUP;
                 return;
             }
             var target = candidates.get(scan++);
@@ -845,8 +849,27 @@ public final class StructureBuildTasks {
                 return;
             }
             task.effect().add(target.pos, target.fluid);
+            admitted.add(target);
+        }
+
+        private void group() {
+            if (scan == admitted.size()) {
+                phase = Phase.QUEUE;
+                return;
+            }
+            var target = admitted.get(scan);
+            target.group = task.effect().chunkPlan().chunkAt(scan++);
+            grouped.add(target);
+        }
+
+        private void queue() {
+            var target = grouped.poll();
+            if (target == null) {
+                phase = Phase.START;
+                return;
+            }
             task.targets.add(target);
-            task.progress.add(selected++, target.first, !task.dismantle && target.fluid);
+            task.progress.add(task.targets.size() - 1, target.first, !task.dismantle && target.fluid);
         }
 
         private void start() {
@@ -863,6 +886,6 @@ public final class StructureBuildTasks {
             task.start();
         }
 
-        private enum Phase {EXPAND, RESOLVE, SORT, INVENTORY, MATERIALS, ADMIT, START}
+        private enum Phase {EXPAND, RESOLVE, SORT, INVENTORY, MATERIALS, ADMIT, GROUP, QUEUE, START}
     }
 }
