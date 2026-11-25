@@ -8,6 +8,7 @@ import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.Blocks;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldType;
@@ -66,6 +67,26 @@ final class ConstructionPlacement {
         lighting.notify(chunk, pos, state, air);
         return true;
     }
+
+    static Removal removeWithCallbacks(World world, BlockPos pos, Chunk chunk, IBlockState state, EntityPlayer player,
+                                       boolean willHarvest, ItemStack tool, int experience) {
+        var block = state.getBlock();
+        var tile = willHarvest ? world.getTileEntity(pos) : null;
+        if (!block.removedByPlayer(state, world, pos, player, willHarvest)) return Removal.BLOCKED;
+        block.onPlayerDestroy(world, pos, state);
+        // A block can defer removal until harvestBlock has read its tile and generated drops.
+        if (willHarvest) block.harvestBlock(world, player, pos, state, tile, tool);
+        if (chunk.getBlockState(pos).equals(state)) {
+            PrototypeEngineering.LOGGER.warn("Construction removal left {} unchanged at {} in dimension {} after block callbacks",
+                block.getRegistryName(), pos, world.provider.getDimension());
+            return Removal.UNCHANGED;
+        }
+        world.playEvent(player, 2001, pos, Block.getStateId(state));
+        if (willHarvest && experience > 0) block.dropXpOnBlockBreak(world, pos, experience);
+        return Removal.REMOVED;
+    }
+
+    enum Removal {REMOVED, BLOCKED, UNCHANGED}
 
     static void notify(World world, BlockPos pos, Chunk chunk, IBlockState previous, IBlockState placed,
                        ConstructionLightingBatch lighting) {

@@ -16,6 +16,7 @@ import com.circulation.prototype_eng.machine.ControllerStructureUpdates;
 import com.circulation.prototype_eng.structure.StructureMaterials;
 import com.circulation.prototype_eng.structure.StructurePickWorld;
 import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
+import com.circulation.prototype_eng.structure.tool.ConstructionPlacement.Removal;
 import com.circulation.prototype_eng.structure.tool.ConstructionProgress.Phase;
 import com.circulation.prototype_eng.structure.tool.ConstructionProgress.Step;
 import com.circulation.prototype_eng.structure.tool.effect.ServerConstructionEffects;
@@ -317,7 +318,9 @@ public final class StructureBuildTasks {
         if (!blockPermission(task, pos))
             return task.outcome(target, State.BLOCKED, !task.dismantle && !task.requireSpace);
         if (desired == null || clear) {
-            if (!remove(task, pos, chunk, current)) return task.outcome(target, State.BLOCKED, !task.dismantle && !task.requireSpace);
+            var removal = remove(task, pos, chunk, current);
+            if (removal != Removal.REMOVED)
+                return task.outcome(target, State.BLOCKED, removal == Removal.UNCHANGED || !task.dismantle && !task.requireSpace);
             if (task.dismantle) return task.outcome(target, State.COMMITTED, true);
             task.setOutcome(target, State.PENDING);
             return Step.CONTINUE;
@@ -347,7 +350,7 @@ public final class StructureBuildTasks {
             if (payment != ConstructionPayment.FREE && (!payment.commit() || !task.authorized(pos, chunk, current))) return Step.RETRY;
             if (!air(world, pos, current)) {
                 if (!task.requireSpace) {
-                    if (!remove(task, pos, chunk, current)) return task.outcome(target, State.BLOCKED, true);
+                    if (remove(task, pos, chunk, current) != Removal.REMOVED) return task.outcome(target, State.BLOCKED, true);
                     current = chunk.getBlockState(pos);
                     if (!task.authorized(pos, chunk, current) || !air(world, pos, current)) return Step.RETRY;
                 } else {
@@ -379,51 +382,43 @@ public final class StructureBuildTasks {
         }
     }
 
-    private static boolean remove(Task task, BlockPos pos, Chunk chunk, IBlockState state) {
+    private static Removal remove(Task task, BlockPos pos, Chunk chunk, IBlockState state) {
         var player = task.owner;
         var world = task.world;
         var block = state.getBlock();
         boolean fluid = fluid(state);
-        if (state.getBlockHardness(world, pos) < 0) return false;
+        if (state.getBlockHardness(world, pos) < 0) return Removal.BLOCKED;
         boolean creative = player.isCreative();
         var harvestedWith = creative || fluid ? ItemStack.EMPTY : task.miningProfile();
-        if (!creative && !fluid && !canHarvest(task, pos, state, harvestedWith)) return false;
+        if (!creative && !fluid && !canHarvest(task, pos, state, harvestedWith)) return Removal.BLOCKED;
         var event = new BlockEvent.BreakEvent(world, pos, state, player);
         event.setExpToDrop(creative || fluid
             || block.canSilkHarvest(world, pos, state, player) && EnchantmentHelper.getEnchantmentLevel(Enchantments.SILK_TOUCH, harvestedWith) > 0
             ? 0 : block.getExpDrop(state, world, pos, EnchantmentHelper.getEnchantmentLevel(Enchantments.FORTUNE, harvestedWith)));
         if (MinecraftForge.EVENT_BUS.post(event) || !task.authorized(pos, chunk, state))
-            return false;
+            return Removal.BLOCKED;
         if (creative && ConstructionPlacement.isStatic(state)) {
-            if (!ConstructionPlacement.removeStatic(world, pos, chunk, state, player, LIGHTING)) return false;
+            if (!ConstructionPlacement.removeStatic(world, pos, chunk, state, player, LIGHTING)) return Removal.BLOCKED;
             block.onPlayerDestroy(world, pos, state);
-            return true;
+            return Removal.REMOVED;
         }
         if (fluid && !creative) {
             var source = FluidUtil.getFluidHandler(world, pos, EnumFacing.UP);
-            if (source == null) return false;
+            if (source == null) return Removal.BLOCKED;
             var available = source.drain(Integer.MAX_VALUE, false);
-            if (!task.authorized(pos, chunk, state)) return false;
+            if (!task.authorized(pos, chunk, state)) return Removal.BLOCKED;
             if (available == null || available.amount <= 0)
-                return world.setBlockToAir(pos) && air(world, pos, chunk.getBlockState(pos));
+                return world.setBlockToAir(pos) && air(world, pos, chunk.getBlockState(pos)) ? Removal.REMOVED : Removal.BLOCKED;
             var drained = source.drain(available, true);
-            if (drained == null || drained.amount <= 0) return false;
+            if (drained == null || drained.amount <= 0) return Removal.BLOCKED;
             var actual = chunk.getBlockState(pos);
             boolean removed = air(world, pos, actual) || !fluid(actual);
             BuilderFluidRecovery.deliver(player, drained, task.me, task.overflow);
-            return removed;
+            return removed ? Removal.REMOVED : Removal.BLOCKED;
         }
         try (var _ = BuilderDropRecovery.capture(player, task.me, task.overflow)) {
-            var tile = world.getTileEntity(pos);
-            if (!block.removedByPlayer(state, world, pos, player, !creative) || chunk.getBlockState(pos).equals(state)) return false;
-            block.onPlayerDestroy(world, pos, state);
-            world.playEvent(player, 2001, pos, Block.getStateId(state));
-            if (!creative) {
-                block.harvestBlock(world, player, pos, state, tile, harvestedWith);
-                if (event.getExpToDrop() > 0) block.dropXpOnBlockBreak(world, pos, event.getExpToDrop());
-            }
+            return ConstructionPlacement.removeWithCallbacks(world, pos, chunk, state, player, !creative, harvestedWith, event.getExpToDrop());
         }
-        return true;
     }
 
     private enum State {PENDING, MATCHED, COMMITTED, MISSING, BLOCKED, UNLOADED, ROLLED_BACK}
