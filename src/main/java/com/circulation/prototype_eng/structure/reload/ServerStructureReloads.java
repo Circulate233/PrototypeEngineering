@@ -26,6 +26,7 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -102,6 +103,12 @@ public final class ServerStructureReloads {
     public static void detach(TaskScheduler scheduler, ControllerStructureUpdates updates) {
         var current = session;
         if (current != null && current.scheduler == scheduler) current.coordinator.unregister(updates);
+    }
+
+    public static ControllerStructureUpdates updates(MinecraftServer server, MachineInstance machine) {
+        var coordinator = requireSession(server).coordinator;
+        coordinator.enrollLoaded();
+        return Objects.requireNonNull(coordinator.updates(machine.lifecycle()), "Controller has no registered structure updates");
     }
 
     /**

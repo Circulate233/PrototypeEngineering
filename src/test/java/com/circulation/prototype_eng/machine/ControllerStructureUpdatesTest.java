@@ -93,6 +93,50 @@ class ControllerStructureUpdatesTest {
     }
 
     @Test
+    void dismantlingPublishesUnformedStateAndStopsChecksUntilReleased() {
+        try (var fixture = new Fixture()) {
+            fixture.tick(0);
+            assertTrue(fixture.lifecycle().formed());
+            fixture.onChanged = () -> {
+                assertFalse(fixture.lifecycle().formed());
+                assertNull(fixture.machine().components().get(MachineHatches.TYPE));
+                assertNull(fixture.lifecycle().structureMatch());
+            };
+            fixture.scheduler.runAtBoundary(fixture.updates::beginDismantling);
+            int reads = fixture.host.reads;
+            fixture.tick(40);
+            fixture.updates.enqueueTick(80);
+            fixture.scheduler.tick();
+            assertFalse(fixture.lifecycle().formed());
+            assertEquals(reads, fixture.host.reads);
+
+            fixture.onChanged = () -> assertTrue(fixture.lifecycle().formed());
+            fixture.scheduler.runAtBoundary(fixture.updates::endDismantling);
+            fixture.tick(81);
+            assertTrue(fixture.lifecycle().formed());
+        }
+    }
+
+    @Test
+    void overlappingDismantlingTasksReleaseTheStructureAfterTheLastTask() {
+        try (var fixture = new Fixture()) {
+            fixture.tick(0);
+            fixture.scheduler.runAtBoundary(() -> {
+                fixture.updates.beginDismantling();
+                fixture.updates.beginDismantling();
+            });
+            int changes = fixture.changes;
+            fixture.scheduler.runAtBoundary(fixture.updates::endDismantling);
+            fixture.tick(40);
+            assertFalse(fixture.lifecycle().formed());
+            assertEquals(changes, fixture.changes);
+            fixture.scheduler.runAtBoundary(fixture.updates::endDismantling);
+            fixture.tick(41);
+            assertTrue(fixture.lifecycle().formed());
+        }
+    }
+
+    @Test
     void shorterStructurePublishesBeforeTheLongerStructureReopensItsThirdReadRound() {
         try (var scheduler = new TaskScheduler(Thread.currentThread(), 2, 1);
              var longer = new Fixture(scheduler); var shorter = new Fixture(scheduler);

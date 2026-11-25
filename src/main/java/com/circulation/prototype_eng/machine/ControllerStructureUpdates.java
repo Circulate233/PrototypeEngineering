@@ -43,6 +43,7 @@ public class ControllerStructureUpdates {
     private long nextCheckAt;
     private long lastTick;
     private boolean detached;
+    private int dismantling;
     private boolean firstCheckPending = true;
     private boolean advanced;
     private long advancedAt;
@@ -156,6 +157,30 @@ public class ControllerStructureUpdates {
         }
         refresh.invalidate();
         changed.run();
+    }
+
+    public void beginDismantling() {
+        host.requireServerThread();
+        scheduler.requireOwnerBoundary();
+        if (!canRefresh()) throw new IllegalStateException("Dismantling requires an active structure owner");
+        dismantling++;
+        if (dismantling > 1) return;
+        try {
+            invalidate();
+        } catch (RuntimeException | Error failure) {
+            dismantling--;
+            throw failure;
+        }
+    }
+
+    public void endDismantling() {
+        host.requireServerThread();
+        scheduler.requireOwnerBoundary();
+        if (dismantling == 0) throw new IllegalStateException("No dismantling operation owns this structure");
+        if (--dismantling == 0) {
+            checked = false;
+            nextCheckAt = lastTick;
+        }
     }
 
     private boolean canRefresh() {
@@ -321,7 +346,7 @@ public class ControllerStructureUpdates {
     @Nullable
     private Check prepareCheckAtBoundary(long now) {
         host.requireServerThread();
-        if (!canRefresh() || advanced && advancedAt == now) return null;
+        if (dismantling != 0 || !canRefresh() || advanced && advancedAt == now) return null;
         if (status == StructureCheckPolicy.Status.NEEDS_MORE_BUDGET) {
             if (budgetBlockedConfiguration == host.structureConfiguration()) return null;
             status = StructureCheckPolicy.Status.IDLE;

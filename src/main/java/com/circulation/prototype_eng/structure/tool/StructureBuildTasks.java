@@ -12,6 +12,7 @@ import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.item.BuilderInstrumentItem;
 import com.circulation.prototype_eng.localization.StructureToolText;
+import com.circulation.prototype_eng.machine.ControllerStructureUpdates;
 import com.circulation.prototype_eng.structure.StructureMaterials;
 import com.circulation.prototype_eng.structure.StructurePickWorld;
 import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
@@ -466,6 +467,7 @@ public final class StructureBuildTasks {
         @Nullable ConstructionMEAccess me;
         @Nullable ItemStack miningProfile;
         @Nullable ServerConstructionEffects.Effect projection;
+        @Nullable ControllerStructureUpdates dismantlingController;
         @Nullable StructurePickWorld pickWorld;
         final ConstructionProgress progress = new ConstructionProgress();
         final ObjectArrayList<Target> targets = new ObjectArrayList<>();
@@ -479,6 +481,8 @@ public final class StructureBuildTasks {
         int matched, committed, missing, errors, unloaded, total;
         long nextMissingReport;
         long retryRecoveryTick;
+        long controllerUnformedTick = -1;
+        boolean startingDismantle;
         boolean initialized, effectStarted, paused, reportedFluidsSkipped;
 
         Task(EntityPlayerMP owner, WorldServer world, int slot, ItemStack tool, ConstructionTarget controller,
@@ -532,6 +536,7 @@ public final class StructureBuildTasks {
 
         boolean runnable() {
             return !paused && (!dismantle || world.getTotalWorldTime() >= retryRecoveryTick)
+                && (!startingDismantle || controllerUnformedTick >= 0 && world.getTotalWorldTime() > controllerUnformedTick)
                 && (craftingWindow == null || owner.openContainer != craftingWindow)
                 && (!effectStarted || effect().ready());
         }
@@ -594,6 +599,11 @@ public final class StructureBuildTasks {
 
         boolean advance(ConstructionBudget.Slice slice) {
             long now = world.getTotalWorldTime();
+            if (startingDismantle) {
+                startingDismantle = false;
+                startEffect();
+                return false;
+            }
             if (lastWriteTick != now) {
                 lastChunk = null;
                 sources.beginSlice();
@@ -637,6 +647,7 @@ public final class StructureBuildTasks {
             if (awaitingRecovery()) return false;
             if (progress.nextPhase() == Phase.DONE) {
                 if (TASKS.remove(owner.getUniqueID(), this)) {
+                    releaseController();
                     boolean successful = matched + committed == total;
                     effect().finish(successful);
                     String seconds = String.format(Locale.ROOT, "%.2f", (System.nanoTime() - queuedAtNanos) / 1_000_000_000.0);
@@ -705,12 +716,46 @@ public final class StructureBuildTasks {
             if (window != null && owner.openContainer == window) owner.closeScreen();
             builderWindow = null;
             prepare = null;
+            if (dismantle && controller.controller() != null) {
+                startingDismantle = true;
+                controller.atBoundary(() -> {
+                    if (TASKS.get(owner.getUniqueID()) != this) return;
+                    try {
+                        if (!valid()) {
+                            cancel(this);
+                            return;
+                        }
+                        var host = Objects.requireNonNull(controller.controller());
+                        var updates = ServerStructureReloads.updates(owner.server, Objects.requireNonNull(host.machine()));
+                        updates.beginDismantling();
+                        dismantlingController = updates;
+                        // The native chunk update must publish the unformed display before construction geometry.
+                        controllerUnformedTick = world.getTotalWorldTime();
+                    } catch (RuntimeException failure) {
+                        fail(this, failure);
+                    }
+                });
+                return;
+            }
+            startEffect();
+        }
+
+        private void startEffect() {
             effect().start();
             effectStarted = true;
             status();
         }
 
+        @SuppressWarnings("resource") // The server owns this borrowed scheduler.
+        private void releaseController() {
+            var updates = dismantlingController;
+            if (updates == null) return;
+            dismantlingController = null;
+            updates.scheduler().runAtBoundary(updates::endDismantling);
+        }
+
         void stop() {
+            releaseController();
             var effect = projection;
             if (effect != null) effect.cancel();
         }
