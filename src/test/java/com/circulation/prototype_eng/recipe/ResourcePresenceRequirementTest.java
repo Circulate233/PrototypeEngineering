@@ -108,7 +108,6 @@ class ResourcePresenceRequirementTest {
         var display = displays.describe(recipe);
         assertTrue(display.resources().stream().flatMap(row -> row.details().stream())
             .anyMatch(text -> text.text() == JeiText.NotConsumed));
-        assertTrue(display.information().stream().anyMatch(text -> text.text() == JeiText.PresentAmount));
     }
 
     private static MachineInstance machine(BufferedResourceHatch... hatches) {

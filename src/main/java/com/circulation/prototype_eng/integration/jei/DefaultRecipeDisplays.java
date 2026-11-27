@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay;
 import com.circulation.prototype_eng.api.client.jei.RecipeJeiDisplays;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.network.resource.ComputerInputRecipe;
-import com.circulation.prototype_eng.api.recipe.requirement.AttributeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.CheckpointRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
@@ -25,9 +24,6 @@ import static com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay.Role
 import static com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay.Role.OUTPUT;
 import static com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay.Text.of;
 
-/**
- * MMCE's requirement-driven generation, with pool ownership and the current execution model.
- */
 @SideOnly(Side.CLIENT)
 public class DefaultRecipeDisplays {
     private DefaultRecipeDisplays() {
@@ -58,7 +54,7 @@ public class DefaultRecipeDisplays {
             resources(requirement, (ResourceRequirement) requirement.payload(), display, inputStage);
         } else if (requirement.type() == RecipeRequirements.RESOURCE_PRESENCE) {
             resources(requirement, ((ResourcePresenceRequirement) requirement.payload()).resources(),
-                display.scoped(of(JeiText.NotConsumed)), inputStage, false);
+                display.scoped(of(JeiText.NotConsumed)), inputStage);
         } else if (requirement.type() == RecipeRequirements.ENERGY) {
             energy((EnergyRequirement) requirement.payload(), display, inputStage);
         } else if (requirement.type() == ComputerInputRecipe.END_INPUT) {
@@ -70,16 +66,10 @@ public class DefaultRecipeDisplays {
             describe(recipe, checkpoint.requirement(), nested, extensions);
         } else if (requirement.type() == RecipeRequirements.SELECTIVE) {
             var selective = (SelectiveRequirement) requirement.payload();
-            if (selective.candidates().isEmpty()) {
-                display.information(of(JeiText.NoCandidates, requirement.id()));
-            }
             var inputs = new ObjectArrayList<JeiRecipeDisplay.CandidateGroup>();
             var outputs = new ObjectArrayList<JeiRecipeDisplay.CandidateGroup>();
             for (int i = 0; i < selective.candidates().size(); i++) {
                 var nested = new JeiRecipeDisplay.Builder().scoped(of(JeiText.Alternative, requirement.id(), i + 1, selective.candidates().size()));
-                if (!selective.modifiers().isEmpty()) {
-                    nested = nested.scoped(of(JeiText.Modifiers));
-                }
                 describe(recipe, selective.candidates().get(i), nested, extensions, inputStage);
                 var candidate = nested.build();
                 appendAlternative(display, candidate, INPUT, inputs, requirement.id().toString());
@@ -90,14 +80,6 @@ public class DefaultRecipeDisplays {
                     display.information(line);
                 }
             }
-        } else if (requirement.type() == RecipeRequirements.ATTRIBUTES) {
-            var attribute = (AttributeRequirement) requirement.payload();
-            if (attribute.applyAtStart())
-                display.information(of(JeiText.AttributeAdded, attribute.attribute(), attribute.modifier().id()));
-            if (attribute.removeAtEnd())
-                display.information(of(JeiText.AttributeRemoved, attribute.attribute(), attribute.modifier().id()));
-        } else if (requirement.type() != RecipeRequirements.EVENTS) {
-            display.information(of(JeiText.CustomRequirement, requirement.type().id(), requirement.id()));
         }
     }
 
@@ -135,11 +117,6 @@ public class DefaultRecipeDisplays {
     }
 
     private static void resources(RecipeRequirement<?> requirement, ResourceRequirement resource, JeiRecipeDisplay.Builder display, JeiText inputStage) {
-        resources(requirement, resource, display, inputStage, true);
-    }
-
-    private static void resources(RecipeRequirement<?> requirement, ResourceRequirement resource, JeiRecipeDisplay.Builder display,
-                                  JeiText inputStage, boolean consumed) {
         var declared = display.chance(resource.chance().percent(), resource.chance().attribute() != null)
                               .scoped(of(JeiText.Chance, resource.chance().percent()));
         if (resource.chance().attribute() != null) {
@@ -171,9 +148,6 @@ public class DefaultRecipeDisplays {
         for (int index11 = 0; index11 < elements11.size(); index11++) {
             var group = elements11.get(index11);
             var groupId = requirement.id() + "/fuzzy/" + groupIndex++;
-            if (group.candidates().isEmpty()) {
-                declared.information(of(JeiText.NoCandidates, groupId));
-            }
             var alternatives = declared.candidates(new JeiRecipeDisplay.CandidateGroup(groupId));
             var elements8 = group.candidates();
             for (int index8 = 0; index8 < elements8.size(); index8++) {
@@ -186,9 +160,7 @@ public class DefaultRecipeDisplays {
         for (int index12 = 0; index12 < elements12.size(); index12++) {
             var group = elements12.get(index12);
             var groupId = requirement.id() + "/dynamic/" + groupIndex++;
-            var dynamic = declared.candidates(new JeiRecipeDisplay.CandidateGroup(groupId))
-                                  .scoped(of(JeiText.Dynamic, groupId, group.matcher().id()));
-            dynamic.information(of(consumed ? JeiText.Consume : JeiText.PresentAmount, group.amount()));
+            var dynamic = declared.candidates(new JeiRecipeDisplay.CandidateGroup(groupId));
             // Only explicitly supplied examples are indexed; pattern and callbacks are not inferred outputs.
             var elements7 = group.displayedCandidates();
             for (int index7 = 0; index7 < elements7.size(); index7++) {

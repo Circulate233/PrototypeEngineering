@@ -74,7 +74,7 @@ class PatternRecipeTransferTest {
 
     @Test
     void displayedCandidatesAndChanceImportUnchangedWhilePerTickQuantitiesUseRecipeTime() {
-        for (var detail : List.of(JeiText.Tick, JeiText.Alternative, JeiText.Dynamic, JeiText.Weighted, JeiText.CheckpointScaled)) {
+        for (var detail : List.of(JeiText.Tick, JeiText.Alternative, JeiText.Weighted, JeiText.CheckpointScaled)) {
             var display = new JeiRecipeDisplay.Builder();
             display.resource(stack("input", 2), INPUT, of(detail));
             display.resource(stack("output", 1), OUTPUT);

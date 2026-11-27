@@ -104,7 +104,6 @@ class DefaultRecipeDisplaysTest {
         assertEquals(1, result.resources().size());
         assertSame(OUTPUT.what(), result.resources().getFirst().stack().what());
         assertEquals(12, result.resources().getFirst().stack().amount());
-        assertTrue(result.resources().getFirst().details().stream().anyMatch(line -> line.text() == JeiText.Dynamic));
     }
 
     @Test
@@ -132,7 +131,6 @@ class DefaultRecipeDisplaysTest {
         var recipe = new MachineRecipe(id("custom"), 1, ObjectArrayList.of(foreign.requirement(id("io"), new ResourceRequirement(ObjectArrayList.of(INPUT), ObjectArrayList.of(OUTPUT)))));
         var unknown = displays().describe(recipe);
         assertTrue(unknown.resources().isEmpty());
-        assertTrue(unknown.information().stream().anyMatch(line -> line.text() == JeiText.CustomRequirement));
         var custom = new RecipeJeiDisplays();
         custom.register(foreign, (ignored4, requirement, builder) -> builder.resource(requirement.payload().outputs().getFirst(),
             JeiRecipeDisplay.Role.OUTPUT, JeiRecipeDisplay.Text.of(JeiText.End)));

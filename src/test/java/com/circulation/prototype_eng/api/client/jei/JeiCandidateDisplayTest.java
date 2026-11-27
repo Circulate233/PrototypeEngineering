@@ -35,9 +35,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Native candidate grouping and tooltip association, using the existing non-FML ingredient fixture.
- */
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 class JeiCandidateDisplayTest {
@@ -238,7 +235,6 @@ class JeiCandidateDisplayTest {
         assertEquals(display.resources(), expanded.inputs(0));
         for (var row : expanded.inputs(0)) {
             assertEquals(Long.MAX_VALUE, row.stack().amount());
-            assertTrue(row.details().stream().anyMatch(line -> line.text() == JeiText.Dynamic));
         }
     }
 
