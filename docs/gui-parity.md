@@ -1,5 +1,11 @@
 # GUI 原效果修复
 
+## 2026-11-27 槽位渲染状态污染
+
+材料仓、ME 材料仓和 ME 样板总成必须在每个资源槽和玩家背包槽绘制前后调用 `GuiItemLighting.prepareSlot()`，将活动纹理单元设为默认单元，恢复 GUI 满亮度、白色、透明度测试、颜色写入及深度状态，并重新初始化两盏物品光源和颜色材质。原生顶点颜色数组可能使 OpenGL 当前颜色与 Minecraft 缓存不同步，必须先调用 `GlStateManager.resetColor()` 再设置白色。光源必须先关闭再按原版 GUI 参数开启，禁止仅依靠缓存中的开启状态，否则后续三维物品可能发暗。资源区域仍按原有范围裁剪。
+
+独立离屏 OpenGL 检查通过注入纹理单元和亮度变化、颜色缓存不同步、光源缓存不同步，比较实际三维模型像素。三项均复现原恢复方法的亮度差异，修复后与基准逐像素一致。检查没有启动 Minecraft；截图所示材料仓、ME 仓及样板总成仍需用户完整重启后复验，包含资源槽与背包放置同种方块、悬停数量和拾起拖动物品。详细构建及 IDEA 结果见[实施进度](implementation-status.md#2026-11-27-gui-槽位渲染状态恢复)。
+
 ## 2026-11-10 材料仓容器提示统一AE2S
 
 截图中的水桶操作提示不再使用自有单行文案。GuiResourceHatch对照实际GuiMEStorage直接调用Tooltips.getEmptyingTooltip(StoreAction)生成左右键存入两行，装填调用FillAction并复用muted/of/TextComponentItemStack，使用AE原生分色、嵌入图标与drawTooltipWithHeader；有效操作提示优先于底层资源详情。空光标信息及原点击/Shift整批行为保持。源码提交 `cf27716`，单Java本机MCP全级零/完整读回及必要构建通过，未运行测试或游戏；真实渲染待用户复验，证据见[实施进度](implementation-status.md)。

@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.client.render;
 
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.RenderHelper;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
@@ -18,6 +19,23 @@ public final class GuiItemLighting {
     private static final int SMOOTH = 64;
 
     private GuiItemLighting() {
+    }
+
+    public static void prepareSlot() {
+        GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
+        GlStateManager.enableTexture2D();
+        GlStateManager.colorMask(true, true, true, true);
+        GlStateManager.enableDepth();
+        GlStateManager.depthMask(true);
+        GlStateManager.depthFunc(GL11.GL_LEQUAL);
+        GlStateManager.enableAlpha();
+        GlStateManager.alphaFunc(GL11.GL_GREATER, .1f);
+        OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240, 240);
+        // Vertex color arrays can change the native color without updating Minecraft's cache.
+        GlStateManager.resetColor();
+        GlStateManager.color(1, 1, 1, 1);
+        RenderHelper.disableStandardItemLighting();
+        RenderHelper.enableGUIStandardItemLighting();
     }
 
     public static int capture() {

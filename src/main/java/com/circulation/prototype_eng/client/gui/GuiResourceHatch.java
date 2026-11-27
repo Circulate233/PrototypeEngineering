@@ -14,6 +14,7 @@ import ae2.core.localization.Tooltips;
 import ae2.helpers.InventoryAction;
 import ae2.text.TextComponentItemStack;
 import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.client.render.GuiItemLighting;
 import com.circulation.prototype_eng.container.ContainerResourceHatch;
 import com.circulation.prototype_eng.localization.GuiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -32,9 +33,6 @@ import org.lwjgl.opengl.GL11;
 import java.io.IOException;
 import java.util.List;
 
-/**
- * PM's ItemHatchGUI/ItemIOHatchGUI, with AE's native generic resource slots.
- */
 public final class GuiResourceHatch extends AEBaseGui<ContainerResourceHatch> {
     private final ResourceLocation background;
     private final HatchScrollbar inputScrollbar;
@@ -151,20 +149,14 @@ public final class GuiResourceHatch extends AEBaseGui<ContainerResourceHatch> {
 
     @Override
     public void drawSlot(@NotNull Slot slot) {
-        if (!container.isResourceSlot(slot.slotNumber)) {
-            try {
-                super.drawSlot(slot);
-            } finally {
-                restoreStateForVanillaItemRender();
-            }
-            return;
-        }
-        beginClip(container.isInputSlot(slot.slotNumber) ? container.inputLeft : container.outputLeft);
+        GuiItemLighting.prepareSlot();
+        boolean clipped = container.isResourceSlot(slot.slotNumber);
+        if (clipped) beginClip(container.isInputSlot(slot.slotNumber) ? container.inputLeft : container.outputLeft);
         try {
             super.drawSlot(slot);
         } finally {
-            GL11.glPopAttrib();
-            restoreStateForVanillaItemRender();
+            if (clipped) GL11.glPopAttrib();
+            GuiItemLighting.prepareSlot();
         }
     }
 
@@ -200,7 +192,7 @@ public final class GuiResourceHatch extends AEBaseGui<ContainerResourceHatch> {
     }
 
     @Override
-    @SuppressWarnings("DataFlowIssue") // The container constructor sets its AE title before this GUI opens.
+    @SuppressWarnings("DataFlowIssue")
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         super.drawScreen(mouseX, mouseY, partialTicks);
         if (isPointInRegion(29, 8, titleWidth(), 10, mouseX, mouseY))

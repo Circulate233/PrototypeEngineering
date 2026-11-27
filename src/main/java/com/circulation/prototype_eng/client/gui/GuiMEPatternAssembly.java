@@ -16,6 +16,7 @@ import ae2.container.slot.AppEngSlot;
 import ae2.core.localization.ButtonToolTips;
 import ae2.core.localization.Tooltips;
 import ae2.text.TextComponentItemStack;
+import com.circulation.prototype_eng.client.render.GuiItemLighting;
 import com.circulation.prototype_eng.container.ContainerMEPatternAssembly;
 import com.circulation.prototype_eng.localization.MEAssemblyText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -38,9 +39,6 @@ import java.util.List;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
-/**
- * Original source layout: 36 patterns, native page controls and three independent generic-resource caches.
- */
 public final class GuiMEPatternAssembly extends AEBaseGui<ContainerMEPatternAssembly> {
     private static final ResourceLocation BACKGROUND = GuiAtlas.texture("gui_bus/gui_pattern_bus");
     private static final ResourceLocation SLOTS = GuiAtlas.texture("gui_bus/gui_pattern_bus_slot");
@@ -165,7 +163,7 @@ public final class GuiMEPatternAssembly extends AEBaseGui<ContainerMEPatternAsse
     }
 
     @Override
-    @SuppressWarnings("DataFlowIssue") // The container constructor sets its AE title before this GUI opens.
+    @SuppressWarnings("DataFlowIssue")
     public void drawFG(int x, int y, int mouseX, int mouseY) {
         GuiLabel.drawCentered(fontRenderer, container.getGuiTitle().getFormattedText(), 30, 9, 136, 9, 0x404040, false);
         GuiAtlas.draw(SLOTS, 192, 15, 188, 0, 68, 8, 256, 256);
@@ -188,13 +186,14 @@ public final class GuiMEPatternAssembly extends AEBaseGui<ContainerMEPatternAsse
 
     @Override
     public void drawSlot(@NotNull Slot slot) {
+        GuiItemLighting.prepareSlot();
         boolean clipped = container.isResourceSlot(slot.slotNumber);
         if (clipped) clip(container.kind(slot.slotNumber));
         try {
             super.drawSlot(slot);
         } finally {
             if (clipped) GL11.glPopAttrib();
-            restoreStateForVanillaItemRender();
+            GuiItemLighting.prepareSlot();
         }
     }
 

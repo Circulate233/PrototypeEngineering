@@ -8,6 +8,7 @@ import ae2.client.gui.me.items.GuiSetProcessingPatternAmount;
 import ae2.client.gui.widgets.NumberEntryButtonConfig;
 import ae2.container.slot.AppEngSlot;
 import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.client.render.GuiItemLighting;
 import com.circulation.prototype_eng.container.ContainerMEResourceHatch;
 import com.circulation.prototype_eng.localization.MEAssemblyText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -23,9 +24,6 @@ import org.lwjgl.opengl.GL11;
 
 import java.io.IOException;
 
-/**
- * Original PM universal-ME artwork with native generic-key slots and AE's long amount editor.
- */
 public final class GuiMEResourceHatch extends AEBaseGui<ContainerMEResourceHatch> {
     private final ResourceLocation background;
     private final HatchScrollbar inputScroll;
@@ -110,20 +108,14 @@ public final class GuiMEResourceHatch extends AEBaseGui<ContainerMEResourceHatch
 
     @Override
     public void drawSlot(@NotNull Slot slot) {
-        if (!container.isResourceSlot(slot.slotNumber)) {
-            try {
-                super.drawSlot(slot);
-            } finally {
-                restoreStateForVanillaItemRender();
-            }
-            return;
-        }
-        clip(container.isInputSlot(slot.slotNumber));
+        GuiItemLighting.prepareSlot();
+        boolean clipped = container.isResourceSlot(slot.slotNumber);
+        if (clipped) clip(container.isInputSlot(slot.slotNumber));
         try {
             super.drawSlot(slot);
         } finally {
-            GL11.glPopAttrib();
-            restoreStateForVanillaItemRender();
+            if (clipped) GL11.glPopAttrib();
+            GuiItemLighting.prepareSlot();
         }
     }
 
@@ -163,7 +155,7 @@ public final class GuiMEResourceHatch extends AEBaseGui<ContainerMEResourceHatch
     }
 
     @Override
-    @SuppressWarnings("DataFlowIssue") // The container constructor sets its AE title before this GUI opens.
+    @SuppressWarnings("DataFlowIssue")
     public void drawFG(int x, int y, int mouseX, int mouseY) {
         GuiLabel.drawCentered(fontRenderer, container.getGuiTitle().getFormattedText(), 30, 9, 136, 9, 0x404040, false);
     }
